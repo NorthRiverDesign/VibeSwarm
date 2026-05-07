@@ -288,6 +288,131 @@ public partial class JobProcessingService
             var progressUpdateInterval = TimeSpan.FromSeconds(2); // Update every 2 seconds to reduce database load
             var progressLock = new object();
 
+            void ResetInteractionState(bool cancelPendingWait = false)
+            {
+                if (cancelPendingWait)
+                {
+                    _interactionResponseService?.CancelWait(job.Id);
+                }
+
+                executionContext.IsPausedForInteraction = false;
+                executionContext.CurrentInteractionRequest = null;
+                executionContext.PendingInteractionResponseTask = null;
+            }
+
+            async Task<bool> PauseForDetectedInteractionAsync(InteractionDetector.InteractionRequest interactionRequest)
+            {
+                if (_interactionResponseService == null)
+                {
+                    _logger.LogWarning(
+                        "Ignoring interaction request for job {JobId} because no interaction response service is registered.",
+                        job.Id);
+                    ResetInteractionState();
+                    return false;
+                }
+
+                executionContext.PendingInteractionResponseTask = _interactionResponseService.WaitForResponseAsync(
+                    job.Id,
+                    cancellationToken: cancellationToken);
+
+                try
+                {
+                    using var interactionScope = _scopeFactory.CreateScope();
+                    var interactionJobService = interactionScope.ServiceProvider.GetRequiredService<IJobService>();
+
+                    string? choicesJson = interactionRequest.Choices != null && interactionRequest.Choices.Count > 0
+                        ? JsonSerializer.Serialize(interactionRequest.Choices)
+                        : null;
+
+                    var paused = await interactionJobService.PauseForInteractionAsync(
+                        job.Id,
+                        interactionRequest.Prompt ?? interactionRequest.RawOutput ?? "Interaction required",
+                        interactionRequest.Type.ToString(),
+                        choicesJson,
+                        CancellationToken.None);
+
+                    if (!paused)
+                    {
+                        _logger.LogWarning("Failed to persist paused interaction state for job {JobId}", job.Id);
+                        ResetInteractionState(cancelPendingWait: true);
+                        return false;
+                    }
+
+                    executionContext.ActiveExecutionCancellationTokenSource?.Cancel();
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to pause job {JobId} for interaction", job.Id);
+                    ResetInteractionState(cancelPendingWait: true);
+                    return false;
+                }
+            }
+
+            async Task<bool> PersistInteractionResponseAsync(string response)
+            {
+                using var interactionScope = _scopeFactory.CreateScope();
+                var interactionJobService = interactionScope.ServiceProvider.GetRequiredService<IJobService>();
+
+                await interactionJobService.AddMessageAsync(
+                    job.Id,
+                    new JobMessage
+                    {
+                        Role = MessageRole.User,
+                        Content = response
+                    },
+                    CancellationToken.None);
+
+                if (_jobUpdateService != null)
+                {
+                    try
+                    {
+                        await _jobUpdateService.NotifyJobMessageAdded(job.Id);
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                return await interactionJobService.ResumeJobAsync(job.Id, CancellationToken.None);
+            }
+
+            async Task<(bool Success, string? ResumePrompt, string? ErrorMessage)> WaitForInteractionResponseAndBuildPromptAsync(string promptToResume)
+            {
+                var interactionRequest = executionContext.CurrentInteractionRequest;
+                var pendingResponseTask = executionContext.PendingInteractionResponseTask;
+
+                if (interactionRequest == null || pendingResponseTask == null)
+                {
+                    ResetInteractionState();
+                    return (false, null, "Job paused for input but no response handler was registered.");
+                }
+
+                var response = await pendingResponseTask;
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    ResetInteractionState();
+                    return (false, null, "Job was paused for user input but no response was received.");
+                }
+
+                var trimmedResponse = response.Trim();
+                var resumed = await PersistInteractionResponseAsync(trimmedResponse);
+                if (!resumed)
+                {
+                    ResetInteractionState();
+                    return (false, null, "The job could not resume after accepting the user response.");
+                }
+
+                var resumePrompt = PromptBuilder.BuildInteractionResumePrompt(
+                    promptToResume,
+                    interactionRequest.Prompt ?? interactionRequest.RawOutput ?? "Interaction required",
+                    trimmedResponse,
+                    JobRecoveryHelper.TrimTail(executionContext.GetConsoleOutput(), JobRecoveryHelper.MaxRecoveryConsoleOutputLength));
+
+                ResetInteractionState();
+                return (true, resumePrompt, null);
+            }
+
             // Progress<T> doesn't properly handle async callbacks, so we use a synchronous handler
             // that fires updates in the background with proper scoping to avoid DbContext disposal issues
             var progress = new Progress<ExecutionProgress>(p =>
@@ -397,45 +522,8 @@ public partial class JobProcessingService
                             // Update database and notify UI in background
                             _ = Task.Run(async () =>
                             {
-                                try
-                                {
-                                    using var interactionScope = _scopeFactory.CreateScope();
-                                    var interactionJobService = interactionScope.ServiceProvider.GetRequiredService<IJobService>();
-                                    var interactionDbContext = interactionScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
-
-                                    // Serialize choices if available
-                                    string? choicesJson = interactionRequest.Choices != null && interactionRequest.Choices.Count > 0
-                                        ? JsonSerializer.Serialize(interactionRequest.Choices)
-                                        : null;
-
-                                    // Update job status in database
-                                    await interactionJobService.PauseForInteractionAsync(
-                                        job.Id,
-                                        interactionRequest.Prompt ?? interactionRequest.RawOutput ?? "Interaction required",
-                                        interactionRequest.Type.ToString(),
-                                        choicesJson,
-                                        CancellationToken.None);
-
-                                    // Notify UI
-                                    if (_jobUpdateService != null)
-                                    {
-                                        await _jobUpdateService.NotifyJobInteractionRequired(
-                                            job.Id,
-                                            interactionRequest.Prompt ?? interactionRequest.RawOutput ?? "Interaction required",
-                                            interactionRequest.Type.ToString(),
-                                            interactionRequest.Choices,
-                                            interactionRequest.DefaultResponse);
-                                    }
-
-                                    await NotifyStatusChangedAsync(job.Id, JobStatus.Paused);
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogError(ex, "Failed to pause job {JobId} for interaction", job.Id);
-                                    executionContext.IsPausedForInteraction = false;
-                                    executionContext.CurrentInteractionRequest = null;
-                                }
-                            });
+                                await PauseForDetectedInteractionAsync(interactionRequest);
+                            }, CancellationToken.None);
                         }
                     }
 
@@ -634,7 +722,6 @@ public partial class JobProcessingService
                     return;
                 }
 
-                var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, cancellationToken);
                 var planningPrompt = ProviderPlanningHelper.BuildPlanningPrompt(planningProviderConfig.Type, job.GoalPrompt);
                 if (job.ResumeFromStatus == JobStatus.Planning)
                 {
@@ -646,48 +733,94 @@ public partial class JobProcessingService
                         forceFreshSession: true);
                 }
 
-                executionContext.ActivePrompt = planningPrompt;
-                executionContext.LatestActivity = planningActivity;
-                await PersistExecutionCheckpointAsync(job.Id, JobStatus.Planning, executionContext, cancellationToken);
-                ExecutionResult planningResult;
-                try
+                var planningSystemPromptRules = systemPromptRules;
+                if (provider.Type != planningProviderConfig.Type)
                 {
-                    var planningSystemPromptRules = systemPromptRules;
-                    if (provider.Type != planningProviderConfig.Type)
+                    planningSystemPromptRules = BuildExecutionSystemPromptRules(planningProviderConfig.Type);
+                    if (!string.IsNullOrWhiteSpace(projectMemoryRules))
                     {
-                        planningSystemPromptRules = BuildExecutionSystemPromptRules(planningProviderConfig.Type);
-                        if (!string.IsNullOrWhiteSpace(projectMemoryRules))
+                        planningSystemPromptRules = string.IsNullOrWhiteSpace(planningSystemPromptRules)
+                            ? projectMemoryRules
+                            : $"{planningSystemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
+                    }
+                }
+
+                ExecutionResult? planningResult = null;
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, cancellationToken);
+                    executionContext.ActivePrompt = planningPrompt;
+                    executionContext.LatestActivity = planningActivity;
+                    await PersistExecutionCheckpointAsync(job.Id, JobStatus.Planning, executionContext, cancellationToken);
+
+                    using var planningExecutionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    executionContext.ActiveExecutionCancellationTokenSource = planningExecutionCts;
+
+                    try
+                    {
+                        planningResult = await planningProvider.ExecuteWithOptionsAsync(
+                            planningPrompt,
+                            new ExecutionOptions
+                            {
+                                WorkingDirectory = workingDirectory,
+                                McpConfigPath = planningMcpOptions.McpConfigPath,
+                                BashEnvPath = planningMcpOptions.BashEnvPath,
+                                AdditionalArgs = planningMcpOptions.AdditionalArgs,
+                                UseBareMode = planningProviderConfig.Type == ProviderType.Claude
+                                    && planningProviderConfig.ConnectionMode == ProviderConnectionMode.CLI
+                                    && ShouldUseClaudeBareMode(planningProviderConfig),
+                                Model = job.Project.PlanningModelId,
+                                ReasoningEffort = job.Project.PlanningReasoningEffort,
+                                Title = job.Title,
+                                AppendSystemPrompt = planningSystemPromptRules,
+                                EnvironmentVariables = jobEnvironmentVariables,
+                                DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools
+                            },
+                            progress,
+                            planningExecutionCts.Token);
+                    }
+                    catch (OperationCanceledException) when (executionContext.IsPausedForInteraction && !cancellationToken.IsCancellationRequested)
+                    {
+                        planningResult = new ExecutionResult
                         {
-                            planningSystemPromptRules = string.IsNullOrWhiteSpace(planningSystemPromptRules)
-                                ? projectMemoryRules
-                                : $"{planningSystemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
+                            Success = false,
+                            IsPaused = true,
+                            SessionId = executionContext.SessionId
+                        };
+                    }
+                    finally
+                    {
+                        if (ReferenceEquals(executionContext.ActiveExecutionCancellationTokenSource, planningExecutionCts))
+                        {
+                            executionContext.ActiveExecutionCancellationTokenSource = null;
                         }
+
+                        CleanupMcpExecutionResources(planningMcpOptions.Resources);
                     }
 
-                    planningResult = await planningProvider.ExecuteWithOptionsAsync(
-                        planningPrompt,
-                        new ExecutionOptions
+                    if (planningResult.IsPaused && executionContext.IsPausedForInteraction)
+                    {
+                        var interactionResume = await WaitForInteractionResponseAndBuildPromptAsync(planningPrompt);
+                        if (!interactionResume.Success || string.IsNullOrWhiteSpace(interactionResume.ResumePrompt))
                         {
-                            WorkingDirectory = workingDirectory,
-                            McpConfigPath = planningMcpOptions.McpConfigPath,
-                            BashEnvPath = planningMcpOptions.BashEnvPath,
-                            AdditionalArgs = planningMcpOptions.AdditionalArgs,
-                            UseBareMode = planningProviderConfig.Type == ProviderType.Claude
-                                && planningProviderConfig.ConnectionMode == ProviderConnectionMode.CLI
-                                && ShouldUseClaudeBareMode(planningProviderConfig),
-                            Model = job.Project.PlanningModelId,
-                            ReasoningEffort = job.Project.PlanningReasoningEffort,
-                            Title = job.Title,
-                            AppendSystemPrompt = planningSystemPromptRules,
-                            EnvironmentVariables = jobEnvironmentVariables,
-                            DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools
-                        },
-                        progress,
-                        cancellationToken);
+                            await FailDuringPlanningAsync($"[Planning] {interactionResume.ErrorMessage}");
+                            return;
+                        }
+
+                        planningPrompt = interactionResume.ResumePrompt;
+                        executionContext.ActivePrompt = planningPrompt;
+                        executionContext.LatestActivity = "Resuming planning after user input...";
+                        await PersistExecutionCheckpointAsync(job.Id, JobStatus.Planning, executionContext, cancellationToken);
+                        continue;
+                    }
+
+                    break;
                 }
-                finally
+
+                if (planningResult == null)
                 {
-                    CleanupMcpExecutionResources(planningMcpOptions.Resources);
+                    await FailDuringPlanningAsync("[Planning] Planning was cancelled before the provider returned a result.");
+                    return;
                 }
 
                 await RecordUsageAndCheckExhaustionAsync(
@@ -780,6 +913,8 @@ public partial class JobProcessingService
                     && (job.CycleMode != CycleMode.SingleCycle || job.SwarmId != null);
                 var hasMcp = !string.IsNullOrEmpty(mcpOptions.McpConfigPath);
                 var preassignedSessionId = await TryPrepareClaudeSessionIdAsync(requestedSessionId);
+                using var executionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                executionContext.ActiveExecutionCancellationTokenSource = executionCts;
 
                 try
                 {
@@ -809,10 +944,34 @@ public partial class JobProcessingService
                             SkipPermissions = provider.Type == ProviderType.OpenCode,
                         },
                         progress,
-                        cancellationToken);
+                        executionCts.Token);
+                }
+                catch (OperationCanceledException) when (executionContext.IsPausedForInteraction && !cancellationToken.IsCancellationRequested)
+                {
+                    var pendingInteraction = executionContext.CurrentInteractionRequest;
+                    return new ExecutionResult
+                    {
+                        Success = false,
+                        IsPaused = true,
+                        SessionId = executionContext.SessionId,
+                        PendingInteraction = pendingInteraction == null
+                            ? null
+                            : new InteractionInfo
+                            {
+                                Prompt = pendingInteraction.Prompt ?? pendingInteraction.RawOutput ?? "Interaction required",
+                                Type = pendingInteraction.Type.ToString(),
+                                Choices = pendingInteraction.Choices,
+                                DefaultResponse = pendingInteraction.DefaultResponse
+                            }
+                    };
                 }
                 finally
                 {
+                    if (ReferenceEquals(executionContext.ActiveExecutionCancellationTokenSource, executionCts))
+                    {
+                        executionContext.ActiveExecutionCancellationTokenSource = null;
+                    }
+
                     CleanupMcpExecutionResources(mcpOptions.Resources);
                 }
             }
@@ -931,6 +1090,30 @@ public partial class JobProcessingService
                 if (!string.IsNullOrWhiteSpace(result.CommandUsed))
                 {
                     job.ExecutionCommandUsed = result.CommandUsed;
+                }
+
+                if (result.IsPaused && executionContext.IsPausedForInteraction && executionContext.CurrentInteractionRequest != null)
+                {
+                    var interactionResume = await WaitForInteractionResponseAndBuildPromptAsync(promptToExecute);
+                    if (!interactionResume.Success || string.IsNullOrWhiteSpace(interactionResume.ResumePrompt))
+                    {
+                        lastResult = new ExecutionResult
+                        {
+                            Success = false,
+                            ErrorMessage = interactionResume.ErrorMessage
+                        };
+                        cycleComplete = true;
+                        break;
+                    }
+
+                    sessionId = null;
+                    job.SessionId = null;
+                    executionContext.SessionId = null;
+                    currentPrompt = interactionResume.ResumePrompt;
+                    executionContext.ActivePrompt = currentPrompt;
+                    executionContext.LatestActivity = "Resuming after user input...";
+                    await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
+                    continue;
                 }
 
                 // Check for cycle completion conditions

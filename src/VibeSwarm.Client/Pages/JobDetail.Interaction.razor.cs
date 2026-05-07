@@ -24,6 +24,7 @@ public partial class JobDetail : ComponentBase
         try
         {
             var trimmedResponse = response.Trim();
+            var keepSubmittingState = false;
             if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
             {
                 var success = await _hubConnection.InvokeAsync<bool>("SubmitInteractionResponse", JobId.ToString(), trimmedResponse);
@@ -45,27 +46,28 @@ public partial class JobDetail : ComponentBase
                         Level = MessageLevel.Normal
                     });
 
-                    Job.Status = JobStatus.Processing;
-                    Job.PendingInteractionPrompt = null;
-                    Job.InteractionType = null;
-                    Job.InteractionRequestedAt = null;
-                    Job.CurrentActivity = "Waiting for CLI response...";
+                    Job.CurrentActivity = "Submitting interaction response...";
                     Job.LastActivityAt = submittedAt;
-                    _interactionChoices = null;
+                    keepSubmittingState = true;
                 }
             }
             else
             {
                 _interactionError = "Connection to server not available. Please refresh the page.";
             }
+
+            if (!keepSubmittingState)
+            {
+                _isSubmittingResponse = false;
+            }
         }
         catch (Exception)
         {
             _interactionError = "Failed to send response. Please try again.";
+            _isSubmittingResponse = false;
         }
         finally
         {
-            _isSubmittingResponse = false;
             StateHasChanged();
         }
     }

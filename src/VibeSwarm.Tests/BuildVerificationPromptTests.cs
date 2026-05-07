@@ -136,6 +136,23 @@ public sealed class BuildVerificationPromptTests
 	}
 
 	[Fact]
+	public void BuildInteractionResumePrompt_IncludesPromptResponseAndResumeGuidance()
+	{
+		var prompt = PromptBuilder.BuildInteractionResumePrompt(
+			"Implement the feature",
+			"Which migration should I apply?",
+			"Apply only the pending job-state migration.",
+			"[Assistant] Waiting for clarification");
+
+		Assert.Contains("<interaction_context>", prompt);
+		Assert.Contains("<provider_prompt>", prompt);
+		Assert.Contains("Which migration should I apply?", prompt);
+		Assert.Contains("<user_response>", prompt);
+		Assert.Contains("Apply only the pending job-state migration.", prompt);
+		Assert.Contains("continue the job normally", prompt);
+	}
+
+	[Fact]
 	public void BuildSystemPromptRules_IncludesDisableAttributionGuidance_WhenDisabled()
 	{
 		var rules = PromptBuilder.BuildSystemPromptRules(

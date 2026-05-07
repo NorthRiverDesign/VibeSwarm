@@ -741,7 +741,9 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			GoalPrompt = "Implement the feature",
 			Status = JobStatus.Paused,
 			PendingInteractionPrompt = "Continue?",
-			InteractionType = "confirmation"
+			InteractionType = "confirmation",
+			InteractionChoices = """["y","n"]""",
+			InteractionRequestedAt = DateTime.UtcNow.AddMinutes(-5)
 		};
 
 		dbContext.Projects.Add(project);
@@ -759,6 +761,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal(JobStatus.Planning, savedJob.Status);
 		Assert.Null(savedJob.PendingInteractionPrompt);
 		Assert.Null(savedJob.InteractionType);
+		Assert.Null(savedJob.InteractionChoices);
+		Assert.Null(savedJob.InteractionRequestedAt);
 	}
 
 	[Fact]

@@ -57,6 +57,14 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
                 catch { }
             });
 
+            _hubConnection.On<string>("JobMessageAdded", async (jobId) =>
+            {
+                if (_disposed) return;
+                try { await OnJobMessageAdded(jobId); }
+                catch (ObjectDisposedException) { }
+                catch { }
+            });
+
             _hubConnection.On<string, string, bool, DateTime>("JobOutput", async (jobId, line, isError, timestamp) =>
             {
                 if (_disposed) return;
@@ -344,6 +352,7 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
             Job.InteractionRequestedAt = DateTime.UtcNow;
             _interactionChoices = choices;
             _interactionError = null;
+            _isSubmittingResponse = false;
             await InvokeAsync(StateHasChanged);
         }
     }

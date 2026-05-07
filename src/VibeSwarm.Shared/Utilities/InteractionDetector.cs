@@ -71,9 +71,9 @@ public static class InteractionDetector
 			InteractionType.TextInput, 0.25, null), // Low confidence - prompts often end with >
         
         // Choice/selection prompts
-        (new Regex(@"(?:select|choose|pick)\s+(?:an?\s+)?(?:option|choice|number)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+		(new Regex(@"(?:select|choose|pick)\s+(?:an?\s+)?(?:option|choice|number)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
 			InteractionType.Choice, 0.85, null),
-		(new Regex(@"\[\d+\]\s+\w+", RegexOptions.Compiled), // Numbered options like [1] Option
+		(new Regex(@"^\[\d+\]\s+\S.+$", RegexOptions.Compiled), // Numbered options like [1] Option
             InteractionType.Choice, 0.70, null),
         
         // Authentication prompts
@@ -91,13 +91,14 @@ public static class InteractionDetector
 	private static readonly Regex[] NonInteractionPatterns = new[]
 	{
 		new Regex(@"^\s*\{", RegexOptions.Compiled), // JSON output
-        new Regex(@"^\s*\[", RegexOptions.Compiled), // JSON array
+        new Regex(@"^\s*\[\s*(?:[\{\[""\d\-]|true|false|null)", RegexOptions.Compiled | RegexOptions.IgnoreCase), // JSON array
         new Regex(@"^[A-Z_]+\s*=", RegexOptions.Compiled), // Environment variable
         new Regex(@"^\d{4}-\d{2}-\d{2}", RegexOptions.Compiled), // Timestamp
         new Regex(@"^(?:DEBUG|INFO|WARN|ERROR|TRACE)[\s:]", RegexOptions.Compiled | RegexOptions.IgnoreCase), // Log level
         new Regex(@"^\s*#", RegexOptions.Compiled), // Comment
         new Regex(@"Running\s+tool", RegexOptions.Compiled | RegexOptions.IgnoreCase), // Tool execution
         new Regex(@"(?:Reading|Writing|Creating|Updating|Deleting)\s+file", RegexOptions.Compiled | RegexOptions.IgnoreCase), // File operations
+        new Regex(@"^(?:available|found|matched|results?|files?|folders?|directories|versions?|options?)\s*:\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase), // Informational list headers
     };
 
 	public static InteractionRequest? DetectInteraction(string outputLine, IEnumerable<string>? recentContext = null)
@@ -121,6 +122,11 @@ public static class InteractionDetector
 		{
 			if (pattern.IsMatch(trimmedLine))
 			{
+				if (ShouldIgnoreMatch(trimmedLine, type, recentContext, confidence))
+				{
+					continue;
+				}
+
 				var request = new InteractionRequest
 				{
 					IsInteractionRequested = true,
@@ -205,8 +211,45 @@ public static class InteractionDetector
 		return choices.Count > 0 ? choices : null;
 	}
 
-	private static bool HasSupportingContext(IEnumerable<string> context, InteractionType type)
+	private static bool ShouldIgnoreMatch(
+		string trimmedLine,
+		InteractionType type,
+		IEnumerable<string>? recentContext,
+		double confidence)
 	{
+		if (type == InteractionType.Choice && LooksLikeStandaloneNumberedItem(trimmedLine))
+		{
+			return !HasExplicitInteractionCue(trimmedLine) && !HasSupportingContext(recentContext, type);
+		}
+
+		if (type == InteractionType.TextInput && confidence < 0.80)
+		{
+			return !HasExplicitInteractionCue(trimmedLine) && !HasSupportingContext(recentContext, type);
+		}
+
+		return false;
+	}
+
+	private static bool LooksLikeStandaloneNumberedItem(string line)
+	{
+		return Regex.IsMatch(line, @"^\[\d+\]\s+\S.+$");
+	}
+
+	private static bool HasExplicitInteractionCue(string line)
+	{
+		return Regex.IsMatch(
+			line,
+			@"(?:select|choose|pick|enter|input|type|provide|confirm|proceed|continue|approve|allow|permission|press enter|waiting for)",
+			RegexOptions.IgnoreCase);
+	}
+
+	private static bool HasSupportingContext(IEnumerable<string>? context, InteractionType type)
+	{
+		if (context == null)
+		{
+			return false;
+		}
+
 		var contextText = string.Join(" ", context);
 
 		return type switch
@@ -217,6 +260,8 @@ public static class InteractionDetector
 				Regex.IsMatch(contextText, @"(?:permission|allow|access|grant|authorize)", RegexOptions.IgnoreCase),
 			InteractionType.Choice =>
 				Regex.IsMatch(contextText, @"(?:select|choose|option|which)", RegexOptions.IgnoreCase),
+			InteractionType.TextInput =>
+				Regex.IsMatch(contextText, @"(?:enter|input|type|provide|response|reply)", RegexOptions.IgnoreCase),
 			InteractionType.Authentication =>
 				Regex.IsMatch(contextText, @"(?:login|auth|credential|password|token)", RegexOptions.IgnoreCase),
 			_ => false
