@@ -29,6 +29,7 @@ public sealed class ProjectDetailTabMergeTests
 				.Select(button => button.TextContent.Trim())
 				.ToList();
 
+			Assert.Contains("flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain", cut.Markup);
 			Assert.DoesNotContain(tabLabels, label => label.StartsWith("Ideas", StringComparison.Ordinal));
 			Assert.Contains(tabLabels, label => label.StartsWith("Jobs", StringComparison.Ordinal));
 			Assert.Equal(4, tabLabels.Count);
