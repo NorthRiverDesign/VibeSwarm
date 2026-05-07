@@ -62,28 +62,35 @@
                     {
                         <div class="col">
                             <div class="card border h-100">
-                                <div class="card-body p-3 d-flex align-items-center gap-3">
-                                    <div class="flex-grow-1 min-width-0">
-                                        <div class="fw-medium text-truncate">@project.ProjectName</div>
-                                        <small class="text-body-secondary">
-                                            @project.TotalQueueIdeas idea@(project.TotalQueueIdeas != 1 ? "s" : "") remaining
-                                        </small>
+                                <div class="card-body p-3 d-flex flex-column gap-3 h-100">
+                                    <div class="d-flex align-items-start justify-content-between gap-2">
+                                        <div class="flex-grow-1 min-width-0">
+                                            <div class="fw-medium text-truncate">@project.ProjectName</div>
+                                            <small class="text-body-secondary">
+                                                @project.TotalQueueIdeas idea@(project.TotalQueueIdeas != 1 ? "s" : "") remaining
+                                            </small>
+                                        </div>
+                                        @if (project.HasRunningJob)
+                                        {
+                                            <span class="badge bg-success-subtle text-success-emphasis flex-shrink-0">
+                                                <span class="spinner-border spinner-border-sm" style="width: 0.5rem; height: 0.5rem;" role="status"></span>
+                                                Running
+                                            </span>
+                                        }
+                                        else if (project.IsProcessing || project.QueuedIdeas > 0)
+                                        {
+                                            <span class="badge text-bg-info flex-shrink-0">Queued</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-body-secondary text-body-secondary flex-shrink-0">Pending</span>
+                                        }
                                     </div>
-                                    @if (project.HasRunningJob)
-                                    {
-                                        <span class="badge bg-success-subtle text-success-emphasis flex-shrink-0">
-                                            <span class="spinner-border spinner-border-sm" style="width: 0.5rem; height: 0.5rem;" role="status"></span>
-                                            Running
-                                        </span>
-                                    }
-                                    else if (project.IsProcessing || project.QueuedIdeas > 0)
-                                    {
-                                        <span class="badge text-bg-info flex-shrink-0">Queued</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-body-secondary text-body-secondary flex-shrink-0">Pending</span>
-                                    }
+                                    <div class="d-flex justify-content-end mt-auto">
+                                        <NavLink href="@($"/projects/{project.ProjectId}")" class="btn btn-secondary btn-sm">
+                                            <i class="bi bi-folder2-open me-1"></i>View Project
+                                        </NavLink>
+                                    </div>
                                 </div>
                             </div>
                         </div>
