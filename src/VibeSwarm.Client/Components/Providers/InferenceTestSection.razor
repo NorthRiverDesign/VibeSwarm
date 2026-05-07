@@ -105,9 +105,13 @@
 	private string? _loadedEndpoint;
 	private InferenceProviderType? _loadedProviderType;
 	private bool _loadedIsEnabled;
+	private int _loadedModelRefreshVersion;
 
 	[Parameter, EditorRequired]
 	public InferenceProvider Provider { get; set; } = default!;
+
+	[Parameter]
+	public int ModelRefreshVersion { get; set; }
 
 	private bool CanSubmit => Provider.IsEnabled && !_isTesting && !string.IsNullOrWhiteSpace(_testPrompt);
 
@@ -116,7 +120,8 @@
 		if (_loadedProviderId == Provider.Id
 			&& string.Equals(_loadedEndpoint, Provider.Endpoint, StringComparison.Ordinal)
 			&& _loadedProviderType == Provider.ProviderType
-			&& _loadedIsEnabled == Provider.IsEnabled)
+			&& _loadedIsEnabled == Provider.IsEnabled
+			&& _loadedModelRefreshVersion == ModelRefreshVersion)
 		{
 			return;
 		}
@@ -125,6 +130,7 @@
 		_loadedEndpoint = Provider.Endpoint;
 		_loadedProviderType = Provider.ProviderType;
 		_loadedIsEnabled = Provider.IsEnabled;
+		_loadedModelRefreshVersion = ModelRefreshVersion;
 		_selectedModelId = string.Empty;
 		_testResponse = null;
 

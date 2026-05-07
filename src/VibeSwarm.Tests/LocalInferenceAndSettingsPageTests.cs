@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
+using VibeSwarm.Client.Components.Providers;
 using VibeSwarm.Client.Pages;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
@@ -263,18 +264,189 @@ public void LocalInferencePage_DefaultsToLastUsedProviderFromSessionStorage()
 	Assert.Equal(secondProviderId, inferenceService.LastRequest!.ProviderId);
 }
 
+[Fact]
+public void InferenceProvidersSection_ShowsEditDeleteAndRefreshModelsInDropdown()
+{
+	var provider = CreateInferenceProvider();
+
+	using var context = new BunitContext();
+	AddInferenceComponentServices(context, new FakeInferenceProviderService([provider]));
+
+	var cut = context.Render<InferenceProvidersSection>(parameters => parameters
+		.Add(component => component.Providers, [provider])
+		.Add(component => component.ActiveProviderType, provider.ProviderType));
+
+	Assert.Contains("Inference provider actions", cut.Markup);
+	Assert.Contains("dropdown-menu", cut.Markup);
+	Assert.Contains("Refresh Models", cut.Markup);
+	Assert.Contains("Edit", cut.Markup);
+	Assert.Contains("Delete", cut.Markup);
+	Assert.DoesNotContain("btn-danger", cut.Markup);
+}
+
+[Fact]
+public void InferenceProvidersSection_DisablesRefreshModelsActionForRefreshingProvider()
+{
+	var provider = CreateInferenceProvider();
+
+	using var context = new BunitContext();
+	AddInferenceComponentServices(context, new FakeInferenceProviderService([provider]));
+
+	var cut = context.Render<InferenceProvidersSection>(parameters => parameters
+		.Add(component => component.Providers, [provider])
+		.Add(component => component.ActiveProviderType, provider.ProviderType)
+		.Add(component => component.RefreshingModelsProviderId, provider.Id));
+
+	var refreshButton = cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Refresh Models", StringComparison.Ordinal));
+
+	Assert.True(refreshButton.HasAttribute("disabled"));
+	Assert.Contains("spin", refreshButton.InnerHtml);
+}
+
+[Fact]
+public void InferenceProvidersSection_DropdownActionsInvokeProviderCallbacks()
+{
+	var provider = CreateInferenceProvider();
+	InferenceProvider? refreshedProvider = null;
+	InferenceProvider? editedProvider = null;
+	InferenceProvider? deletedProvider = null;
+
+	using var context = new BunitContext();
+	AddInferenceComponentServices(context, new FakeInferenceProviderService([provider]));
+
+	var cut = context.Render<InferenceProvidersSection>(parameters => parameters
+		.Add(component => component.Providers, [provider])
+		.Add(component => component.ActiveProviderType, provider.ProviderType)
+		.Add(component => component.OnRefreshModels, EventCallback.Factory.Create<InferenceProvider>(this, clickedProvider => refreshedProvider = clickedProvider))
+		.Add(component => component.OnEditProvider, EventCallback.Factory.Create<InferenceProvider>(this, clickedProvider => editedProvider = clickedProvider))
+		.Add(component => component.OnDeleteProvider, EventCallback.Factory.Create<InferenceProvider>(this, clickedProvider => deletedProvider = clickedProvider)));
+
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Refresh Models", StringComparison.Ordinal))
+		.Click();
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Edit", StringComparison.Ordinal))
+		.Click();
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Delete", StringComparison.Ordinal))
+		.Click();
+
+	Assert.Same(provider, refreshedProvider);
+	Assert.Same(provider, editedProvider);
+	Assert.Same(provider, deletedProvider);
+}
+
+private static void AddInferenceComponentServices(BunitContext context, IInferenceProviderService providerService)
+{
+	context.Services.AddSingleton(providerService);
+	context.Services.AddSingleton<IInferenceService>(new FakeInferenceService());
+	context.Services.AddSingleton<NotificationService>();
+	context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+}
+
+[Fact]
+public void LocalInferencePage_RefreshModelsDropdownActionRefreshesModelList()
+{
+	var providerId = Guid.NewGuid();
+	var providers = new[]
+	{
+		CreateInferenceProvider(providerId)
+	};
+	var initialModels = new Dictionary<Guid, IReadOnlyList<InferenceModel>>
+	{
+		[providerId] =
+		[
+			CreateInferenceModel(providerId, "qwen3", "Qwen 3")
+		]
+	};
+	var refreshedModels = new Dictionary<Guid, IReadOnlyList<InferenceModel>>
+	{
+		[providerId] =
+		[
+			CreateInferenceModel(providerId, "llama3", "Llama 3")
+		]
+	};
+	var providerService = new FakeInferenceProviderService(providers, initialModels)
+	{
+		RefreshedModelsByProvider = refreshedModels
+	};
+	var notificationService = new NotificationService();
+
+	using var context = new BunitContext();
+	context.Services.AddLogging();
+	context.Services.AddSingleton<IInferenceProviderService>(providerService);
+	context.Services.AddSingleton<IInferenceService>(new FakeInferenceService());
+	context.Services.AddSingleton(notificationService);
+	context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+	var cut = context.Render<LocalInference>();
+
+	cut.WaitForAssertion(() => Assert.Contains("Qwen 3 (Default)", cut.Markup));
+
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Refresh Models", StringComparison.Ordinal))
+		.Click();
+
+	cut.WaitForAssertion(() =>
+	{
+		Assert.Equal(1, providerService.RefreshModelsCallCount);
+		Assert.Equal(providerId, providerService.LastRefreshedProviderId);
+		Assert.Contains("Llama 3 (Default)", cut.Markup);
+		Assert.DoesNotContain("Qwen 3 (Default)", cut.Markup);
+		Assert.Contains(notificationService.NotificationHistory, notification => notification.Message == "Found 1 model(s).");
+	});
+}
+
+[Fact]
+public void LocalInferencePage_RefreshModelsDropdownActionShowsErrorWhenRefreshFails()
+{
+	var provider = CreateInferenceProvider();
+	var providerService = new FakeInferenceProviderService([provider])
+	{
+		RefreshModelsException = new InvalidOperationException("Provider unavailable")
+	};
+	var notificationService = new NotificationService();
+
+	using var context = new BunitContext();
+	context.Services.AddLogging();
+	context.Services.AddSingleton<IInferenceProviderService>(providerService);
+	context.Services.AddSingleton<IInferenceService>(new FakeInferenceService());
+	context.Services.AddSingleton(notificationService);
+	context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+	var cut = context.Render<LocalInference>();
+
+	cut.WaitForAssertion(() => Assert.Contains("Refresh Models", cut.Markup));
+
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Refresh Models", StringComparison.Ordinal))
+		.Click();
+
+	cut.WaitForAssertion(() =>
+	{
+		Assert.Equal(1, providerService.RefreshModelsCallCount);
+		Assert.Contains(notificationService.NotificationHistory, notification => notification.Message == "Failed to refresh models: Provider unavailable");
+	});
+}
+
 	private sealed class FakeInferenceProviderService : IInferenceProviderService
 	{
 		private readonly IReadOnlyList<InferenceProvider> _providers;
-		private readonly IReadOnlyDictionary<Guid, IReadOnlyList<InferenceModel>> _modelsByProvider;
+		private readonly Dictionary<Guid, IReadOnlyList<InferenceModel>> _modelsByProvider;
 
 		public FakeInferenceProviderService(
 			IReadOnlyList<InferenceProvider>? providers = null,
 			IReadOnlyDictionary<Guid, IReadOnlyList<InferenceModel>>? modelsByProvider = null)
 		{
 			_providers = providers ?? [];
-			_modelsByProvider = modelsByProvider ?? new Dictionary<Guid, IReadOnlyList<InferenceModel>>();
+			_modelsByProvider = modelsByProvider?.ToDictionary() ?? new Dictionary<Guid, IReadOnlyList<InferenceModel>>();
 		}
+
+		public IReadOnlyDictionary<Guid, IReadOnlyList<InferenceModel>> RefreshedModelsByProvider { get; init; } = new Dictionary<Guid, IReadOnlyList<InferenceModel>>();
+		public Exception? RefreshModelsException { get; init; }
+		public int RefreshModelsCallCount { get; private set; }
+		public Guid? LastRefreshedProviderId { get; private set; }
 
 	public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers);
 	public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(_providers.FirstOrDefault(provider => provider.Id == id));
@@ -284,9 +456,51 @@ public void LocalInferencePage_DefaultsToLastUsedProviderFromSessionStorage()
 	public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
 	public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
 		=> Task.FromResult<IEnumerable<InferenceModel>>(_modelsByProvider.TryGetValue(providerId, out var models) ? models : []);
-	public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
+	public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default)
+	{
+		RefreshModelsCallCount++;
+		LastRefreshedProviderId = providerId;
+
+		if (RefreshModelsException != null)
+		{
+			throw RefreshModelsException;
+		}
+
+		if (RefreshedModelsByProvider.TryGetValue(providerId, out var refreshedModels))
+		{
+			_modelsByProvider[providerId] = refreshedModels;
+			return Task.FromResult<IEnumerable<InferenceModel>>(refreshedModels);
+		}
+
+		return Task.FromResult<IEnumerable<InferenceModel>>(_modelsByProvider.TryGetValue(providerId, out var models) ? models : []);
+	}
 	public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
 	public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
+	}
+
+	private static InferenceProvider CreateInferenceProvider(Guid? id = null)
+	{
+		return new InferenceProvider
+		{
+			Id = id ?? Guid.NewGuid(),
+			Name = "Local Ollama",
+			ProviderType = InferenceProviderType.Ollama,
+			Endpoint = "http://ollama:11434",
+			IsEnabled = true
+		};
+	}
+
+	private static InferenceModel CreateInferenceModel(Guid providerId, string modelId, string displayName)
+	{
+		return new InferenceModel
+		{
+			InferenceProviderId = providerId,
+			ModelId = modelId,
+			DisplayName = displayName,
+			IsAvailable = true,
+			IsDefault = true,
+			TaskType = "default"
+		};
 	}
 
 private sealed class FakeInferenceService : IInferenceService
