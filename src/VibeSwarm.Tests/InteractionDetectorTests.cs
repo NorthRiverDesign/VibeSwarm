@@ -53,4 +53,42 @@ public sealed class InteractionDetectorTests
 		Assert.NotNull(interaction);
 		Assert.Equal(InteractionDetector.InteractionType.Choice, interaction.Type);
 	}
+
+	[Theory]
+	[InlineData("[System] Process started (PID: 123). Waiting for CLI to initialize...")]
+	[InlineData("[System] Still initializing... (waited 5s).")]
+	[InlineData("[System] Still waiting for response... (waited 12s).")]
+	[InlineData("[System] Still waiting (15s)... Process is running.")]
+	[InlineData("[Connection] Connected to provider stream")]
+	[InlineData("[Status] Provider initialized")]
+	[InlineData("[Planning] Generating plan...")]
+	public void DetectInteraction_IgnoresInternalSystemStatusMarkers(string line)
+	{
+		var interaction = InteractionDetector.DetectInteraction(line);
+
+		Assert.Null(interaction);
+	}
+
+	[Theory]
+	[InlineData("Still waiting for response from the model...")]
+	[InlineData("Waiting for response to come back")]
+	[InlineData("waiting for input from CLI buffer")]
+	public void DetectInteraction_IgnoresInformationalWaitingPhrasesWithoutUserTargeting(string line)
+	{
+		var interaction = InteractionDetector.DetectInteraction(line);
+
+		Assert.Null(interaction);
+	}
+
+	[Theory]
+	[InlineData("Waiting for user input")]
+	[InlineData("waiting for your response")]
+	[InlineData("waiting for user reply")]
+	public void DetectInteraction_DetectsExplicitlyUserTargetedWaitingPrompts(string line)
+	{
+		var interaction = InteractionDetector.DetectInteraction(line);
+
+		Assert.NotNull(interaction);
+		Assert.Equal(InteractionDetector.InteractionType.TextInput, interaction.Type);
+	}
 }

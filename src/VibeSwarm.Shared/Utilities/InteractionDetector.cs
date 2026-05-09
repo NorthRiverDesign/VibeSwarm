@@ -82,15 +82,18 @@ public static class InteractionDetector
 		(new Regex(@"(?:login|sign.?in|authenticate)\s*[:>]?\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase),
 			InteractionType.Authentication, 0.85, null),
         
-        // Waiting/stalled indicators (suggests interaction needed)
-        (new Regex(@"waiting\s+for\s+(?:user\s+)?(?:input|response)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        // Waiting/stalled indicators (suggests interaction needed).
+        // Require explicit user-targeting ("user" or "your") so informational status
+        // lines like "Still waiting for response..." don't get misread as prompts.
+        (new Regex(@"waiting\s+for\s+(?:user|your)\s+(?:input|response|reply)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
 			InteractionType.TextInput, 0.90, null),
 	};
 
 	// Patterns that indicate the process is NOT waiting for input (false positives to filter)
 	private static readonly Regex[] NonInteractionPatterns = new[]
 	{
-		new Regex(@"^\s*\{", RegexOptions.Compiled), // JSON output
+		new Regex(@"^\s*\[(?:System|Connection|Status|Planning|Error)\]", RegexOptions.Compiled | RegexOptions.IgnoreCase), // VibeSwarm internal status markers
+        new Regex(@"^\s*\{", RegexOptions.Compiled), // JSON output
         new Regex(@"^\s*\[\s*(?:[\{\[""\d\-]|true|false|null)", RegexOptions.Compiled | RegexOptions.IgnoreCase), // JSON array
         new Regex(@"^[A-Z_]+\s*=", RegexOptions.Compiled), // Environment variable
         new Regex(@"^\d{4}-\d{2}-\d{2}", RegexOptions.Compiled), // Timestamp
