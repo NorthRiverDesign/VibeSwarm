@@ -23,11 +23,8 @@
     {
         <div class="col-12">
             <section>
-                <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
-                    <h5 class="mb-0 fw-semibold text-truncate">
-                        <i class="bi bi-lightbulb me-2 opacity-75"></i>Ideas Processing
-                    </h5>
-                    <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2 align-self-stretch align-self-sm-auto">
+                <SectionHeader Title="Ideas Processing" Icon="lightbulb">
+                    <Actions>
                         @if (IdeasStatus.ProjectsCurrentlyProcessing > 0)
                         {
                             <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2">
@@ -47,8 +44,8 @@
                                           OnClick="() => ShowStartAllModal = true">
                              </ActionButton>
                         }
-                    </div>
-                </div>
+                    </Actions>
+                </SectionHeader>
 
                 @if (StartAllError is not null)
                 {
@@ -106,12 +103,9 @@
 
     <div class="col-12">
         <section>
-            <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
-                <h5 class="mb-0 fw-semibold text-truncate">
-                    <i class="bi bi-folder me-2 opacity-75"></i>Active Projects
-                </h5>
-                <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2 align-self-stretch align-self-sm-auto">
-                    <label for="dashboardProjectSort" class="small text-body-secondary mb-0">Sort by</label>
+            <SectionHeader Title="Active Projects" Icon="folder">
+                <Actions>
+                    <label for="dashboardProjectSort" class="text-meta text-body-secondary mb-0">Sort by</label>
                     <InputSelect id="dashboardProjectSort" @bind-Value="SelectedProjectSort"
                                  class="form-select form-select-sm w-100" style="min-width: 9rem;">
                         <option value="@DashboardProjectSortOption.LastRan">Last ran</option>
@@ -119,8 +113,8 @@
                     </InputSelect>
                     <ActionButton Text="View All" Size="ActionButton.ButtonSize.Small"
                                   OnClick="@(() => NavigationManager.NavigateTo("/projects"))" />
-                </div>
-            </div>
+                </Actions>
+            </SectionHeader>
 
             @if (IsLoading)
             {
@@ -154,13 +148,12 @@
 
     <div class="col-12">
         <section>
-            <div class="d-flex flex-column flex-sm-row justify-content-between align-items-stretch align-items-sm-center gap-2 mb-3">
-                <h5 class="mb-0 fw-semibold text-truncate">
-                    <i class="bi bi-cpu me-2 opacity-75"></i>Providers
-                </h5>
-                <ActionButton Text="Manage" Size="ActionButton.ButtonSize.Small"
-                              OnClick="@(() => NavigationManager.NavigateTo("/providers"))" />
-            </div>
+            <SectionHeader Title="Providers" Icon="cpu">
+                <Actions>
+                    <ActionButton Text="Manage" Size="ActionButton.ButtonSize.Small"
+                                  OnClick="@(() => NavigationManager.NavigateTo("/providers"))" />
+                </Actions>
+            </SectionHeader>
 
             @if (IsLoading)
             {

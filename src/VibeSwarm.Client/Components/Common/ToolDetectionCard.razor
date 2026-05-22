@@ -214,11 +214,11 @@
 					</div>
 					@if (!string.IsNullOrWhiteSpace(_installResult.Output))
 					{
-						<pre class="small mb-0 text-body @(_installResult.Success ? "text-success-emphasis" : "text-danger-emphasis")" style="white-space: pre-wrap; max-height: 200px; overflow-y: auto; font-size: 0.75rem;">@_installResult.Output</pre>
+						<pre class="mb-0 text-body white-space-pre-wrap text-helper @(_installResult.Success ? "text-success-emphasis" : "text-danger-emphasis")" style="max-height: 200px; overflow-y: auto;">@_installResult.Output</pre>
 					}
 					@if (!_installResult.Success && !string.IsNullOrWhiteSpace(_installResult.Error))
 					{
-						<pre class="small mb-0 text-danger-emphasis" style="white-space: pre-wrap; max-height: 200px; overflow-y: auto; font-size: 0.75rem;">@_installResult.Error</pre>
+						<pre class="mb-0 text-danger-emphasis white-space-pre-wrap text-helper" style="max-height: 200px; overflow-y: auto;">@_installResult.Error</pre>
 					}
 				</div>
 			}

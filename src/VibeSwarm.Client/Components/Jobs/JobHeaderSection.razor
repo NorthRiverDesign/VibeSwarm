@@ -5,7 +5,7 @@
 	<div class="flex-grow-1 min-width-0 w-100 w-lg-auto">
 		@* Title row with action buttons *@
 		<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-			<h3 class="mb-0 fs-4 fw-semibold text-truncate" title="@JobTitle">@(string.IsNullOrEmpty(JobTitle) ? "Job Details" : JobTitle)</h3>
+			<h1 class="mb-0 text-page-title text-truncate" title="@JobTitle">@(string.IsNullOrEmpty(JobTitle) ? "Job Details" : JobTitle)</h1>
 			@* Action Buttons - integrated in header *@
 			<div class="d-flex flex-wrap gap-2 flex-shrink-0">
 				@if (HasActionMenu)

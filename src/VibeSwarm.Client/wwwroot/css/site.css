@@ -233,9 +233,44 @@
 .fs-8 {
 	font-size: 0.65rem;
 }
-.text-eyebrow {
-	font-size: 0.7rem;
-	letter-spacing: 0.05em;
+
+/* Semantic typography scale (mobile-first).
+   Use these on headings/text in place of ad hoc h3/h5/h6 + fs-* + inline
+   font-size so the app keeps one consistent type ramp. */
+.text-page-title {
+	font-size: 1.25rem;
+	font-weight: 600;
+	line-height: 1.2;
+}
+.text-section-title {
+	font-size: 1.0625rem;
+	font-weight: 600;
+	line-height: 1.25;
+}
+.text-card-title {
+	font-size: 1rem;
+	font-weight: 600;
+	line-height: 1.3;
+}
+.text-meta {
+	font-size: 0.8125rem;
+	line-height: 1.35;
+}
+.text-helper {
+	font-size: 0.75rem;
+	line-height: 1.35;
+}
+.text-micro {
+	font-size: 0.6875rem;
+	line-height: 1.3;
+}
+@media (min-width: 768px) {
+	.text-page-title {
+		font-size: 1.5rem;
+	}
+	.text-section-title {
+		font-size: 1.125rem;
+	}
 }
 .textarea-editable {
 	min-height: 150px;
