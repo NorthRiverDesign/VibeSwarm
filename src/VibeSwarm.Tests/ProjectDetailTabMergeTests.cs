@@ -29,6 +29,7 @@ public sealed class ProjectDetailTabMergeTests
 				.Select(button => button.TextContent.Trim())
 				.ToList();
 
+			Assert.Contains("flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain", cut.Markup);
 			Assert.DoesNotContain(tabLabels, label => label.StartsWith("Ideas", StringComparison.Ordinal));
 			Assert.Contains(tabLabels, label => label.StartsWith("Jobs", StringComparison.Ordinal));
 			Assert.Equal(4, tabLabels.Count);
@@ -41,6 +42,7 @@ public sealed class ProjectDetailTabMergeTests
 			Assert.Contains("Describe a feature, bug, or improvement to turn into a job", markup);
 			Assert.Contains("Existing idea", markup);
 			Assert.Contains("Existing job", markup);
+			Assert.Empty(cut.FindAll("[aria-label='Pagination']"));
 
 			Assert.True(markup.IndexOf("Create Job", StringComparison.Ordinal) < markup.IndexOf("Describe a feature, bug, or improvement to turn into a job", StringComparison.Ordinal));
 			Assert.True(markup.IndexOf("Describe a feature, bug, or improvement to turn into a job", StringComparison.Ordinal) < markup.IndexOf("Existing idea", StringComparison.Ordinal));

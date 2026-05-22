@@ -33,6 +33,6 @@ public static class InferenceTimeouts
 	/// </summary>
 	public static TimeSpan LocalStallDetectionWindow { get; } = TimeSpan.FromMinutes(5);
 
-	public static TimeSpan GetIdeaActionTimeout(bool useInference)
+	public static TimeSpan GetIdeaSuggestionTimeout(bool useInference)
 		=> useInference ? InferenceIdeaActionTimeout : StandardIdeaActionTimeout;
 }

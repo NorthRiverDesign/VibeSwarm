@@ -41,6 +41,7 @@ public sealed class ProviderConnectionListItemTests
 					Id = Guid.NewGuid(),
 					ProviderId = Guid.NewGuid(),
 					ModelId = "claude-haiku",
+					DisplayName = "Claude Haiku",
 					IsDefault = true,
 					IsAvailable = false,
 					PriceMultiplier = 0.5m
@@ -48,19 +49,50 @@ public sealed class ProviderConnectionListItemTests
 			]));
 
 		Assert.DoesNotContain("Claude Sonnet 3.7", cut.Markup);
-		Assert.Contains("Show Models (2)", cut.Markup);
+		Assert.Contains("Show Models (1)", cut.Markup);
 
 		cut.FindAll("button")
 			.Single(button => button.TextContent.Contains("Show Models", StringComparison.Ordinal))
 			.Click();
 
-		Assert.Contains("Hide Models (2)", cut.Markup);
+		Assert.Contains("Hide Models (1)", cut.Markup);
 		Assert.Contains("Claude Sonnet 3.7", cut.Markup);
-		Assert.Contains("claude-haiku", cut.Markup);
 		Assert.Contains("1.5x", cut.Markup);
-		Assert.Contains("0.5x", cut.Markup);
-		Assert.Contains("Unavailable", cut.Markup);
-		Assert.Contains("Default", cut.Markup);
+		Assert.DoesNotContain("claude-haiku", cut.Markup);
+		Assert.DoesNotContain("0.5x", cut.Markup);
+		Assert.Contains("Default model unavailable.", cut.Markup);
+	}
+
+	[Fact]
+	public void ProviderConnectionListItem_ShowsWarningWhenDefaultModelIsUnavailable()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<ProviderConnectionListItem>(parameters => parameters
+			.Add(component => component.Provider, CreateProvider())
+			.Add(component => component.Models,
+			[
+				new ProviderModel
+				{
+					Id = Guid.NewGuid(),
+					ProviderId = Guid.NewGuid(),
+					ModelId = "claude-sonnet-4.6",
+					DisplayName = "Claude Sonnet 4.6",
+					IsAvailable = true
+				},
+				new ProviderModel
+				{
+					Id = Guid.NewGuid(),
+					ProviderId = Guid.NewGuid(),
+					ModelId = "claude-haiku",
+					DisplayName = "Claude Haiku",
+					IsDefault = true,
+					IsAvailable = false
+				}
+			]));
+
+		Assert.Contains("Default model unavailable.", cut.Markup);
+		Assert.Contains("Claude Haiku is no longer available.", cut.Markup);
 	}
 
 	private static Provider CreateProvider()

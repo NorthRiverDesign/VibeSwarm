@@ -77,7 +77,7 @@ public static class PromptBuilder
 
 		When you are finished, end your response with a short summary in this exact format:
 		<commit-summary>
-		A concise one-line description of what was implemented (max 72 chars)
+		A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)
 		</commit-summary>
 		""";
 
@@ -103,7 +103,7 @@ public static class PromptBuilder
 
 		When you are finished, end your response with a short summary in this exact format:
 		<commit-summary>
-		A concise one-line description of what was implemented (max 72 chars)
+		A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)
 		</commit-summary>
 		""";
 
@@ -254,6 +254,42 @@ public static class PromptBuilder
 		}
 
 		sb.AppendLine("</recovery_context>");
+		return sb.ToString().TrimEnd();
+	}
+
+	public static string BuildInteractionResumePrompt(
+		string basePrompt,
+		string interactionPrompt,
+		string userResponse,
+		string? recentConsoleOutput)
+	{
+		var sb = new StringBuilder();
+		sb.AppendLine(basePrompt.Trim());
+		sb.AppendLine();
+		sb.AppendLine("<interaction_context>");
+		sb.AppendLine("A previous execution paused because the provider output appeared to request user input.");
+		sb.AppendLine("That execution was stopped before continuing so no additional automated changes were made after the pause.");
+		sb.AppendLine();
+		sb.AppendLine("<provider_prompt>");
+		sb.AppendLine(interactionPrompt.Trim());
+		sb.AppendLine("</provider_prompt>");
+		sb.AppendLine();
+		sb.AppendLine("<user_response>");
+		sb.AppendLine(userResponse.Trim());
+		sb.AppendLine("</user_response>");
+
+		if (!string.IsNullOrWhiteSpace(recentConsoleOutput))
+		{
+			sb.AppendLine();
+			sb.AppendLine("<recent_console_output>");
+			sb.AppendLine(recentConsoleOutput.Trim());
+			sb.AppendLine("</recent_console_output>");
+		}
+
+		sb.AppendLine();
+		sb.AppendLine("Treat the user response above as authoritative additional guidance.");
+		sb.AppendLine("If the earlier provider output was only informational and not a real question, continue the job normally from the current repository state.");
+		sb.AppendLine("</interaction_context>");
 		return sb.ToString().TrimEnd();
 	}
 

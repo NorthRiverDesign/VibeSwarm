@@ -129,7 +129,7 @@
 						@if (ActiveJob != null)
 						{
 							<div class="d-flex align-items-center gap-1 text-body-secondary min-width-0 flex-shrink-1">
-								<i class="bi bi-gear-fill spin flex-shrink-0 opacity-75" style="font-size: 0.75rem;"></i>
+								<i class="bi bi-gear-fill spin flex-shrink-0 opacity-75 text-helper"></i>
 								<span class="text-truncate" style="max-width: min(100%, 20rem);" title="@ActiveJob.DisplayTitle">@ActiveJob.DisplayTitle</span>
 								@if (!string.IsNullOrEmpty(ActiveJob.CurrentActivity))
 								{

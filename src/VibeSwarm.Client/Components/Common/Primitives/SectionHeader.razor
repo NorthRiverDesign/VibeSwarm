@@ -1,0 +1,33 @@
+@* Repeating section heading: icon + title + optional subtitle + actions.
+   Use in place of ad hoc `h5 fw-semibold + icon + actions` markup so every
+   feature section shares one typography contract. *@
+
+<div class="d-flex flex-column flex-sm-row justify-content-between align-items-stretch align-items-sm-center gap-2 @WrapperClass">
+	<div class="min-width-0">
+		<h2 class="mb-0 text-section-title d-flex align-items-center gap-2 min-width-0">
+			@if (!string.IsNullOrEmpty(Icon))
+			{
+				<i class="bi bi-@Icon opacity-75 flex-shrink-0"></i>
+			}
+			<span class="text-truncate">@Title</span>
+		</h2>
+		@if (!string.IsNullOrEmpty(Subtitle))
+		{
+			<p class="text-meta text-body-secondary mb-0 mt-1">@Subtitle</p>
+		}
+	</div>
+	@if (Actions != null)
+	{
+		<div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2 align-self-stretch align-self-sm-auto">
+			@Actions
+		</div>
+	}
+</div>
+
+@code {
+	[Parameter] public string Title { get; set; } = string.Empty;
+	[Parameter] public string? Subtitle { get; set; }
+	[Parameter] public string? Icon { get; set; }
+	[Parameter] public RenderFragment? Actions { get; set; }
+	[Parameter] public string WrapperClass { get; set; } = "mb-3";
+}

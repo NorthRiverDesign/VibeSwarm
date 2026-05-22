@@ -18,7 +18,10 @@
 						   HealthStatus="_healthStatus"
 						   HealthChecked="_healthChecked"
 						   OnEditProvider="EditProvider"
-						   OnDeleteProvider="ShowDeleteConfirmation" />
+						   OnDeleteProvider="ShowDeleteConfirmation"
+						   OnRefreshModels="RefreshProviderModels"
+						   RefreshingModelsProviderId="_refreshingModelsProviderId"
+						   ModelRefreshVersions="_modelRefreshVersions" />
 
 <InferenceProviderModal @bind-IsVisible="_showModal" EditProvider="@_editingProvider"
 						OnSaved="HandleProviderSaved" OnCancelled="HandleModalCancelled" OnClosed="HandleModalClosed" />
@@ -34,8 +37,10 @@
 	private List<InferenceProvider> _providers = [];
 	private Dictionary<Guid, bool> _healthStatus = new();
 	private HashSet<Guid> _healthChecked = new();
+	private Dictionary<Guid, int> _modelRefreshVersions = new();
 	private bool _isLoading = true;
 	private InferenceProviderType _activeProviderType = Enum.GetValues<InferenceProviderType>().First();
+	private Guid? _refreshingModelsProviderId;
 
 	// Modal state
 	private bool _showModal;
@@ -180,6 +185,7 @@
 			_providers.Remove(_providerToDelete);
 			_healthStatus.Remove(_providerToDelete.Id);
 			_healthChecked.Remove(_providerToDelete.Id);
+			_modelRefreshVersions.Remove(_providerToDelete.Id);
 			SelectActiveProviderType();
 
 			NotificationService.ShowSuccess($"Provider \"{_providerToDelete.Name}\" removed.");
@@ -193,6 +199,35 @@
 		finally
 		{
 			_isDeleting = false;
+		}
+	}
+
+	private async Task RefreshProviderModels(InferenceProvider provider)
+	{
+		if (_refreshingModelsProviderId.HasValue)
+		{
+			return;
+		}
+
+		_refreshingModelsProviderId = provider.Id;
+
+		try
+		{
+			var models = (await InferenceProviderService.RefreshModelsAsync(provider.Id)).ToList();
+			_modelRefreshVersions[provider.Id] = _modelRefreshVersions.GetValueOrDefault(provider.Id) + 1;
+			_healthStatus.Remove(provider.Id);
+			_healthChecked.Remove(provider.Id);
+			_ = CheckHealth(provider);
+
+			NotificationService.ShowSuccess($"Found {models.Count(model => model.IsAvailable)} model(s).");
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to refresh models: {ex.Message}");
+		}
+		finally
+		{
+			_refreshingModelsProviderId = null;
 		}
 	}
 

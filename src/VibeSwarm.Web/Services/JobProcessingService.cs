@@ -150,9 +150,19 @@ public partial class JobProcessingService : BackgroundService
         public TaskCompletionSource<string>? InteractionResponseTcs { get; set; }
 
         /// <summary>
+        /// Task waiting for the accepted interaction response from the UI.
+        /// </summary>
+        public Task<string?>? PendingInteractionResponseTask { get; set; }
+
+        /// <summary>
         /// The current interaction request being processed
         /// </summary>
         public InteractionDetector.InteractionRequest? CurrentInteractionRequest { get; set; }
+
+        /// <summary>
+        /// Cancellation token source for the currently running provider execution.
+        /// </summary>
+        public CancellationTokenSource? ActiveExecutionCancellationTokenSource { get; set; }
 
         /// <summary>
         /// Maximum console output size (5 MB)

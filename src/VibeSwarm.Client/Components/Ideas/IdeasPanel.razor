@@ -40,10 +40,10 @@
 			<i class="bi @(_suggestResult.Success ? "bi-stars" : "bi-exclamation-triangle") mt-1"></i>
 			<div class="flex-grow-1 min-width-0">
 				<div class="small fw-medium">@_suggestResult.Message</div>
-				@if (!string.IsNullOrEmpty(_suggestResult.InferenceError) && !_suggestResult.Success)
+				@if (!string.IsNullOrEmpty(_suggestResult.ErrorDetail) && !_suggestResult.Success)
 				{
 					<div class="small text-body-secondary font-monospace mt-1">
-						@_suggestResult.InferenceError[..Math.Min(200, _suggestResult.InferenceError.Length)]
+						@_suggestResult.ErrorDetail[..Math.Min(200, _suggestResult.ErrorDetail.Length)]
 					</div>
 				}
 			</div>
@@ -1364,8 +1364,8 @@
 				// Tell the parent to reload the ideas list so the new suggestions appear
 				await OnSuggestIdeas.InvokeAsync();
 
-				var durationHint = result.InferenceDurationMs.HasValue
-					? $" ({result.InferenceDurationMs.Value / 1000.0:F1}s)"
+				var durationHint = result.GenerationDurationMs.HasValue
+					? $" ({result.GenerationDurationMs.Value / 1000.0:F1}s)"
 					: string.Empty;
 				var modelHint = !string.IsNullOrEmpty(result.ModelUsed)
 					? $" via {result.ModelUsed}"

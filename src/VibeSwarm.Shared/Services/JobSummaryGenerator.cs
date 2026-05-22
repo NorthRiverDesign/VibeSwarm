@@ -13,7 +13,7 @@ namespace VibeSwarm.Shared.Services;
 public static partial class JobSummaryGenerator
 {
 	private const int MaxCommitLogEntries = 10;
-	private const int MaxCommitSubjectLength = 72;
+	private const int MaxCommitSubjectLength = 96;
 	private static readonly string[] NarrativePrefixes = ["i ", "we ", "i'm ", "we're ", "i’ve ", "we’ve ", "i'd ", "we'd "];
 	private static readonly string[] DanglingEndingWords =
 	[

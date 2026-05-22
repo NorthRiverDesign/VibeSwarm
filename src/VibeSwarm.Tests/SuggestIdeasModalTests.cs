@@ -82,6 +82,62 @@ public sealed class SuggestIdeasModalTests
 		Assert.Contains(">4<", html);
 	}
 
+	[Fact]
+	public async Task RenderedSuggestIdeasModal_UsesConfiguredProviderMode_WhenOnlyProvidersAreAvailable()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var providerId = Guid.NewGuid();
+		var providers = new List<Provider>
+		{
+			new()
+			{
+				Id = providerId,
+				Name = "Copilot CLI",
+				Type = ProviderType.Copilot,
+				IsEnabled = true,
+				AvailableModels =
+				[
+					new ProviderModel
+					{
+						Id = Guid.NewGuid(),
+						ProviderId = providerId,
+						ModelId = "gpt-5.4",
+						DisplayName = "GPT-5.4",
+						IsAvailable = true,
+						IsDefault = true
+					}
+				]
+			}
+		};
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(SuggestIdeasModal.IsVisible)] = true,
+				[nameof(SuggestIdeasModal.UseInference)] = true,
+				[nameof(SuggestIdeasModal.HasInference)] = false,
+				[nameof(SuggestIdeasModal.AvailableProviders)] = providers,
+				[nameof(SuggestIdeasModal.IdeaCount)] = 3
+			});
+
+			var output = await renderer.RenderComponentAsync<SuggestIdeasModal>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("Configured Provider", html);
+		Assert.Contains("Copilot CLI", html);
+		Assert.Contains("GPT-5.4 (Default)", html);
+		Assert.Contains("Leave this blank to use the provider&#x27;s default model selection.", html);
+		Assert.DoesNotContain("Use inference", html);
+		Assert.DoesNotContain("Inference Provider", html);
+	}
+
 	private sealed class NoOpJsRuntime : IJSRuntime
 	{
 		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)

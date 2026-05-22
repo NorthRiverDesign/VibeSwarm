@@ -42,7 +42,7 @@ public sealed class JobSummaryGeneratorTests
 			title: null,
 			goalPrompt: "fix scheduler auto commit summaries so they read like normal human commit messages");
 
-		Assert.Equal("Fix scheduler auto commit summaries so they read like normal human", subject);
+		Assert.Equal("Fix scheduler auto commit summaries so they read like normal human commit", subject);
 	}
 
 	[Fact]
@@ -64,6 +64,41 @@ public sealed class JobSummaryGeneratorTests
 				""");
 
 		Assert.Equal("Refine scheduler auto-commit subjects for normal git history", subject);
+	}
+
+	[Fact]
+	public void BuildCommitSubject_PreservesGeneratedSummaryPastSeventyTwoCharacters()
+	{
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: null,
+			title: null,
+			goalPrompt: "fallback prompt",
+			consoleOutput: """
+				<commit-summary>
+				refine scheduled job commit summaries so generated subjects preserve complete context
+				</commit-summary>
+				""");
+
+		Assert.Equal("Refine scheduled job commit summaries so generated subjects preserve complete context", subject);
+		Assert.True(subject.Length > 72);
+		Assert.True(subject.Length <= 96);
+	}
+
+	[Fact]
+	public void BuildCommitSubject_TruncatesGeneratedSummaryAtNinetySixCharacters()
+	{
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: null,
+			title: null,
+			goalPrompt: "fallback prompt",
+			consoleOutput: """
+				<commit-summary>
+				refine generated commit summaries so longer agent-authored subject lines preserve useful context before stopping at safe boundary
+				</commit-summary>
+				""");
+
+		Assert.Equal("Refine generated commit summaries so longer agent-authored subject lines preserve useful", subject);
+		Assert.True(subject.Length <= 96);
 	}
 
 	[Fact]
@@ -431,6 +466,8 @@ public sealed class JobSummaryGeneratorTests
 		Assert.Equal("Use inference summaries for project auto-commit messages", versionControl.LastCommitMessage);
 		Assert.NotNull(inferenceService.LastRequest);
 		Assert.Equal("grok-commit", inferenceService.LastRequest!.Model);
+		Assert.Contains("Aim for 72 characters", inferenceService.LastRequest.SystemPrompt);
+		Assert.Contains("never exceed 96 characters", inferenceService.LastRequest.SystemPrompt);
 		Assert.Contains("allow selecting an inference provider and model for commit summaries", inferenceService.LastRequest.Prompt);
 		Assert.Contains("src/VibeSwarm.Web/Services/JobProcessingService.Delivery.cs", inferenceService.LastRequest.Prompt);
 		Assert.Contains("src/VibeSwarm.Shared/Data/Project.cs", inferenceService.LastRequest.Prompt);

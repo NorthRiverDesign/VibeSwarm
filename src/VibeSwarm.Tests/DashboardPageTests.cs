@@ -291,6 +291,34 @@ public sealed class DashboardPageTests
 		Assert.DoesNotContain("Start All Ideas", html);
 	}
 
+	[Fact]
+	public async Task Dashboard_IdeasProcessingCards_IncludeProjectDetailLinks()
+	{
+		var projectId = Guid.NewGuid();
+
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))]),
+			new FakeProviderService([]),
+			new FakeIdeaService(new GlobalIdeasProcessingStatus
+			{
+				TotalUnprocessedIdeas = 2,
+				ProjectsCurrentlyProcessing = 1,
+				Projects =
+				[
+					new ProjectIdeasSummary
+					{
+						ProjectId = projectId,
+						ProjectName = "Alpha",
+						UnprocessedIdeas = 2,
+						IsProcessing = true
+					}
+				]
+			}));
+
+		Assert.Contains("View Project", html);
+		Assert.Contains($"href=\"/projects/{projectId}\"", html);
+	}
+
 	private static async Task<string> RenderDashboardPageAsync(
 		IProjectService projectService,
 		IProviderService providerService,

@@ -61,14 +61,20 @@ else
 							<div class="small text-body-secondary mt-1 font-monospace text-truncate">@provider.Endpoint</div>
 						</div>
 						<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-							<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
-										  OnClick="@(() => OnEditProvider.InvokeAsync(provider))" />
-							<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
-										  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
-										  OnClick="@(() => OnDeleteProvider.InvokeAsync(provider))" />
+							<RowActionsDropdown AriaLabel="Inference provider actions" Label="More" HideLabelOnMobile="true">
+								<RowActionsItem Icon="arrow-repeat"
+												IconSpin="@(RefreshingModelsProviderId == provider.Id)"
+												Text="Refresh Models"
+												OnClick="@(() => OnRefreshModels.InvokeAsync(provider))"
+												Disabled="@RefreshingModelsProviderId.HasValue" />
+								<RowActionsItem Icon="pencil" Text="Edit" OnClick="@(() => OnEditProvider.InvokeAsync(provider))" />
+								<RowActionsDivider />
+								<RowActionsItem Icon="trash" Text="Delete" Danger="true"
+												OnClick="@(() => OnDeleteProvider.InvokeAsync(provider))" />
+							</RowActionsDropdown>
 						</div>
 					</div>
-					<InferenceTestSection @key="provider.Id" Provider="provider" />
+					<InferenceTestSection @key="provider.Id" Provider="provider" ModelRefreshVersion="@GetModelRefreshVersion(provider.Id)" />
 				</div>
 			}
 		</div>
@@ -102,6 +108,15 @@ else
 	[Parameter]
 	public EventCallback<InferenceProvider> OnDeleteProvider { get; set; }
 
+	[Parameter]
+	public EventCallback<InferenceProvider> OnRefreshModels { get; set; }
+
+	[Parameter]
+	public Guid? RefreshingModelsProviderId { get; set; }
+
+	[Parameter]
+	public IReadOnlyDictionary<Guid, int> ModelRefreshVersions { get; set; } = new Dictionary<Guid, int>();
+
 	private IReadOnlyList<InferenceProvider> ActiveProviders => Providers
 		.Where(provider => provider.ProviderType == ActiveProviderType)
 		.ToList();
@@ -109,6 +124,11 @@ else
 	private int GetProviderCount(InferenceProviderType type)
 	{
 		return Providers.Count(provider => provider.ProviderType == type);
+	}
+
+	private int GetModelRefreshVersion(Guid providerId)
+	{
+		return ModelRefreshVersions.GetValueOrDefault(providerId);
 	}
 
 	private static string GetProviderBadgeIcon(InferenceProviderType type) => type switch

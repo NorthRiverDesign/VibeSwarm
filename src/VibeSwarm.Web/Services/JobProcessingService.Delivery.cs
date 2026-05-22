@@ -460,7 +460,7 @@ public partial class JobProcessingService
         {
             TaskType = "commit-summary",
             Prompt = BuildCommitSummaryPrompt(job.GoalPrompt, changedFiles),
-            SystemPrompt = "Write a single concise git commit subject line. Respond with only the subject, no quotes or bullets, and keep it under 72 characters.",
+            SystemPrompt = "Write a single concise git commit subject line. Respond with only the subject, no quotes or bullets. Aim for 72 characters, and never exceed 96 characters.",
             Endpoint = provider.Endpoint,
             Model = selectedModel.ModelId,
             ProviderType = provider.ProviderType,

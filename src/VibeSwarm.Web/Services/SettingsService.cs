@@ -71,6 +71,53 @@ public class SettingsService : ISettingsService
 		A concise one-line description of what was implemented (max 72 chars)
 		</commit-summary>
 		""";
+	private const string PreviousDefaultIdeaImplementationPromptTemplate =
+		"""
+		You are a staff-level software engineer implementing a feature directly from a product idea.
+
+		## Feature Idea
+		{{idea}}
+
+		## Instructions
+		1. Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.
+		2. Fill in missing details from repository patterns and prefer the simplest solution that fully satisfies the idea.
+		3. Reuse existing patterns, helpers, and components before adding new ones.
+		4. Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
+		5. Keep changes scoped, preserve existing behavior unless the idea requires a change, and leave the repository in a working state.
+		6. Do not mention or attribute the work to any provider, model, or CLI tool.
+
+		Implement this feature now without first writing a separate specification.
+
+		When you are finished, end your response with a short summary in this exact format:
+		<commit-summary>
+		A concise one-line description of what was implemented (max 72 chars)
+		</commit-summary>
+		""";
+	private const string PreviousDefaultApprovedIdeaImplementationPromptTemplate =
+		"""
+		You are a staff-level software engineer implementing an approved specification.
+
+		## Original Idea
+		{{idea}}
+
+		## Detailed Specification
+		{{specification}}
+
+		## Instructions
+		1. Use the approved specification as the source of truth, then fill in missing details from repository patterns.
+		2. Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.
+		3. Reuse existing patterns, helpers, and components before adding new ones.
+		4. Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
+		5. Keep changes scoped, preserve existing behavior unless the specification requires a change, and leave the repository in a working state.
+		6. Do not mention or attribute the work to any provider, model, or CLI tool.
+
+		Implement this feature now.
+
+		When you are finished, end your response with a short summary in this exact format:
+		<commit-summary>
+		A concise one-line description of what was implemented (max 72 chars)
+		</commit-summary>
+		""";
 
 	public SettingsService(VibeSwarmDbContext dbContext)
 	{
@@ -113,11 +160,13 @@ public class SettingsService : ISettingsService
 			var normalizedIdeaImplementationPromptTemplate = NormalizePromptTemplate(
 				settings.IdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultIdeaImplementationPromptTemplate,
-				LegacyDefaultIdeaImplementationPromptTemplate);
+				LegacyDefaultIdeaImplementationPromptTemplate,
+				PreviousDefaultIdeaImplementationPromptTemplate);
 			var normalizedApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(
 				settings.ApprovedIdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
-				LegacyDefaultApprovedIdeaImplementationPromptTemplate);
+				LegacyDefaultApprovedIdeaImplementationPromptTemplate,
+				PreviousDefaultApprovedIdeaImplementationPromptTemplate);
 
 			if (!string.Equals(settings.TimeZoneId, normalizedTimeZoneId, StringComparison.Ordinal) ||
 				settings.CriticalErrorLogRetentionDays != normalizedRetentionDays ||
@@ -158,11 +207,13 @@ public class SettingsService : ISettingsService
 			settings.IdeaImplementationPromptTemplate = NormalizePromptTemplate(
 				settings.IdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultIdeaImplementationPromptTemplate,
-				LegacyDefaultIdeaImplementationPromptTemplate);
+				LegacyDefaultIdeaImplementationPromptTemplate,
+				PreviousDefaultIdeaImplementationPromptTemplate);
 			settings.ApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(
 				settings.ApprovedIdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
-				LegacyDefaultApprovedIdeaImplementationPromptTemplate);
+				LegacyDefaultApprovedIdeaImplementationPromptTemplate,
+				PreviousDefaultApprovedIdeaImplementationPromptTemplate);
 			settings.GitHubToken = NormalizeGitHubToken(settings.GitHubToken);
 			settings.UpdatedAt = DateTime.UtcNow;
 			_dbContext.AppSettings.Add(settings);
@@ -185,11 +236,13 @@ public class SettingsService : ISettingsService
 			existing.IdeaImplementationPromptTemplate = NormalizePromptTemplate(
 				settings.IdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultIdeaImplementationPromptTemplate,
-				LegacyDefaultIdeaImplementationPromptTemplate);
+				LegacyDefaultIdeaImplementationPromptTemplate,
+				PreviousDefaultIdeaImplementationPromptTemplate);
 			existing.ApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(
 				settings.ApprovedIdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
-				LegacyDefaultApprovedIdeaImplementationPromptTemplate);
+				LegacyDefaultApprovedIdeaImplementationPromptTemplate,
+				PreviousDefaultApprovedIdeaImplementationPromptTemplate);
 			existing.GitHubToken = NormalizeGitHubToken(settings.GitHubToken);
 			existing.UpdatedAt = DateTime.UtcNow;
 		}

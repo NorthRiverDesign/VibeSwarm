@@ -44,7 +44,7 @@ public partial class IdeaService
 			{
 				Stage = SuggestIdeasStage.GenerateFailed,
 				Message = $"An unexpected error occurred: {ex.Message}",
-				InferenceError = ex.ToString()
+				ErrorDetail = ex.ToString()
 			};
 		}
 	}
@@ -120,15 +120,15 @@ public partial class IdeaService
 		var suggestions = ParseCodebaseSuggestions(responseText, request.IdeaCount);
 		if (suggestions.Count == 0)
 		{
-			_logger.LogWarning("No parseable suggestions in inference response for project {ProjectId}. Raw response length: {Len}",
+			_logger.LogWarning("No parseable suggestions in generation response for project {ProjectId}. Raw response length: {Len}",
 				projectId, responseText.Length);
 			return new SuggestIdeasResult
 			{
 				Stage = SuggestIdeasStage.ParseFailed,
 				Message = "The model responded but did not produce ideas in the expected format. Try a different model or re-run.",
 				ModelUsed = generationResult.ModelUsed,
-				InferenceDurationMs = generationResult.DurationMs,
-				InferenceError = $"Raw response ({responseText.Length} chars): {responseText[..Math.Min(200, responseText.Length)]}…"
+				GenerationDurationMs = generationResult.DurationMs,
+				ErrorDetail = $"Raw response ({responseText.Length} chars): {responseText[..Math.Min(200, responseText.Length)]}..."
 			};
 		}
 
@@ -172,7 +172,7 @@ public partial class IdeaService
 				Stage = SuggestIdeasStage.Success,
 				Message = $"All {FormatIdeaCount(skippedDuplicateCount)} already exist for this project.",
 				ModelUsed = generationResult.ModelUsed,
-				InferenceDurationMs = generationResult.DurationMs
+				GenerationDurationMs = generationResult.DurationMs
 			};
 		}
 
@@ -183,7 +183,7 @@ public partial class IdeaService
 				Stage = SuggestIdeasStage.GenerateFailed,
 				Message = "Ideas were generated, but none could be saved. Check the logs and try again.",
 				ModelUsed = generationResult.ModelUsed,
-				InferenceDurationMs = generationResult.DurationMs
+				GenerationDurationMs = generationResult.DurationMs
 			};
 		}
 
@@ -204,7 +204,7 @@ public partial class IdeaService
 			Ideas = createdIdeas,
 			Message = message,
 			ModelUsed = generationResult.ModelUsed,
-			InferenceDurationMs = generationResult.DurationMs
+			GenerationDurationMs = generationResult.DurationMs
 		};
 	}
 
@@ -280,7 +280,7 @@ public partial class IdeaService
 			{
 				Stage = SuggestIdeasStage.ProviderUnreachable,
 				Message = $"Could not reach {providerDisplayName}: {ex.Message}",
-				InferenceError = ex.Message
+				ErrorDetail = ex.Message
 			});
 		}
 
@@ -292,7 +292,7 @@ public partial class IdeaService
 			{
 				Stage = SuggestIdeasStage.ProviderUnreachable,
 				Message = $"{providerDisplayName} is not responding. {detail}",
-				InferenceError = detail
+				ErrorDetail = detail
 			});
 		}
 
@@ -338,7 +338,7 @@ public partial class IdeaService
 			{
 				Stage = SuggestIdeasStage.GenerateFailed,
 				Message = $"Inference request failed: {ex.Message}",
-				InferenceError = ex.Message
+				ErrorDetail = ex.Message
 			});
 		}
 
@@ -357,8 +357,8 @@ public partial class IdeaService
 					? "No model is assigned to the \"suggest\" or \"default\" task. Go to Settings → Inference to assign a model."
 					: $"The model did not return a usable response: {error}",
 				ModelUsed = inferenceResponse.ModelUsed,
-				InferenceDurationMs = inferenceResponse.DurationMs,
-				InferenceError = error
+				GenerationDurationMs = inferenceResponse.DurationMs,
+				ErrorDetail = error
 			});
 		}
 
@@ -480,7 +480,7 @@ public partial class IdeaService
 			{
 				Stage = SuggestIdeasStage.ProviderUnreachable,
 				Message = $"Could not run {provider.Name}: {ex.Message}",
-				InferenceError = ex.Message
+				ErrorDetail = ex.Message
 			});
 		}
 
@@ -492,8 +492,8 @@ public partial class IdeaService
 				Stage = SuggestIdeasStage.GenerateFailed,
 				Message = $"The provider did not return a usable response: {error}",
 				ModelUsed = response.ModelUsed ?? selectedModelId,
-				InferenceDurationMs = response.ElapsedMilliseconds,
-				InferenceError = error
+				GenerationDurationMs = response.ElapsedMilliseconds,
+				ErrorDetail = error
 			});
 		}
 
@@ -763,6 +763,6 @@ public partial class IdeaService
 				durationMs);
 
 		public static SuggestionGenerationResult Fail(SuggestIdeasResult result)
-			=> new(result, null, result.ModelUsed, result.InferenceDurationMs);
+			=> new(result, null, result.ModelUsed, result.GenerationDurationMs);
 	}
 }

@@ -9,8 +9,8 @@ public sealed class InferenceTimeoutsTests
 	[Fact]
 	public void IdeaActionTimeout_UsesLongerLimitForInference()
 	{
-		Assert.Equal(TimeSpan.FromMinutes(5), InferenceTimeouts.GetIdeaActionTimeout(useInference: false));
-		Assert.Equal(TimeSpan.FromMinutes(60), InferenceTimeouts.GetIdeaActionTimeout(useInference: true));
+		Assert.Equal(TimeSpan.FromMinutes(5), InferenceTimeouts.GetIdeaSuggestionTimeout(useInference: false));
+		Assert.Equal(TimeSpan.FromMinutes(60), InferenceTimeouts.GetIdeaSuggestionTimeout(useInference: true));
 	}
 
 	[Fact]

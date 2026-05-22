@@ -202,8 +202,8 @@ public interface IIdeaService
 	Task StopAllProcessingAsync(CancellationToken cancellationToken = default);
 
 	/// <summary>
-	/// Uses local AI inference to scan the project directory and suggest feature ideas or improvements.
-	/// Requires a configured and available inference provider.
+	/// Scans the project directory and suggests feature ideas or improvements.
+	/// Uses either an inference provider or a configured coding provider based on the request.
 	/// Returns a <see cref="SuggestIdeasResult"/> that always carries a diagnostic stage and message,
 	/// even on failure, so the caller can surface precise feedback to the user.
 	/// </summary>

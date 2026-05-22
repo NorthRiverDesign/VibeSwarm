@@ -5,13 +5,13 @@
 	{
 		<div class="card-header @HeaderClass">
 			<div class="d-flex align-items-center justify-content-between gap-2">
-				<h5 class="mb-0 fw-semibold">
+				<h3 class="mb-0 text-card-title d-flex align-items-center gap-2 min-width-0">
 					@if (!string.IsNullOrEmpty(Icon))
 					{
-						<i class="bi bi-@Icon me-2"></i>
+						<i class="bi bi-@Icon opacity-75 flex-shrink-0"></i>
 					}
-					@Title
-				</h5>
+					<span class="text-truncate">@Title</span>
+				</h3>
 				@if (HeaderActions != null)
 				{
 					<div class="d-flex gap-2">
