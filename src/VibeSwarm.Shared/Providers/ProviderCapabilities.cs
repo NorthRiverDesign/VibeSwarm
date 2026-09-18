@@ -92,12 +92,15 @@ public static class ProviderCapabilities
 
 	public static IReadOnlyList<string> GetSupportedReasoningEfforts(ProviderType providerType, ProviderConnectionMode mode) => (providerType, mode) switch
 	{
-		// Claude Code v2.1.72+ restructured effort levels: low/standard/high/xhigh/max.
-		// "max" is Opus 4.7 only; other models silently downgrade to "high".
+		// Claude Code v2.1.72+ restructured effort levels. The CLI advertises
+		// low/medium/high/xhigh/max and still accepts "standard" as an alias for "medium".
+		// "max" is Opus-only; other models silently downgrade to "high".
 		(ProviderType.Claude, ProviderConnectionMode.CLI) => ["low", "standard", "high", "xhigh", "max"],
 		(ProviderType.Claude, ProviderConnectionMode.SDK) => ["low", "standard", "high", "xhigh", "max"],
-		(ProviderType.Copilot, ProviderConnectionMode.CLI) => ["low", "medium", "high", "xhigh"],
-		(ProviderType.Copilot, ProviderConnectionMode.SDK) => ["low", "medium", "high", "xhigh"],
+		// Copilot widened its effort levels to add none/minimal/max. CopilotProvider gates the
+		// extra values by CLI version, so older CLIs still only receive low/medium/high/xhigh.
+		(ProviderType.Copilot, ProviderConnectionMode.CLI) => ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) => ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
 		(ProviderType.OpenCode, _) => ["minimal", "low", "medium", "high", "xhigh", "max"],
 		_ => []
 	};

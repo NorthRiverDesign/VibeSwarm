@@ -321,14 +321,18 @@ public class ClaudeProvider : CliProviderBase
             result.ErrorMessage = error;
         }
 
-        // Parse usage limit signals from stderr
+        // Fall back to scraping stderr for limit warnings. Structured "rate_limit_event"
+        // messages are authoritative, so anything found here is merged in behind them
+        // rather than replacing them.
         if (!string.IsNullOrEmpty(error))
         {
             var usageLimits = ClaudeUsageParser.ParseLimitSignals(error);
             if (usageLimits != null)
             {
-                result.DetectedUsageLimits = usageLimits;
-                _lastObservedUsageLimits = usageLimits;
+                result.DetectedUsageLimits = result.DetectedUsageLimits == null
+                    ? usageLimits
+                    : UsageLimitWindowHelper.Merge(result.DetectedUsageLimits, usageLimits);
+                _lastObservedUsageLimits = result.DetectedUsageLimits;
             }
         }
 
@@ -651,6 +655,28 @@ public class ClaudeProvider : CliProviderBase
                     CurrentMessage = "Initializing...",
                     IsStreaming = false
                 });
+                break;
+
+            case "rate_limit_event":
+                // Structured usage limits, emitted mid-run. Merged rather than replaced so a
+                // later event reporting only one window doesn't discard the others.
+                var streamedLimits = ClaudeUsageParser.ParseRateLimitEvent(evt.RateLimitInfo);
+                if (streamedLimits != null)
+                {
+                    result.DetectedUsageLimits = result.DetectedUsageLimits == null
+                        ? streamedLimits
+                        : UsageLimitWindowHelper.Merge(result.DetectedUsageLimits, streamedLimits);
+                    _lastObservedUsageLimits = result.DetectedUsageLimits;
+
+                    if (streamedLimits.IsLimitReached)
+                    {
+                        progress?.Report(new ExecutionProgress
+                        {
+                            CurrentMessage = "Provider usage limit reached",
+                            IsStreaming = false
+                        });
+                    }
+                }
                 break;
 
             case "assistant":

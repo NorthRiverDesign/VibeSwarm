@@ -4,7 +4,22 @@
 	var displayWindows = GetDisplayWindows();
 }
 
-@if (displayWindows.Count > 0)
+@if (UsageSummary?.LimitType == UsageLimitType.Unmetered)
+{
+	@* Self-hosted open-source models have no upstream quota, so show that plainly
+	   instead of an empty meter or a "no usage data" fallback. *@
+	<div class="usage-meter @Class">
+		<div class="d-flex align-items-center gap-1 small text-body-secondary">
+			<i class="bi bi-infinity"></i>
+			<span>@(Compact ? "Unmetered" : "Unmetered \u2014 no provider quota")</span>
+		</div>
+		@if (!string.IsNullOrWhiteSpace(UsageSummary.LimitMessage))
+		{
+			<div class="small text-body-tertiary mt-1">@UsageSummary.LimitMessage</div>
+		}
+	</div>
+}
+else if (displayWindows.Count > 0)
 {
 	<div class="usage-meter @Class">
 		@foreach (var window in displayWindows)
@@ -99,7 +114,7 @@ else if (UsageSummary != null && ShowEmptyState)
 
 	private List<UsageLimitWindow> GetDisplayWindows()
 	{
-		if (UsageSummary == null)
+		if (UsageSummary == null || UsageSummary.LimitType == UsageLimitType.Unmetered)
 		{
 			return [];
 		}
@@ -142,6 +157,9 @@ else if (UsageSummary != null && ShowEmptyState)
 			UsageLimitType.PremiumRequests => Compact
 				? $"{label}: {current}/{max}"
 				: $"{label}: {current:N0} / {max:N0} Premium Requests",
+			UsageLimitType.AiCredits => Compact
+				? $"{label}: {current}/{max}"
+				: $"{label}: {current:N0} / {max:N0} AI Credits",
 			UsageLimitType.TokenLimit => Compact
 				? $"{label}: {FormatTokens(current)}/{FormatTokens(max)}"
 				: $"{label}: {FormatTokens(current)} / {FormatTokens(max)} Tokens",
@@ -193,6 +211,9 @@ else if (UsageSummary != null && ShowEmptyState)
 				UsageLimitType.PremiumRequests => Compact
 					? $"{window.CurrentUsage:N0} premium used"
 					: $"{window.CurrentUsage:N0} Premium Requests Used",
+				UsageLimitType.AiCredits => Compact
+					? $"{window.CurrentUsage:N0} credits used"
+					: $"{window.CurrentUsage:N0} AI Credits Used",
 				_ => $"{GetScopeLabel(window.Scope)}: {window.CurrentUsage:N0}"
 			};
 		}
@@ -254,7 +275,7 @@ else if (UsageSummary != null && ShowEmptyState)
 	private static UsageLimitWindowScope InferScope(UsageLimitType limitType) => limitType switch
 	{
 		UsageLimitType.SessionLimit => UsageLimitWindowScope.Session,
-		UsageLimitType.PremiumRequests => UsageLimitWindowScope.Monthly,
+		UsageLimitType.PremiumRequests or UsageLimitType.AiCredits => UsageLimitWindowScope.Monthly,
 		_ => UsageLimitWindowScope.Unknown
 	};
 

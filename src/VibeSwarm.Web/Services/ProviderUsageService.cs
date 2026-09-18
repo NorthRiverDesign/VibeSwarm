@@ -180,6 +180,11 @@ public class ProviderUsageService : IProviderUsageService
 		if (summary == null)
 			return null;
 
+		// A provider with no upstream quota can never be exhausted, and has no window to
+		// wait for, so it must never raise an exhaustion warning.
+		if (ProviderMetering.IsUnmetered(summary.LimitType))
+			return null;
+
 		// Get the effective max usage (user-configured or detected)
 		var effectiveMax = summary.EffectiveMaxUsage;
 		if (!effectiveMax.HasValue || effectiveMax <= 0)

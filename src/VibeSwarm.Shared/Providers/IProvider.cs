@@ -480,7 +480,20 @@ public enum UsageLimitType
     /// <summary>
     /// Rate limit (requests per time period)
     /// </summary>
-    RateLimit
+    RateLimit,
+
+    /// <summary>
+    /// GitHub AI Credits, the credit-based budget Copilot meters sessions against
+    /// alongside (and increasingly in place of) premium requests.
+    /// </summary>
+    AiCredits,
+
+    /// <summary>
+    /// The provider has no upstream quota — for example a self-hosted open-source model.
+    /// Distinct from <see cref="None"/>, which only means no limit has been observed yet.
+    /// Providers reporting this are never treated as exhausted.
+    /// </summary>
+    Unmetered
 }
 
 /// <summary>

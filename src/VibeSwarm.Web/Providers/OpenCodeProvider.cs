@@ -1214,7 +1214,18 @@ public class OpenCodeProvider : CliProviderBase
 
     public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
     {
-        // OpenCode does not have built-in limits - it depends on the underlying model
+        // OpenCode has no quota of its own; metering belongs to whatever backend serves the
+        // model. A self-hosted open-source model has no upstream quota at all, so report it
+        // as definitively unmetered rather than "unknown" — that keeps exhaustion and
+        // cooldown handling from parking a provider that will never reset.
+        var model = CurrentModel ?? LastExecutedModel;
+        if (!ProviderMetering.IsMetered(Type, model))
+        {
+            var runtime = ProviderMetering.GetModelProviderSegment(model);
+            return Task.FromResult(ProviderMetering.CreateUnmeteredLimits(
+                $"No usage limits. Model runs locally via {runtime}."));
+        }
+
         var limits = new UsageLimits
         {
             LimitType = UsageLimitType.None,

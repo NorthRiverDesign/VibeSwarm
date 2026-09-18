@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using VibeSwarm.Shared.Providers.Claude;
 
 namespace VibeSwarm.Shared.Providers;
 
@@ -48,6 +49,113 @@ public static partial class ClaudeUsageParser
 
 	[GeneratedRegex(@"(session|weekly|daily|monthly)[^\r\n]*?(reached|exceeded)", RegexOptions.IgnoreCase)]
 	private static partial Regex ReverseScopedReachedPattern();
+
+	/// <summary>
+	/// Converts a structured "rate_limit_event" payload into usage limits.
+	/// </summary>
+	/// <remarks>
+	/// Preferred over <see cref="ParseLimitSignals"/>: the CLI emits this during a normal
+	/// headless run with exact figures, whereas the stderr patterns only appear once a
+	/// warning or refusal has already been printed.
+	/// </remarks>
+	public static UsageLimits? ParseRateLimitEvent(ClaudeRateLimitInfo? info)
+	{
+		if (info == null)
+		{
+			return null;
+		}
+
+		var isLimitReached = IsLimitReachedStatus(info.Status)
+			|| info.Utilization >= 1.0d;
+
+		var windows = new List<UsageLimitWindow>();
+
+		// Claude surfaces the 5-hour window as the current session limit, and the
+		// 7-day window as the weekly limit.
+		AddWindow(windows, info.UnifiedWindows?.FiveHour, UsageLimitWindowScope.Session, UsageLimitType.SessionLimit);
+		AddWindow(windows, info.UnifiedWindows?.SevenDay, UsageLimitWindowScope.Weekly, UsageLimitType.RateLimit);
+
+		// The top-level figures describe whichever limit is currently binding (for example
+		// the overage balance), which is not necessarily one of the rolling windows.
+		if (info.Utilization.HasValue)
+		{
+			windows.Add(new UsageLimitWindow
+			{
+				Scope = UsageLimitWindowScope.Unknown,
+				LimitType = UsageLimitType.RateLimit,
+				CurrentUsage = ToPercent(info.Utilization.Value),
+				MaxUsage = 100,
+				ResetTime = FromUnixSeconds(info.ResetsAt),
+				IsLimitReached = isLimitReached,
+				Message = DescribeBindingLimit(info)
+			});
+		}
+
+		if (windows.Count == 0)
+		{
+			return null;
+		}
+
+		return UsageLimitWindowHelper.CreateUsageLimits(
+			UsageLimitType.RateLimit,
+			DescribeBindingLimit(info),
+			windows,
+			isLimitReached);
+	}
+
+	private static void AddWindow(
+		List<UsageLimitWindow> windows,
+		ClaudeRateLimitWindow? window,
+		UsageLimitWindowScope scope,
+		UsageLimitType limitType)
+	{
+		if (window?.Utilization == null)
+		{
+			return;
+		}
+
+		windows.Add(new UsageLimitWindow
+		{
+			Scope = scope,
+			LimitType = limitType,
+			CurrentUsage = ToPercent(window.Utilization.Value),
+			MaxUsage = 100,
+			ResetTime = FromUnixSeconds(window.ResetsAt),
+			IsLimitReached = window.Utilization >= 1.0d
+		});
+	}
+
+	/// <summary>
+	/// Any status that does not begin with "allowed" (e.g. a refusal) counts as the
+	/// limit having been reached. "allowed" and "allowed_warning" do not.
+	/// </summary>
+	private static bool IsLimitReachedStatus(string? status)
+		=> !string.IsNullOrWhiteSpace(status)
+			&& !status.StartsWith("allowed", StringComparison.OrdinalIgnoreCase);
+
+	private static string? DescribeBindingLimit(ClaudeRateLimitInfo info)
+	{
+		if (string.IsNullOrWhiteSpace(info.RateLimitType))
+		{
+			return info.IsUsingOverage == true ? "Using overage balance" : null;
+		}
+
+		return info.IsUsingOverage == true
+			? $"Binding limit: {info.RateLimitType} (using overage balance)"
+			: $"Binding limit: {info.RateLimitType}";
+	}
+
+	/// <summary>
+	/// Converts a 0-1 utilization fraction to whole percent, clamped to 0-100 so a value
+	/// past the limit still renders as a full bar.
+	/// </summary>
+	private static int ToPercent(double utilization)
+		=> Math.Clamp((int)Math.Round(utilization * 100, MidpointRounding.AwayFromZero), 0, 100);
+
+	private static DateTime? FromUnixSeconds(long? epochSeconds)
+		=> epochSeconds is > 0
+			? DateTimeOffset.FromUnixTimeSeconds(epochSeconds.Value).UtcDateTime
+			: null;
 
 	public static UsageLimits? ParseLimitSignals(string? stderr)
 	{

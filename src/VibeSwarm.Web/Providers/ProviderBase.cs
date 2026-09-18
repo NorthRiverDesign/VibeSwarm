@@ -77,6 +77,13 @@ public abstract class ProviderBase : IProvider
     protected Dictionary<string, string>? CurrentEnvironmentVariables { get; set; }
 
     /// <summary>
+    /// The most recent model this provider executed with. Unlike <see cref="CurrentModel"/>
+    /// this survives <see cref="ClearExecutionContext"/>, so it is still readable when
+    /// usage limits are queried between jobs.
+    /// </summary>
+    protected internal string? LastExecutedModel { get; protected set; }
+
+    /// <summary>
     /// Current model to use (set by ExecuteWithOptionsAsync)
     /// </summary>
     protected string? CurrentModel { get; private set; }
@@ -291,6 +298,10 @@ public abstract class ProviderBase : IProvider
         CurrentAdditionalArgs = options.AdditionalArgs;
         CurrentEnvironmentVariables = options.EnvironmentVariables;
         CurrentModel = options.Model;
+        if (!string.IsNullOrWhiteSpace(options.Model))
+        {
+            LastExecutedModel = options.Model;
+        }
         CurrentTitle = options.Title;
         CurrentAgent = options.Agent;
         CurrentAttachedFiles = options.AttachedFiles;
@@ -346,7 +357,7 @@ public abstract class ProviderBase : IProvider
     /// <summary>
     /// Clears the execution context after a run completes
     /// </summary>
-    protected void ClearExecutionContext()
+    protected virtual void ClearExecutionContext()
     {
         CurrentMcpConfigPath = null;
         CurrentAdditionalArgs = null;

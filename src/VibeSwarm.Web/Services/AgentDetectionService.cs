@@ -59,6 +59,8 @@ public class AgentDetectionService
 				continue;
 			}
 
+			LogVersionAlignment(name, providerType, detectionResult.Version);
+
 			// Check if this provider type is already registered
 			var exists = await _db.Providers.AnyAsync(p => p.Type == providerType, cancellationToken);
 			if (exists)
@@ -99,5 +101,41 @@ public class AgentDetectionService
 			"Agent detection complete. Detected: [{Detected}]. Not found: [{Missing}]",
 			detected.Count > 0 ? string.Join(", ", detected) : "none",
 			missing.Count > 0 ? string.Join(", ", missing) : "none");
+	}
+
+	/// <summary>
+	/// Reports how a detected CLI compares to the release the integration was verified
+	/// against, so version drift shows up in the logs before it shows up as a broken job.
+	/// </summary>
+	private void LogVersionAlignment(string name, ProviderType providerType, string? rawVersion)
+	{
+		if (!ProviderVersionReference.TryGet(providerType, out var target))
+		{
+			return;
+		}
+
+		ProviderVersionReference.TryParseVersion(rawVersion, out var detected);
+		var state = ProviderVersionReference.Evaluate(providerType, detected);
+		var description = ProviderVersionReference.Describe(providerType, detected);
+
+		switch (state)
+		{
+			case VersionSupportState.Unsupported:
+				_logger.LogWarning(
+					"{Agent}: {Description} See {DocumentationUrl}",
+					name, description, target.DocumentationUrl);
+				break;
+
+			case VersionSupportState.Older:
+			case VersionSupportState.Newer:
+				_logger.LogInformation("{Agent}: {Description}", name, description);
+				break;
+
+			case VersionSupportState.Unknown:
+				_logger.LogDebug(
+					"{Agent}: could not parse a version from {RawVersion}; version gating falls back to conservative defaults.",
+					name, rawVersion ?? "(no output)");
+				break;
+		}
 	}
 }

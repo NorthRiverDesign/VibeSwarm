@@ -22,7 +22,17 @@ public class CopilotProvider : CliProviderBase
     // All of the Tier 1/2 Copilot flags below are present in current v1.0.x; guard with a conservative gate.
     private static readonly Version ModernFlagsVersion = new(1, 0, 0);
     private static readonly Version SessionIdleTimeoutVersion = new(1, 0, 35);
+
+    // Flags first confirmed present on the verified release (see ProviderVersionReference).
+    // Gated conservatively: Copilot rejects unknown flags outright, which would fail the job.
+    private static readonly Version UsageOutputFileVersion = new(1, 0, 86);
+    private static readonly Version ExtendedReasoningEffortVersion = new(1, 0, 86);
+    private static readonly Version ContextTierVersion = new(1, 0, 86);
+
     private UsageLimits? _lastObservedUsageLimits;
+
+    // Path Copilot writes its end-of-session usage JSON to for the current run.
+    private string? _usageOutputFilePath;
 
     // Cached CLI version for feature gating (populated on TestConnectionAsync)
     private Version? _cachedCliVersion;
@@ -347,6 +357,9 @@ public class CopilotProvider : CliProviderBase
             ParseCopilotUsageFromStderr(error, result);
         }
 
+        // Structured usage overrides anything scraped from stderr.
+        ApplyUsageOutputFile(result);
+
         // Final fallback: if no result event provided tokens, use accumulated from assistant messages
         if (!result.InputTokens.HasValue && _hasAccumulatedTokens && _accumulatedInputTokens > 0)
         {
@@ -460,15 +473,42 @@ public class CopilotProvider : CliProviderBase
             args.Add(CurrentMaxTurns.Value.ToString());
         }
 
-        // Reasoning effort level (v1.0.4+)
-        // Current Copilot CLI supports low/medium/high/xhigh; skip on older CLIs to prevent startup errors.
-        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high", "xhigh");
+        // Reasoning effort level (v1.0.4+). The value set widened to add none/minimal/max;
+        // older CLIs only accept low/medium/high/xhigh and reject the rest, so the extra
+        // values are gated separately.
+        var supportsExtendedEffort = _cachedCliVersion != null && _cachedCliVersion >= ExtendedReasoningEffortVersion;
+        var allowedEfforts = supportsExtendedEffort
+            ? new[] { "none", "minimal", "low", "medium", "high", "xhigh", "max" }
+            : ["low", "medium", "high", "xhigh"];
+
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, allowedEfforts);
         if (!string.IsNullOrEmpty(reasoningEffort)
             && _cachedCliVersion != null
             && _cachedCliVersion >= ReasoningEffortVersion)
         {
             args.Add("--reasoning-effort");
             args.Add(reasoningEffort);
+        }
+
+        // Context window tier (v1.0.86+). Only pin the tier when the caller explicitly asked
+        // to avoid large context; otherwise leave the user's persisted setting alone.
+        if (CurrentDisableLargeContext
+            && _cachedCliVersion != null
+            && _cachedCliVersion >= ContextTierVersion)
+        {
+            args.Add("--context");
+            args.Add("default");
+        }
+
+        // Structured end-of-session usage (v1.0.86+). Far more reliable than scraping the
+        // "Est. N Premium requests" line off stderr, which only appears in some output modes.
+        if (_cachedCliVersion != null && _cachedCliVersion >= UsageOutputFileVersion)
+        {
+            _usageOutputFilePath = Path.Combine(
+                Path.GetTempPath(),
+                $"vibeswarm-copilot-usage-{Guid.NewGuid():N}.json");
+            args.Add("--usage-output-file");
+            args.Add(_usageOutputFilePath);
         }
 
         // Alt-screen buffer mode existed from v0.0.407 through v1.0.7 and was removed in v1.0.8
@@ -777,6 +817,65 @@ public class CopilotProvider : CliProviderBase
     {
         CopilotUsageParser.ApplyToExecutionResult(stderr, result);
         _lastObservedUsageLimits = result.DetectedUsageLimits ?? _lastObservedUsageLimits;
+    }
+
+    /// <summary>
+    /// Runs after every execution, including failed ones, so an unread usage report is
+    /// never left behind in the temp directory.
+    /// </summary>
+    protected override void ClearExecutionContext()
+    {
+        DeleteUsageOutputFile();
+        base.ClearExecutionContext();
+    }
+
+    private void DeleteUsageOutputFile()
+    {
+        var path = _usageOutputFilePath;
+        _usageOutputFilePath = null;
+
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+            // A leftover temp file is harmless.
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Applies the structured usage report Copilot wrote for this run, then removes it.
+    /// Silently does nothing when the CLI is too old to write one or the schema is
+    /// unrecognised, leaving the stderr-derived values in place.
+    /// </summary>
+    private void ApplyUsageOutputFile(ExecutionResult result)
+    {
+        var path = _usageOutputFilePath;
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        try
+        {
+            if (CopilotUsageFileReader.TryApply(path, result))
+            {
+                _lastObservedUsageLimits = result.DetectedUsageLimits ?? _lastObservedUsageLimits;
+            }
+        }
+        finally
+        {
+            DeleteUsageOutputFile();
+        }
     }
 
     private void ProcessStreamEvent(

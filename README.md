@@ -16,13 +16,42 @@ VibeSwarm is an agentic CI/CD system for turning ideas into application code. It
 
 ## Supported Agents
 
-| Agent          | CLI Command | Install                                           |
-| -------------- | ----------- | ------------------------------------------------- |
-| Claude Code    | `claude`    | [claude.ai/code](https://claude.ai/code)          |
-| OpenCode       | `opencode`  | [opencode.ai](https://opencode.ai)                |
-| GitHub Copilot | `copilot`   | [copilot CLI](https://docs.github.com/en/copilot) |
+| Agent          | CLI Command | Verified against | Minimum | Install                                           |
+| -------------- | ----------- | ---------------- | ------- | ------------------------------------------------- |
+| Claude Code    | `claude`    | 2.1.276          | 2.0.0   | [claude.ai/code](https://claude.ai/code)          |
+| OpenCode       | `opencode`  | 1.18.31          | 1.0.0   | [opencode.ai](https://opencode.ai)                |
+| GitHub Copilot | `copilot`   | 1.0.86           | 1.0.0   | [copilot CLI](https://docs.github.com/en/copilot) |
 
 Agents are **auto-detected** at startup. If a supported CLI tool is on your PATH, VibeSwarm registers it as a provider automatically.
+
+### CLI version reference
+
+These CLIs change fast. `ProviderVersionReference` (in `src/VibeSwarm.Shared/Providers/`) is the
+single source of truth for the release each integration was built and verified against — last
+reviewed **2026-09-18**. Newer CLI features are version-gated, so an older CLI keeps working
+with those features switched off rather than failing.
+
+At startup VibeSwarm compares each detected CLI against this reference and logs the result:
+a warning when the CLI is below the supported minimum, and an informational line when it is
+older or newer than the verified release. When re-verifying against a new CLI, update that
+file so the gap between "what we tested" and "what is installed" stays visible.
+
+### Usage limits
+
+Claude Code and GitHub Copilot meter usage against a subscription; VibeSwarm tracks both and
+pauses work when a window is exhausted.
+
+- **Claude Code** reports limits as structured `rate_limit_event` messages during a normal
+  headless run. VibeSwarm reads the rolling **5-hour** (shown as Session) and **7-day**
+  (shown as Weekly) windows, plus whichever limit is currently binding. Warnings printed to
+  stderr are parsed as a fallback.
+- **GitHub Copilot** meters premium requests and, increasingly, **GitHub AI Credits**.
+  VibeSwarm reads the structured usage report written by `--usage-output-file` where the CLI
+  supports it, and otherwise falls back to parsing the session summary on stderr.
+- **OpenCode** has no quota of its own — metering belongs to whichever model provider you
+  configure. Self-hosted open-source models (Ollama, LM Studio, llama.cpp, vLLM and similar)
+  are reported as **Unmetered**: no meter is drawn, and they are never paused for exhaustion,
+  since there is no window to wait for.
 
 ---
 
@@ -202,7 +231,8 @@ Change the port in `.env` via `ASPNETCORE_URLS`.
 ### Agent Not Detected
 
 - Verify the CLI tool is on your PATH: `claude --version`, `opencode --version`, `copilot --version`
-- Check the application logs for detection results.
+- Check the application logs for detection results, including how each CLI's version compares
+  to the release VibeSwarm was verified against.
 - You can always add agents manually through the web UI under Providers.
 
 ---
@@ -259,6 +289,7 @@ VibeSwarm/
 - **Blazor WebAssembly** - UI
 - **SignalR** - Real-time communication
 - **Entity Framework Core** - ORM (SQLite, MySQL)
+- **Provider CLIs** - Claude Code 2.1.276, OpenCode 1.18.31, GitHub Copilot 1.0.86
 - **ASP.NET Core Identity** - Authentication
 
 ---
