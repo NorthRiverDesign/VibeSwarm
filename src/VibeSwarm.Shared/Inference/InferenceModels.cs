@@ -26,6 +26,29 @@ public class InferenceHealthResult
 }
 
 /// <summary>
+/// A request to probe an inference provider using configuration that has not been saved yet,
+/// such as the values typed into the Add Provider form.
+/// </summary>
+public class InferenceProbeRequest
+{
+	/// <summary>
+	/// Endpoint to probe. When null the service falls back to the stored provider's endpoint.
+	/// </summary>
+	public string? Endpoint { get; set; }
+
+	/// <summary>
+	/// Provider backend to route to. When null the service infers it from the endpoint.
+	/// </summary>
+	public InferenceProviderType? ProviderType { get; set; }
+
+	/// <summary>
+	/// Credentials supplied by the caller. When blank the service falls back to the stored
+	/// provider's key. Providers that need no key (Ollama) ignore this.
+	/// </summary>
+	public string? ApiKey { get; set; }
+}
+
+/// <summary>
 /// A request to generate a completion from an inference provider.
 /// </summary>
 public class InferenceRequest

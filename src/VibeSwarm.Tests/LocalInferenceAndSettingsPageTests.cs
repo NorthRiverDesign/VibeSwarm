@@ -507,6 +507,7 @@ private sealed class FakeInferenceService : IInferenceService
 {
 public InferenceRequest? LastRequest { get; private set; }
 public InferenceResponse GenerateResponse { get; set; } = new() { Success = true, Response = "OK" };
+public Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default) => Task.FromResult(new InferenceHealthResult());
 public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => Task.FromResult(new InferenceHealthResult());
 public Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => Task.FromResult(new List<DiscoveredModel>());
 public Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default)

@@ -30,6 +30,19 @@ public class InferenceServiceDispatcher : IInferenceService
 		return await GetService(resolved).CheckHealthAsync(endpoint, resolved, ct);
 	}
 
+	public async Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default)
+	{
+		var resolved = request.ProviderType ?? await ResolveProviderTypeByEndpointAsync(request.Endpoint, ct);
+		return await GetService(resolved).ProbeAsync(
+			new InferenceProbeRequest
+			{
+				Endpoint = request.Endpoint,
+				ProviderType = resolved,
+				ApiKey = request.ApiKey
+			},
+			ct);
+	}
+
 	public async Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 	{
 		var resolved = providerType ?? await ResolveProviderTypeByEndpointAsync(endpoint, ct);

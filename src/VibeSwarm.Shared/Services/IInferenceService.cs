@@ -13,6 +13,12 @@ public interface IInferenceService
 	Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default);
 
 	/// <summary>
+	/// Tests connectivity and discovers models using caller-supplied configuration that may not be
+	/// persisted yet. Anything omitted from the request falls back to the stored provider config.
+	/// </summary>
+	Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default);
+
+	/// <summary>
 	/// Discovers available models from an inference provider.
 	/// </summary>
 	Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default);

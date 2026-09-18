@@ -67,6 +67,10 @@ public class OllamaInferenceService : IInferenceService
 		return result;
 	}
 
+	// Ollama is unauthenticated, so any caller-supplied API key is intentionally ignored.
+	public Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default)
+		=> CheckHealthAsync(request.Endpoint, request.ProviderType, ct);
+
 	public async Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 	{
 		endpoint = NormalizeEndpoint(endpoint ?? await ResolveEndpointAsync(ct));

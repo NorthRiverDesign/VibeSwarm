@@ -689,6 +689,7 @@ public sealed class JobSummaryGeneratorTests
 		public VibeSwarm.Shared.Inference.InferenceRequest? LastRequest { get; private set; }
 		public VibeSwarm.Shared.Inference.InferenceResponse Response { get; set; } = new();
 
+		public Task<VibeSwarm.Shared.Inference.InferenceHealthResult> ProbeAsync(VibeSwarm.Shared.Inference.InferenceProbeRequest request, CancellationToken ct = default) => throw new NotSupportedException();
 		public Task<VibeSwarm.Shared.Inference.InferenceHealthResult> CheckHealthAsync(string? endpoint = null, VibeSwarm.Shared.Inference.InferenceProviderType? providerType = null, CancellationToken ct = default) => throw new NotSupportedException();
 		public Task<List<VibeSwarm.Shared.Inference.DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, VibeSwarm.Shared.Inference.InferenceProviderType? providerType = null, CancellationToken ct = default) => throw new NotSupportedException();
 

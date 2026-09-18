@@ -28,6 +28,29 @@ public class HttpInferenceService : IInferenceService
 		return await _http.GetJsonAsync(url, new InferenceHealthResult(), ct);
 	}
 
+	public async Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default)
+	{
+		try
+		{
+			var response = await _http.PostAsJsonAsync("/api/inference/probe", request, ct);
+			if (!response.IsSuccessStatusCode)
+			{
+				return new InferenceHealthResult
+				{
+					IsAvailable = false,
+					Error = $"Probe failed ({(int)response.StatusCode} {response.ReasonPhrase})."
+				};
+			}
+
+			return await response.Content.ReadFromJsonAsync<InferenceHealthResult>(cancellationToken: ct)
+				?? new InferenceHealthResult { IsAvailable = false, Error = "Empty response from probe." };
+		}
+		catch (Exception ex)
+		{
+			return new InferenceHealthResult { IsAvailable = false, Error = ex.Message };
+		}
+	}
+
 	public async Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 	{
 		var health = await CheckHealthAsync(endpoint, providerType, ct);

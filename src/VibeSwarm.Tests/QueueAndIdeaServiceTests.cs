@@ -4189,6 +4189,9 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public InferenceResponse Response { get; set; } = new() { Success = true };
 		public InferenceRequest? LastRequest { get; private set; }
 
+		public Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default)
+			=> CheckHealthAsync(request.Endpoint, request.ProviderType, ct);
+
 		public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 		{
 			return Task.FromResult(new InferenceHealthResult
