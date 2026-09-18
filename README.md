@@ -139,6 +139,9 @@ You can also set these as system environment variables instead of using `.env`.
 
 **SQLite (default)** — zero configuration. The file `vibeswarm.db` is created next to the app.
 
+Migrations run automatically on startup and build the schema from empty, so a new install
+works on either provider with no manual setup.
+
 **MySQL:**
 
 ```bash
@@ -157,6 +160,39 @@ config file outside the repo, and takes effect after restart.
 ```bash
 cp vibeswarm.db vibeswarm.db.backup
 ```
+
+### Migrations
+
+EF Core bakes provider-specific SQL into a migration when it is generated — SQLite emits
+`TEXT` columns where MySQL needs `char(36)` — so one migration set cannot serve both
+providers. VibeSwarm therefore keeps a set per provider:
+
+```
+src/VibeSwarm.Web/Data/Migrations/
+├── Sqlite/     # owned by SqliteVibeSwarmDbContext
+└── MySql/      # owned by MySqlVibeSwarmDbContext
+```
+
+`VibeSwarmDbContext` itself owns no migrations. Everything that applies them goes through
+`DataServiceExtensions.CreateMigrationContext`, which picks the set matching the configured
+provider.
+
+**Every schema change must be generated for both providers:**
+
+```bash
+dotnet ef migrations add <Name> --project src/VibeSwarm.Web \
+  --context SqliteVibeSwarmDbContext --output-dir Data/Migrations/Sqlite
+dotnet ef migrations add <Name> --project src/VibeSwarm.Web \
+  --context MySqlVibeSwarmDbContext  --output-dir Data/Migrations/MySql
+```
+
+`MigrationSetsStayInStepTests` fails the build if one set drifts from the other, so a
+forgotten provider is caught by `dotnet test` rather than by a failed deployment.
+
+On MySQL, string columns with a `MaxLength` of 1000 or more are mapped to `LONGTEXT`.
+InnoDB caps a row at 65,535 bytes and utf8mb4 costs 4 bytes per character, so without this
+the `AppSettings`, `Jobs` and `CriticalErrorLogs` tables exceed the limit and cannot be
+created. `MaxLength` is still enforced by EF validation.
 
 ---
 

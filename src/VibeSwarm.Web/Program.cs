@@ -265,8 +265,13 @@ var app = builder.Build();
 // Apply pending migrations on startup and initialize admin user
 using (var scope = app.Services.CreateScope())
 {
-    var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
-    await dbContext.Database.MigrateAsync();
+    // Migrations belong to the provider-specific context, so they must be applied through
+    // one of those rather than the injected VibeSwarmDbContext (which owns no migrations).
+    await using (var migrationContext = VibeSwarm.Shared.Data.DataServiceExtensions
+        .CreateMigrationContext(connectionString, databaseProvider))
+    {
+        await migrationContext.Database.MigrateAsync();
+    }
 
     // Initialize admin user and roles
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();

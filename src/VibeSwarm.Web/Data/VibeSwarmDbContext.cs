@@ -14,6 +14,17 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	{
 	}
 
+	/// <summary>
+	/// For the provider-specific subclasses that own the migrations
+	/// (see Data/Migrations/ProviderMigrationContexts.cs). EF requires each context type
+	/// to receive its own closed <see cref="DbContextOptions{TContext}"/>, which the
+	/// public constructor above cannot accept.
+	/// </summary>
+	protected VibeSwarmDbContext(DbContextOptions options)
+	: base(options)
+	{
+	}
+
 	public DbSet<Provider> Providers { get; set; }
 	public DbSet<ProviderModel> ProviderModels { get; set; }
 	public DbSet<ProviderUsageRecord> ProviderUsageRecords { get; set; }
@@ -521,5 +532,63 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasIndex(e => e.ProjectId);
 			entity.HasIndex(e => e.Status);
 		});
+
+		ApplyMySqlLongTextMapping(modelBuilder);
+	}
+
+	/// <summary>
+	/// Maps long string columns to LONGTEXT on MySQL/MariaDB.
+	/// </summary>
+	/// <remarks>
+	/// InnoDB caps a row at 65,535 bytes and utf8mb4 counts 4 bytes per character, so a
+	/// single varchar(12000) consumes 48 KB of that budget. Without this, three tables
+	/// exceed the limit outright and CREATE TABLE fails: AppSettings (~149 KB, three
+	/// varchar(12000) prompt templates), Jobs (~111 KB) and CriticalErrorLogs (~66 KB).
+	///
+	/// LONGTEXT is stored off-page, so it costs only a pointer against the row limit.
+	/// The MaxLength values are still enforced by EF's validation, so nothing is lost by
+	/// widening the storage type.
+	///
+	/// Key, foreign key and indexed columns are deliberately skipped: MySQL cannot index a
+	/// TEXT column without specifying a prefix length.
+	/// </remarks>
+	private void ApplyMySqlLongTextMapping(ModelBuilder modelBuilder)
+	{
+		const int LongTextThreshold = 1000;
+
+		if (Database.ProviderName != "Pomelo.EntityFrameworkCore.MySql")
+		{
+			return;
+		}
+
+		foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+		{
+			var indexedColumns = new HashSet<string>(StringComparer.Ordinal);
+
+			foreach (var index in entityType.GetIndexes())
+			{
+				indexedColumns.UnionWith(index.Properties.Select(property => property.Name));
+			}
+			foreach (var key in entityType.GetKeys())
+			{
+				indexedColumns.UnionWith(key.Properties.Select(property => property.Name));
+			}
+			foreach (var foreignKey in entityType.GetForeignKeys())
+			{
+				indexedColumns.UnionWith(foreignKey.Properties.Select(property => property.Name));
+			}
+
+			foreach (var property in entityType.GetProperties())
+			{
+				if (property.ClrType != typeof(string)
+					|| indexedColumns.Contains(property.Name)
+					|| property.GetMaxLength() is not >= LongTextThreshold)
+				{
+					continue;
+				}
+
+				property.SetColumnType("longtext");
+			}
+		}
 	}
 }

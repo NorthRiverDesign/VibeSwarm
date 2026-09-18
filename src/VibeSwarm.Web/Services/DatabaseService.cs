@@ -501,10 +501,11 @@ public class DatabaseService : IDatabaseService
 			throw new InvalidOperationException("Choose a different target database before starting a migration.");
 		}
 
-		var targetOptions = new DbContextOptionsBuilder<VibeSwarmDbContext>();
-		DataServiceExtensions.ConfigureDbContext(targetOptions, targetConnectionString, targetProvider);
-
-		await using var targetDb = new VibeSwarmDbContext(targetOptions.Options);
+		// Built through the migration factory so the target gets the schema for its own
+		// provider; VibeSwarmDbContext owns no migrations and would create nothing.
+		await using var targetDb = DataServiceExtensions.CreateMigrationContext(
+			targetConnectionString,
+			targetProvider);
 		await targetDb.Database.MigrateAsync(ct);
 
 		if (await HasExistingApplicationDataAsync(targetDb, ct))
