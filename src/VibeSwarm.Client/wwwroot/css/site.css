@@ -86,13 +86,6 @@
 	--chip-ai-fg: #c9b8f5;
 	--chip-ai-bg: rgba(164, 137, 245, 0.08);
 	--chip-ai-border: rgba(164, 137, 245, 0.35);
-
-	/* Back-compat aliases for older code (keep until migration sweep) */
-	--vs-accent-blue: var(--bs-primary);
-	--vs-accent-green: var(--bs-success);
-	--vs-accent-orange: var(--bs-warning);
-	--vs-accent-red: var(--bs-danger);
-	--vs-accent-purple: #a78bfa;
 }
 
 /* Dark theme (default when no data-theme is set, or explicitly dark) */
@@ -312,7 +305,7 @@ textarea.form-control {
 	display: inline-block;
 	width: 8px;
 	height: 8px;
-	background: var(--vs-accent-green);
+	background: var(--bs-success);
 	border-radius: 50%;
 	animation: pulse-live 1.5s ease-in-out infinite;
 }
@@ -330,16 +323,16 @@ textarea.form-control {
 
 /* Alert accent borders */
 .alert-danger {
-	border-left: 3px solid var(--vs-accent-red);
+	border-left: 3px solid var(--bs-danger);
 }
 .alert-success {
-	border-left: 3px solid var(--vs-accent-green);
+	border-left: 3px solid var(--bs-success);
 }
 .alert-warning {
-	border-left: 3px solid var(--vs-accent-orange);
+	border-left: 3px solid var(--bs-warning);
 }
 .alert-info {
-	border-left: 3px solid var(--vs-accent-blue);
+	border-left: 3px solid var(--bs-primary);
 }
 
 /* ============================================
@@ -626,7 +619,7 @@ details[open] > summary .details-chevron {
 	color: #8b949e;
 }
 .output-error .output-text {
-	color: var(--vs-accent-red);
+	color: var(--bs-danger);
 }
 .diff-context {
 	color: #8b949e;
@@ -683,7 +676,7 @@ details[open] > summary .details-chevron {
 	border-radius: 1.25rem;
 }
 .chat-message-user .chat-bubble {
-	background: var(--vs-accent-blue);
+	background: var(--bs-primary);
 	border-bottom-right-radius: 0.25rem;
 }
 .chat-message-assistant .chat-bubble {
@@ -773,7 +766,7 @@ details[open] > summary .details-chevron {
 	transition: var(--vs-transition);
 }
 .toggle-switch input:checked + .toggle-slider {
-	background: var(--vs-accent-green);
+	background: var(--bs-success);
 }
 .toggle-switch input:checked + .toggle-slider::before {
 	transform: translateX(20px);
@@ -801,8 +794,8 @@ details[open] > summary .details-chevron {
 }
 .project-filter-item.active {
 	background: rgba(88, 166, 255, 0.1);
-	border-left-color: var(--vs-accent-blue);
-	color: var(--vs-accent-blue);
+	border-left-color: var(--bs-primary);
+	color: var(--bs-primary);
 }
 
 .job-list-item {
@@ -814,7 +807,7 @@ details[open] > summary .details-chevron {
 }
 .job-list-item.job-selected {
 	background: rgba(88, 166, 255, 0.1);
-	border-left-color: var(--vs-accent-blue);
+	border-left-color: var(--bs-primary);
 }
 
 .nav-tabs-card .nav-link {
@@ -1034,10 +1027,6 @@ body.vs-modal-open .app-main {
 	.app-header {
 		padding-left: calc(0.75rem + var(--vs-safe-area-left));
 		padding-right: calc(0.75rem + var(--vs-safe-area-right));
-	}
-
-	.brand-text {
-		max-width: 8rem;
 	}
 
 	.main-content {
@@ -1487,43 +1476,6 @@ body.vs-modal-open .app-main {
 	flex: none;
 }
 
-/* ── Indeterminate progress bar (augments Bootstrap's .progress with a built-in animation) ── */
-.progress-indeterminate .progress-bar {
-	width: 35%;
-	animation: vs-indeterminate 1.8s ease-in-out infinite;
-}
-@keyframes vs-indeterminate {
-	0% { margin-left: -35%; }
-	100% { margin-left: 100%; }
-}
-.tl-step.done .tl-dot {
-	background: rgba(var(--bs-success-rgb), 0.15);
-	color: var(--bs-success);
-	border-color: rgba(var(--bs-success-rgb), 0.35);
-}
-.tl-step.current .tl-dot {
-	background: rgba(var(--bs-primary-rgb), 0.18);
-	color: var(--bs-primary);
-	border-color: rgba(var(--bs-primary-rgb), 0.35);
-	animation: pulse-live 1.5s ease-in-out infinite;
-}
-.tl-step.failed .tl-dot {
-	background: rgba(var(--bs-danger-rgb), 0.15);
-	color: var(--bs-danger);
-	border-color: rgba(var(--bs-danger-rgb), 0.35);
-}
-.tl-step.done .tl-name,
-.tl-step.current .tl-name {
-	color: var(--fg-0);
-}
-.tl-conn.done {
-	background: rgba(var(--bs-success-rgb), 0.4);
-}
-.vs-auto-grid.sm { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
-.vs-auto-grid.lg { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-.change-st.m { color: var(--bs-warning); }
-.change-st.a { color: var(--bs-success); }
-.change-st.d { color: var(--bs-danger); }
 
 /* ── Theme toggle (compact sun/moon segmented control — specialized control) ── */
 .theme-toggle {
