@@ -1,53 +1,40 @@
 @using VibeSwarm.Shared.Validation
 
 <div class="mb-3">
-	<label class="form-label d-flex align-items-center gap-2 mb-2">
-		<i class="bi bi-journal-richtext"></i>
-		<span>Instructions &amp; Memory</span>
+	<label for="modal-promptContext" class="form-label">
+		Prompt context <span class="text-body-secondary fw-normal">(optional)</span>
 	</label>
+	<InputTextArea id="modal-promptContext" @bind-Value="Project.PromptContext" class="form-control" rows="4"
+				   maxlength="@ValidationLimits.ProjectPromptContextMaxLength"
+				   placeholder="Coding conventions, framework preferences, anything every job should know." />
+	<ValidationMessage For="@(() => Project.PromptContext)" class="text-danger small" />
+	<div class="form-text d-flex flex-wrap justify-content-between gap-2">
+		<span>Included in every job prompt for this project.</span>
+		<span>@GetCharacterCount(Project.PromptContext, ValidationLimits.ProjectPromptContextMaxLength)</span>
+	</div>
+</div>
 
-	<div class="border rounded p-3 bg-body-tertiary">
-		<div class="mb-3">
-			<label for="modal-promptContext" class="form-label">
-				<i class="bi bi-chat-left-text me-1"></i>Prompt Context
-				<span class="text-body-secondary fw-normal">(optional)</span>
-			</label>
-			<InputTextArea id="modal-promptContext" @bind-Value="Project.PromptContext" class="form-control"
-				rows="5"
-				maxlength="@ValidationLimits.ProjectPromptContextMaxLength"
-				placeholder="Optional instructions injected into every job prompt for this project (e.g., coding conventions, framework preferences)" />
-			<ValidationMessage For="@(() => Project.PromptContext)" class="text-danger small" />
-			<div class="form-text">
-				These instructions are automatically included in every job prompt for this project to guide AI agents.
-				<span class="ms-2">@GetCharacterCount(Project.PromptContext, ValidationLimits.ProjectPromptContextMaxLength)</span>
-			</div>
-		</div>
+<div>
+	<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+		<label for="modal-projectMemory" class="form-label mb-0">
+			Project memory <span class="text-body-secondary fw-normal">(optional)</span>
+		</label>
 
-		<div>
-			<div class="d-flex flex-column flex-sm-row align-items-sm-center justify-content-sm-between gap-2 mb-2">
-				<label for="modal-projectMemory" class="form-label mb-0">
-					<i class="bi bi-journal-text me-1"></i>Project Memory
-					<span class="text-body-secondary fw-normal">(optional)</span>
-				</label>
+		@if (HasProjectMemory)
+		{
+			<ActionButton Icon="trash" Text="Clear" Title="Clear project memory"
+						  Size="ActionButton.ButtonSize.Small" Style="ActionButton.ButtonStyle.Danger"
+						  OnClick="ShowClearProjectMemoryConfirmation" />
+		}
+	</div>
 
-				@if (HasProjectMemory)
-				{
-					<ActionButton Icon="trash" Text="Clear" Title="Clear project memory"
-								  Size="ActionButton.ButtonSize.Small" Style="ActionButton.ButtonStyle.Danger"
-								  OnClick="ShowClearProjectMemoryConfirmation" />
-				}
-			</div>
-
-			<InputTextArea id="modal-projectMemory" @bind-Value="Project.Memory" class="form-control"
-				rows="6"
-				maxlength="@ValidationLimits.ProjectMemoryMaxLength"
-				placeholder="Persistent notes that help fresh agent sessions avoid repeating past mistakes, remember workflows, and keep important project-specific context." />
-			<ValidationMessage For="@(() => Project.Memory)" class="text-danger small" />
-			<div class="form-text">
-				VibeSwarm exposes this as persistent memory for every job on this project. Agents are instructed to read it first and update it whenever they learn durable context or correct a mistake.
-				<span class="ms-2">@GetCharacterCount(Project.Memory, ValidationLimits.ProjectMemoryMaxLength)</span>
-			</div>
-		</div>
+	<InputTextArea id="modal-projectMemory" @bind-Value="Project.Memory" class="form-control" rows="5"
+				   maxlength="@ValidationLimits.ProjectMemoryMaxLength"
+				   placeholder="Durable notes that keep fresh agent sessions from repeating past mistakes." />
+	<ValidationMessage For="@(() => Project.Memory)" class="text-danger small" />
+	<div class="form-text d-flex flex-wrap justify-content-between gap-2">
+		<span>Agents read this first and update it when they learn something durable.</span>
+		<span>@GetCharacterCount(Project.Memory, ValidationLimits.ProjectMemoryMaxLength)</span>
 	</div>
 </div>
 

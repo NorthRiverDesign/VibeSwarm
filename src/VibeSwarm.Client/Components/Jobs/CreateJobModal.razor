@@ -8,14 +8,13 @@
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="IsVisibleChanged" Title="Create Job" Icon="plus-circle"
 Size="ModalDialog.ModalSize.Large" OnClose="Close">
 <ChildContent>
-<EditForm id="@_formId" Model="@FormModel" OnValidSubmit="HandleSubmit">
+<EditForm id="@_formId" Model="@FormModel" OnValidSubmit="HandleSubmit" OnInvalidSubmit="HandleInvalidSubmit">
 <DataAnnotationsValidator />
 <ValidationSummary class="text-danger mb-3" />
 
-<div class="border rounded p-3 mb-3 bg-body-tertiary">
-<div class="d-flex flex-column flex-lg-row align-items-lg-end gap-3">
-<div class="flex-grow-1">
-<label for="jobTemplate" class="form-label">Template Library</label>
+<div class="mb-4">
+<label for="jobTemplate" class="form-label">Template Library <span class="text-body-secondary fw-normal">(optional)</span></label>
+<div class="input-group">
 <InputSelect TValue="Guid?" id="jobTemplate" @bind-Value="_selectedTemplateId" @bind-Value:after="HandleTemplateSelectionChanged" class="form-select" disabled="@_isApplyingTemplate">
 <option value="">Start from scratch...</option>
 @foreach (var template in TemplateLibrary)
@@ -23,29 +22,25 @@ Size="ModalDialog.ModalSize.Large" OnClose="Close">
 <option value="@template.Id">@template.Name</option>
 }
 </InputSelect>
-<div class="form-text">Apply a reusable prompt and settings, then customize anything before creating the job.</div>
-</div>
-<div class="d-flex flex-wrap gap-2">
-<button type="button" class="btn btn-secondary" @onclick="RefreshTemplatesAsync" disabled="@(_isApplyingTemplate || _isSavingTemplate)">
-<i class="bi bi-arrow-clockwise me-1"></i>Refresh
+<button type="button" class="btn btn-secondary" @onclick="RefreshTemplatesAsync"
+disabled="@(_isApplyingTemplate || _isSavingTemplate)" title="Refresh templates" aria-label="Refresh templates">
+<i class="bi bi-arrow-clockwise"></i>
 </button>
-<button type="button" class="btn btn-primary" @onclick="SaveAsTemplateAsync" disabled="@(_isApplyingTemplate || _isSavingTemplate)">
+<button type="button" class="btn btn-secondary" @onclick="SaveAsTemplateAsync"
+disabled="@(_isApplyingTemplate || _isSavingTemplate)" title="Save as Template" aria-label="Save as Template">
 @if (_isSavingTemplate)
 {
-<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-<span>Saving...</span>
+<span class="spinner-border spinner-border-sm" role="status"></span>
 }
 else
 {
-<i class="bi bi-bookmark-plus me-1"></i>
-<span>Save as Template</span>
+<i class="bi bi-bookmark-plus"></i>
 }
 </button>
 </div>
-</div>
 @if (!string.IsNullOrWhiteSpace(_templateStatusMessage))
 {
-<div class="form-text mt-2">@_templateStatusMessage</div>
+<div class="form-text">@_templateStatusMessage</div>
 }
 </div>
 
@@ -156,7 +151,14 @@ No enabled providers. <a href="/providers">Configure one</a> first.
 </div>
 }
 </div>
+}
 
+<div class="accordion mb-3">
+@if (SelectedAgent == null)
+{
+<AccordionSection Title="Model and reasoning" Icon="cpu"
+Summary="Defaults come from the project and provider"
+Badge="@ModelSummary" @bind-IsOpen="_openModelSection">
 <div class="mb-3">
 <label for="model" class="form-label">Model</label>
 <InputSelect id="model" @bind-Value="SelectedModelId" class="form-select"
@@ -202,8 +204,12 @@ else
 }
 </div>
 </div>
+</AccordionSection>
 }
 
+<AccordionSection Title="Branch and delivery" Icon="git"
+Summary="Where the job works and where the changes land"
+Badge="@DeliverySummary" @bind-IsOpen="_openDeliverySection">
 @if (ShowBranchSelector && Branches.Any())
 {
 <div class="mb-3">
@@ -253,18 +259,13 @@ else
 </div>
 }
 
+</AccordionSection>
+
 @if (SelectedAgent == null)
 {
-<div class="mb-3">
-<button type="button" class="btn btn-link p-0 text-decoration-none" @onclick="ToggleAdvancedOptions">
-<i class="bi @(ShowAdvancedOptions ? "bi-chevron-down" : "bi-chevron-right") me-1"></i>
-Advanced Options
-</button>
-</div>
-
-@if (ShowAdvancedOptions)
-{
-<div class="border rounded p-3 mb-3 bg-body-tertiary">
+<AccordionSection Title="Cycles" Icon="arrow-repeat"
+Summary="Run the agent more than once"
+Badge="@CycleSummary" @bind-IsOpen="ShowAdvancedOptions">
 <div class="mb-3">
 <label for="cycleMode" class="form-label">Cycle Mode</label>
 <InputSelect id="cycleMode" @bind-Value="FormModel.CycleMode" class="form-select">
@@ -322,9 +323,9 @@ rows="4" placeholder="Instructions for reviewing progress between cycles..." />
 <div class="form-text">Additional context provided at the start of each subsequent cycle.</div>
 </div>
 }
+</AccordionSection>
+}
 </div>
-}
-}
 
 @if (!string.IsNullOrEmpty(ErrorMessage))
 {
@@ -399,6 +400,8 @@ public EventCallback OnTemplateLibraryChanged { get; set; }
 
 private readonly string _formId = $"create-job-form-{Guid.NewGuid():N}";
 private bool ShowAdvancedOptions { get; set; }
+private bool _openModelSection;
+private bool _openDeliverySection;
 private bool _previousIsVisible;
 private CreateJobFormModel FormModel { get; set; } = new();
 private Guid? _selectedTemplateId;
@@ -858,4 +861,49 @@ private static string BuildTemplateName(string prompt)
 	var firstLine = trimmed.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? trimmed;
 	return firstLine.Length <= maxLength ? firstLine : firstLine[..maxLength].TrimEnd();
 }
+
+	private string ModelSummary
+	{
+		get
+		{
+			var model = string.IsNullOrWhiteSpace(SelectedModelId)
+				? null
+				: AvailableModels.FirstOrDefault(m => m.ModelId == SelectedModelId)?.DisplayName ?? SelectedModelId;
+			var reasoning = string.IsNullOrWhiteSpace(FormModel.ReasoningEffort) ? null : FormModel.ReasoningEffort;
+
+			var parts = new[] { model, reasoning }.Where(part => !string.IsNullOrWhiteSpace(part)).ToList();
+			return parts.Count == 0 ? "Default" : string.Join(" · ", parts);
+		}
+	}
+
+	private string DeliverySummary => FormModel.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest
+		? $"PR → {(string.IsNullOrWhiteSpace(FormModel.TargetBranch) ? "?" : FormModel.TargetBranch)}"
+		: string.IsNullOrWhiteSpace(FormModel.Branch) ? "Commit" : $"Commit → {FormModel.Branch}";
+
+	private string? CycleSummary => FormModel.CycleMode switch
+	{
+		CycleMode.FixedCount => $"{FormModel.MaxCycles} cycles",
+		CycleMode.Autonomous => $"Autonomous ≤ {FormModel.MaxCycles}",
+		_ => null
+	};
+
+
+	/// <summary>
+	/// Open whichever collapsed section holds the field that failed validation, so the
+	/// message in the summary has something visible to point at.
+	/// </summary>
+	private void HandleInvalidSubmit()
+	{
+		if (FormModel.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest &&
+			string.IsNullOrWhiteSpace(FormModel.TargetBranch))
+		{
+			_openDeliverySection = true;
+		}
+
+		if (FormModel.CycleMode != CycleMode.SingleCycle && (FormModel.MaxCycles < 1 || FormModel.MaxCycles > 100))
+		{
+			ShowAdvancedOptions = true;
+		}
+	}
+
 }

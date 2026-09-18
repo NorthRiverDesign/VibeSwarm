@@ -1,0 +1,430 @@
+@* The only section a new project strictly needs: where the code lives and what to call it.
+   The working path is inspected on the server as it changes so VibeSwarm can answer for
+   itself whether the folder is already a git repository, which remote it points at, and
+   which stack it uses — instead of asking the user. *@
+@using VibeSwarm.Shared.Services
+@using VibeSwarm.Shared.Validation
+@inject IFileSystemService FileSystemService
+@implements IDisposable
+
+@if (!IsEdit)
+{
+	<div class="mb-4">
+		<label class="form-label fw-semibold">Start from</label>
+		<div class="d-flex flex-column flex-sm-row gap-2" role="group" aria-label="Project source">
+			@foreach (var option in SourceOptions)
+			{
+				var id = $"project-source-{option.Mode}";
+				<div class="flex-fill">
+					<input type="radio" class="btn-check" name="projectSourceMode" id="@id"
+						   checked="@(FormModel.CreationMode == option.Mode)"
+						   @onchange="() => SelectSourceMode(option.Mode)" />
+					<label class="btn btn-outline-secondary w-100 d-flex align-items-center justify-content-center gap-2 py-2"
+						   for="@id">
+						<i class="bi bi-@option.Icon"></i>
+						<span>@option.Label</span>
+					</label>
+				</div>
+			}
+		</div>
+		<div class="form-text mt-2">@CurrentSourceOption.Help</div>
+	</div>
+}
+
+@if (!IsEdit && FormModel.CreationMode != ProjectCreationMode.ExistingDirectory)
+{
+	<div class="mb-4">
+		<label for="modal-githubRepo" class="form-label fw-semibold">
+			@(FormModel.CreationMode == ProjectCreationMode.CloneGitHubRepository ? "Repository to clone" : "New repository name")
+		</label>
+		<div class="input-group">
+			<span class="input-group-text d-none d-sm-inline-flex">github.com/</span>
+			<input id="modal-githubRepo" type="text" class="form-control"
+				   value="@FormModel.GitHubRepositoryInput" @oninput="HandleGitHubRepositoryChanged"
+				   placeholder="@(FormModel.CreationMode == ProjectCreationMode.CloneGitHubRepository ? "owner/repo" : "my-project")"
+				   maxlength="@ValidationLimits.ProjectGitHubRepositoryMaxLength" />
+			@if (FormModel.CreationMode == ProjectCreationMode.CloneGitHubRepository)
+			{
+				<button id="modal-githubRepoBrowse" type="button" class="btn btn-secondary"
+						@onclick="BrowseGitHubRepositories" title="Browse your repositories">
+					<i class="bi bi-search"></i><span class="d-none d-sm-inline ms-1">Browse</span>
+				</button>
+			}
+		</div>
+		<ValidationMessage For="@(() => FormModel.GitHubRepositoryInput)" class="text-danger small mt-1" />
+		<div class="form-text">
+			@if (FormModel.CreationMode == ProjectCreationMode.CloneGitHubRepository)
+			{
+				<span>The name and working folder are filled in from the repository.</span>
+			}
+			else
+			{
+				<span>Use <code>repo</code> for your own account, or <code>owner/repo</code> for an organization.</span>
+			}
+		</div>
+	</div>
+}
+
+<div class="mb-4">
+	<label for="modal-workingPath" class="form-label fw-semibold">Working folder</label>
+	<div class="input-group">
+		<input id="modal-workingPath" type="text" class="form-control font-monospace"
+			   value="@FormModel.WorkingPath" @oninput="HandleWorkingPathInput"
+			   placeholder="@WorkingPathPlaceholder" maxlength="@ValidationLimits.ProjectWorkingPathMaxLength" />
+		<button type="button" class="btn btn-secondary" @onclick="HandleBrowseWorkingPath"
+				title="Browse folders" aria-label="Browse folders">
+			<i class="bi bi-folder2-open"></i>
+		</button>
+	</div>
+	<ValidationMessage For="@(() => FormModel.WorkingPath)" class="text-danger small" />
+
+	@* Live detection result — replaces static help text once VibeSwarm knows what is there. *@
+	@if (_isInspecting)
+	{
+		<div class="form-text d-flex align-items-center gap-2">
+			<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+			<span>Checking folder…</span>
+		</div>
+	}
+	else if (_inspection is null || string.IsNullOrWhiteSpace(FormModel.WorkingPath))
+	{
+		<div class="form-text">@WorkingPathHelpText</div>
+	}
+	else if (_alreadyUsedByProject is not null)
+	{
+		<div class="alert alert-warning d-flex gap-2 py-2 px-3 mt-2 mb-0 small" role="status">
+			<i class="bi bi-exclamation-triangle flex-shrink-0 mt-1"></i>
+			<div class="min-width-0">
+				<strong>@_alreadyUsedByProject</strong> already uses this folder. Pick another one to avoid two
+				projects writing to the same working tree.
+			</div>
+		</div>
+	}
+	else if (_inspection.IsGitRepository)
+	{
+		<div class="alert alert-success d-flex gap-2 py-2 px-3 mt-2 mb-0 small" role="status">
+			<i class="bi bi-git flex-shrink-0 mt-1"></i>
+			<div class="min-width-0">
+				<div class="fw-semibold">Git repository detected</div>
+				<div class="d-flex flex-wrap row-gap-1 column-gap-3 mt-1 text-body-secondary">
+					@if (!string.IsNullOrWhiteSpace(_inspection.GitHubRepository))
+					{
+						<span class="text-truncate"><i class="bi bi-github me-1"></i>@_inspection.GitHubRepository</span>
+					}
+					else if (!string.IsNullOrWhiteSpace(_inspection.RemoteUrl))
+					{
+						<span class="text-truncate"><i class="bi bi-hdd-network me-1"></i>@_inspection.RemoteUrl</span>
+					}
+					@if (!string.IsNullOrWhiteSpace(_inspection.CurrentBranch))
+					{
+						<span><i class="bi bi-diagram-2 me-1"></i>@_inspection.CurrentBranch</span>
+					}
+					@if (!string.IsNullOrWhiteSpace(_inspection.DetectedStack))
+					{
+						<span><i class="bi bi-box-seam me-1"></i>@_inspection.DetectedStack</span>
+					}
+				</div>
+			</div>
+		</div>
+	}
+	else if (_inspection.Exists)
+	{
+		<div class="alert alert-info d-flex gap-2 py-2 px-3 mt-2 mb-0 small" role="status">
+			<i class="bi bi-folder2-open flex-shrink-0 mt-1"></i>
+			<div class="min-width-0">
+				@if (_inspection.IsEmpty)
+				{
+					<span>Empty folder — VibeSwarm will work here directly.</span>
+				}
+				else
+				{
+					<span>Existing folder, not under git.</span>
+					@if (!string.IsNullOrWhiteSpace(_inspection.DetectedStack))
+					{
+						<span class="text-body-secondary"> Looks like a @_inspection.DetectedStack project.</span>
+					}
+				}
+			</div>
+		</div>
+	}
+	else
+	{
+		<div class="form-text"><i class="bi bi-plus-circle me-1"></i>This folder will be created.</div>
+	}
+</div>
+
+@* Ready-made candidates: repositories already sitting in the default projects folder
+   that aren't projects yet. One tap fills in the whole form. *@
+@if (ShowSuggestions)
+{
+	<div class="mb-4">
+		<div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+			<label class="form-label fw-semibold mb-0">Repositories found on this host</label>
+			@if (_isScanning)
+			{
+				<span class="spinner-border spinner-border-sm text-secondary" role="status" aria-hidden="true"></span>
+			}
+		</div>
+		<div class="list-group">
+			@foreach (var candidate in _suggestions.Take(_showAllSuggestions ? _suggestions.Count : SuggestionPreviewCount))
+			{
+				<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3"
+						@onclick="() => ApplySuggestionAsync(candidate)">
+					<i class="bi bi-git fs-5 text-body-secondary flex-shrink-0"></i>
+					<span class="d-flex flex-column min-width-0 text-start flex-grow-1">
+						<span class="fw-medium text-truncate">@candidate.SuggestedName</span>
+						<span class="small text-body-secondary text-truncate">
+							@(candidate.GitHubRepository ?? candidate.Path)
+						</span>
+					</span>
+					@if (!string.IsNullOrWhiteSpace(candidate.DetectedStack))
+					{
+						<span class="badge text-bg-secondary flex-shrink-0 d-none d-sm-inline">@candidate.DetectedStack</span>
+					}
+				</button>
+			}
+		</div>
+		@if (_suggestions.Count > SuggestionPreviewCount && !_showAllSuggestions)
+		{
+			<button type="button" class="btn btn-link btn-sm px-0 mt-1"
+					@onclick="() => _showAllSuggestions = true">
+				Show @(_suggestions.Count - SuggestionPreviewCount) more
+			</button>
+		}
+	</div>
+}
+
+<div class="mb-4">
+	<label for="modal-name" class="form-label fw-semibold">Project name</label>
+	<InputText id="modal-name" @bind-Value="FormModel.Name" class="form-control" placeholder="My Project"
+			   maxlength="@ValidationLimits.ProjectNameMaxLength" />
+	<ValidationMessage For="@(() => FormModel.Name)" class="text-danger small" />
+</div>
+
+<div class="mb-2">
+	<label for="modal-description" class="form-label fw-semibold">
+		Description <span class="text-body-secondary fw-normal">(optional)</span>
+	</label>
+	<InputTextArea id="modal-description" @bind-Value="FormModel.Description" class="form-control" rows="2"
+				   placeholder="What is this project for?"
+				   maxlength="@ValidationLimits.ProjectDescriptionMaxLength" />
+	<ValidationMessage For="@(() => FormModel.Description)" class="text-danger small" />
+</div>
+
+@code {
+	private const int SuggestionPreviewCount = 4;
+	private const int InspectDebounceMs = 400;
+
+	[Parameter, EditorRequired]
+	public ProjectModalFormModel FormModel { get; set; } = default!;
+
+	[Parameter, EditorRequired]
+	public ProjectModalState FormState { get; set; } = default!;
+
+	[Parameter]
+	public bool IsEdit { get; set; }
+
+	[Parameter]
+	public string WorkingPathPlaceholder { get; set; } = string.Empty;
+
+	[Parameter]
+	public string WorkingPathHelpText { get; set; } = string.Empty;
+
+	/// <summary>Root folder scanned for ready-made repository candidates.</summary>
+	[Parameter]
+	public string? DefaultProjectsDirectory { get; set; }
+
+	/// <summary>Working paths already claimed by other projects, keyed by path.</summary>
+	[Parameter]
+	public IReadOnlyDictionary<string, string> ExistingProjectPaths { get; set; } =
+		new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+	[Parameter]
+	public EventCallback OnBrowseWorkingPath { get; set; }
+
+	[Parameter]
+	public EventCallback OnBrowseGitHubRepositories { get; set; }
+
+	[Parameter]
+	public EventCallback<string?> OnGitHubRepositoryChanged { get; set; }
+
+	[Parameter]
+	public EventCallback<ProjectCreationMode> OnSourceModeSelected { get; set; }
+
+	/// <summary>Raised whenever a fresh inspection lands, so the modal can pre-fill related settings.</summary>
+	[Parameter]
+	public EventCallback<WorkspaceInspection> OnWorkspaceInspected { get; set; }
+
+	private readonly List<WorkspaceInspection> _suggestions = [];
+	private CancellationTokenSource? _inspectCts;
+	private WorkspaceInspection? _inspection;
+	private string? _lastInspectedPath;
+	private string? _alreadyUsedByProject;
+	private bool _isInspecting;
+	private bool _isScanning;
+	private bool _showAllSuggestions;
+	private bool _hasScanned;
+	private bool _previousIsEdit;
+
+	private sealed record SourceOption(ProjectCreationMode Mode, string Icon, string Label, string Help);
+
+	private static readonly SourceOption[] SourceOptions =
+	[
+		new(ProjectCreationMode.ExistingDirectory, "folder2-open", "Local folder",
+			"Point VibeSwarm at a folder that already exists on this host."),
+		new(ProjectCreationMode.CloneGitHubRepository, "github", "Clone from GitHub",
+			"Clone an existing GitHub repository into a new local folder."),
+		new(ProjectCreationMode.CreateGitHubRepository, "cloud-plus", "New GitHub repo",
+			"Create a repository on GitHub and set this project up around it.")
+	];
+
+	private SourceOption CurrentSourceOption =>
+		SourceOptions.FirstOrDefault(option => option.Mode == FormModel.CreationMode) ?? SourceOptions[0];
+
+	private bool ShowSuggestions =>
+		!IsEdit &&
+		FormModel.CreationMode == ProjectCreationMode.ExistingDirectory &&
+		_suggestions.Count > 0;
+
+	protected override async Task OnParametersSetAsync()
+	{
+		// Re-scan whenever the modal switches between add and edit so suggestions stay current.
+		if (_previousIsEdit != IsEdit)
+		{
+			_previousIsEdit = IsEdit;
+			_hasScanned = false;
+		}
+
+		if (!IsEdit && !_hasScanned && !string.IsNullOrWhiteSpace(DefaultProjectsDirectory))
+		{
+			_hasScanned = true;
+			await ScanForCandidatesAsync();
+		}
+
+		// An externally set path (browser dialog, clone suggestion) still deserves inspection.
+		if (!string.IsNullOrWhiteSpace(FormModel.WorkingPath) && FormModel.WorkingPath != _lastInspectedPath)
+		{
+			ScheduleInspection(FormModel.WorkingPath);
+		}
+	}
+
+	private async Task ScanForCandidatesAsync()
+	{
+		_isScanning = true;
+		try
+		{
+			var scanned = await FileSystemService.ScanWorkspacesAsync(DefaultProjectsDirectory!);
+			_suggestions.Clear();
+			_suggestions.AddRange(scanned.Where(candidate =>
+				candidate.IsGitRepository && !ExistingProjectPaths.ContainsKey(candidate.Path)));
+		}
+		catch
+		{
+			// Suggestions are a convenience; a failed scan simply shows none.
+		}
+		finally
+		{
+			_isScanning = false;
+			StateHasChanged();
+		}
+	}
+
+	private void HandleWorkingPathInput(ChangeEventArgs e)
+	{
+		FormModel.WorkingPath = e.Value?.ToString() ?? string.Empty;
+		ScheduleInspection(FormModel.WorkingPath);
+	}
+
+	private void ScheduleInspection(string path)
+	{
+		_inspectCts?.Cancel();
+		_inspectCts?.Dispose();
+
+		if (string.IsNullOrWhiteSpace(path))
+		{
+			_inspectCts = null;
+			_inspection = null;
+			_alreadyUsedByProject = null;
+			_lastInspectedPath = null;
+			_isInspecting = false;
+			return;
+		}
+
+		_lastInspectedPath = path;
+		_isInspecting = true;
+
+		var cts = new CancellationTokenSource();
+		_inspectCts = cts;
+		_ = InspectAfterDelayAsync(path, cts.Token);
+	}
+
+	private async Task InspectAfterDelayAsync(string path, CancellationToken cancellationToken)
+	{
+		try
+		{
+			await Task.Delay(InspectDebounceMs, cancellationToken);
+			var inspection = await FileSystemService.InspectWorkspaceAsync(path);
+			if (cancellationToken.IsCancellationRequested)
+			{
+				return;
+			}
+
+			_inspection = inspection;
+			_alreadyUsedByProject = ExistingProjectPaths.TryGetValue(inspection.Path, out var owner) &&
+				!string.Equals(owner, FormModel.Name, StringComparison.Ordinal)
+				? owner
+				: null;
+
+			// Editing an existing project keeps whatever the user already configured.
+			if (!IsEdit)
+			{
+				await OnWorkspaceInspected.InvokeAsync(inspection);
+			}
+		}
+		catch (OperationCanceledException)
+		{
+			return;
+		}
+		catch
+		{
+			_inspection = null;
+		}
+		finally
+		{
+			if (!cancellationToken.IsCancellationRequested)
+			{
+				_isInspecting = false;
+				await InvokeAsync(StateHasChanged);
+			}
+		}
+	}
+
+	private async Task ApplySuggestionAsync(WorkspaceInspection candidate)
+	{
+		FormModel.WorkingPath = candidate.Path;
+		_inspection = candidate;
+		_lastInspectedPath = candidate.Path;
+		_alreadyUsedByProject = null;
+		_isInspecting = false;
+		await OnWorkspaceInspected.InvokeAsync(candidate);
+	}
+
+	private Task SelectSourceMode(ProjectCreationMode mode) => OnSourceModeSelected.InvokeAsync(mode);
+
+	private Task BrowseGitHubRepositories() => OnBrowseGitHubRepositories.InvokeAsync();
+
+	private Task HandleBrowseWorkingPath() => OnBrowseWorkingPath.InvokeAsync();
+
+	private async Task HandleGitHubRepositoryChanged(ChangeEventArgs e)
+	{
+		var repositoryInput = e.Value?.ToString();
+		FormModel.GitHubRepositoryInput = repositoryInput ?? string.Empty;
+		await OnGitHubRepositoryChanged.InvokeAsync(repositoryInput);
+	}
+
+	public void Dispose()
+	{
+		_inspectCts?.Cancel();
+		_inspectCts?.Dispose();
+	}
+}

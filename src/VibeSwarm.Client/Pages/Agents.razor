@@ -3,7 +3,7 @@
 @inject IAgentService AgentService
 @inject NotificationService NotificationService
 
-<PageHeader Title="Agents">
+<PageHeader Title="Agents" Subtitle="Reusable presets that pair a purpose with a provider and model.">
 	<Actions>
 		<ActionButton Icon="plus" Text="Add Agent" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
 	</Actions>
@@ -15,8 +15,11 @@
 }
 else if (!_agents.Any())
 {
-	<EmptyState Icon="cpu" Title="No agents yet"
-				Message="Create reusable agent presets like Security Reviewer, Front End Designer, or Deployment Engineer to run consistent work across projects." />
+	<EmptyState Icon="robot" Title="No agents yet"
+				Message="Agents are reusable presets — Security Reviewer, Front End Designer, Deployment Engineer — that keep work consistent across projects.">
+		<ActionButton Icon="plus-lg" Text="New agent" Style="ActionButton.ButtonStyle.Primary"
+					  Size="ActionButton.ButtonSize.Small" OnClick="ShowAddModal" />
+	</EmptyState>
 }
 else
 {

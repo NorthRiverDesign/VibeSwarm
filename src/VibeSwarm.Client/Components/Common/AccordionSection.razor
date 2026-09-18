@@ -1,0 +1,65 @@
+@* Bootstrap accordion item driven by Blazor state rather than data-bs-toggle,
+   so expand/collapse survives re-renders. Wrap one or more in <div class="accordion">. *@
+
+<div class="accordion-item">
+	<h2 class="accordion-header">
+		<button type="button" class="accordion-button @(IsOpen ? string.Empty : "collapsed") gap-3"
+				aria-expanded="@IsOpen" @onclick="Toggle">
+			@if (!string.IsNullOrWhiteSpace(Icon))
+			{
+				<i class="bi bi-@Icon fs-5 text-body-secondary flex-shrink-0"></i>
+			}
+			<span class="d-flex flex-column min-width-0 flex-grow-1">
+				<span class="fw-semibold text-truncate">@Title</span>
+				@if (!string.IsNullOrWhiteSpace(Summary))
+				{
+					<span class="small text-body-secondary text-truncate fw-normal">@Summary</span>
+				}
+			</span>
+			@if (!string.IsNullOrWhiteSpace(Badge))
+			{
+				<span class="badge rounded-pill @BadgeClass flex-shrink-0">@Badge</span>
+			}
+		</button>
+	</h2>
+	<div class="accordion-collapse collapse @(IsOpen ? "show" : string.Empty)">
+		<div class="accordion-body">
+			@ChildContent
+		</div>
+	</div>
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public string Title { get; set; } = string.Empty;
+
+	/// <summary>Bootstrap Icons name without the "bi-" prefix.</summary>
+	[Parameter]
+	public string? Icon { get; set; }
+
+	/// <summary>Short description shown under the title so the section can stay collapsed.</summary>
+	[Parameter]
+	public string? Summary { get; set; }
+
+	/// <summary>Optional pill shown on the right, e.g. the current setting.</summary>
+	[Parameter]
+	public string? Badge { get; set; }
+
+	[Parameter]
+	public string BadgeClass { get; set; } = "text-bg-secondary";
+
+	[Parameter]
+	public bool IsOpen { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsOpenChanged { get; set; }
+
+	[Parameter]
+	public RenderFragment? ChildContent { get; set; }
+
+	private async Task Toggle()
+	{
+		IsOpen = !IsOpen;
+		await IsOpenChanged.InvokeAsync(IsOpen);
+	}
+}

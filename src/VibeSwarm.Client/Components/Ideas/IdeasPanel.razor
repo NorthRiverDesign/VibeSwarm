@@ -47,7 +47,7 @@
 					</div>
 				}
 			</div>
-			<button type="button" class="btn-close btn-close-sm" @onclick="() => _suggestResult = null"
+			<button type="button" class="btn-close" @onclick="() => _suggestResult = null"
 					aria-label="Dismiss suggestion status"></button>
 		</div>
 	}
@@ -75,7 +75,7 @@
 							<i class="bi bi-paperclip"></i>
 						}
 						<span class="text-truncate mw-100">@attachment.item.FileName</span>
-						<button type="button" class="btn-close btn-close-white btn-close-sm" @onclick="() => RemovePendingAttachment(attachmentIndex)" aria-label="Remove"></button>
+						<button type="button" class="btn-close btn-close-white" @onclick="() => RemovePendingAttachment(attachmentIndex)" aria-label="Remove"></button>
 					</span>
 				}
 			</div>

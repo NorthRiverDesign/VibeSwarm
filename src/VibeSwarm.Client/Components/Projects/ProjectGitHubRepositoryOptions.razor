@@ -1,0 +1,77 @@
+@* Extra settings that only apply when VibeSwarm creates the GitHub repository itself.
+   Sensible defaults are pre-selected, so this stays collapsed unless the user cares. *@
+@using VibeSwarm.Shared.Validation
+
+<div class="mb-3">
+	<label for="modal-newGithubRepoDescription" class="form-label">Repository description</label>
+	<InputText id="modal-newGithubRepoDescription" @bind-Value="FormModel.NewGitHubRepositoryDescription"
+			   @bind-Value:event="oninput" class="form-control" placeholder="A brief description of your project"
+			   maxlength="@ValidationLimits.ProjectGitHubDescriptionMaxLength" />
+	<ValidationMessage For="@(() => FormModel.NewGitHubRepositoryDescription)" class="text-danger small mt-1" />
+</div>
+
+<div class="mb-3">
+	<span class="form-label d-block">Visibility</span>
+	<div class="d-flex flex-column flex-sm-row gap-2">
+		<div class="flex-fill">
+			<input type="radio" class="btn-check" name="projectVisibility" id="projectVisibilityPrivate"
+				   checked="@FormModel.NewGitHubRepositoryPrivate"
+				   @onchange="() => FormModel.NewGitHubRepositoryPrivate = true" />
+			<label class="btn btn-outline-secondary w-100 py-2" for="projectVisibilityPrivate">
+				<i class="bi bi-lock me-1"></i>Private
+			</label>
+		</div>
+		<div class="flex-fill">
+			<input type="radio" class="btn-check" name="projectVisibility" id="projectVisibilityPublic"
+				   checked="@(!FormModel.NewGitHubRepositoryPrivate)"
+				   @onchange="() => FormModel.NewGitHubRepositoryPrivate = false" />
+			<label class="btn btn-outline-secondary w-100 py-2" for="projectVisibilityPublic">
+				<i class="bi bi-globe me-1"></i>Public
+			</label>
+		</div>
+	</div>
+</div>
+
+<div class="row g-3 mb-3">
+	<div class="col-12 col-sm-6">
+		<label for="modal-newGithubRepoGitignore" class="form-label">.gitignore template</label>
+		<select id="modal-newGithubRepoGitignore" class="form-select" @bind="FormModel.NewGitHubGitignoreTemplate">
+			<option value="">None</option>
+			<option value="Node">Node</option>
+			<option value="Python">Python</option>
+			<option value="CSharp">C#</option>
+			<option value="Java">Java</option>
+			<option value="Go">Go</option>
+			<option value="Rust">Rust</option>
+			<option value="VisualStudio">Visual Studio</option>
+			<option value="Unity">Unity</option>
+		</select>
+	</div>
+	<div class="col-12 col-sm-6">
+		<label for="modal-newGithubRepoLicense" class="form-label">License</label>
+		<select id="modal-newGithubRepoLicense" class="form-select" @bind="FormModel.NewGitHubLicenseTemplate">
+			<option value="">None</option>
+			<option value="mit">MIT</option>
+			<option value="apache-2.0">Apache 2.0</option>
+			<option value="gpl-3.0">GPL 3.0</option>
+			<option value="bsd-2-clause">BSD 2-Clause</option>
+			<option value="mpl-2.0">MPL 2.0</option>
+			<option value="unlicense">Unlicense</option>
+		</select>
+	</div>
+</div>
+
+<FormCheck @bind-Value="FormModel.NewGitHubInitializeReadme" Text="Initialize with a README"
+		   Id="modal-newGithubRepoReadme" Class="mb-3" />
+
+<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small mb-0">
+	<span class="text-break">
+		<i class="bi bi-lightbulb me-1"></i>Creating a GitHub repository requires
+		<code class="text-break">gh auth login</code> on the host machine.
+	</span>
+</Alert>
+
+@code {
+	[Parameter, EditorRequired]
+	public ProjectModalFormModel FormModel { get; set; } = default!;
+}

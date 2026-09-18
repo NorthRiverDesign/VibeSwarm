@@ -24,16 +24,16 @@
    4. Navigation (hover/active states only)
    5. Interactive Utilities (hover states, transitions)
    6. Console/Terminal Output (specialized colors/fonts)
-   7. Git Diff Viewer (syntax highlighting)
-   8. Chat/Message Bubbles (specialized radii/colors)
-   9. Toggle Switch (custom form control)
-   10. Jobs Inbox (hover/active states, calc)
-   11. Modal System (z-index, safe areas, pointer-events)
-   12. Toast Container (safe area calc)
-   13. Notifications Panel
-   14. Responsive Overrides (media queries)
-   15. PWA Standalone Mode
-   16. Blazor Reconnection Modal
+   7. Chat/Message Bubbles (specialized radii/colors)
+   8. Toggle Switch (custom form control)
+   9. Jobs Inbox (hover/active states)
+   10. Modal System (z-index, safe areas, pointer-events)
+   11. Toast Container (safe area calc)
+   12. Notifications Panel
+   13. Responsive Overrides (media queries)
+   14. PWA Standalone Mode
+   15. Design System — minimal Bootstrap extensions
+   16. Touch Targets
 
 ============================================ */
 
@@ -227,6 +227,12 @@
 	-webkit-box-orient: vertical;
 	overflow: hidden;
 }
+/* Bootstrap has no responsive width utilities; this is the one we need. */
+@media (min-width: 992px) {
+	.w-lg-auto {
+		width: auto !important;
+	}
+}
 .fs-7 {
 	font-size: 0.7rem;
 }
@@ -411,8 +417,8 @@ body:has(.app-layout) {
 }
 
 .mobile-header-icon {
-	width: 2.5rem;
-	height: 2.5rem;
+	width: 44px;
+	height: 44px;
 }
 
 /* Sidebar — markup uses position-fixed d-flex flex-column overflow-y-auto */
@@ -622,32 +628,6 @@ details[open] > summary .details-chevron {
 .output-error .output-text {
 	color: var(--vs-accent-red);
 }
-
-/* ============================================
-   7. GIT DIFF VIEWER (syntax highlighting colors)
-============================================ */
-.diff-container > div {
-	padding: 0.1rem 0.5rem;
-	white-space: pre;
-}
-.diff-header {
-	color: var(--vs-accent-blue);
-}
-.diff-file-header {
-	color: var(--vs-accent-green);
-}
-.diff-hunk-header {
-	color: var(--vs-accent-purple);
-	background: rgba(163, 113, 247, 0.1);
-}
-.diff-added {
-	background: rgba(63, 185, 80, 0.2);
-	color: #7ee787;
-}
-.diff-removed {
-	background: rgba(248, 81, 73, 0.2);
-	color: #ffa198;
-}
 .diff-context {
 	color: #8b949e;
 }
@@ -669,7 +649,7 @@ details[open] > summary .details-chevron {
 }
 
 /* ============================================
-   8. CHAT/MESSAGE BUBBLES (specialized radii/colors)
+   7. CHAT/MESSAGE BUBBLES (specialized radii/colors)
    Markup uses d-flex flex-column + alignment utilities.
 ============================================ */
 .chat-message {
@@ -759,7 +739,7 @@ details[open] > summary .details-chevron {
 }
 
 /* ============================================
-   9. TOGGLE SWITCH (custom form control)
+   8. TOGGLE SWITCH (custom form control)
 ============================================ */
 .toggle-switch {
 	position: relative;
@@ -800,7 +780,7 @@ details[open] > summary .details-chevron {
 }
 
 /* ============================================
-   10. JOBS INBOX (hover/active states, fixed widths)
+   9. JOBS INBOX (hover/active states, fixed widths)
    Markup uses flex-grow-1 d-flex flex-column + Bootstrap utilities.
 ============================================ */
 .jobs-inbox-layout {
@@ -853,13 +833,8 @@ details[open] > summary .details-chevron {
 	opacity: 1;
 }
 
-.branch-info {
-	background: rgba(63, 185, 80, 0.15);
-	color: var(--vs-accent-green);
-}
-
 /* ============================================
-   11. MODAL SYSTEM
+   10. MODAL SYSTEM
    Markup uses position-fixed inset-0 d-flex pe-none pe-auto mw-100 overflow-x-hidden etc.
    CSS only for z-index, safe areas, pointer-events reset, and backdrop-filter.
 ============================================ */
@@ -945,7 +920,7 @@ body.vs-modal-open .app-main {
 }
 
 /* ============================================
-   12. TOAST CONTAINER (safe area calc)
+   11. TOAST CONTAINER (safe area calc)
 ============================================ */
 .toast-container {
 	z-index: 1100;
@@ -971,7 +946,7 @@ body.vs-modal-open .app-main {
 }
 
 /* ============================================
-   13. NOTIFICATIONS PANEL
+   12. NOTIFICATIONS PANEL
 ============================================ */
 .notification-bell-badge {
 	font-size: 0.55rem;
@@ -1043,7 +1018,7 @@ body.vs-modal-open .app-main {
 }
 
 /* ============================================
-   14. RESPONSIVE OVERRIDES
+   13. RESPONSIVE OVERRIDES
 ============================================ */
 
 /* Extra Small (< 576px) */
@@ -1307,7 +1282,7 @@ body.vs-modal-open .app-main {
 }
 
 /* ============================================
-   15. PWA STANDALONE MODE
+   14. PWA STANDALONE MODE
 ============================================ */
 .main-content {
 	overscroll-behavior-x: none;
@@ -1351,21 +1326,14 @@ body.vs-modal-open .app-main {
 
 @media (max-width: 767.98px) {
 	.mobile-icon-button {
-		width: 2.5rem;
-		height: 2.5rem;
+		width: 44px;
+		height: 44px;
 		padding: 0;
 	}
 
 	.jobs-mobile-filters .form-select,
 	.jobs-mobile-filters .btn {
 		min-height: 2.75rem;
-	}
-
-	.project-detail-overflow-menu {
-		min-width: min(16rem, calc(100vw - 1.5rem));
-		max-width: calc(100vw - 1.5rem);
-		max-height: min(24rem, calc(100dvh - 7rem));
-		overflow-y: auto;
 	}
 }
 
@@ -1442,125 +1410,7 @@ body.vs-modal-open .app-main {
 }
 
 /* ============================================
-   17. BLAZOR RECONNECTION MODAL (PWA)
-============================================ */
-.reconnect-toast {
-	position: fixed;
-	top: calc(var(--vs-safe-area-top, 0px) + 1rem);
-	left: 50%;
-	transform: translateX(-50%) translateY(-120%);
-	z-index: 10000;
-	min-width: 200px;
-	max-width: calc(100% - 2rem);
-	background: var(--bs-body-bg);
-	border: 1px solid var(--bs-border-color);
-	border-radius: 1rem;
-	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-	opacity: 0;
-	transition:
-		transform 0.3s ease-out,
-		opacity 0.3s ease-out;
-	overflow: hidden;
-}
-.reconnect-toast-show {
-	transform: translateX(-50%) translateY(0);
-	opacity: 1;
-}
-.reconnect-toast-content {
-	display: flex;
-	align-items: center;
-	gap: 0.75rem;
-	padding: 0.75rem 1rem;
-}
-.reconnect-toast-icon {
-	flex-shrink: 0;
-}
-.reconnect-toast-spinner {
-	width: 20px;
-	height: 20px;
-	border: 2px solid var(--bs-border-color);
-	border-top-color: var(--vs-accent-blue);
-	border-radius: 50%;
-	animation: spin 1s linear infinite;
-}
-.reconnect-toast-text {
-	display: flex;
-	flex-direction: column;
-	gap: 0.125rem;
-}
-.reconnect-toast-title {
-	font-weight: 600;
-	font-size: 0.875rem;
-	color: var(--bs-body-color);
-}
-.reconnect-toast-message {
-	font-size: 0.75rem;
-	color: var(--bs-secondary-color);
-}
-.reconnect-toast-progress {
-	height: 2px;
-	background: var(--vs-accent-blue);
-	width: 100%;
-	transform-origin: left;
-}
-@keyframes reconnect-progress {
-	from {
-		transform: scaleX(1);
-	}
-	to {
-		transform: scaleX(0);
-	}
-}
-
-#components-reconnect-modal {
-	position: fixed;
-	inset: 0;
-	z-index: 9999;
-	display: none;
-	align-items: center;
-	justify-content: center;
-	background: rgba(0, 0, 0, 0.8);
-	backdrop-filter: blur(4px);
-	-webkit-backdrop-filter: blur(4px);
-	padding: var(--vs-safe-area-top) var(--vs-safe-area-right)
-		var(--vs-safe-area-bottom) var(--vs-safe-area-left);
-}
-#components-reconnect-modal.components-reconnect-show {
-	display: flex;
-}
-.reconnect-content {
-	text-align: center;
-	padding: 2rem;
-	background: var(--bs-body-bg);
-	border-radius: var(--bs-border-radius-lg);
-	box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-	max-width: 90%;
-	width: 320px;
-}
-.reconnect-spinner {
-	width: 48px;
-	height: 48px;
-	margin: 0 auto 1rem;
-	border: 3px solid var(--bs-border-color);
-	border-top-color: var(--vs-accent-blue);
-	border-radius: 50%;
-	animation: spin 1s linear infinite;
-}
-.reconnect-message {
-	color: var(--bs-body-color);
-	font-size: 1rem;
-	margin-bottom: 0.5rem;
-}
-.reconnect-submessage {
-	margin-bottom: 1rem;
-}
-#reconnect-reload-btn {
-	min-width: 140px;
-}
-
-
-/* ============================================
-   18. DESIGN SYSTEM — minimal extensions to Bootstrap
+   15. DESIGN SYSTEM — minimal Bootstrap extensions
    Everything below is ONLY for things Bootstrap 5.3 cannot express:
    gradients, specific animations, tiny single-property utilities,
    or layout primitives Bootstrap lacks (auto-fit grid, timeline).
@@ -1581,19 +1431,21 @@ body.vs-modal-open .app-main {
 	color: var(--fg-2);
 }
 
-/* Font-family switches (Bootstrap only has .font-monospace) */
-.font-mono {
-	font-family: var(--bs-font-monospace);
-}
-.font-sans {
-	font-family: var(--bs-font-sans-serif);
-}
-
 /* Dashed border style (Bootstrap only has solid by default) */
 .border-dashed { border-style: dashed !important; }
 
 /* Min-height helper — Bootstrap's min-h-* are percentages only */
 .min-height-0 { min-height: 0; }
+
+/* ── Accordion — Bootstrap's subtle palette is keyed to its stock primary,
+   so point the active state at this app's accent token instead ── */
+.accordion {
+	--bs-accordion-bg: transparent;
+	--bs-accordion-btn-bg: transparent;
+	--bs-accordion-active-bg: rgba(var(--bs-primary-rgb), 0.1);
+	--bs-accordion-active-color: var(--bs-emphasis-color);
+	--bs-accordion-btn-focus-box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
+}
 
 /* ── Brand / project marks (gradients — no Bootstrap equivalent) ── */
 
@@ -1644,32 +1496,6 @@ body.vs-modal-open .app-main {
 	0% { margin-left: -35%; }
 	100% { margin-left: 100%; }
 }
-
-/* ── Job lifecycle timeline (no Bootstrap equivalent) ── */
-.vs-timeline {
-	display: flex;
-	align-items: center;
-	gap: 0;
-	flex-wrap: wrap;
-}
-.tl-step {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	padding: 2px 0;
-}
-.tl-dot {
-	width: 22px;
-	height: 22px;
-	border-radius: 50%;
-	display: inline-grid;
-	place-items: center;
-	font-size: 11px;
-	background: var(--bs-tertiary-bg);
-	color: var(--bs-tertiary-color);
-	border: 1px solid var(--bs-border-color);
-	flex: none;
-}
 .tl-step.done .tl-dot {
 	background: rgba(var(--bs-success-rgb), 0.15);
 	color: var(--bs-success);
@@ -1686,54 +1512,15 @@ body.vs-modal-open .app-main {
 	color: var(--bs-danger);
 	border-color: rgba(var(--bs-danger-rgb), 0.35);
 }
-.tl-txt {
-	display: inline-flex;
-	flex-direction: column;
-	gap: 1px;
-}
-.tl-name {
-	font-size: 0.78125rem;
-	font-weight: 500;
-	color: var(--fg-1);
-	line-height: 1.1;
-}
 .tl-step.done .tl-name,
 .tl-step.current .tl-name {
 	color: var(--fg-0);
 }
-.tl-sub {
-	font-size: 0.6875rem;
-	color: var(--fg-3);
-	line-height: 1.1;
-}
-.tl-conn {
-	flex: 1 1 18px;
-	min-width: 18px;
-	height: 1px;
-	background: var(--bs-border-color);
-	margin: 0 8px;
-}
 .tl-conn.done {
 	background: rgba(var(--bs-success-rgb), 0.4);
 }
-
-/* ── Auto-fit grid (no Bootstrap equivalent for auto-fit minmax) ── */
-.vs-auto-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-	gap: 0.75rem;
-}
 .vs-auto-grid.sm { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
 .vs-auto-grid.lg { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-
-/* ── Change-letter status colors (diff viewer) ── */
-.change-st {
-	font-family: var(--bs-font-monospace);
-	font-weight: 600;
-	font-size: 0.6875rem;
-	width: 18px;
-	text-align: center;
-}
 .change-st.m { color: var(--bs-warning); }
 .change-st.a { color: var(--bs-success); }
 .change-st.d { color: var(--bs-danger); }
@@ -1771,22 +1558,43 @@ body.vs-modal-open .app-main {
 	display: flex;
 	align-items: center;
 	gap: 0.625rem;
-	padding: 0.4375rem 0.625rem;
+	/* Touch-comfortable by default; tightened for pointer devices below. */
+	min-height: 44px;
+	padding: 0.5rem 0.75rem;
 	border-radius: 0.5rem;
 	color: var(--fg-2);
-	font-size: 0.8125rem;
+	font-size: 0.9375rem;
 	text-decoration: none;
 	border: 0;
 	background: transparent;
 	width: 100%;
 	text-align: left;
 }
+
+/* Group heading above a run of nav links. */
+.vs-side-nav .vs-nav-heading {
+	padding: 0.75rem 0.75rem 0.125rem;
+	color: var(--fg-3);
+}
+.vs-side-nav .vs-nav-heading:first-child {
+	padding-top: 0.25rem;
+}
+
+@media (min-width: 992px) {
+	.vs-side-nav .nav-item,
+	.vs-side-nav a,
+	.vs-side-nav .nav-btn {
+		min-height: 0;
+		padding: 0.4375rem 0.625rem;
+		font-size: 0.8125rem;
+	}
+}
 .vs-side-nav a > i,
 .vs-side-nav .nav-btn > i,
 .vs-side-nav .nav-item > i {
 	color: var(--fg-3);
-	font-size: 0.875rem;
-	width: 16px;
+	font-size: 1rem;
+	width: 18px;
 	text-align: center;
 	flex: none;
 }
@@ -1806,4 +1614,62 @@ body.vs-modal-open .app-main {
 .vs-side-nav .nav-btn.active > i,
 .vs-side-nav .nav-item.active > i {
 	color: var(--bs-primary);
+}
+
+/* ============================================
+   16. TOUCH TARGETS
+   Bootstrap sizes its small controls for a mouse. On coarse pointers
+   (phones, tablets) grow the hit area to the 44px iOS guideline using
+   Bootstrap's own component variables, so nothing else about the
+   component changes.
+============================================ */
+@media (pointer: coarse) {
+	.btn-sm,
+	.btn-group-sm > .btn {
+		--bs-btn-padding-y: 0.5rem;
+		--bs-btn-padding-x: 0.75rem;
+	}
+
+	.form-control-sm,
+	.form-select-sm {
+		padding-top: 0.5rem;
+		padding-bottom: 0.5rem;
+	}
+
+	.btn-close {
+		padding: 0.75rem;
+	}
+
+	.dropdown-item {
+		padding-top: 0.5rem;
+		padding-bottom: 0.5rem;
+	}
+
+	.nav-tabs .nav-link,
+	.nav-pills .nav-link {
+		padding-top: 0.625rem;
+		padding-bottom: 0.625rem;
+	}
+
+	.list-group-item-action {
+		min-height: 44px;
+	}
+
+	/* Bigger checkbox/radio/switch hit area, keeping Bootstrap's own offsets aligned. */
+	.form-check {
+		padding-left: 1.75em;
+		min-height: 1.75em;
+	}
+	.form-check .form-check-input {
+		width: 1.25em;
+		height: 1.25em;
+		margin-left: -1.75em;
+	}
+	.form-switch {
+		padding-left: 3em;
+	}
+	.form-switch .form-check-input {
+		width: 2.5em;
+		margin-left: -3em;
+	}
 }

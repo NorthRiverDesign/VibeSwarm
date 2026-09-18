@@ -1,93 +1,77 @@
+@* Bulk-imports folders that are already on this host. The scan runs server side, so each
+   candidate arrives knowing whether it is a git repository, where it points, and which
+   stack it uses — and those answers are written straight into the imported project. *@
+@using VibeSwarm.Shared.Services
 @inject IFileSystemService FileSystemService
 @inject IProjectService ProjectService
 @inject ISettingsService SettingsService
-@inject NavigationManager NavigationManager
 
-<ModalDialog @bind-IsVisible="_isVisible" Title="Scan For Projects" Icon="folder-symlink"
+<ModalDialog @bind-IsVisible="_isVisible" Title="Import projects" Icon="folder-symlink"
 			 Size="ModalDialog.ModalSize.Large">
 	<ChildContent>
 		@if (_isLoading)
 		{
-			<div class="d-flex justify-content-center align-items-center py-5">
-				<div class="spinner-border text-primary" role="status">
-					<span class="visually-hidden">Scanning directories...</span>
-				</div>
-				<span class="ms-3">Scanning directories...</span>
-			</div>
+			<LoadingSpinner Text="@($"Scanning {_scanPath}…")" />
 		}
 		else if (!string.IsNullOrEmpty(_errorMessage))
 		{
 			<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mb-0" />
 		}
-		else if (_unmatchedDirectories.Count == 0)
+		else if (_candidates.Count == 0)
 		{
-			<div class="text-center py-5 text-muted">
-				<i class="bi bi-check-circle fs-1 text-success"></i>
-				<p class="mt-3 mb-0">All directories in the projects folder are already imported as projects.</p>
-			</div>
+			<EmptyState Icon="check-circle" Title="Nothing left to import"
+						Message="Every folder in your projects directory is already a VibeSwarm project." />
 		}
 		else
 		{
-			<p class="text-body-secondary mb-3">
-				Found <strong>@_unmatchedDirectories.Count</strong> director@(_unmatchedDirectories.Count == 1 ? "y" :
-							"ies")
-				not matching any existing project. Select directories to import:
+			<p class="text-body-secondary">
+				@_candidates.Count folder@(_candidates.Count == 1 ? string.Empty : "s") in
+				<code class="text-break">@_scanPath</code> are not projects yet.
 			</p>
 
+			<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+				<button type="button" class="btn btn-sm btn-secondary" @onclick="SelectAll">Select all</button>
+				<button type="button" class="btn btn-sm btn-secondary" @onclick="SelectRepositories"
+						disabled="@(!_candidates.Any(c => c.IsGitRepository))">
+					Select git repositories
+				</button>
+				<button type="button" class="btn btn-sm btn-link" @onclick="ClearSelection"
+						disabled="@(_selected.Count == 0)">
+					Clear
+				</button>
+			</div>
+
 			<div class="list-group">
-				@foreach (var dir in _unmatchedDirectories)
+				@foreach (var candidate in _candidates)
 				{
-					<label class="list-group-item list-group-item-action d-flex align-items-center gap-3">
-						<input type="checkbox" class="form-check-input flex-shrink-0"
-							   checked="@(_selectedDirectories.Contains(dir.FullPath))"
-							   @onchange="@((e) => ToggleSelection(dir.FullPath, (bool)(e.Value ?? false)))" />
-						<div class="flex-grow-1 min-width-0">
-							<div class="d-flex align-items-center gap-2">
-								<i class="bi bi-folder-fill text-warning"></i>
-								<span class="fw-medium">@dir.Name</span>
-								@if (dir.HasGitRepo)
-								{
-									<span class="badge bg-secondary-subtle text-secondary-emphasis" title="Git repository">
-										<i class="bi bi-git me-1"></i>Git
-									</span>
-								}
-							</div>
-							<small class="text-muted font-monospace text-truncate d-block">@dir.FullPath</small>
-						</div>
+					<label class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3">
+						<input type="checkbox" class="form-check-input flex-shrink-0 m-0"
+							   checked="@_selected.Contains(candidate.Path)"
+							   @onchange="@(e => ToggleSelection(candidate.Path, (bool)(e.Value ?? false)))" />
+						<span class="d-flex flex-column min-width-0 flex-grow-1">
+							<span class="d-flex align-items-center gap-2 min-width-0">
+								<i class="bi bi-@(candidate.IsGitRepository ? "git" : "folder") text-body-secondary flex-shrink-0"></i>
+								<span class="fw-medium text-truncate">@candidate.SuggestedName</span>
+							</span>
+							<span class="small text-body-secondary text-truncate">
+								@(candidate.GitHubRepository ?? candidate.Path)
+							</span>
+						</span>
+						@if (!string.IsNullOrWhiteSpace(candidate.DetectedStack))
+						{
+							<span class="badge text-bg-secondary flex-shrink-0 d-none d-sm-inline">@candidate.DetectedStack</span>
+						}
 					</label>
 				}
 			</div>
 
-			@if (_selectedDirectories.Count > 0)
-			{
-				<div class="mt-3 p-3 bg-body-secondary rounded">
-					<div class="d-flex align-items-center justify-content-between">
-						<span class="text-body-secondary">
-							<strong>@_selectedDirectories.Count</strong> director@(_selectedDirectories.Count == 1 ? "y" :
-												"ies") selected
-						</span>
-						<div class="d-flex gap-2">
-							<button type="button" class="btn btn-secondary btn-sm" @onclick="ClearSelection">
-								Clear
-							</button>
-							<button type="button" class="btn btn-primary btn-sm" @onclick="SelectAll">
-								Select All
-							</button>
-						</div>
-					</div>
-				</div>
-			}
-
 			@if (_importResults.Count > 0)
 			{
-				<div class="mt-3">
-					<h6 class="text-body-secondary">Import Results:</h6>
+				<div class="mt-3 d-flex flex-column gap-2">
 					@foreach (var result in _importResults)
 					{
-						<div class="alert @(result.Success ? "alert-success" : "alert-danger") py-2 mb-2">
-							<i class="bi @(result.Success ? "bi-check-circle" : "bi-exclamation-circle") me-2"></i>
-							@result.Message
-						</div>
+						<Alert Type="@(result.Success ? Alert.AlertType.Success : Alert.AlertType.Danger)"
+							   Message="@result.Message" Class="py-2 px-3 small mb-0" />
 					}
 				</div>
 			}
@@ -95,19 +79,15 @@
 	</ChildContent>
 	<FooterContent>
 		<button type="button" class="btn btn-secondary" @onclick="Close">Close</button>
-		@if (_unmatchedDirectories.Count > 0 && _selectedDirectories.Count > 0)
+		@if (_candidates.Count > 0)
 		{
-			<button type="button" class="btn btn-primary" @onclick="ImportSelected" disabled="@_isImporting">
+			<button type="button" class="btn btn-primary" disabled="@(_selected.Count == 0 || _isImporting)"
+					@onclick="ImportSelected">
 				@if (_isImporting)
 				{
 					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					<span>Importing...</span>
 				}
-				else
-				{
-					<i class="bi bi-download me-1"></i>
-					<span>Import @_selectedDirectories.Count Project@(_selectedDirectories.Count == 1 ? "" : "s")</span>
-				}
+				Import @(_selected.Count > 0 ? $"{_selected.Count} " : string.Empty)project@(_selected.Count == 1 ? string.Empty : "s")
 			</button>
 		}
 	</FooterContent>
@@ -117,87 +97,67 @@
 	[Parameter]
 	public EventCallback OnProjectsImported { get; set; }
 
-	private bool _isVisible = false;
-	private bool _isLoading = false;
-	private bool _isImporting = false;
+	private bool _isVisible;
+	private bool _isLoading;
+	private bool _isImporting;
 	private string? _errorMessage;
-	private string _scanPath = "";
-	private List<ScannedDirectory> _unmatchedDirectories = new();
-	private HashSet<string> _selectedDirectories = new();
-	private List<ImportResult> _importResults = new();
+	private string _scanPath = string.Empty;
+	private List<WorkspaceInspection> _candidates = [];
+	private readonly HashSet<string> _selected = new(StringComparer.OrdinalIgnoreCase);
+	private readonly List<ImportResult> _importResults = [];
 
 	public async Task ShowAsync(string? projectsDirectory = null)
 	{
 		_isVisible = true;
 		_errorMessage = null;
-		_unmatchedDirectories.Clear();
-		_selectedDirectories.Clear();
+		_candidates.Clear();
+		_selected.Clear();
 		_importResults.Clear();
 		StateHasChanged();
 
-		await ScanDirectories(projectsDirectory);
+		await ScanAsync(projectsDirectory);
 	}
 
-	private async Task ScanDirectories(string? projectsDirectory)
+	private async Task ScanAsync(string? projectsDirectory)
 	{
 		_isLoading = true;
 		StateHasChanged();
 
 		try
 		{
-			// Get the projects directory from settings if not provided
-			if (string.IsNullOrEmpty(projectsDirectory))
+			if (string.IsNullOrWhiteSpace(projectsDirectory))
 			{
 				var settings = await SettingsService.GetSettingsAsync();
 				projectsDirectory = settings.DefaultProjectsDirectory;
 			}
 
-			if (string.IsNullOrEmpty(projectsDirectory))
+			if (string.IsNullOrWhiteSpace(projectsDirectory))
 			{
-				_errorMessage = "No projects directory configured. Please set a Default Projects Directory in Settings first.";
+				_errorMessage = "No projects directory configured yet. Set a default projects directory above first.";
 				return;
 			}
 
 			_scanPath = projectsDirectory;
 
-			// Check if directory exists
-			if (!await FileSystemService.DirectoryExistsAsync(projectsDirectory))
+			var existingPaths = (await ProjectService.GetAllAsync())
+				.Where(project => !string.IsNullOrWhiteSpace(project.WorkingPath))
+				.Select(project => project.WorkingPath.TrimEnd('/', '\\'))
+				.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+			var scanned = await FileSystemService.ScanWorkspacesAsync(projectsDirectory);
+
+			if (scanned.Count == 0 && !await FileSystemService.DirectoryExistsAsync(projectsDirectory))
 			{
 				_errorMessage = $"Directory does not exist: {projectsDirectory}";
 				return;
 			}
 
-			// Get all directories in the projects folder
-			var dirResult = await FileSystemService.ListDirectoryAsync(projectsDirectory, directoriesOnly: true);
-
-			if (!string.IsNullOrEmpty(dirResult.Error))
-			{
-				_errorMessage = dirResult.Error;
-				return;
-			}
-
-			// Get all existing projects
-			var existingProjects = await ProjectService.GetAllAsync();
-			var existingPaths = existingProjects
-			.Select(p => NormalizePath(p.WorkingPath))
-			.ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-			// Find directories that don't match existing projects
-			foreach (var entry in dirResult.Entries.Where(e => e.IsDirectory))
-			{
-				var normalizedPath = NormalizePath(entry.FullPath);
-				if (!existingPaths.Contains(normalizedPath))
-				{
-					_unmatchedDirectories.Add(new ScannedDirectory
-					{
-						Name = entry.Name,
-						FullPath = entry.FullPath,
-						HasGitRepo = Directory.Exists(Path.Combine(entry.FullPath, ".git"))
-					});
-				}
-			}
-
-			_unmatchedDirectories = _unmatchedDirectories.OrderBy(d => d.Name).ToList();
+			// Git repositories first — they are the ones worth importing.
+			_candidates = scanned
+				.Where(candidate => !existingPaths.Contains(candidate.Path.TrimEnd('/', '\\')))
+				.OrderByDescending(candidate => candidate.IsGitRepository)
+				.ThenBy(candidate => candidate.SuggestedName, StringComparer.OrdinalIgnoreCase)
+				.ToList();
 		}
 		catch (Exception ex)
 		{
@@ -210,40 +170,43 @@
 		}
 	}
 
-	private static string NormalizePath(string path)
-	{
-		// Normalize path for comparison
-		return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-	}
-
 	private void ToggleSelection(string path, bool isChecked)
 	{
 		if (isChecked)
 		{
-			_selectedDirectories.Add(path);
+			_selected.Add(path);
 		}
 		else
 		{
-			_selectedDirectories.Remove(path);
+			_selected.Remove(path);
 		}
 	}
 
 	private void SelectAll()
 	{
-		foreach (var dir in _unmatchedDirectories)
+		foreach (var candidate in _candidates)
 		{
-			_selectedDirectories.Add(dir.FullPath);
+			_selected.Add(candidate.Path);
 		}
 	}
 
-	private void ClearSelection()
+	private void SelectRepositories()
 	{
-		_selectedDirectories.Clear();
+		_selected.Clear();
+		foreach (var candidate in _candidates.Where(candidate => candidate.IsGitRepository))
+		{
+			_selected.Add(candidate.Path);
+		}
 	}
+
+	private void ClearSelection() => _selected.Clear();
 
 	private async Task ImportSelected()
 	{
-		if (_selectedDirectories.Count == 0) return;
+		if (_selected.Count == 0)
+		{
+			return;
+		}
 
 		_isImporting = true;
 		_importResults.Clear();
@@ -251,32 +214,31 @@
 
 		try
 		{
-			foreach (var path in _selectedDirectories.ToList())
+			foreach (var candidate in _candidates.Where(c => _selected.Contains(c.Path)).ToList())
 			{
+				var name = candidate.SuggestedName ?? candidate.Path;
 				try
 				{
-					var dirName = Path.GetFileName(path);
-					var project = new Project
+					await ProjectService.CreateAsync(new Project
 					{
-						Name = dirName,
-						WorkingPath = path,
-						Description = $"Imported from {_scanPath}"
-					};
+						Name = name,
+						WorkingPath = candidate.Path,
+						GitHubRepository = candidate.GitHubRepository,
+						BuildCommand = candidate.SuggestedBuildCommand,
+						TestCommand = candidate.SuggestedTestCommand
+					});
 
-					await ProjectService.CreateAsync(project);
-					_importResults.Add(new ImportResult { Success = true, Message = $"Successfully imported: {dirName}" });
-
-					// Remove from unmatched list
-					_unmatchedDirectories.RemoveAll(d => d.FullPath == path);
-					_selectedDirectories.Remove(path);
+					_importResults.Add(new ImportResult(true, $"Imported {name}."));
+					_candidates.RemoveAll(c => c.Path == candidate.Path);
+					_selected.Remove(candidate.Path);
 				}
 				catch (Exception ex)
 				{
-					_importResults.Add(new ImportResult { Success = false, Message = $"Failed to import {Path.GetFileName(path)}: {ex.Message}" });
+					_importResults.Add(new ImportResult(false, $"Could not import {name}: {ex.Message}"));
 				}
 			}
 
-			if (_importResults.Any(r => r.Success))
+			if (_importResults.Any(result => result.Success))
 			{
 				await OnProjectsImported.InvokeAsync();
 			}
@@ -288,21 +250,7 @@
 		}
 	}
 
-	private void Close()
-	{
-		_isVisible = false;
-	}
+	private void Close() => _isVisible = false;
 
-	private class ScannedDirectory
-	{
-		public string Name { get; set; } = string.Empty;
-		public string FullPath { get; set; } = string.Empty;
-		public bool HasGitRepo { get; set; }
-	}
-
-	private class ImportResult
-	{
-		public bool Success { get; set; }
-		public string Message { get; set; } = string.Empty;
-	}
+	private sealed record ImportResult(bool Success, string Message);
 }

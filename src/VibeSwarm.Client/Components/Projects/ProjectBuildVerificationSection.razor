@@ -1,34 +1,44 @@
-<div class="mb-3">
-	<label class="form-label d-flex align-items-center gap-2 mb-2">
-		<i class="bi bi-shield-check"></i>
-		<span>Build Verification</span>
-	</label>
-	<div class="form-check form-switch mb-2">
-		<InputCheckbox id="modal-buildVerificationEnabled" @bind-Value="Project.BuildVerificationEnabled" class="form-check-input" />
-		<label class="form-check-label" for="modal-buildVerificationEnabled">
-			Enable Build Verification
-		</label>
+<div class="form-check form-switch mb-1">
+	<InputCheckbox id="modal-buildVerificationEnabled" @bind-Value="Project.BuildVerificationEnabled"
+				   class="form-check-input" />
+	<label class="form-check-label" for="modal-buildVerificationEnabled">Verify builds before committing</label>
+</div>
+<div class="form-text mb-3">
+	VibeSwarm runs these commands after a job finishes and only commits when they pass.
+</div>
+
+@if (!string.IsNullOrWhiteSpace(DetectedStack))
+{
+	<div class="alert alert-info d-flex gap-2 py-2 px-3 small" role="status">
+		<i class="bi bi-magic flex-shrink-0 mt-1"></i>
+		<div class="min-width-0">Detected a <strong>@DetectedStack</strong> project — the commands below were filled in for you.</div>
 	</div>
-	<div class="form-text mb-2">When enabled, VibeSwarm runs the build and test commands after job completion. Changes are only committed if verification passes.</div>
+}
 
-	<label for="modal-buildCommand" class="form-label small">
-		Build Command <span class="text-body-secondary fw-normal">(required when enabled)</span>
+<div class="mb-3">
+	<label for="modal-buildCommand" class="form-label">
+		Build command <span class="text-body-secondary fw-normal">(required when enabled)</span>
 	</label>
-	<InputText id="modal-buildCommand" @bind-Value="Project.BuildCommand" class="form-control form-control-sm"
-			   placeholder="e.g., dotnet build, npm run build, cargo build" maxlength="500" />
+	<InputText id="modal-buildCommand" @bind-Value="Project.BuildCommand" class="form-control font-monospace"
+			   placeholder="dotnet build" maxlength="500" />
 	<ValidationMessage For="@(() => Project.BuildCommand)" class="text-danger small" />
-	<div class="form-text mb-2">Shell command to verify the project compiles successfully.</div>
+</div>
 
-	<label for="modal-testCommand" class="form-label small">
-		Test Command <span class="text-body-secondary fw-normal">(optional)</span>
+<div>
+	<label for="modal-testCommand" class="form-label">
+		Test command <span class="text-body-secondary fw-normal">(optional)</span>
 	</label>
-	<InputText id="modal-testCommand" @bind-Value="Project.TestCommand" class="form-control form-control-sm"
-			   placeholder="e.g., dotnet test, npm test, cargo test" maxlength="500" />
+	<InputText id="modal-testCommand" @bind-Value="Project.TestCommand" class="form-control font-monospace"
+			   placeholder="dotnet test" maxlength="500" />
 	<ValidationMessage For="@(() => Project.TestCommand)" class="text-danger small" />
-	<div class="form-text">Shell command to verify tests pass. Runs after the build command succeeds.</div>
+	<div class="form-text">Runs after the build command succeeds.</div>
 </div>
 
 @code {
 	[Parameter, EditorRequired]
-public ProjectModalFormModel Project { get; set; } = default!;
+	public ProjectModalFormModel Project { get; set; } = default!;
+
+	/// <summary>Stack detected from the working folder, shown so the pre-filled commands make sense.</summary>
+	[Parameter]
+	public string? DetectedStack { get; set; }
 }

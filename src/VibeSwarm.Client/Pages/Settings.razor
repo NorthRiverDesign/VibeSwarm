@@ -3,7 +3,7 @@
 @inject IDatabaseService DatabaseService
 @inject NotificationService NotificationService
 
-<PageHeader Title="Settings" />
+<PageHeader Title="Settings" Subtitle="Defaults that apply across every project and job." />
 
 <TabStrip Class="mb-4">
 	<TabItem Text="App Settings" Icon="gear" IsActive="@(_activeTab == "app")" OnClick='() => SetTab("app")' />

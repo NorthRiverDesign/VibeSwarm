@@ -8,7 +8,7 @@
 {
 	@* Self-hosted open-source models have no upstream quota, so show that plainly
 	   instead of an empty meter or a "no usage data" fallback. *@
-	<div class="usage-meter @Class">
+	<div class="@Class">
 		<div class="d-flex align-items-center gap-1 small text-body-secondary">
 			<i class="bi bi-infinity"></i>
 			<span>@(Compact ? "Unmetered" : "Unmetered \u2014 no provider quota")</span>
@@ -21,7 +21,7 @@
 }
 else if (displayWindows.Count > 0)
 {
-	<div class="usage-meter @Class">
+	<div class="@Class">
 		@foreach (var window in displayWindows)
 		{
 			var percentUsed = GetPercentUsed(window);
@@ -70,7 +70,7 @@ else if (displayWindows.Count > 0)
 }
 else if (UsageSummary != null && ShowEmptyState)
 {
-	<div class="usage-meter @Class">
+	<div class="@Class">
 		@if (GetFallbackUsageLabel() is { } fallbackLabel)
 		{
 			<div class="small text-body-secondary">

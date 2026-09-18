@@ -91,9 +91,10 @@ This starts a local rebuild and launches the configured restart command. The app
 <hr class="my-4" />
 }
 
-<h6 class="text-body-secondary mb-3">
-<i class="bi bi-folder me-1"></i>Project Defaults
-</h6>
+<div class="accordion mb-4">
+<AccordionSection Title="Project defaults" Icon="folder"
+Summary="Where new projects live and which clock the app runs on"
+@bind-IsOpen="_openProjectDefaults">
 
 <div class="mb-3">
 <label for="defaultProjectsDirectory" class="form-label">Default Projects Directory</label>
@@ -122,7 +123,7 @@ the working path will default to
 <i class="bi bi-check-circle me-1"></i>Directory exists
 </span>
 <button type="button" class="btn btn-primary btn-sm" @onclick="OpenScanProjectsModal">
-<i class="bi bi-folder-symlink me-1"></i>Scan For Projects
+<i class="bi bi-folder-symlink me-1"></i>Import projects
 </button>
 }
 else
@@ -154,30 +155,11 @@ clock time when you change it.
 </div>
 </div>
 
-<div class="d-flex flex-column flex-sm-row gap-2 mt-4">
-<button type="submit" class="btn btn-primary" disabled="@_isSaving">
-@if (_isSaving)
-{
-<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-<span>Saving...</span>
-}
-else
-{
-<i class="bi bi-check-lg me-1"></i>
-<span>Save Settings</span>
-}
-</button>
-<button type="button" class="btn btn-secondary" @onclick="ReloadSettings" disabled="@_isSaving">
-<i class="bi bi-arrow-counterclockwise me-1"></i>
-Reset
-</button>
-</div>
+</AccordionSection>
 
-<hr class="my-4" />
-
-<h6 class="text-body-secondary mb-3">
-<i class="bi bi-robot me-1"></i>Agent Quality
-</h6>
+<AccordionSection Title="Agent quality" Icon="robot"
+Summary="What every agent prompt includes"
+@bind-IsOpen="_openAgentQuality">
 
 <div class="mb-3">
 <div class="form-check form-switch">
@@ -236,17 +218,19 @@ repository's default git identity without provider attribution.
 </div>
 </div>
 
-<div class="mb-4">
+</AccordionSection>
+
+<AccordionSection Title="Idea prompts" Icon="lightbulb"
+Summary="Templates used when generating improvement ideas"
+@bind-IsOpen="_openIdeaPrompts">
 <SettingsIdeaPromptTemplatesSection Settings="_settings" OnRestoreDefaults="RestoreIdeaPromptDefaults" />
-</div>
+</AccordionSection>
 
-<hr class="my-4" />
+<AccordionSection Title="Skills marketplace" Icon="shop"
+Summary="GitHub token for browsing published skills"
+@bind-IsOpen="_openMarketplace">
 
-<h6 class="text-body-secondary mb-3">
-<i class="bi bi-shop me-1"></i>Skills Marketplace
-</h6>
-
-<div class="mb-3">
+<div class="mb-0">
 	<label for="githubToken" class="form-label">GitHub token <span class="text-body-secondary">(optional)</span></label>
 	<div class="input-group">
 		<input type="@(_showGitHubToken ? "text" : "password")" id="githubToken" class="form-control font-monospace"
@@ -264,12 +248,12 @@ repository's default git identity without provider attribution.
 	</div>
 	<ValidationMessage For="@(() => _settings.GitHubToken)" class="text-danger small" />
 </div>
+</AccordionSection>
 
-<hr class="my-4" />
-
-<h6 class="text-body-secondary mb-3">
-<i class="bi bi-exclamation-octagon me-1"></i>Critical Error Logs
-</h6>
+<AccordionSection Title="Critical error logs" Icon="exclamation-octagon"
+Summary="Crash reports captured from this browser"
+Badge="@(_criticalErrorLogs.Count > 0 ? _criticalErrorLogs.Count.ToString() : null)"
+BadgeClass="text-bg-danger" @bind-IsOpen="_openErrorLogs">
 
 <div class="row g-3">
 	<div class="col-12 col-md-6">
@@ -356,6 +340,26 @@ repository's default git identity without provider attribution.
 		}
 	</div>
 </div>
+</AccordionSection>
+</div>
+
+<div class="d-grid d-sm-flex gap-2">
+<button type="submit" class="btn btn-primary" disabled="@_isSaving">
+@if (_isSaving)
+{
+<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+<span>Saving...</span>
+}
+else
+{
+<i class="bi bi-check-lg me-1"></i>
+<span>Save settings</span>
+}
+</button>
+<button type="button" class="btn btn-secondary" @onclick="ReloadSettings" disabled="@_isSaving">
+<i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+</button>
+</div>
 </EditForm>
 }
 </div>
@@ -373,6 +377,11 @@ repository's default git identity without provider attribution.
 	[Parameter] public EventCallback OnSettingsSaved { get; set; }
 
 	private AppSettings _settings = new();
+	private bool _openProjectDefaults = true;
+	private bool _openAgentQuality;
+	private bool _openIdeaPrompts;
+	private bool _openMarketplace;
+	private bool _openErrorLogs;
 	private bool _isLoading = true;
 	private bool _isSaving;
 	private bool _showDirectoryBrowser;

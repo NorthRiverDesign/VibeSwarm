@@ -3,7 +3,7 @@
 @inject ISkillService SkillService
 @inject NotificationService NotificationService
 
-<PageHeader Title="Skills">
+<PageHeader Title="Skills" Subtitle="Instructions agents can load on demand during a job.">
 	<Actions>
 		<ActionButton Icon="shop" Text="Marketplace" HideTextOnMobile="true" OnClick="ShowMarketplaceModal" />
 		<ActionButton Icon="folder2-open" Text="From folder" HideTextOnMobile="true" OnClick="ShowLocalPathModal" />
@@ -94,7 +94,11 @@
 else if (!_skillsList.Any())
 {
 	<EmptyState Icon="lightbulb" Title="No skills yet"
-				Message="Create skills to define capabilities that AI agents can use during job execution." />
+				Message="Skills define capabilities agents can use during a job. Browse the marketplace or write your own.">
+		<ActionButton Icon="shop" Text="Browse marketplace" Style="ActionButton.ButtonStyle.Primary"
+					  Size="ActionButton.ButtonSize.Small" OnClick="ShowMarketplaceModal" />
+		<ActionButton Icon="plus-lg" Text="New skill" Size="ActionButton.ButtonSize.Small" OnClick="ShowAddModal" />
+	</EmptyState>
 }
 else
 {

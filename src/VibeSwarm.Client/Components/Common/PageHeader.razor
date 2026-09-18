@@ -1,8 +1,12 @@
 @* Reusable page header component with title, subtitle, and actions *@
 
-<div class="d-flex @AlignItemsClass justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4">
+<div class="d-flex @ResolvedAlignItemsClass justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4">
 	<div class="min-width-0">
 		<h1 class="mb-0 text-page-title text-truncate">@Title</h1>
+		@if (!string.IsNullOrWhiteSpace(Subtitle))
+		{
+			<p class="text-meta text-body-secondary mb-0 mt-1 d-none d-sm-block">@Subtitle</p>
+		}
 	</div>
 	@if (Actions != null)
 	{
@@ -16,9 +20,17 @@
 	[Parameter]
 	public string Title { get; set; } = string.Empty;
 
+	/// <summary>One line orienting a first-time visitor. Hidden on the narrowest screens.</summary>
+	[Parameter]
+	public string? Subtitle { get; set; }
+
 	[Parameter]
 	public RenderFragment? Actions { get; set; }
 
+	/// <summary>Overrides the alignment; by default a subtitle aligns to the top, a bare title centers.</summary>
 	[Parameter]
-	public string AlignItemsClass { get; set; } = "align-items-center";
+	public string? AlignItemsClass { get; set; }
+
+	private string ResolvedAlignItemsClass => AlignItemsClass
+		?? (string.IsNullOrWhiteSpace(Subtitle) ? "align-items-center" : "align-items-start");
 }

@@ -1,39 +1,27 @@
 
-<div class="mb-3">
-<label class="form-label d-flex align-items-center gap-2 mb-2">
-<i class="bi bi-people"></i>
-<span>Agents</span>
-</label>
-
-<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
-@if (Project.AgentAssignments.Any())
-{
-<span>Assign reusable agents to this project so jobs can reference consistent purpose, provider/model choices, and execution defaults.</span>
-}
-else
-{
-<span>No project-specific agents configured yet. Add agents to define the specialists available to this repository.</span>
-}
-</Alert>
+<div>
+<div class="form-text mt-0 mb-3">
+	Assign reusable agent presets so jobs on this project start from consistent specialists.
+</div>
 
 @if (!AvailableAgents.Any())
 {
-<div class="text-warning small mt-2">
-<i class="bi bi-exclamation-triangle me-1"></i>No agents available yet. Create them from the Agents page first.
-</div>
+<Alert Type="Alert.AlertType.Warning" Class="py-2 px-3 small mb-0">
+<span>No agents exist yet. Create them on the Agents page first.</span>
+</Alert>
 }
 else if (!AvailableProviders.Any())
 {
-<div class="text-warning small mt-2">
-<i class="bi bi-exclamation-triangle me-1"></i>No enabled providers are available to assign to agents yet.
-</div>
+<Alert Type="Alert.AlertType.Warning" Class="py-2 px-3 small mb-0">
+<span>No enabled providers are available to assign to agents yet.</span>
+</Alert>
 }
 else
 {
-<div class="border rounded p-3 bg-body-tertiary">
-<div class="small text-body-secondary fw-semibold mb-2">Assigned Agents</div>
+<div>
 @if (Project.AgentAssignments.Any())
 {
+<div class="form-label">Assigned agents</div>
 <div class="d-grid gap-3 mb-3">
 @foreach (var assignment in Project.AgentAssignments.OrderBy(assignment => ResolveAgent(assignment.AgentId)?.Name ?? string.Empty).ToList())
 {
@@ -96,7 +84,7 @@ var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupp
 <div class="row g-3 mt-1">
 <div class="col-12 col-lg-6">
 <label for="@providerSelectId" class="form-label small mb-1">
-<i class="bi bi-cpu me-1"></i>Assigned Provider
+Provider
 </label>
 <InputSelect TValue="Guid" id="@providerSelectId"
  Value="assignment.ProviderId"
@@ -111,7 +99,7 @@ var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupp
 </div>
 <div class="col-12 col-lg-6">
 <label for="@modelSelectId" class="form-label small mb-1">
-<i class="bi bi-diagram-3 me-1"></i>Default Model
+Default model
 </label>
 <InputSelect TValue="string" id="@modelSelectId"
  Value="@(assignment.PreferredModelId ?? string.Empty)"
@@ -119,7 +107,7 @@ var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupp
  ValueExpression="@(() => assignment.PreferredModelId)"
  class="form-select form-select-sm"
  disabled="@(!models.Any())">
-<option value="">Use provider default model</option>
+<option value="">Provider default</option>
 @foreach (var model in models)
 {
 <option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
@@ -128,17 +116,13 @@ var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupp
 <div class="form-text">
 @if (!models.Any())
 {
-<span>No cached models found for this provider yet. The provider default will be used.</span>
-}
-else
-{
-<span>New agent-backed work can start with this model unless a workflow overrides it.</span>
+<span>No cached models yet — the provider default is used.</span>
 }
 </div>
 </div>
 <div class="col-12 col-lg-6">
 <label for="@reasoningSelectId" class="form-label small mb-1">
-<i class="bi bi-lightning-charge me-1"></i>Default Reasoning
+Default reasoning
 </label>
 <InputSelect TValue="string" id="@reasoningSelectId"
  Value="@(assignment.PreferredReasoningEffort ?? string.Empty)"
@@ -146,7 +130,7 @@ else
  ValueExpression="@(() => assignment.PreferredReasoningEffort)"
  class="form-select form-select-sm"
  disabled="@(!reasoningOptions.Any())">
-<option value="">Use provider default reasoning</option>
+<option value="">Provider default</option>
 @foreach (var reasoning in reasoningOptions)
 {
 <option value="@reasoning">@reasoning</option>
@@ -155,11 +139,7 @@ else
 <div class="form-text">
 @if (!reasoningOptions.Any())
 {
-<span>This provider does not expose configurable reasoning levels.</span>
-}
-else
-{
-<span>New agent-backed work can start with this reasoning level unless a workflow overrides it.</span>
+<span>This provider has no configurable reasoning levels.</span>
 }
 </div>
 </div>
@@ -170,7 +150,7 @@ else
 }
 else
 {
-<div class="small text-body-secondary fst-italic mb-3">No agents assigned to this project yet.</div>
+<div class="small text-body-secondary fst-italic mb-3">No agents assigned yet.</div>
 }
 
 @if (Project.AgentAssignments.Count(a => a.IsEnabled) >= 2)
@@ -179,19 +159,19 @@ else
 <div class="form-check form-switch">
 <InputCheckbox id="modal-enableTeamSwarm" @bind-Value="Project.EnableTeamSwarm" class="form-check-input" />
 <label class="form-check-label" for="modal-enableTeamSwarm">
-<i class="bi bi-diagram-3 me-1"></i>Enable Agent Swarm
+Run assigned agents in parallel
 </label>
 </div>
-<div class="form-text">When enabled, creating a job automatically fans out into parallel agent jobs — one per assigned agent. Each agent works in the same repository with an agent-specific system prompt.</div>
+<div class="form-text">Creating a job fans out into one job per assigned agent, each with its own system prompt.</div>
 </div>
 }
 
-<div class="small text-body-secondary fw-semibold mb-2">Add Agent</div>
+<div class="form-label">Add an agent</div>
 <div class="d-grid gap-2">
 @foreach (var agent in AvailableAgents.OrderByDescending(role => role.IsEnabled).ThenBy(role => role.Name))
 {
 var isAssigned = IsAgentAssigned(agent.Id);
-<button type="button" class="btn @(isAssigned ? "btn-secondary" : "btn-primary") d-flex align-items-center justify-content-between gap-2 text-start flex-wrap"
+<button type="button" class="btn btn-outline-secondary d-flex align-items-center justify-content-between gap-2 text-start flex-wrap py-2"
 @onclick="() => OnAdd.InvokeAsync(agent)" disabled="@isAssigned">
 <span class="text-start min-width-0">
 										<span class="fw-semibold">@agent.Name</span>

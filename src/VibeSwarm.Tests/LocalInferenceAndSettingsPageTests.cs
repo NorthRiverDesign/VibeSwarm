@@ -42,7 +42,7 @@ public async Task RenderedLocalInferencePage_ShowsSetupAction_WhenNoProviderConf
 	Assert.Contains("Ollama", html);
 	Assert.Contains("Grok", html);
 	Assert.Contains("No Ollama connections", html);
-	Assert.Contains("d-flex align-items-center justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
+	Assert.Contains("justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
 	Assert.DoesNotContain("App Settings", html);
 }
 
@@ -77,7 +77,7 @@ return output.ToHtmlString();
 	Assert.Contains("Idea Prompt Templates", html);
 	Assert.Contains("Idea expansion template", html);
 	Assert.Contains("Direct idea implementation template", html);
-	Assert.Contains("Critical Error Logs", html);
+	Assert.Contains("Critical error logs", html);
 	Assert.Contains("Database", html);
 	Assert.Contains("Developer Mode", html);
 	Assert.Contains("Rebuild And Restart", html);
@@ -563,6 +563,12 @@ public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancella
 	public Task<bool> DirectoryExistsAsync(string path) => Task.FromResult(false);
 
 	public Task<List<DriveEntry>> GetDrivesAsync() => Task.FromResult(new List<DriveEntry>());
+
+	public Task<WorkspaceInspection> InspectWorkspaceAsync(string path)
+		=> Task.FromResult(new WorkspaceInspection { Path = path });
+
+	public Task<List<WorkspaceInspection>> ScanWorkspacesAsync(string rootPath)
+		=> Task.FromResult(new List<WorkspaceInspection>());
 	}
 
 	private sealed class FakeProjectService : IProjectService

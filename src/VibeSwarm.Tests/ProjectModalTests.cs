@@ -17,6 +17,9 @@ namespace VibeSwarm.Tests;
 
 public sealed class ProjectModalTests
 {
+	/// <summary>The workspace inspection debounces, so waits need headroom on a loaded runner.</summary>
+	private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(10);
+
 [Fact]
 public async Task RenderedProjectModal_UsesProjectBodyClassAndRendersRefactoredSections()
 {
@@ -35,6 +38,7 @@ services.AddSingleton<IProviderService>(new FakeProviderService(provider));
 	services.AddSingleton<IAgentService>(new FakeAgentService([]));
 services.AddSingleton<ISettingsService>(new FakeSettingsService());
 services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService([]));
+services.AddSingleton<IFileSystemService>(new FakeWorkspaceFileSystemService());
 services.AddSingleton<NotificationService>();
 services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
@@ -54,16 +58,16 @@ return output.ToHtmlString();
 Assert.Contains("vs-project-modal-body", html);
 Assert.Contains("vs-modal-dialog-wide-lg", html);
 Assert.Contains("modal-lg", html);
-Assert.Contains("Project Details", html);
-Assert.Contains("Workspace", html);
-Assert.Contains("Project Source", html);
-Assert.Contains("Job Behavior", html);
-Assert.Contains("Planning", html);
-Assert.Contains("Job Execution", html);
-Assert.Contains("Instructions &amp; Memory", html);
-Assert.Contains("Default Job Model", html);
-Assert.Contains("Agents", html);
-Assert.Contains("Build Verification", html);
+// Essentials render up front; everything else lives in collapsed accordion sections.
+Assert.Contains("Start from", html);
+Assert.Contains("Working folder", html);
+Assert.Contains("Project name", html);
+Assert.Contains("accordion-item", html);
+Assert.Contains("When a job finishes", html);
+Assert.Contains("Providers and agents", html);
+Assert.Contains("Ideas and planning", html);
+Assert.Contains("Instructions and memory", html);
+Assert.Contains("Build verification", html);
 Assert.Contains("Create Project", html);
 }
 
@@ -75,9 +79,7 @@ public void SubmitCloneModeWithoutOwnerRepository_ShowsValidationMessage()
 var cut = context.Render<ProjectModal>(parameters => parameters
 .Add(component => component.IsVisible, true));
 
-cut.FindAll("button")
-.Single(button => button.TextContent.Contains("Clone Existing GitHub Repository", StringComparison.Ordinal))
-.Click();
+cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
 cut.Find("#modal-githubRepo").Input("sample-project");
 cut.Find("form").Submit();
 
@@ -107,9 +109,7 @@ public void BrowseGitHubRepositories_SelectingRepositoryPopulatesCloneInput()
 	var cut = context.Render<ProjectModal>(parameters => parameters
 		.Add(component => component.IsVisible, true));
 
-	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Clone Existing GitHub Repository", StringComparison.Ordinal))
-		.Click();
+	cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
 	cut.Find("#modal-githubRepoBrowse").Click();
 	cut.FindAll("button")
 		.Single(button => button.TextContent.Contains("octocat/hello-world", StringComparison.Ordinal))
@@ -137,9 +137,7 @@ public void BrowseGitHubRepositories_NullRepositoryListShowsEmptyState()
 	var cut = context.Render<ProjectModal>(parameters => parameters
 		.Add(component => component.IsVisible, true));
 
-	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Clone Existing GitHub Repository", StringComparison.Ordinal))
-		.Click();
+	cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
 	cut.Find("#modal-githubRepoBrowse").Click();
 
 	Assert.Contains("No repositories matched the current filter.", cut.Markup);
@@ -216,7 +214,7 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 			CommitSummaryInferenceModelId = "qwen3"
 		}));
 
-	Assert.Contains("Commit Summary Source", cut.Markup);
+	Assert.Contains("Commit message writer", cut.Markup);
 	Assert.Equal(inferenceProviderId.ToString(), cut.Find("#modal-commitSummaryInferenceProvider").GetAttribute("value"));
 	Assert.Equal("qwen3", cut.Find("#modal-commitSummaryInferenceModel").GetAttribute("value"));
 	}
@@ -299,7 +297,7 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 			.Add(component => component.IsVisible, true));
 
 		cut.Find("#modal-name").Change("  Demo Project  ");
-		cut.Find("#modal-workingPath").Change("/tmp/demo-project");
+		cut.Find("#modal-workingPath").Input("/tmp/demo-project");
 		cut.Find("form").Submit();
 
 		cut.WaitForAssertion(() =>
@@ -307,14 +305,106 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 			var notification = Assert.Single(notificationService.Notifications);
 			Assert.Equal("Demo Project", notification.Title);
 			Assert.Equal(NotificationType.Success, notification.Type);
-		});
+		}, WaitTimeout);
+	}
+
+
+	[Fact]
+	public void InspectingAGitWorkingFolder_FillsInNameRepositoryAndBuildCommands()
+	{
+		var fileSystem = new FakeWorkspaceFileSystemService
+		{
+			Inspection = new WorkspaceInspection
+			{
+				Path = "/srv/code/api",
+				Exists = true,
+				IsGitRepository = true,
+				GitHubRepository = "acme/api",
+				CurrentBranch = "main",
+				SuggestedName = "api",
+				DetectedStack = ".NET",
+				SuggestedBuildCommand = "dotnet build",
+				SuggestedTestCommand = "dotnet test"
+			}
+		};
+
+		using var context = CreateBunitContext(fileSystemService: fileSystem);
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true));
+
+		cut.Find("#modal-workingPath").Input("/srv/code/api");
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Equal("api", cut.Find("#modal-name").GetAttribute("value"));
+			Assert.Contains("Git repository detected", cut.Markup);
+		}, WaitTimeout);
+
+		// Build commands are pre-filled inside the collapsed section, but verification stays opt-in.
+		Assert.Equal("dotnet build", cut.Find("#modal-buildCommand").GetAttribute("value"));
+		Assert.Equal("dotnet test", cut.Find("#modal-testCommand").GetAttribute("value"));
+		Assert.Contains("Detected a <strong>.NET</strong> project", cut.Markup);
+		Assert.False(cut.Find("#modal-buildVerificationEnabled").HasAttribute("checked"));
+	}
+
+	[Fact]
+	public void InspectingAWorkingFolder_DoesNotOverwriteWhatTheUserAlreadyTyped()
+	{
+		var fileSystem = new FakeWorkspaceFileSystemService
+		{
+			Inspection = new WorkspaceInspection
+			{
+				Path = "/srv/code/api",
+				Exists = true,
+				IsGitRepository = true,
+				SuggestedName = "api"
+			}
+		};
+
+		using var context = CreateBunitContext(fileSystemService: fileSystem);
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true));
+
+		cut.Find("#modal-name").Change("My Own Name");
+		cut.Find("#modal-workingPath").Input("/srv/code/api");
+
+		cut.WaitForAssertion(() => Assert.Contains("Git repository detected", cut.Markup), WaitTimeout);
+		Assert.Equal("My Own Name", cut.Find("#modal-name").GetAttribute("value"));
+	}
+
+
+	[Fact]
+	public void SubmittingWithAnErrorInsideACollapsedSection_OpensThatSection()
+	{
+		using var context = CreateBunitContext();
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true));
+
+		cut.Find("#modal-name").Change("Demo");
+		cut.Find("#modal-workingPath").Input("/tmp/demo");
+
+		// Build verification lives in a collapsed section and requires a build command.
+		Assert.DoesNotContain("show", cut.FindAll(".accordion-collapse")
+			.Last().ClassList.ToArray());
+		cut.Find("#modal-buildVerificationEnabled").Change(true);
+		cut.Find("form").Submit();
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Contains("Build command is required when build verification is enabled.", cut.Markup);
+			Assert.Contains("show", cut.FindAll(".accordion-collapse").Last().ClassList.ToArray());
+		}, WaitTimeout);
 	}
 
 private static BunitContext CreateBunitContext(
 	FakeProjectService? projectService = null,
 	IReadOnlyList<Agent>? agents = null,
 	Provider? provider = null,
-	IReadOnlyList<InferenceProvider>? inferenceProviders = null)
+	IReadOnlyList<InferenceProvider>? inferenceProviders = null,
+	IFileSystemService? fileSystemService = null)
 {
 	var context = new BunitContext();
 	context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
@@ -333,6 +423,7 @@ private static BunitContext CreateBunitContext(
 	context.Services.AddSingleton<IAgentService>(new FakeAgentService(agents ?? []));
 	context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 	context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService(inferenceProviders ?? []));
+	context.Services.AddSingleton<IFileSystemService>(fileSystemService ?? new FakeWorkspaceFileSystemService());
 	context.Services.AddSingleton<NotificationService>();
 	return context;
 }
@@ -439,4 +530,23 @@ public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, Can
 public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
 public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
 }
+
+	private sealed class FakeWorkspaceFileSystemService : IFileSystemService
+	{
+		public WorkspaceInspection? Inspection { get; set; }
+
+		public Task<DirectoryListResult> ListDirectoryAsync(string? path, bool directoriesOnly = false)
+			=> Task.FromResult(new DirectoryListResult());
+
+		public Task<bool> DirectoryExistsAsync(string path) => Task.FromResult(false);
+
+		public Task<List<DriveEntry>> GetDrivesAsync() => Task.FromResult(new List<DriveEntry>());
+
+		public Task<WorkspaceInspection> InspectWorkspaceAsync(string path)
+			=> Task.FromResult(Inspection ?? new WorkspaceInspection { Path = path });
+
+		public Task<List<WorkspaceInspection>> ScanWorkspacesAsync(string rootPath)
+			=> Task.FromResult(new List<WorkspaceInspection>());
+	}
+
 }

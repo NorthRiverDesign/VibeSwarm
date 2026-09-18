@@ -7,13 +7,17 @@
 @inject QueuePanelStateService QueuePanelStateService
 @implements IDisposable
 
-<PageHeader Title="Projects" AlignItemsClass="align-items-center">
+<PageHeader Title="Projects" Subtitle="Repositories on this host that agents can work in.">
 	<Actions>
-		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" HideTextOnMobile="true" OnClick="ShowAddModal" />
+		<ActionButton Icon="folder-symlink" Text="Import" HideTextOnMobile="true"
+					  Title="Import folders already on this host" OnClick="ShowScanModal" />
+		<ActionButton Icon="plus" Text="New project" Style="ActionButton.ButtonStyle.Primary" HideTextOnMobile="true" OnClick="ShowAddModal" />
 	</Actions>
 </PageHeader>
 
-@* Projects toolbar — Bootstrap input-group + btn-group *@
+@* Projects toolbar — hidden until there is something worth filtering *@
+@if (ProjectsWithInfo.Any())
+{
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
 	<div class="input-group flex-grow-1" role="search">
 		<span class="input-group-text"><i class="bi bi-search"></i></span>
@@ -45,6 +49,7 @@
 		<span class="d-none d-md-inline ms-1">Stats</span>
 	</button>
 </div>
+}
 
 @if (ShowInitialLoadingSpinner)
 {
@@ -52,7 +57,11 @@
 }
 else if (!ProjectsWithInfo.Any())
 {
-	<EmptyState Icon="folder" Title="No projects yet" Message="Create your first project to start running AI agent jobs." />
+	<EmptyState Icon="folder" Title="No projects yet"
+				Message="Point VibeSwarm at a folder on this host, or import repositories it already finds there.">
+		<ActionButton Icon="plus" Text="New project" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
+		<ActionButton Icon="folder-symlink" Text="Import from disk" OnClick="ShowScanModal" />
+	</EmptyState>
 }
 else if (!GetFilteredProjects().Any())
 {
@@ -93,6 +102,8 @@ else
 		}
 	</div>
 }
+
+<ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="HandleProjectsImported" />
 
 @* Project Modal for Add/Edit *@
 <ProjectModal @bind-IsVisible="ShowProjectModal" EditProject="@EditingProject" OnSaved="HandleProjectSaved"
@@ -160,6 +171,7 @@ else
     private string? _gitOperationKind;
 
     // Modal state
+    private ScanProjectsModal? _scanProjectsModal;
     private bool ShowProjectModal { get; set; }
     private Project? EditingProject { get; set; }
 
@@ -408,6 +420,20 @@ else
 
         EditingProject = null;
         ShowProjectModal = true;
+        StateHasChanged();
+    }
+
+    private async Task ShowScanModal()
+    {
+        if (_scanProjectsModal != null)
+        {
+            await _scanProjectsModal.ShowAsync();
+        }
+    }
+
+    private async Task HandleProjectsImported()
+    {
+        await LoadProjects();
         StateHasChanged();
     }
 

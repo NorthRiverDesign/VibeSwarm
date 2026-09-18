@@ -7,7 +7,7 @@
 @inject NotificationService NotificationService
 @inject NavigationManager NavigationManager
 
-<PageHeader Title="Scheduler">
+<PageHeader Title="Scheduler" Subtitle="Recurring jobs and idea generation across your projects.">
 	<Actions>
 		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
 	</Actions>
@@ -20,7 +20,10 @@
 else if (!_schedules.Any())
 {
 	<EmptyState Icon="calendar-event" Title="No schedules yet"
-				Message="Create a recurring schedule to automatically queue jobs or generate fresh ideas for one of your projects." />
+				Message="A schedule queues jobs or generates fresh ideas for a project on a recurring basis.">
+		<ActionButton Icon="plus-lg" Text="New schedule" Style="ActionButton.ButtonStyle.Primary"
+					  Size="ActionButton.ButtonSize.Small" OnClick="ShowAddModal" />
+	</EmptyState>
 }
 else
 {

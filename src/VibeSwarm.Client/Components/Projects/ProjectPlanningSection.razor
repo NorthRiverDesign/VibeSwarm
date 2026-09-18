@@ -1,103 +1,81 @@
 @if (Project != null)
 {
-	<div class="mb-3">
-		<label class="form-label d-flex align-items-center gap-2 mb-2">
-			<i class="bi bi-map"></i>
-			<span>Planning</span>
-		</label>
-
-		<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
-			<span>Planning runs idea expansion through Claude Code or Copilot plan mode so users can review a structured implementation plan before a job is created.</span>
-		</Alert>
-
-		<div class="form-check form-switch mt-2">
-			<InputCheckbox id="modal-planningEnabled" @bind-Value="Project.PlanningEnabled" @bind-Value:after="HandlePlanningEnabledChanged" class="form-check-input" />
-			<label class="form-check-label" for="modal-planningEnabled">
-				<i class="bi bi-lightbulb me-1"></i>Enable Planning
-			</label>
-		</div>
-		<div class="form-text">When enabled, manual and automatic idea expansion use the selected provider and optional model to generate a reviewed feature plan.</div>
-
-		@if (Project.PlanningEnabled)
-		{
-			@if (!AvailableProviders.Any())
-			{
-				<div class="text-warning small mt-2">
-					<i class="bi bi-exclamation-triangle me-1"></i>Planning needs an enabled Claude or Copilot provider. Configure one under Providers first.
-				</div>
-			}
-			else
-			{
-				<div class="border rounded p-3 bg-body-tertiary mt-3">
-					<div class="mb-3">
-						<label for="modal-planningProvider" class="form-label">
-							<i class="bi bi-cpu me-1"></i>Planning Provider
-						</label>
-						<InputSelect TValue="Guid?" id="modal-planningProvider" @bind-Value="Project.PlanningProviderId" @bind-Value:after="HandlePlanningProviderChanged" class="form-select">
-							@foreach (var provider in AvailableProviders)
-							{
-								<option value="@provider.Id">@provider.Name (@provider.Type)</option>
-							}
-						</InputSelect>
-						<div class="form-text">Only GitHub Copilot and Claude providers currently support project planning.</div>
-					</div>
-
-					<div>
-						<label for="modal-planningModel" class="form-label">
-							<i class="bi bi-sliders me-1"></i>Planning Model
-							<span class="text-body-secondary fw-normal">(optional)</span>
-						</label>
-						<InputSelect id="modal-planningModel" @bind-Value="Project.PlanningModelId" class="form-select" disabled="@(!Project.PlanningProviderId.HasValue || !PlanningModels.Any())">
-							<option value="">Use provider default model</option>
-							@foreach (var model in PlanningModels)
-							{
-								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
-							}
-						</InputSelect>
-						<div class="form-text">
-							@if (Project.PlanningProviderId.HasValue && !PlanningModels.Any())
-							{
-								<span>No cached models found for this provider yet. The provider default will be used until models are refreshed.</span>
-							}
-							else
-							{
-								<span>Leave this blank to use the provider's default planning model.</span>
-							}
-						</div>
-					</div>
-
-					<div class="mt-3">
-						<label for="modal-planningReasoning" class="form-label">
-							<i class="bi bi-lightning-charge me-1"></i>Planning Reasoning
-							<span class="text-body-secondary fw-normal">(optional)</span>
-						</label>
-						<InputSelect id="modal-planningReasoning" @bind-Value="Project.PlanningReasoningEffort" class="form-select" disabled="@(!Project.PlanningProviderId.HasValue || !PlanningReasoningOptions.Any())">
-							<option value="">Use provider default reasoning</option>
-							@foreach (var reasoning in PlanningReasoningOptions)
-							{
-								<option value="@reasoning">@reasoning</option>
-							}
-						</InputSelect>
-						<div class="form-text">
-							@if (Project.PlanningProviderId.HasValue && !PlanningReasoningOptions.Any())
-							{
-								<span>This provider does not expose configurable reasoning levels for planning.</span>
-							}
-							else
-							{
-								<span>Leave this blank to use the provider's default planning reasoning.</span>
-							}
-						</div>
-					</div>
-				</div>
-			}
-		}
+	<div class="form-check form-switch mb-1">
+		<InputCheckbox id="modal-planningEnabled" @bind-Value="Project.PlanningEnabled"
+					   @bind-Value:after="HandlePlanningEnabledChanged" class="form-check-input" />
+		<label class="form-check-label" for="modal-planningEnabled">Review a plan before each job</label>
 	</div>
+	<div class="form-text mb-3">
+		Idea expansion runs through Claude Code or Copilot plan mode so you can review a structured implementation
+		plan before the job is created.
+	</div>
+
+	@if (Project.PlanningEnabled)
+	{
+		@if (!AvailableProviders.Any())
+		{
+			<Alert Type="Alert.AlertType.Warning" Class="py-2 px-3 small mb-0">
+				<span>Planning needs an enabled Claude or Copilot provider. Add one under Providers first.</span>
+			</Alert>
+		}
+		else
+		{
+			<div class="mb-3">
+				<label for="modal-planningProvider" class="form-label">Planning provider</label>
+				<InputSelect TValue="Guid?" id="modal-planningProvider" @bind-Value="Project.PlanningProviderId"
+							 @bind-Value:after="HandlePlanningProviderChanged" class="form-select">
+					@foreach (var provider in AvailableProviders)
+					{
+						<option value="@provider.Id">@provider.Name (@provider.Type)</option>
+					}
+				</InputSelect>
+			</div>
+
+			<div class="row g-3">
+				<div class="col-12 col-sm-6">
+					<label for="modal-planningModel" class="form-label">
+						Model <span class="text-body-secondary fw-normal">(optional)</span>
+					</label>
+					<InputSelect id="modal-planningModel" @bind-Value="Project.PlanningModelId" class="form-select"
+								 disabled="@(!Project.PlanningProviderId.HasValue || !PlanningModels.Any())">
+						<option value="">Provider default</option>
+						@foreach (var model in PlanningModels)
+						{
+							<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
+						}
+					</InputSelect>
+					@if (Project.PlanningProviderId.HasValue && !PlanningModels.Any())
+					{
+						<div class="form-text">No cached models yet — the provider default is used.</div>
+					}
+				</div>
+
+				<div class="col-12 col-sm-6">
+					<label for="modal-planningReasoning" class="form-label">
+						Reasoning <span class="text-body-secondary fw-normal">(optional)</span>
+					</label>
+					<InputSelect id="modal-planningReasoning" @bind-Value="Project.PlanningReasoningEffort"
+								 class="form-select"
+								 disabled="@(!Project.PlanningProviderId.HasValue || !PlanningReasoningOptions.Any())">
+						<option value="">Provider default</option>
+						@foreach (var reasoning in PlanningReasoningOptions)
+						{
+							<option value="@reasoning">@reasoning</option>
+						}
+					</InputSelect>
+					@if (Project.PlanningProviderId.HasValue && !PlanningReasoningOptions.Any())
+					{
+						<div class="form-text">This provider has no configurable reasoning levels.</div>
+					}
+				</div>
+			</div>
+		}
+	}
 }
 
 @code {
 	[Parameter, EditorRequired]
-public ProjectModalFormModel Project { get; set; } = default!;
+	public ProjectModalFormModel Project { get; set; } = default!;
 
 	[Parameter]
 	public IReadOnlyList<Provider> AvailableProviders { get; set; } = [];
