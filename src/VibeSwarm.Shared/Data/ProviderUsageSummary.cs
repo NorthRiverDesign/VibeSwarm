@@ -19,31 +19,13 @@ public class ProviderUsageSummary
 	/// </summary>
 	public Guid ProviderId { get; set; }
 
-	/// <summary>
-	/// Navigation property to the provider
-	/// </summary>
 	public Provider? Provider { get; set; }
 
 	#region Cumulative Totals
 
-	/// <summary>
-	/// Total input tokens consumed across all jobs for this provider
-	/// </summary>
 	public long TotalInputTokens { get; set; }
-
-	/// <summary>
-	/// Total output tokens generated across all jobs for this provider
-	/// </summary>
 	public long TotalOutputTokens { get; set; }
-
-	/// <summary>
-	/// Total estimated cost in USD across all jobs for this provider
-	/// </summary>
 	public decimal TotalCostUsd { get; set; }
-
-	/// <summary>
-	/// Total number of jobs completed using this provider
-	/// </summary>
 	public int TotalJobsCompleted { get; set; }
 
 	/// <summary>
@@ -60,34 +42,12 @@ public class ProviderUsageSummary
 
 	#region Latest Limit State
 
-	/// <summary>
-	/// Type of limit currently tracked for this provider
-	/// </summary>
 	public UsageLimitType LimitType { get; set; } = UsageLimitType.None;
-
-	/// <summary>
-	/// Current usage count toward the limit
-	/// </summary>
 	public int? CurrentUsage { get; set; }
-
-	/// <summary>
-	/// Maximum allowed usage (as detected from provider output)
-	/// </summary>
 	public int? MaxUsage { get; set; }
-
-	/// <summary>
-	/// When the current limit period resets
-	/// </summary>
 	public DateTime? LimitResetTime { get; set; }
-
-	/// <summary>
-	/// Whether the limit has been reached
-	/// </summary>
 	public bool IsLimitReached { get; set; }
 
-	/// <summary>
-	/// Human-readable message about the limit status
-	/// </summary>
 	[StringLength(500)]
 	public string? LimitMessage { get; set; }
 
@@ -154,9 +114,6 @@ public class ProviderUsageSummary
 	[StringLength(50)]
 	public string? CliVersion { get; set; }
 
-	/// <summary>
-	/// When the CLI version was last checked
-	/// </summary>
 	public DateTime? VersionCheckedAt { get; set; }
 
 	#endregion
@@ -168,9 +125,6 @@ public class ProviderUsageSummary
 	/// </summary>
 	public DateTime PeriodStart { get; set; } = DateTime.UtcNow;
 
-	/// <summary>
-	/// When this summary was last updated
-	/// </summary>
 	public DateTime LastUpdatedAt { get; set; } = DateTime.UtcNow;
 
 	/// <summary>
@@ -191,14 +145,8 @@ public class ProviderUsageSummary
 	/// </summary>
 	public int ConsecutiveRateLimitCount { get; set; }
 
-	/// <summary>
-	/// When the provider most recently reported a rate limit.
-	/// </summary>
 	public DateTime? LastRateLimitAt { get; set; }
 
-	/// <summary>
-	/// Last human-readable rate-limit message recorded for the provider.
-	/// </summary>
 	[StringLength(500)]
 	public string? LastRateLimitMessage { get; set; }
 
@@ -206,10 +154,6 @@ public class ProviderUsageSummary
 
 	#region Computed Properties
 
-	/// <summary>
-	/// Gets the effective maximum usage for exhaustion calculations.
-	/// Returns user-configured limit if set, otherwise detected max.
-	/// </summary>
 	public int? EffectiveMaxUsage => ConfiguredMaxUsage ?? MaxUsage;
 
 	/// <summary>

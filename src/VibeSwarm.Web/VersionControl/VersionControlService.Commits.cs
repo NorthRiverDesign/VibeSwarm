@@ -48,7 +48,6 @@ public sealed partial class VersionControlService
 				}
 			}
 
-			// Create the commit
 			var commitResult = await _commandExecutor.ExecuteAsync(
 				commitArgs.ToString(),
 				workingDirectory,
@@ -316,14 +315,12 @@ public sealed partial class VersionControlService
 	{
 		try
 		{
-			// Check if git is available
 			var gitAvailable = await IsGitAvailableAsync(cancellationToken);
 			if (!gitAvailable)
 			{
 				return GitOperationResult.Failed("Git is not available on this system.");
 			}
 
-			// Check if directory is a git repository
 			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
 			if (!isRepo)
 			{

@@ -219,7 +219,6 @@ public class ClaudeSdkProvider : SdkProviderBase
 				}
 				else if (evt.TryPickContentBlockDelta(out var deltaEvent))
 				{
-					// Check if this is a thinking delta
 					if (deltaEvent.Delta.TryPickThinking(out var thinkingDelta))
 					{
 						var thinkingText = thinkingDelta.Thinking;

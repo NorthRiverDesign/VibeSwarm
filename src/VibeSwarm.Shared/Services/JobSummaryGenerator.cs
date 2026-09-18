@@ -39,7 +39,6 @@ public static partial class JobSummaryGenerator
 	/// <summary>
 	/// Generates a commit message summary from job data.
 	/// </summary>
-	/// <param name="job">The completed job</param>
 	/// <returns>A concise summary suitable for a commit message, or null if insufficient data</returns>
 	public static string? GenerateSummary(Job job)
 	{
@@ -62,7 +61,6 @@ public static partial class JobSummaryGenerator
 	/// <summary>
 	/// Generates a commit message summary from job data with an explicit commit log.
 	/// </summary>
-	/// <param name="job">The completed job</param>
 	/// <param name="commitLog">List of commit messages made during job execution</param>
 	/// <returns>A concise summary suitable for a commit message, or null if insufficient data</returns>
 	public static string? GenerateSummary(Job job, IReadOnlyList<string>? commitLog)
@@ -113,7 +111,6 @@ public static partial class JobSummaryGenerator
 		// Extract action context from goal prompt
 		var actionContext = ExtractActionContext(goalPrompt);
 
-		// Build the summary
 		return BuildSummary(diffInfo, actionContext, goalPrompt, title, commitLog);
 	}
 

@@ -277,7 +277,6 @@ public class JobStateMachine
 			}
 		}
 
-		// Check stall timeout
 		if (criteria.StallTimeout.HasValue && job.LastActivityAt.HasValue)
 		{
 			var timeSinceActivity = DateTime.UtcNow - job.LastActivityAt.Value;

@@ -66,9 +66,6 @@ public class ClaudeStreamEvent
 	public ClaudeRateLimitInfo? RateLimitInfo { get; set; }
 }
 
-/// <summary>
-/// Represents a message in Claude's streaming output.
-/// </summary>
 public class ClaudeMessage
 {
 	[JsonPropertyName("id")]
@@ -130,9 +127,6 @@ public class ClaudeContentBlock
 	public bool? IsError { get; set; }
 }
 
-/// <summary>
-/// Token usage information from Claude.
-/// </summary>
 public class ClaudeUsageInfo
 {
 	[JsonPropertyName("input_tokens")]
@@ -208,9 +202,6 @@ public class ClaudeRateLimitInfo
 	public Dictionary<string, ClaudeRateLimitWindow>? UnifiedWindows { get; set; }
 }
 
-/// <summary>
-/// A single rolling usage window.
-/// </summary>
 public class ClaudeRateLimitWindow
 {
 	/// <summary>

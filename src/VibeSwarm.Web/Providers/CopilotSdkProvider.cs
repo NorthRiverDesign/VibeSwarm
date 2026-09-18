@@ -41,7 +41,6 @@ public class CopilotSdkProvider : SdkProviderBase
 	};
 
 	public override ProviderType Type => ProviderType.Copilot;
-
 	internal static TimeSpan DefaultPromptTimeout => JobCompletionCriteria.DefaultStallTimeoutValue;
 
 	public CopilotSdkProvider(Provider config) : base(config) { }
@@ -418,7 +417,6 @@ public class CopilotSdkProvider : SdkProviderBase
 
 			result.CommandUsed = $"Copilot SDK ({model})";
 
-			// Build session config
 			var sessionConfig = new SessionConfig
 			{
 				Model = model,
@@ -441,7 +439,6 @@ public class CopilotSdkProvider : SdkProviderBase
 				sessionConfig.SessionId = sessionId;
 			}
 
-			// Apply working directory to session config
 			sessionConfig.WorkingDirectory = effectiveWorkingDir;
 
 			// Create or resume session

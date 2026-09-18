@@ -131,7 +131,6 @@ public class UserService : IUserService
 				var currentRoles = await _userManager.GetRolesAsync(user);
 				await _userManager.RemoveFromRolesAsync(user, currentRoles);
 
-				// Add new role
 				var newRole = model.Role == DatabaseSeeder.AdminRole ? DatabaseSeeder.AdminRole : DatabaseSeeder.UserRole;
 				await _userManager.AddToRoleAsync(user, newRole);
 

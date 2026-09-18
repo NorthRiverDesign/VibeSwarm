@@ -210,7 +210,6 @@ public sealed partial class VersionControlService
 	{
 		try
 		{
-			// Check if gh CLI is available
 			var ghAvailable = await IsGitHubCliAvailableAsync(cancellationToken);
 			if (!ghAvailable)
 			{

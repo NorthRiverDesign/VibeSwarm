@@ -144,9 +144,6 @@ public class JobQueueManager
 		_recentlyDequeued.TryRemove(jobId, out _);
 	}
 
-	/// <summary>
-	/// Gets the count of pending jobs
-	/// </summary>
 	public async Task<int> GetPendingCountAsync(CancellationToken cancellationToken = default)
 	{
 		using var scope = _scopeFactory.CreateScope();
@@ -157,9 +154,6 @@ public class JobQueueManager
 			.CountAsync(cancellationToken);
 	}
 
-	/// <summary>
-	/// Gets queue statistics
-	/// </summary>
 	public async Task<QueueStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default)
 	{
 		using var scope = _scopeFactory.CreateScope();
@@ -210,9 +204,6 @@ public class JobQueueManager
 		return stats;
 	}
 
-	/// <summary>
-	/// Filters jobs based on their dependencies
-	/// </summary>
 	private List<Job> FilterByDependencies(List<Job> jobs, VibeSwarmDbContext dbContext)
 	{
 		var result = new List<Job>();
@@ -306,9 +297,6 @@ public class JobQueueManager
 	}
 }
 
-/// <summary>
-/// Statistics about the job queue
-/// </summary>
 public class QueueStatistics
 {
 	public int TotalJobs { get; set; }

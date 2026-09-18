@@ -205,7 +205,6 @@ public partial class IdeaService
 			}
 		}
 
-		// Get the next unprocessed idea
 		var nextIdea = await GetNextUnprocessedAsync(projectId, cancellationToken);
 		if (nextIdea == null)
 		{
@@ -303,7 +302,6 @@ public partial class IdeaService
 
 		var sourceProjectId = idea.ProjectId;
 
-		// Update the idea's project
 		idea.ProjectId = targetProjectId;
 		var now = DateTime.UtcNow;
 		targetProject.UpdatedAt = now;
@@ -313,7 +311,6 @@ public partial class IdeaService
 			sourceProject.UpdatedAt = now;
 		}
 
-		// Update sort order in new project
 		var maxSortOrder = await _dbContext.Ideas
 			.Where(i => i.ProjectId == targetProjectId && i.Id != ideaId)
 			.MaxAsync(i => (int?)i.SortOrder, cancellationToken) ?? -1;

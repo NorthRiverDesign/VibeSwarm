@@ -38,123 +38,67 @@ public interface IJobService
     /// <summary>
     /// Pauses a job to wait for user interaction
     /// </summary>
-    /// <param name="id">The job ID</param>
     /// <param name="interactionPrompt">The prompt/question from the CLI agent</param>
     /// <param name="interactionType">The type of interaction (confirmation, input, choice, etc.)</param>
     /// <param name="choices">Available choices if applicable (JSON array)</param>
-    /// <param name="cancellationToken">Cancellation token</param>
     Task<bool> PauseForInteractionAsync(Guid id, string interactionPrompt, string interactionType,
         string? choices = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the pending interaction details for a paused job
     /// </summary>
-    /// <param name="id">The job ID</param>
-    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The pending interaction prompt, or null if not paused</returns>
     Task<(string? Prompt, string? Type, string? Choices)?> GetPendingInteractionAsync(Guid id,
         CancellationToken cancellationToken = default);
 
-	/// <summary>
-	/// Resumes a paused job after user provides input
-	/// </summary>
-	/// <param name="id">The job ID</param>
-	/// <param name="cancellationToken">Cancellation token</param>
 	Task<bool> ResumeJobAsync(Guid id, CancellationToken cancellationToken = default);
 
 	/// <summary>
 	/// Continues a completed job with follow-up instructions while preserving the existing session context.
 	/// </summary>
-	/// <param name="id">The job ID</param>
 	/// <param name="followUpPrompt">The follow-up instructions to send</param>
-	/// <param name="cancellationToken">Cancellation token</param>
 	Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets all paused jobs waiting for user interaction
-    /// </summary>
-    /// <param name="cancellationToken">Cancellation token</param>
     Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the last used model for a project and provider combination
     /// </summary>
-    /// <param name="projectId">The project ID</param>
-    /// <param name="providerId">The provider ID</param>
-    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The model ID if found, otherwise null</returns>
     Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Resets a job for retry with optional provider and model changes
     /// </summary>
-    /// <param name="id">The job ID</param>
     /// <param name="providerId">New provider ID (null to keep current)</param>
     /// <param name="modelId">Model ID to use (null for default)</param>
     /// <param name="reasoningEffort">Reasoning effort to use (null for default)</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>True if successful</returns>
     Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates the goal prompt for a job that hasn't started yet
     /// </summary>
-    /// <param name="id">The job ID</param>
     /// <param name="newPrompt">The new goal prompt</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>True if successful</returns>
     Task<bool> UpdateJobPromptAsync(Guid id, string newPrompt, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Cancels all non-terminal jobs for a project (New, Pending, Started, Processing, Paused, Stalled).
     /// Queued jobs are cancelled immediately; running jobs are force-cancelled.
     /// </summary>
-    /// <param name="projectId">The project ID</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>The number of jobs cancelled</returns>
     Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Deletes all completed jobs for a project.
-    /// </summary>
-    /// <param name="projectId">The project ID</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>The number of jobs deleted</returns>
     Task<int> DeleteCompletedByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Retries selected failed or cancelled jobs for a project.
-    /// </summary>
-    /// <param name="projectId">The project ID</param>
-    /// <param name="jobIds">The selected job IDs</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>The number of jobs queued for retry</returns>
     Task<int> RetrySelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Cancels selected non-terminal jobs for a project.
-    /// </summary>
-    /// <param name="projectId">The project ID</param>
-    /// <param name="jobIds">The selected job IDs</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>The number of jobs cancelled</returns>
     Task<int> CancelSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Raises the priority of selected queued jobs for a project.
-    /// </summary>
-    /// <param name="projectId">The project ID</param>
-    /// <param name="jobIds">The selected job IDs</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>The number of jobs reprioritized</returns>
     Task<int> PrioritizeSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Bypasses the state machine and directly sets a non-terminal job to Failed.
     /// Use as a last resort for jobs stuck in active states with no recovery path.
     /// </summary>
-    /// <param name="id">The job ID</param>
-    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>True if successful; false if job is already in a terminal state or not found</returns>
     Task<bool> ForceFailJobAsync(Guid id, CancellationToken cancellationToken = default);
 
@@ -163,15 +107,11 @@ public interface IJobService
     /// This ensures queued jobs pick up provider/model changes made after creation.
     /// No-op if the job has already started processing.
     /// </summary>
-    /// <param name="id">The job ID</param>
-    /// <param name="cancellationToken">Cancellation token</param>
     Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Returns all change-set snapshots recorded for a job (one per follow-up iteration),
     /// ordered by FollowUpIndex ascending.
     /// </summary>
-    /// <param name="jobId">The job ID</param>
-    /// <param name="cancellationToken">Cancellation token</param>
     Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default);
 }

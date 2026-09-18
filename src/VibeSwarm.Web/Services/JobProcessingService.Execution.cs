@@ -126,7 +126,6 @@ public partial class JobProcessingService
             executionContext.ProviderId = job.ProviderId;
             await ReserveProviderExecutionSlotAsync(job.ProviderId, dbContext, cancellationToken);
 
-            // Create provider instance
             var provider = CreateProviderInstance(providerResolution.Provider);
             executionContext.ProviderInstance = provider;
 
@@ -515,7 +514,6 @@ public partial class JobProcessingService
                                 "Interaction detected for job {JobId}: Type={Type}, Confidence={Confidence:P0}, Prompt={Prompt}",
                                 job.Id, interactionRequest.Type, interactionRequest.Confidence, interactionRequest.Prompt);
 
-                            // Mark context as paused
                             executionContext.IsPausedForInteraction = true;
                             executionContext.CurrentInteractionRequest = interactionRequest;
 

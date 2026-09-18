@@ -61,19 +61,12 @@ public abstract class ProviderBase : IProvider
     /// </summary>
     protected internal Dictionary<string, string>? BaseEnvironmentVariables { get; set; }
 
-    /// <summary>
-    /// Current MCP config path for the execution (set by ExecuteWithOptionsAsync)
-    /// </summary>
+    // The Current* properties below hold per-execution state: ApplyOptions populates them from
+    // ExecutionOptions before BuildCliArgs runs, and ClearExecutionContext resets them afterwards.
+    // Where a property maps onto an upstream CLI flag, that flag is named in its doc comment.
+
     protected string? CurrentMcpConfigPath { get; private set; }
-
-    /// <summary>
-    /// Current additional CLI arguments (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected List<string>? CurrentAdditionalArgs { get; private set; }
-
-    /// <summary>
-    /// Current environment variables (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected Dictionary<string, string>? CurrentEnvironmentVariables { get; set; }
 
     /// <summary>
@@ -82,114 +75,54 @@ public abstract class ProviderBase : IProvider
     /// usage limits are queried between jobs.
     /// </summary>
     protected internal string? LastExecutedModel { get; protected set; }
-
-    /// <summary>
-    /// Current model to use (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected string? CurrentModel { get; private set; }
-
-    /// <summary>
-    /// Current session title (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected string? CurrentTitle { get; private set; }
-
-    /// <summary>
-    /// Current agent to use (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected string? CurrentAgent { get; private set; }
-
-    /// <summary>
-    /// Current attached files (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected List<string>? CurrentAttachedFiles { get; private set; }
-
-    /// <summary>
-    /// Current output format (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected string? CurrentOutputFormat { get; private set; }
-
-    /// <summary>
-    /// Whether to continue the last session (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected bool CurrentContinueLastSession { get; private set; }
-
-    /// <summary>
-    /// System prompt override (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected string? CurrentSystemPrompt { get; private set; }
-
-    /// <summary>
-    /// System prompt to append (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected string? CurrentAppendSystemPrompt { get; private set; }
-
-    /// <summary>
-    /// Maximum number of agentic turns (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected int? CurrentMaxTurns { get; private set; }
-
-    /// <summary>
-    /// Maximum budget in USD (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected decimal? CurrentMaxBudgetUsd { get; private set; }
-
-	/// <summary>
-	/// Additional working directories (set by ExecuteWithOptionsAsync)
-	/// </summary>
-	protected List<string>? CurrentAdditionalDirectories { get; private set; }
-
-	/// <summary>
-	/// Whether to use Claude bare mode (set by ExecuteWithOptionsAsync)
-	/// </summary>
-	protected bool CurrentUseBareMode { get; private set; }
-
-    /// <summary>
-    /// Timeout in seconds (set by ExecuteWithOptionsAsync)
-    /// </summary>
+    protected List<string>? CurrentAdditionalDirectories { get; private set; }
+    protected bool CurrentUseBareMode { get; private set; }
     protected int? CurrentTimeoutSeconds { get; private set; }
-
-    /// <summary>
-    /// Allowed tools filter (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected List<string>? CurrentAllowedTools { get; private set; }
-
-    /// <summary>
-    /// Excluded tools filter (set by ExecuteWithOptionsAsync)
-    /// </summary>
     protected List<string>? CurrentExcludedTools { get; private set; }
 
     /// <summary>
-    /// Disallowed tools (Claude --disallowed-tools, set by ExecuteWithOptionsAsync)
+    /// Disallowed tools (Claude --disallowed-tools)
     /// </summary>
     protected List<string>? CurrentDisallowedTools { get; private set; }
 
     /// <summary>
-    /// Whether to use isolated git worktree (Claude --worktree, set by ExecuteWithOptionsAsync)
+    /// Whether to use isolated git worktree (Claude --worktree)
     /// </summary>
     protected bool CurrentUseWorktree { get; private set; }
 
     /// <summary>
-    /// Whether to use autopilot mode (Copilot autopilot, set by ExecuteWithOptionsAsync)
+    /// Whether to use autopilot mode (Copilot autopilot)
     /// </summary>
     protected bool CurrentUseAutopilot { get; private set; }
 
     /// <summary>
-    /// PR number/URL for session linking (Claude --from-pr, set by ExecuteWithOptionsAsync)
+    /// PR number/URL for session linking (Claude --from-pr)
     /// </summary>
     protected string? CurrentFromPullRequest { get; private set; }
 
     /// <summary>
-    /// Init mode for setup hooks (Claude --init/--init-only/--maintenance, set by ExecuteWithOptionsAsync)
+    /// Init mode for setup hooks (Claude --init/--init-only/--maintenance)
     /// </summary>
     protected string? CurrentInitMode { get; private set; }
 
     /// <summary>
-    /// Whether to fork the session (OpenCode --fork, set by ExecuteWithOptionsAsync)
+    /// Whether to fork the session (OpenCode --fork)
     /// </summary>
     protected bool CurrentForkSession { get; private set; }
 
     /// <summary>
-    /// Whether to use alt-screen mode (Copilot --alt-screen, set by ExecuteWithOptionsAsync)
+    /// Whether to use alt-screen mode (Copilot --alt-screen)
     /// </summary>
     protected bool CurrentUseAltScreen { get; private set; }
 
@@ -209,7 +142,7 @@ public abstract class ProviderBase : IProvider
     protected string? CurrentBashEnvPath { get; private set; }
 
     /// <summary>
-    /// Permission mode for automated execution (Claude --permission-mode, set by ExecuteWithOptionsAsync)
+    /// Permission mode for automated execution (Claude --permission-mode)
     /// </summary>
     protected string? CurrentPermissionMode { get; private set; }
 
@@ -309,12 +242,12 @@ public abstract class ProviderBase : IProvider
         CurrentContinueLastSession = options.ContinueLastSession;
         CurrentSystemPrompt = options.SystemPrompt;
         CurrentAppendSystemPrompt = options.AppendSystemPrompt;
-		CurrentMaxTurns = options.MaxTurns;
-		CurrentMaxBudgetUsd = options.MaxBudgetUsd;
-		CurrentAdditionalDirectories = options.AdditionalDirectories;
-		CurrentUseBareMode = options.UseBareMode;
-		CurrentTimeoutSeconds = options.TimeoutSeconds;
-		CurrentAllowedTools = options.AllowedTools;
+        CurrentMaxTurns = options.MaxTurns;
+        CurrentMaxBudgetUsd = options.MaxBudgetUsd;
+        CurrentAdditionalDirectories = options.AdditionalDirectories;
+        CurrentUseBareMode = options.UseBareMode;
+        CurrentTimeoutSeconds = options.TimeoutSeconds;
+        CurrentAllowedTools = options.AllowedTools;
         CurrentExcludedTools = options.ExcludedTools;
         CurrentDisallowedTools = options.DisallowedTools;
         CurrentUseWorktree = options.UseWorktree;
@@ -354,9 +287,6 @@ public abstract class ProviderBase : IProvider
         CurrentShowThinking = options.ShowThinking;
     }
 
-    /// <summary>
-    /// Clears the execution context after a run completes
-    /// </summary>
     protected virtual void ClearExecutionContext()
     {
         CurrentMcpConfigPath = null;
@@ -370,11 +300,11 @@ public abstract class ProviderBase : IProvider
         CurrentContinueLastSession = false;
         CurrentSystemPrompt = null;
         CurrentAppendSystemPrompt = null;
-		CurrentMaxTurns = null;
-		CurrentMaxBudgetUsd = null;
-		CurrentAdditionalDirectories = null;
-		CurrentUseBareMode = false;
-		CurrentTimeoutSeconds = null;
+        CurrentMaxTurns = null;
+        CurrentMaxBudgetUsd = null;
+        CurrentAdditionalDirectories = null;
+        CurrentUseBareMode = false;
+        CurrentTimeoutSeconds = null;
         CurrentAllowedTools = null;
         CurrentExcludedTools = null;
         CurrentDisallowedTools = null;
@@ -471,7 +401,6 @@ public abstract class ProviderBase : IProvider
     }
 
     public abstract Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default);
-
     public abstract Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

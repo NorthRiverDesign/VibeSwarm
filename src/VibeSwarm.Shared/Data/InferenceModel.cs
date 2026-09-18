@@ -9,15 +9,7 @@ namespace VibeSwarm.Shared.Data;
 public class InferenceModel
 {
 	public Guid Id { get; set; } = Guid.NewGuid();
-
-	/// <summary>
-	/// The inference provider this model belongs to
-	/// </summary>
 	public Guid InferenceProviderId { get; set; }
-
-	/// <summary>
-	/// Navigation property to the parent inference provider
-	/// </summary>
 	public InferenceProvider? InferenceProvider { get; set; }
 
 	/// <summary>
@@ -27,9 +19,6 @@ public class InferenceModel
 	[StringLength(200)]
 	public string ModelId { get; set; } = string.Empty;
 
-	/// <summary>
-	/// Optional display name for the model
-	/// </summary>
 	[StringLength(200)]
 	public string? DisplayName { get; set; }
 
@@ -51,9 +40,6 @@ public class InferenceModel
 	[StringLength(50)]
 	public string? QuantizationLevel { get; set; }
 
-	/// <summary>
-	/// Size of the model in bytes
-	/// </summary>
 	public long? SizeBytes { get; set; }
 
 	/// <summary>
@@ -64,18 +50,7 @@ public class InferenceModel
 	[StringLength(100)]
 	public string TaskType { get; set; } = "default";
 
-	/// <summary>
-	/// Whether this is the default model for its assigned task type
-	/// </summary>
 	public bool IsDefault { get; set; }
-
-	/// <summary>
-	/// Whether the model is currently available on the provider
-	/// </summary>
 	public bool IsAvailable { get; set; } = true;
-
-	/// <summary>
-	/// When this model record was last updated
-	/// </summary>
 	public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

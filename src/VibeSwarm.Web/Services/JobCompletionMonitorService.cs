@@ -223,7 +223,6 @@ public class JobCompletionMonitorService : BackgroundService
 			newStatus = JobStatus.Completed;
 		}
 
-		// Apply state transition
 		var transition = JobStateMachine.TryTransition(job, newStatus, evaluation.CompletionReason);
 		if (!transition.Success)
 		{

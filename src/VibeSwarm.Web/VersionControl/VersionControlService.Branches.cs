@@ -12,7 +12,6 @@ public sealed partial class VersionControlService
 
 		try
 		{
-			// Get current branch first
 			var currentBranch = await GetCurrentBranchAsync(workingDirectory, cancellationToken);
 
 			// Get all branches with commit info
@@ -111,14 +110,12 @@ public sealed partial class VersionControlService
 				return GitOperationResult.Failed("Invalid branch name. Branch names cannot contain spaces, '..' sequences, or start with '-'.");
 			}
 
-			// Check if git is available
 			var gitAvailable = await IsGitAvailableAsync(cancellationToken);
 			if (!gitAvailable)
 			{
 				return GitOperationResult.Failed("Git is not available on this system.");
 			}
 
-			// Check if directory is a git repository
 			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
 			if (!isRepo)
 			{
@@ -157,7 +154,6 @@ public sealed partial class VersionControlService
 				return GitOperationResult.Failed($"Failed to create branch: {errorMessage}");
 			}
 
-			// Get the commit hash
 			var commitHash = await GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
 
 			return GitOperationResult.Succeeded(
@@ -256,7 +252,6 @@ public sealed partial class VersionControlService
 
 				if (remoteRefCheck.Success)
 				{
-					// Reset to remote
 					var hardResetResult = await _commandExecutor.ExecuteAsync(
 						$"reset --hard {remoteName}/{branchName}",
 						workingDirectory,
@@ -283,7 +278,6 @@ public sealed partial class VersionControlService
 					return GitOperationResult.Failed($"Branch '{branchName}' not found locally or on remote '{remoteName}'.");
 				}
 
-				// Create and checkout from remote
 				var checkoutResult = await _commandExecutor.ExecuteAsync(
 					$"checkout -b {branchName} {remoteName}/{branchName}",
 					workingDirectory,
@@ -330,7 +324,6 @@ public sealed partial class VersionControlService
 	{
 		try
 		{
-			// Get current branch
 			var currentBranch = await GetCurrentBranchAsync(workingDirectory, cancellationToken);
 			if (string.IsNullOrEmpty(currentBranch))
 			{

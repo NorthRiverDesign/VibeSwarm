@@ -5,14 +5,8 @@ using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Data;
 
-/// <summary>
-/// Specifies how cycles are managed for a job.
-/// </summary>
 public enum CycleMode
 {
-    /// <summary>
-    /// Single cycle only (default behavior).
-    /// </summary>
     SingleCycle = 0,
 
     /// <summary>
@@ -26,19 +20,10 @@ public enum CycleMode
     Autonomous = 2
 }
 
-/// <summary>
-/// Specifies how sessions are handled between cycles.
-/// </summary>
 public enum CycleSessionMode
 {
-    /// <summary>
-    /// Continue using the same session across cycles.
-    /// </summary>
     ContinueSession = 0,
 
-    /// <summary>
-    /// Start a fresh session for each cycle.
-    /// </summary>
     FreshSession = 1
 }
 
@@ -90,13 +75,10 @@ public class Job
     public string? AttachedFilesJson { get; set; }
 
     public JobStatus Status { get; set; } = JobStatus.New;
-
     public Guid ProjectId { get; set; }
     public Project? Project { get; set; }
-
     public Guid ProviderId { get; set; }
     public Provider? Provider { get; set; }
-
     public bool IsScheduled { get; set; }
     public Guid? JobScheduleId { get; set; }
     public JobSchedule? JobSchedule { get; set; }
@@ -110,9 +92,6 @@ public class Job
     [StringLength(200)]
     public string? ModelUsed { get; set; }
 
-    /// <summary>
-    /// The requested reasoning effort for this job.
-    /// </summary>
     [StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
     public string? ReasoningEffort { get; set; }
 
@@ -122,32 +101,16 @@ public class Job
     /// </summary>
     public string? PlanningOutput { get; set; }
 
-    /// <summary>
-    /// Provider that generated the persisted planning output, if any.
-    /// </summary>
     public Guid? PlanningProviderId { get; set; }
     public Provider? PlanningProvider { get; set; }
 
-    /// <summary>
-    /// Model that generated the persisted planning output, if any.
-    /// </summary>
     [StringLength(200)]
     public string? PlanningModelUsed { get; set; }
 
-    /// <summary>
-    /// Reasoning effort used to generate the persisted planning output, if any.
-    /// </summary>
     [StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
     public string? PlanningReasoningEffortUsed { get; set; }
-
-    /// <summary>
-    /// When the persisted planning output was last generated.
-    /// </summary>
     public DateTime? PlanningGeneratedAt { get; set; }
 
-    /// <summary>
-    /// Input tokens consumed while generating the persisted planning output.
-    /// </summary>
     [NotMapped]
     public int? PlanningInputTokens
     {
@@ -163,9 +126,6 @@ public class Job
         }
     }
 
-    /// <summary>
-    /// Output tokens consumed while generating the persisted planning output.
-    /// </summary>
     [NotMapped]
     public int? PlanningOutputTokens
     {
@@ -181,9 +141,6 @@ public class Job
         }
     }
 
-    /// <summary>
-    /// Cost in USD for generating the persisted planning output.
-    /// </summary>
     [NotMapped]
     public decimal? PlanningCostUsd
     {
@@ -210,15 +167,8 @@ public class Job
     /// </summary>
     public int ActiveExecutionIndex { get; set; }
 
-    /// <summary>
-    /// Last reason the job switched providers or models.
-    /// </summary>
     [StringLength(200)]
     public string? LastSwitchReason { get; set; }
-
-    /// <summary>
-    /// When the job last switched providers or models.
-    /// </summary>
     public DateTime? LastSwitchAt { get; set; }
 
     /// <summary>
@@ -228,9 +178,6 @@ public class Job
     [StringLength(250)]
     public string? Branch { get; set; }
 
-    /// <summary>
-    /// Controls how this job's changes should be delivered after completion.
-    /// </summary>
     public GitChangeDeliveryMode GitChangeDeliveryMode { get; set; } = GitChangeDeliveryMode.CommitToBranch;
 
     /// <summary>
@@ -240,9 +187,7 @@ public class Job
     public string? TargetBranch { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
     public DateTime? StartedAt { get; set; }
-
     public DateTime? CompletedAt { get; set; }
 
     /// <summary>
@@ -283,7 +228,6 @@ public class Job
     }
 
     public string? Output { get; set; }
-
     public string? ErrorMessage { get; set; }
 
     /// <summary>
@@ -329,14 +273,8 @@ public class Job
     /// </summary>
     public bool ForceFreshSession { get; set; }
 
-    /// <summary>
-    /// Flag to request cancellation of the job
-    /// </summary>
     public bool CancellationRequested { get; set; }
 
-    /// <summary>
-    /// Total cost in USD for this job (if available from provider)
-    /// </summary>
     [NotMapped]
     public decimal? TotalCostUsd
     {
@@ -352,9 +290,6 @@ public class Job
         }
     }
 
-    /// <summary>
-    /// Total input tokens used
-    /// </summary>
     [NotMapped]
     public int? InputTokens
     {
@@ -370,9 +305,6 @@ public class Job
         }
     }
 
-    /// <summary>
-    /// Total output tokens used
-    /// </summary>
     [NotMapped]
     public int? OutputTokens
     {
@@ -407,9 +339,6 @@ public class Job
         }
     }
 
-    /// <summary>
-    /// Input tokens consumed by the execution stage.
-    /// </summary>
     [NotMapped]
     public int? ExecutionInputTokens
     {
@@ -425,9 +354,6 @@ public class Job
         }
     }
 
-    /// <summary>
-    /// Output tokens consumed by the execution stage.
-    /// </summary>
     [NotMapped]
     public int? ExecutionOutputTokens
     {
@@ -443,9 +369,6 @@ public class Job
         }
     }
 
-    /// <summary>
-    /// Cost in USD for the execution stage.
-    /// </summary>
     [NotMapped]
     public decimal? ExecutionCostUsd
     {
@@ -466,9 +389,6 @@ public class Job
     /// </summary>
     public string? CurrentActivity { get; set; }
 
-    /// <summary>
-    /// Last time the job was updated with progress
-    /// </summary>
     public DateTime? LastActivityAt { get; set; }
 
     /// <summary>
@@ -483,9 +403,6 @@ public class Job
     /// </summary>
     public DateTime? LastHeartbeatAt { get; set; }
 
-    /// <summary>
-    /// Number of times this job has been retried
-    /// </summary>
     public int RetryCount { get; set; }
 
     /// <summary>
@@ -504,15 +421,9 @@ public class Job
     [StringLength(4000)]
     public string? CommandUsed { get; set; }
 
-    /// <summary>
-    /// The exact CLI command used during the planning stage, when present.
-    /// </summary>
     [StringLength(4000)]
     public string? PlanningCommandUsed { get; set; }
 
-    /// <summary>
-    /// The exact CLI command used during the execution stage, when present.
-    /// </summary>
     [StringLength(4000)]
     public string? ExecutionCommandUsed { get; set; }
 
@@ -521,9 +432,6 @@ public class Job
     /// </summary>
     public int Priority { get; set; } = 0;
 
-    /// <summary>
-    /// Maximum execution time before the job is considered timed out (in minutes)
-    /// </summary>
     public int? MaxExecutionMinutes { get; set; }
 
     /// <summary>
@@ -551,14 +459,7 @@ public class Job
     /// </summary>
     public string? FailurePattern { get; set; }
 
-    /// <summary>
-    /// Tags for categorizing and filtering jobs
-    /// </summary>
     public string? Tags { get; set; }
-
-    /// <summary>
-    /// Parent job ID for job chaining/dependencies
-    /// </summary>
     public Guid? ParentJobId { get; set; }
 
     /// <summary>
@@ -568,14 +469,7 @@ public class Job
 
     #region Multi-Cycle Properties
 
-    /// <summary>
-    /// How cycles are managed for this job.
-    /// </summary>
     public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
-
-    /// <summary>
-    /// How sessions are handled between cycles.
-    /// </summary>
     public CycleSessionMode CycleSessionMode { get; set; } = CycleSessionMode.ContinueSession;
 
     /// <summary>
@@ -602,9 +496,6 @@ public class Job
     /// </summary>
     public string? GitDiff { get; set; }
 
-    /// <summary>
-    /// Git commit hash at the start of job execution (for baseline comparison)
-    /// </summary>
     public string? GitCommitBefore { get; set; }
 
     /// <summary>
@@ -618,7 +509,6 @@ public class Job
     /// When set, indicates the results have been committed to git.
     /// </summary>
     public string? GitCommitHash { get; set; }
-
 
     /// <summary>
     /// State machine for preserved local git changes captured before destructive branch operations.
@@ -637,40 +527,15 @@ public class Job
     [StringLength(250)]
     public string? GitCheckpointBaseBranch { get; set; }
 
-    /// <summary>
-    /// Commit hash of the preserved recovery checkpoint.
-    /// </summary>
     [StringLength(100)]
     public string? GitCheckpointCommitHash { get; set; }
 
-    /// <summary>
-    /// Why the recovery checkpoint was created.
-    /// </summary>
     [StringLength(500)]
     public string? GitCheckpointReason { get; set; }
-
-    /// <summary>
-    /// When the recovery checkpoint was created.
-    /// </summary>
     public DateTime? GitCheckpointCapturedAt { get; set; }
-    /// <summary>
-    /// GitHub pull request number created for this job, if any.
-    /// </summary>
     public int? PullRequestNumber { get; set; }
-
-    /// <summary>
-    /// GitHub pull request URL created for this job, if any.
-    /// </summary>
     public string? PullRequestUrl { get; set; }
-
-    /// <summary>
-    /// When a pull request was created for this job.
-    /// </summary>
     public DateTime? PullRequestCreatedAt { get; set; }
-
-    /// <summary>
-    /// When this job's branch changes were merged into the target branch.
-    /// </summary>
     public DateTime? MergedAt { get; set; }
 
     /// <summary>
@@ -715,9 +580,6 @@ public class Job
     /// </summary>
     public string? InteractionChoices { get; set; }
 
-    /// <summary>
-    /// Timestamp when the interaction was requested
-    /// </summary>
     public DateTime? InteractionRequestedAt { get; set; }
 
     /// <summary>
@@ -805,7 +667,6 @@ public class Job
 
     [NotMapped]
     public bool HasHiddenMessages => TotalMessageCount > Messages.Count;
-
     public ICollection<JobProviderAttempt> ProviderAttempts { get; set; } = new List<JobProviderAttempt>();
 
     /// <summary>

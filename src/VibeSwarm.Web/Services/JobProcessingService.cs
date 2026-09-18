@@ -401,14 +401,12 @@ public partial class JobProcessingService : BackgroundService
             _logger.LogInformation("Found {PendingCount} pending jobs, {AvailableSlots} slots available, {RunningCount} jobs running",
                 pendingJobs.Count, availableSlots, _runningJobs.Count);
 
-            // Start new jobs up to the available slots
             var jobsToStart = pendingJobs.Take(availableSlots);
             foreach (var job in jobsToStart)
             {
                 if (stoppingToken.IsCancellationRequested)
                     break;
 
-                // Create a linked cancellation token for this job
                 var jobCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 var context = new JobExecutionContext { CancellationTokenSource = jobCts };
 
@@ -447,7 +445,6 @@ public partial class JobProcessingService : BackgroundService
                 kvp.Value.CancellationTokenSource?.Dispose();
                 _logger.LogDebug("Removed completed job {JobId} from running jobs tracking", kvp.Key);
 
-                // Check for exceptions
                 if (kvp.Value.Task.IsFaulted && kvp.Value.Task.Exception != null)
                 {
                     _logger.LogError(kvp.Value.Task.Exception, "Job {JobId} faulted during execution", kvp.Key);

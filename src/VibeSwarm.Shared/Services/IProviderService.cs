@@ -21,9 +21,6 @@ public interface IProviderService
     Task SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default);
     Task SetDefaultAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets the session summary for a completed job.
-    /// </summary>
     Task<SessionSummary> GetSessionSummaryAsync(
         Guid providerId,
         string? sessionId,
@@ -46,9 +43,6 @@ public interface IProviderService
     /// </summary>
     Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Updates the CLI for a provider by running its update command.
-    /// </summary>
     Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -149,7 +149,6 @@ public partial class JobProcessingService
         {
             _logger.LogInformation("Running build verification for job {JobId} in {WorkingDirectory}", job.Id, workingDirectory);
 
-            // Run build command
             var buildResult = await RunShellCommandAsync(project.BuildCommand.Trim(), workingDirectory, cancellationToken);
             outputBuilder.AppendLine($"=== Build Command: {project.BuildCommand.Trim()} ===");
             outputBuilder.AppendLine($"Exit Code: {buildResult.ExitCode}");

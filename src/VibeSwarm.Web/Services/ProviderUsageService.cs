@@ -30,7 +30,6 @@ public class ProviderUsageService : IProviderUsageService
 			.AsNoTracking()
 			.FirstOrDefaultAsync(p => p.Id == providerId, cancellationToken);
 
-		// Create the usage record
 		var record = new ProviderUsageRecord
 		{
 			ProviderId = providerId,
@@ -60,7 +59,6 @@ public class ProviderUsageService : IProviderUsageService
 
 		_context.ProviderUsageRecords.Add(record);
 
-		// Update or create the summary
 		var summary = await _context.ProviderUsageSummaries
 			.FirstOrDefaultAsync(s => s.ProviderId == providerId, cancellationToken);
 

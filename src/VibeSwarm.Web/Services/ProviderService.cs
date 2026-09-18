@@ -362,7 +362,6 @@ public class ProviderService : IProviderService
             }
         }
 
-        // Get existing models for this provider
         var existingModels = await _dbContext.ProviderModels
             .Where(m => m.ProviderId == providerId)
             .ToListAsync(cancellationToken);
@@ -463,7 +462,6 @@ public class ProviderService : IProviderService
             model.IsDefault = false;
         }
 
-        // Set the new default
         var newDefault = await _dbContext.ProviderModels
             .FirstOrDefaultAsync(m => m.Id == modelId && m.ProviderId == providerId, cancellationToken);
 

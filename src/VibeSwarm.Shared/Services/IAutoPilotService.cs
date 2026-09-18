@@ -13,9 +13,6 @@ public class AutoPilotConfig
 	/// </summary>
 	public Guid? InferenceProviderId { get; set; }
 
-	/// <summary>
-	/// Model for inference-based idea generation.
-	/// </summary>
 	public string? InferenceModelId { get; set; }
 
 	/// <summary>
@@ -44,9 +41,6 @@ public class AutoPilotConfig
 	/// </summary>
 	public int MaxConsecutiveFailures { get; set; } = 3;
 
-	/// <summary>
-	/// Seconds to wait between iterations.
-	/// </summary>
 	public int CooldownSeconds { get; set; } = 60;
 
 	/// <summary>
@@ -54,20 +48,11 @@ public class AutoPilotConfig
 	/// </summary>
 	public bool AutoCommit { get; set; } = true;
 
-	/// <summary>
-	/// Whether to auto-push after committing.
-	/// </summary>
 	public bool AutoPush { get; set; }
 }
 
-/// <summary>
-/// Service for managing auto-pilot iteration loops on projects.
-/// </summary>
 public interface IAutoPilotService
 {
-	/// <summary>
-	/// Starts an auto-pilot loop for a project.
-	/// </summary>
 	Task<IterationLoop> StartAsync(Guid projectId, AutoPilotConfig config, CancellationToken cancellationToken = default);
 
 	/// <summary>
@@ -81,9 +66,6 @@ public interface IAutoPilotService
 	/// </summary>
 	Task PauseAsync(Guid projectId, CancellationToken cancellationToken = default);
 
-	/// <summary>
-	/// Resumes a paused loop.
-	/// </summary>
 	Task ResumeAsync(Guid projectId, CancellationToken cancellationToken = default);
 
 	/// <summary>

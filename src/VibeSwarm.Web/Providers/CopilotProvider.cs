@@ -28,7 +28,6 @@ public class CopilotProvider : CliProviderBase
     private static readonly Version UsageOutputFileVersion = new(1, 0, 86);
     private static readonly Version ExtendedReasoningEffortVersion = new(1, 0, 86);
     private static readonly Version ContextTierVersion = new(1, 0, 86);
-
     private UsageLimits? _lastObservedUsageLimits;
 
     // Path Copilot writes its end-of-session usage JSON to for the current run.
@@ -90,7 +89,6 @@ public class CopilotProvider : CliProviderBase
     }
 
     private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);
-
     protected override string? GetUpdateCommand() => GetExecutablePath();
     protected override string GetUpdateArguments() => "update";
     protected override string? GetDefaultExecutablePath() => GetExecutablePath();
@@ -221,7 +219,6 @@ public class CopilotProvider : CliProviderBase
         result.CommandUsed = fullCommand;
         ReportProcessStarted(process.Id, progress, fullCommand);
 
-        // Start initialization monitor
         using var initMonitorCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var initializationMonitorTask = CreateInitializationMonitorAsync(
             () => outputBuilder.Count > 0,

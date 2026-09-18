@@ -46,9 +46,6 @@ public class Project
     [StringLength(ValidationLimits.ProjectGitHubRepositoryMaxLength)]
     public string? GitHubRepository { get; set; }
 
-	/// <summary>
-	/// Auto-commit behavior after job completion.
-	/// </summary>
 	public AutoCommitMode AutoCommitMode { get; set; } = AutoCommitMode.Off;
 
 	/// <summary>
@@ -117,15 +114,10 @@ public class Project
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? UpdatedAt { get; set; }
-
     public ICollection<Job> Jobs { get; set; } = new List<Job>();
-
     public ICollection<Idea> Ideas { get; set; } = new List<Idea>();
-
     public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
-
     public ICollection<ProjectAgent> AgentAssignments { get; set; } = new List<ProjectAgent>();
-
     public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
 
     /// <summary>
@@ -160,9 +152,6 @@ public class Project
     /// </summary>
     public bool IsActive { get; set; } = true;
 
-    /// <summary>
-    /// Whether Ideas auto-processing is currently running for this project
-    /// </summary>
     public bool IdeasProcessingActive { get; set; }
 
 	/// <summary>

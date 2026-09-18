@@ -79,7 +79,6 @@ public class ClaudeProvider : CliProviderBase
     }
 
     private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);
-
     protected override string? GetUpdateCommand() => GetExecutablePath();
     protected override string GetUpdateArguments() => "update";
     protected override string? GetDefaultExecutablePath() => GetExecutablePath();
@@ -215,7 +214,6 @@ public class ClaudeProvider : CliProviderBase
         result.CommandUsed = fullCommand;
         ReportProcessStarted(process.Id, progress, fullCommand);
 
-        // Start initialization monitor
         using var initMonitorCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var initializationMonitorTask = CreateInitializationMonitorAsync(
             () => outputBuilder.Count > 0,

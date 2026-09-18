@@ -14,9 +14,6 @@ public class DiscoveredModel
 	public DateTime? ModifiedAt { get; set; }
 }
 
-/// <summary>
-/// Result of a health/connectivity check against an inference provider.
-/// </summary>
 public class InferenceHealthResult
 {
 	public bool IsAvailable { get; set; }
@@ -48,9 +45,6 @@ public class InferenceProbeRequest
 	public string? ApiKey { get; set; }
 }
 
-/// <summary>
-/// A request to generate a completion from an inference provider.
-/// </summary>
 public class InferenceRequest
 {
 	public string Prompt { get; set; } = string.Empty;
@@ -80,28 +74,13 @@ public class InferenceRequest
 	public InferenceProviderType? ProviderType { get; set; }
 }
 
-/// <summary>
-/// The result of a completion generation from an inference provider.
-/// </summary>
 public class InferenceResponse
 {
 	public bool Success { get; set; }
 	public string? Response { get; set; }
 	public string? Error { get; set; }
 	public string? ModelUsed { get; set; }
-
-	/// <summary>
-	/// Total generation time in milliseconds
-	/// </summary>
 	public long? DurationMs { get; set; }
-
-	/// <summary>
-	/// Number of tokens in the prompt
-	/// </summary>
 	public int? PromptTokens { get; set; }
-
-	/// <summary>
-	/// Number of tokens generated in the response
-	/// </summary>
 	public int? CompletionTokens { get; set; }
 }

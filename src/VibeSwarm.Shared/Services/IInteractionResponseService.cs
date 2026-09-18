@@ -13,22 +13,18 @@ public interface IInteractionResponseService
 	/// </summary>
 	/// <param name="jobId">The job ID waiting for interaction</param>
 	/// <param name="timeout">Optional timeout for waiting</param>
-	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>The user's response, or null if cancelled/timed out</returns>
 	Task<string?> WaitForResponseAsync(Guid jobId, TimeSpan? timeout = null, CancellationToken cancellationToken = default);
 
 	/// <summary>
 	/// Submits a response for a waiting job.
 	/// </summary>
-	/// <param name="jobId">The job ID</param>
-	/// <param name="response">The user's response</param>
 	/// <returns>True if the response was delivered to a waiting handler</returns>
 	bool SubmitResponse(Guid jobId, string response);
 
 	/// <summary>
 	/// Cancels a pending response wait.
 	/// </summary>
-	/// <param name="jobId">The job ID</param>
 	void CancelWait(Guid jobId);
 
 	/// <summary>
@@ -49,7 +45,6 @@ public class InMemoryInteractionResponseService : IInteractionResponseService
 	{
 		var tcs = new TaskCompletionSource<string?>();
 
-		// Register cancellation
 		using var registration = cancellationToken.Register(() =>
 		{
 			tcs.TrySetCanceled();

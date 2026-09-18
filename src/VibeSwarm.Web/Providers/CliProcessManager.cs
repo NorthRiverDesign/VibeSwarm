@@ -15,14 +15,8 @@ public class CliProcessManager : IDisposable
 	private readonly Action<string>? _logger;
 	private bool _disposed;
 
-	/// <summary>
-	/// Event fired when a line of output is received from a process
-	/// </summary>
 	public event Action<int, string, bool>? OutputReceived; // processId, line, isError
 
-	/// <summary>
-	/// Event fired when a process exits
-	/// </summary>
 	public event Action<int, int>? ProcessExited; // processId, exitCode
 
 	public CliProcessManager(Action<string>? logger = null)
@@ -30,9 +24,6 @@ public class CliProcessManager : IDisposable
 		_logger = logger;
 	}
 
-	/// <summary>
-	/// Information about a managed CLI process
-	/// </summary>
 	public class ManagedProcess
 	{
 		public int ProcessId { get; init; }
@@ -50,15 +41,10 @@ public class CliProcessManager : IDisposable
 		/// Whether this process keeps stdin open for interactive input
 		/// </summary>
 		public bool IsInteractive { get; set; }
-		/// <summary>
-		/// Whether stdin is still open for writing
-		/// </summary>
+
 		public bool StdinOpen { get; set; }
 	}
 
-	/// <summary>
-	/// Options for starting a CLI process
-	/// </summary>
 	public class ProcessOptions
 	{
 		/// <summary>
@@ -66,19 +52,8 @@ public class CliProcessManager : IDisposable
 		/// </summary>
 		public string Executable { get; set; } = string.Empty;
 
-		/// <summary>
-		/// Arguments to pass to the executable
-		/// </summary>
 		public string Arguments { get; set; } = string.Empty;
-
-		/// <summary>
-		/// Working directory for the process
-		/// </summary>
 		public string? WorkingDirectory { get; set; }
-
-		/// <summary>
-		/// Environment variables to set for the process
-		/// </summary>
 		public Dictionary<string, string>? EnvironmentVariables { get; set; }
 
 		/// <summary>
@@ -108,9 +83,6 @@ public class CliProcessManager : IDisposable
 		public bool Interactive { get; set; }
 	}
 
-	/// <summary>
-	/// Result of a CLI process execution
-	/// </summary>
 	public class ProcessResult
 	{
 		public int ProcessId { get; set; }
@@ -263,9 +235,6 @@ public class CliProcessManager : IDisposable
 		return (process.Id, managedProcess);
 	}
 
-	/// <summary>
-	/// Runs a CLI process to completion and returns the result
-	/// </summary>
 	public async Task<ProcessResult> RunAsync(
 		ProcessOptions options,
 		CancellationToken cancellationToken = default)
@@ -287,9 +256,6 @@ public class CliProcessManager : IDisposable
 		return await WaitForExitAsync(processId, managedProcess.CancellationTokenSource?.Token ?? cancellationToken);
 	}
 
-	/// <summary>
-	/// Waits for a process to complete and returns the result
-	/// </summary>
 	public async Task<ProcessResult> WaitForExitAsync(
 		int processId,
 		CancellationToken cancellationToken = default)
@@ -416,10 +382,8 @@ public class CliProcessManager : IDisposable
 	/// Writes input to a process's stdin stream.
 	/// Used for responding to interactive prompts.
 	/// </summary>
-	/// <param name="processId">The process ID</param>
 	/// <param name="input">The input to write</param>
 	/// <param name="sendNewline">Whether to append a newline (default: true)</param>
-	/// <returns>True if the write was successful</returns>
 	public async Task<bool> WriteToStdinAsync(int processId, string input, bool sendNewline = true)
 	{
 		if (!_processes.TryGetValue(processId, out var managedProcess))
@@ -468,8 +432,6 @@ public class CliProcessManager : IDisposable
 	/// <summary>
 	/// Closes stdin for an interactive process, signaling no more input.
 	/// </summary>
-	/// <param name="processId">The process ID</param>
-	/// <returns>True if successfully closed</returns>
 	public bool CloseStdin(int processId)
 	{
 		if (!_processes.TryGetValue(processId, out var managedProcess))
@@ -496,27 +458,17 @@ public class CliProcessManager : IDisposable
 		}
 	}
 
-	/// <summary>
-	/// Gets information about a managed process
-	/// </summary>
 	public ManagedProcess? GetProcess(int processId)
 	{
 		_processes.TryGetValue(processId, out var process);
 		return process;
 	}
 
-	/// <summary>
-	/// Gets all currently managed processes
-	/// </summary>
 	public IEnumerable<ManagedProcess> GetAllProcesses()
 	{
 		return _processes.Values;
 	}
 
-
-	/// <summary>
-	/// Gets the number of running processes
-	/// </summary>
 	public int RunningProcessCount => _processes.Values.Count(p => !p.IsCompleted);
 
 	/// <summary>
@@ -540,9 +492,6 @@ public class CliProcessManager : IDisposable
 		return DateTime.UtcNow - process.StartTime < stallThreshold;
 	}
 
-	/// <summary>
-	/// Removes a completed process from tracking
-	/// </summary>
 	public bool RemoveProcess(int processId)
 	{
 		if (_processes.TryRemove(processId, out var process))
@@ -561,9 +510,6 @@ public class CliProcessManager : IDisposable
 		return false;
 	}
 
-	/// <summary>
-	/// Cleans up all completed processes
-	/// </summary>
 	public void CleanupCompletedProcesses()
 	{
 		var completedIds = _processes

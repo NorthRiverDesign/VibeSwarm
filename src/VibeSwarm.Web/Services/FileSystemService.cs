@@ -32,7 +32,6 @@ public class FileSystemService : IFileSystemService
 			path = Path.GetFullPath(path);
 			result.CurrentPath = path;
 
-			// Get parent directory
 			var parentDir = Directory.GetParent(path);
 			if (parentDir != null)
 			{
@@ -59,7 +58,6 @@ public class FileSystemService : IFileSystemService
 				return Task.FromResult(result);
 			}
 
-			// Get directories
 			foreach (var dir in dirInfo.GetDirectories().OrderBy(d => d.Name))
 			{
 				try

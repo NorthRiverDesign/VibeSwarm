@@ -103,7 +103,6 @@ if (runtimeDatabaseConfiguration != null)
 	Console.WriteLine($"Runtime database config: {runtimeDatabaseConfigurationStore.ConfigurationPath}");
 }
 
-// Add authorization services
 builder.Services.AddAuthorization();
 var dataProtectionDirectory = Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -180,7 +179,6 @@ builder.Services.AddVibeSwarmData(connectionString, databaseProvider);
 builder.Services.AddSingleton<ISystemCommandRunner, SystemCommandRunner>();
 builder.Services.AddSingleton<IDeveloperModeService, DeveloperUpdateService>();
 
-// Add Identity services
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
 {
     // Password requirements

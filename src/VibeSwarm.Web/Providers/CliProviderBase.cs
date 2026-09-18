@@ -19,9 +19,6 @@ public abstract class CliProviderBase : ProviderBase
 	/// </summary>
 	protected virtual TimeSpan TestCommandTimeout => TimeSpan.FromSeconds(10);
 
-	/// <summary>
-	/// Default timeout for simple prompt commands
-	/// </summary>
 	protected virtual TimeSpan PromptTimeout => TimeSpan.FromMinutes(2);
 
 	/// <summary>
@@ -66,10 +63,8 @@ public abstract class CliProviderBase : ProviderBase
 	/// <summary>
 	/// Tests CLI connection by executing a version command.
 	/// </summary>
-	/// <param name="executablePath">Path to the executable</param>
 	/// <param name="providerName">Name of the provider for error messages</param>
 	/// <param name="versionArgs">Arguments to get version (default: --version)</param>
-	/// <param name="cancellationToken">Cancellation token</param>
 	protected async Task<bool> TestCliConnectionAsync(
 		string executablePath,
 		string providerName,
@@ -168,9 +163,6 @@ public abstract class CliProviderBase : ProviderBase
 		}
 	}
 
-	/// <summary>
-	/// Builds a timeout error message for CLI test commands.
-	/// </summary>
 	protected virtual string BuildTimeoutErrorMessage(string executablePath, string args, string providerName)
 	{
 		return $"CLI test timed out after {TestCommandTimeout.TotalSeconds} seconds. Command: {executablePath} {args}\n" +
@@ -181,9 +173,6 @@ public abstract class CliProviderBase : ProviderBase
 			"  - The service account doesn't have permission to run the CLI";
 	}
 
-	/// <summary>
-	/// Builds a connection failed error message.
-	/// </summary>
 	protected virtual string BuildConnectionFailedError(string executablePath, string args, int exitCode, string output, string error)
 	{
 		var errorDetails = new StringBuilder();
@@ -207,9 +196,6 @@ public abstract class CliProviderBase : ProviderBase
 		return errorDetails.ToString();
 	}
 
-	/// <summary>
-	/// Gets the version of the CLI tool.
-	/// </summary>
 	protected async Task<string> GetCliVersionAsync(string executablePath, string versionArgs = "--version", CancellationToken cancellationToken = default)
 	{
 		try
@@ -310,7 +296,6 @@ public abstract class CliProviderBase : ProviderBase
 				return CliUpdateResult.Fail($"Update failed: {errorMsg}", previousVersion);
 			}
 
-			// Get new version after update
 			string? newVersion = null;
 			if (!string.IsNullOrEmpty(execPath))
 			{
@@ -330,16 +315,7 @@ public abstract class CliProviderBase : ProviderBase
 		}
 	}
 
-	/// <summary>
-	/// Gets the command to run for updating the CLI tool.
-	/// Override in derived classes to specify the update command.
-	/// </summary>
 	protected virtual string? GetUpdateCommand() => null;
-
-	/// <summary>
-	/// Gets the arguments for the update command.
-	/// Override in derived classes to specify update arguments.
-	/// </summary>
 	protected virtual string GetUpdateArguments() => string.Empty;
 
 	/// <summary>
@@ -535,9 +511,6 @@ public abstract class CliProviderBase : ProviderBase
 		return new Process { StartInfo = startInfo };
 	}
 
-	/// <summary>
-	/// Reports process startup progress to the UI.
-	/// </summary>
 	protected void ReportProcessStarted(int processId, IProgress<ExecutionProgress>? progress, string? fullCommand = null)
 	{
 		progress?.Report(new ExecutionProgress
@@ -608,9 +581,6 @@ public abstract class CliProviderBase : ProviderBase
 		}, cancellationToken);
 	}
 
-	/// <summary>
-	/// Waits for a process to exit with proper cancellation handling.
-	/// </summary>
 	protected async Task WaitForProcessExitAsync(
 		Process process,
 		CancellationTokenSource initMonitorCts,
@@ -629,9 +599,6 @@ public abstract class CliProviderBase : ProviderBase
 		}
 	}
 
-	/// <summary>
-	/// Waits for output/error streams to complete with a timeout.
-	/// </summary>
 	protected async Task WaitForOutputStreamsAsync(
 		TaskCompletionSource<bool> outputComplete,
 		TaskCompletionSource<bool> errorComplete,

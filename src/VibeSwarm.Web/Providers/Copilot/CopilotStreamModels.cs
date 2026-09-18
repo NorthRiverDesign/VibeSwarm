@@ -164,9 +164,6 @@ public class CopilotStreamEvent
 	}
 }
 
-/// <summary>
-/// Token usage information from Copilot.
-/// </summary>
 public class CopilotUsageInfo
 {
 	[JsonPropertyName("input_tokens")]
