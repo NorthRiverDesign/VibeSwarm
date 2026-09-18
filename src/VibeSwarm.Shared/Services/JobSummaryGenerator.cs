@@ -12,7 +12,6 @@ namespace VibeSwarm.Shared.Services;
 /// </summary>
 public static partial class JobSummaryGenerator
 {
-	private const int MaxCommitLogEntries = 10;
 	private const int MaxCommitSubjectLength = 96;
 	private static readonly string[] NarrativePrefixes = ["i ", "we ", "i'm ", "we're ", "i’ve ", "we’ve ", "i'd ", "we'd "];
 	private static readonly string[] DanglingEndingWords =
@@ -611,69 +610,6 @@ public static partial class JobSummaryGenerator
 
 		var lastWord = words[^1].TrimEnd('.', ',', ';', ':', '!', '?');
 		return DanglingEndingWords.Any(word => string.Equals(word, lastWord, StringComparison.Ordinal));
-	}
-
-	/// <summary>
-	/// Groups changed files into meaningful patterns for display.
-	/// </summary>
-	private static List<string> GetFilePatterns(List<string> changedFiles)
-	{
-		var patterns = new List<string>();
-
-		if (changedFiles.Count == 0)
-			return patterns;
-
-		// If 3 or fewer files, just list them
-		if (changedFiles.Count <= 3)
-		{
-			return changedFiles.Select(f => Path.GetFileName(f)).ToList();
-		}
-
-		// Group by directory
-		var byDirectory = changedFiles
-			.GroupBy(f => Path.GetDirectoryName(f) ?? "")
-			.OrderByDescending(g => g.Count())
-			.ToList();
-
-		foreach (var group in byDirectory.Take(3))
-		{
-			var dir = group.Key;
-			var count = group.Count();
-
-			if (string.IsNullOrEmpty(dir))
-			{
-				if (count == 1)
-					patterns.Add(Path.GetFileName(group.First()));
-				else
-					patterns.Add($"{count} root files");
-			}
-			else
-			{
-				// Simplify the directory path
-				var simplifiedDir = dir.Replace('\\', '/');
-				if (simplifiedDir.Length > 30)
-				{
-					var parts = simplifiedDir.Split('/');
-					simplifiedDir = parts.Length > 2
-						? $"{parts[0]}/.../{parts[^1]}"
-						: simplifiedDir[..27] + "...";
-				}
-
-				if (count == 1)
-					patterns.Add($"{simplifiedDir}/{Path.GetFileName(group.First())}");
-				else
-					patterns.Add($"{simplifiedDir}/* ({count})");
-			}
-		}
-
-		// If there are more directories
-		var remaining = changedFiles.Count - byDirectory.Take(3).Sum(g => g.Count());
-		if (remaining > 0)
-		{
-			patterns.Add($"+{remaining} more");
-		}
-
-		return patterns;
 	}
 
 	/// <summary>

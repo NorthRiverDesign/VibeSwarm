@@ -11,7 +11,6 @@ public class ProviderHealthTracker : IProviderHealthTracker
 {
 	private readonly ConcurrentDictionary<Guid, ProviderHealthState> _healthStates = new();
 	private readonly ILogger<ProviderHealthTracker>? _logger;
-	private readonly object _statsLock = new();
 
 	/// <summary>
 	/// Number of failures before opening the circuit breaker

@@ -30,7 +30,6 @@ public partial class JobProcessingService : BackgroundService
     private readonly IJobUpdateService? _jobUpdateService;
     private readonly IJobCoordinatorService? _jobCoordinator;
     private readonly IProviderHealthTracker? _healthTracker;
-    private readonly ProcessSupervisor? _processSupervisor;
     private readonly IVersionControlService _versionControlService;
     private readonly IInteractionResponseService? _interactionResponseService;
     private readonly IProjectEnvironmentCredentialService _projectEnvironmentCredentialService;
@@ -62,7 +61,6 @@ public partial class JobProcessingService : BackgroundService
         IJobUpdateService? jobUpdateService = null,
         IJobCoordinatorService? jobCoordinator = null,
         IProviderHealthTracker? healthTracker = null,
-        ProcessSupervisor? processSupervisor = null,
         IInteractionResponseService? interactionResponseService = null,
         IProjectEnvironmentCredentialService? projectEnvironmentCredentialService = null)
     {
@@ -72,7 +70,6 @@ public partial class JobProcessingService : BackgroundService
         _jobUpdateService = jobUpdateService;
         _jobCoordinator = jobCoordinator;
         _healthTracker = healthTracker;
-        _processSupervisor = processSupervisor;
         _interactionResponseService = interactionResponseService;
         _projectEnvironmentCredentialService = projectEnvironmentCredentialService ?? throw new ArgumentNullException(nameof(projectEnvironmentCredentialService));
     }

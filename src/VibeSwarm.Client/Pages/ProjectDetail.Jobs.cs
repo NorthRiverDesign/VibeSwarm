@@ -958,13 +958,6 @@ public partial class ProjectDetail
     private bool HasProjectTokenData() => _projectTotalInputTokens > 0 || _projectTotalOutputTokens > 0 ||
     _projectTotalCost > 0;
 
-    private static string TruncateForToast(string text, int maxLength = 50)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-            return text;
-        return text[..(maxLength - 3)] + "...";
-    }
-
     private void ShowEditProjectModal()
     {
         _showEditProjectModal = true;
@@ -1002,14 +995,6 @@ public partial class ProjectDetail
     private void HandleProjectModalClosed()
     {
         _showEditProjectModal = false;
-    }
-
-    private async Task HandleRepositoryCreated(string? gitHubRepository)
-    {
-        // Reload data after a repository is created (this updates Project.GitHubRepository in UI)
-        await LoadData();
-        await LoadGitInfo();
-        NotificationService.ShowProjectSuccess(Project?.Name, "GitHub repository created and linked successfully!");
     }
 
     private async Task StopAllActive()

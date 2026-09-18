@@ -10,13 +10,11 @@ namespace VibeSwarm.Web.Hubs;
 /// </summary>
 public class JobHub : Hub
 {
-    private readonly IJobService _jobService;
     private readonly IInteractionResponseService _interactionResponseService;
     private readonly ILogger<JobHub> _logger;
 
-    public JobHub(IJobService jobService, IInteractionResponseService interactionResponseService, ILogger<JobHub> logger)
+    public JobHub(IInteractionResponseService interactionResponseService, ILogger<JobHub> logger)
     {
-        _jobService = jobService;
         _interactionResponseService = interactionResponseService;
         _logger = logger;
     }

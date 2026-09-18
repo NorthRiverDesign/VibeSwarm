@@ -92,7 +92,7 @@ public sealed class VersionControlServiceBranchDeliveryTests
 	{
 		var repositoryPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-merge-test-{Guid.NewGuid():N}");
 		Directory.CreateDirectory(repositoryPath);
-		var executor = new RecordingGitCommandExecutor(repositoryPath);
+		var executor = new RecordingGitCommandExecutor();
 		executor.AddGitResult("rev-parse --is-inside-work-tree", new GitCommandResult { ExitCode = 0, Output = "true\n" });
 		executor.AddGitResult("fetch origin --prune", new GitCommandResult { ExitCode = 0, Output = "fetch ok" });
 		executor.AddGitResult("rev-parse --verify refs/heads/feature/test", new GitCommandResult { ExitCode = 0, Output = "feature/test\n" });
@@ -238,16 +238,10 @@ public sealed class VersionControlServiceBranchDeliveryTests
 	{
 		private readonly List<(Func<string, bool> Match, Queue<GitCommandResult> Results)> _gitResults = [];
 		private readonly Dictionary<string, Queue<GitCommandResult>> _rawResults = new(StringComparer.Ordinal);
-		private readonly string? _repositoryPath;
 
 		public List<string> GitCommands { get; } = [];
 
 		public string? LastWorktreePath { get; private set; }
-
-		public RecordingGitCommandExecutor(string? repositoryPath = null)
-		{
-			_repositoryPath = repositoryPath;
-		}
 
 		public void AddGitResult(string arguments, GitCommandResult result)
 			=> AddGitResult(command => string.Equals(command, arguments, StringComparison.Ordinal), result);

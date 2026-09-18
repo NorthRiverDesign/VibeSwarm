@@ -167,7 +167,6 @@ public class CopilotSdkProvider : SdkProviderBase
 	/// <summary>
 	/// Progress reporter for connection state changes, set during ExecuteWithSessionAsync.
 	/// </summary>
-	private IProgress<ExecutionProgress>? _connectionStateProgress;
 
 	private async Task<CopilotClient> EnsureClientAsync(
 		string? workingDirectory = null,
@@ -401,9 +400,6 @@ public class CopilotSdkProvider : SdkProviderBase
 		var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
 		var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
 		var model = ResolveModel();
-
-		// Wire connection state tracking to progress
-		_connectionStateProgress = progress;
 
 		try
 		{

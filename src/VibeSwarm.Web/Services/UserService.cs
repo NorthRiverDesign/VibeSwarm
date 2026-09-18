@@ -8,16 +8,13 @@ namespace VibeSwarm.Shared.Services;
 public class UserService : IUserService
 {
 	private readonly UserManager<ApplicationUser> _userManager;
-	private readonly RoleManager<IdentityRole<Guid>> _roleManager;
 	private readonly ILogger<UserService> _logger;
 
 	public UserService(
 		UserManager<ApplicationUser> userManager,
-		RoleManager<IdentityRole<Guid>> roleManager,
 		ILogger<UserService> logger)
 	{
 		_userManager = userManager;
-		_roleManager = roleManager;
 		_logger = logger;
 	}
 
