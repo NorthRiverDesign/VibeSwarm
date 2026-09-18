@@ -39,6 +39,7 @@ public class ProviderUsageService : IProviderUsageService
 			OutputTokens = executionResult.OutputTokens,
 			CostUsd = executionResult.CostUsd,
 			PremiumRequestsConsumed = executionResult.PremiumRequestsConsumed,
+			AiCreditsConsumed = executionResult.AiCreditsConsumed,
 			ModelUsed = executionResult.ModelUsed,
 			RecordedAt = DateTime.UtcNow
 		};
@@ -80,6 +81,7 @@ public class ProviderUsageService : IProviderUsageService
 		summary.TotalOutputTokens += executionResult.OutputTokens ?? 0;
 		summary.TotalCostUsd += executionResult.CostUsd ?? 0;
 		summary.TotalPremiumRequestsConsumed += executionResult.PremiumRequestsConsumed ?? 0;
+		summary.TotalAiCreditsConsumed += executionResult.AiCreditsConsumed ?? 0m;
 
 		if (jobId.HasValue)
 		{

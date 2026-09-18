@@ -3,66 +3,40 @@ using System.Text.Json;
 namespace VibeSwarm.Shared.Providers.Copilot;
 
 /// <summary>
-/// Reads the JSON usage report that Copilot CLI writes when given <c>--usage-output-file</c>.
+/// Reads the JSON usage report Copilot CLI writes when given <c>--usage-output-file</c>.
 /// </summary>
 /// <remarks>
-/// GitHub does not publish a schema for this file, and the billing model is mid-migration from
-/// premium requests to AI Credits, so the reader walks the document and matches on key names
-/// instead of binding to a fixed shape. Keys are normalised (case and punctuation stripped)
-/// before comparison, so <c>premium_requests</c>, <c>premiumRequests</c> and
-/// <c>PremiumRequests</c> all match.
+/// GitHub does not publish a schema for this file. The field names below were captured from
+/// a real report produced by Copilot CLI 1.0.86:
+/// <code>
+/// {
+///   "totalPremiumRequestCost": 1,
+///   "totalUserRequests": 1,
+///   "totalNanoAiu": 1928450000,
+///   "tokenDetails": {
+///     "input":       { "tokenCount": 2 },
+///     "cache_read":  { "tokenCount": 14465 },
+///     "cache_write": { "tokenCount": 6539 },
+///     "output":      { "tokenCount": 4 }
+///   },
+///   "modelMetrics": { "claude-sonnet-5": { "requests": { "count": 1, "cost": 1 }, ... } },
+///   "codeChanges": { "linesAdded": 0, "linesRemoved": 0, "filesModifiedCount": 0 }
+/// }
+/// </code>
+/// The report describes what a session <em>consumed</em>; it carries no quota or budget, so
+/// it cannot say how close the account is to a limit. Remaining budget still comes from the
+/// provider's configured limit.
 ///
-/// Anything not recognised is ignored and the caller falls back to parsing stderr, so a schema
-/// change degrades to the previous behaviour rather than failing a job.
-/// Verified to exist on Copilot CLI 1.0.86; field names are best-effort.
+/// "AIU" is GitHub's AI Unit, reported in billionths — the figure the CLI shows as
+/// "AI Credits". Every field is optional: a missing or unrecognised report leaves the
+/// caller's stderr-derived values untouched rather than failing a job.
 /// </remarks>
 public static class CopilotUsageFileReader
 {
-	private static readonly string[] PremiumRequestKeys =
-	[
-		"premiumrequests", "premiumrequestsused", "premiumrequestcount",
-		"premiumrequestsconsumed", "totalpremiumrequests"
-	];
-
-	private static readonly string[] PremiumRequestLimitKeys =
-	[
-		"premiumrequestslimit", "premiumrequestlimit", "premiumrequestsquota",
-		"premiumrequestsallowed", "premiumrequestsmax"
-	];
-
-	private static readonly string[] CreditKeys =
-	[
-		"aicredits", "aicreditsused", "creditsused", "credits", "creditsconsumed",
-		"totalcredits", "githubaicredits"
-	];
-
-	private static readonly string[] CreditLimitKeys =
-	[
-		"aicreditslimit", "creditslimit", "maxaicredits", "maxcredits",
-		"creditquota", "creditsquota", "creditsallowed"
-	];
-
-	private static readonly string[] InputTokenKeys =
-	[
-		"inputtokens", "prompttokens", "totalinputtokens", "totalprompttokens"
-	];
-
-	private static readonly string[] OutputTokenKeys =
-	[
-		"outputtokens", "completiontokens", "totaloutputtokens", "totalcompletiontokens"
-	];
-
-	private static readonly string[] CostKeys =
-	[
-		"costusd", "totalcostusd", "totalcost", "estimatedcost", "estimatedcostusd", "cost"
-	];
-
-	private static readonly string[] ModelKeys = ["model", "modelid", "modelname"];
-
 	/// <summary>
-	/// Reads a usage report and applies whatever it recognises to <paramref name="result"/>.
+	/// Reads a usage report and applies what it contains to <paramref name="result"/>.
 	/// </summary>
-	/// <returns>True when at least one field was recognised and applied.</returns>
+	/// <returns>True when at least one field was read and applied.</returns>
 	public static bool TryApply(string? usageFilePath, ExecutionResult result)
 	{
 		var usage = Read(usageFilePath);
@@ -87,15 +61,15 @@ public static class CopilotUsageFileReader
 			applied = true;
 		}
 
-		if (usage.CostUsd.HasValue)
-		{
-			result.CostUsd = usage.CostUsd;
-			applied = true;
-		}
-
 		if (usage.PremiumRequests.HasValue)
 		{
 			result.PremiumRequestsConsumed = usage.PremiumRequests;
+			applied = true;
+		}
+
+		if (usage.AiCreditsUsed.HasValue)
+		{
+			result.AiCreditsConsumed = usage.AiCreditsUsed;
 			applied = true;
 		}
 
@@ -105,20 +79,11 @@ public static class CopilotUsageFileReader
 			applied = true;
 		}
 
-		var limits = usage.ToUsageLimits();
-		if (limits != null)
-		{
-			result.DetectedUsageLimits = result.DetectedUsageLimits == null
-				? limits
-				: UsageLimitWindowHelper.Merge(result.DetectedUsageLimits, limits);
-			applied = true;
-		}
-
 		return applied;
 	}
 
 	/// <summary>
-	/// Parses a usage report, returning null when the file is missing, empty, or unreadable.
+	/// Parses a usage report, returning null when it is missing, empty or unreadable.
 	/// </summary>
 	public static CopilotUsageReport? Read(string? usageFilePath)
 	{
@@ -136,8 +101,22 @@ public static class CopilotUsageFileReader
 			}
 
 			using var document = JsonDocument.Parse(json);
-			var report = new CopilotUsageReport();
-			Walk(document.RootElement, report);
+			var root = document.RootElement;
+			if (root.ValueKind != JsonValueKind.Object)
+			{
+				return null;
+			}
+
+			var report = new CopilotUsageReport
+			{
+				PremiumRequests = ReadInt(root, "totalPremiumRequestCost"),
+				UserRequests = ReadInt(root, "totalUserRequests"),
+				AiCreditsUsed = ReadNanoAiu(root, "totalNanoAiu"),
+				Model = ReadDominantModel(root),
+			};
+
+			ReadTokenDetails(root, report);
+
 			return report.HasAnyValue ? report : null;
 		}
 		catch (JsonException)
@@ -154,142 +133,122 @@ public static class CopilotUsageFileReader
 		}
 	}
 
-	private static void Walk(JsonElement element, CopilotUsageReport report)
+	/// <summary>
+	/// Sums the token buckets. Copilot reports uncached input, cache reads and cache writes
+	/// separately; all three are input tokens, and their total is what the per-model block
+	/// reports as <c>inputTokens</c>.
+	/// </summary>
+	private static void ReadTokenDetails(JsonElement root, CopilotUsageReport report)
 	{
-		switch (element.ValueKind)
-		{
-			case JsonValueKind.Object:
-				foreach (var property in element.EnumerateObject())
-				{
-					Capture(property.Name, property.Value, report);
-					Walk(property.Value, report);
-				}
-				break;
-
-			case JsonValueKind.Array:
-				foreach (var item in element.EnumerateArray())
-				{
-					Walk(item, report);
-				}
-				break;
-		}
-	}
-
-	private static void Capture(string name, JsonElement value, CopilotUsageReport report)
-	{
-		var key = Normalize(name);
-
-		if (value.ValueKind == JsonValueKind.String)
-		{
-			if (Matches(key, ModelKeys) && report.Model == null)
-			{
-				var text = value.GetString();
-				if (!string.IsNullOrWhiteSpace(text))
-				{
-					report.Model = text;
-				}
-			}
-			return;
-		}
-
-		if (value.ValueKind != JsonValueKind.Number)
+		if (!root.TryGetProperty("tokenDetails", out var tokenDetails)
+			|| tokenDetails.ValueKind != JsonValueKind.Object)
 		{
 			return;
 		}
 
-		if (Matches(key, PremiumRequestLimitKeys)) report.PremiumRequestLimit ??= ToInt(value);
-		else if (Matches(key, PremiumRequestKeys)) report.PremiumRequests ??= ToInt(value);
-		else if (Matches(key, CreditLimitKeys)) report.CreditLimit ??= ToDecimal(value);
-		else if (Matches(key, CreditKeys)) report.CreditsUsed ??= ToDecimal(value);
-		else if (Matches(key, InputTokenKeys)) report.InputTokens ??= ToInt(value);
-		else if (Matches(key, OutputTokenKeys)) report.OutputTokens ??= ToInt(value);
-		else if (Matches(key, CostKeys)) report.CostUsd ??= ToDecimal(value);
+		var uncachedInput = ReadTokenCount(tokenDetails, "input");
+		report.CacheReadTokens = ReadTokenCount(tokenDetails, "cache_read");
+		report.CacheWriteTokens = ReadTokenCount(tokenDetails, "cache_write");
+		report.OutputTokens = ReadTokenCount(tokenDetails, "output");
+
+		if (uncachedInput.HasValue || report.CacheReadTokens.HasValue || report.CacheWriteTokens.HasValue)
+		{
+			report.InputTokens = (uncachedInput ?? 0)
+				+ (report.CacheReadTokens ?? 0)
+				+ (report.CacheWriteTokens ?? 0);
+		}
 	}
 
-	/// <summary>
-	/// Strips case and punctuation so differing naming conventions compare equal.
-	/// </summary>
-	private static string Normalize(string name)
-		=> string.Concat(name.Where(char.IsLetterOrDigit)).ToLowerInvariant();
-
-	private static bool Matches(string normalizedKey, string[] candidates)
-		=> Array.IndexOf(candidates, normalizedKey) >= 0;
-
-	private static int? ToInt(JsonElement value)
-		=> value.TryGetInt32(out var parsed) ? parsed : null;
-
-	private static decimal? ToDecimal(JsonElement value)
-		=> value.TryGetDecimal(out var parsed) ? parsed : null;
-}
-
-/// <summary>
-/// The fields recognised in a Copilot usage report.
-/// </summary>
-public sealed class CopilotUsageReport
-{
-	public int? PremiumRequests { get; set; }
-	public int? PremiumRequestLimit { get; set; }
-	public decimal? CreditsUsed { get; set; }
-	public decimal? CreditLimit { get; set; }
-	public int? InputTokens { get; set; }
-	public int? OutputTokens { get; set; }
-	public decimal? CostUsd { get; set; }
-	public string? Model { get; set; }
-
-	public bool HasAnyValue
-		=> PremiumRequests.HasValue
-			|| PremiumRequestLimit.HasValue
-			|| CreditsUsed.HasValue
-			|| CreditLimit.HasValue
-			|| InputTokens.HasValue
-			|| OutputTokens.HasValue
-			|| CostUsd.HasValue
-			|| Model != null;
+	private static int? ReadTokenCount(JsonElement tokenDetails, string bucket)
+		=> tokenDetails.TryGetProperty(bucket, out var element) && element.ValueKind == JsonValueKind.Object
+			? ReadInt(element, "tokenCount")
+			: null;
 
 	/// <summary>
-	/// Builds monthly usage windows from whichever budget the report describes.
-	/// Copilot meters both premium requests and AI Credits on a monthly cycle.
+	/// Returns the model that served the most requests. A session can switch models, and the
+	/// dominant one is the most useful single label for the run.
 	/// </summary>
-	public UsageLimits? ToUsageLimits()
+	private static string? ReadDominantModel(JsonElement root)
 	{
-		var windows = new List<UsageLimitWindow>();
-
-		if (PremiumRequests.HasValue || PremiumRequestLimit.HasValue)
-		{
-			windows.Add(new UsageLimitWindow
-			{
-				Scope = UsageLimitWindowScope.Monthly,
-				LimitType = UsageLimitType.PremiumRequests,
-				CurrentUsage = PremiumRequests,
-				MaxUsage = PremiumRequestLimit,
-				IsLimitReached = PremiumRequests.HasValue
-					&& PremiumRequestLimit is > 0
-					&& PremiumRequests >= PremiumRequestLimit
-			});
-		}
-
-		if (CreditsUsed.HasValue || CreditLimit.HasValue)
-		{
-			windows.Add(new UsageLimitWindow
-			{
-				Scope = UsageLimitWindowScope.Monthly,
-				LimitType = UsageLimitType.AiCredits,
-				CurrentUsage = CreditsUsed.HasValue ? (int)Math.Round(CreditsUsed.Value) : null,
-				MaxUsage = CreditLimit.HasValue ? (int)Math.Round(CreditLimit.Value) : null,
-				IsLimitReached = CreditsUsed.HasValue
-					&& CreditLimit is > 0
-					&& CreditsUsed >= CreditLimit
-			});
-		}
-
-		if (windows.Count == 0)
+		if (!root.TryGetProperty("modelMetrics", out var modelMetrics)
+			|| modelMetrics.ValueKind != JsonValueKind.Object)
 		{
 			return null;
 		}
 
-		return UsageLimitWindowHelper.CreateUsageLimits(
-			windows[0].LimitType,
-			message: null,
-			windows);
+		string? dominantModel = null;
+		var highestRequestCount = -1;
+
+		foreach (var model in modelMetrics.EnumerateObject())
+		{
+			var requestCount = model.Value.ValueKind == JsonValueKind.Object
+				&& model.Value.TryGetProperty("requests", out var requests)
+				&& requests.ValueKind == JsonValueKind.Object
+					? ReadInt(requests, "count") ?? 0
+					: 0;
+
+			if (requestCount > highestRequestCount)
+			{
+				highestRequestCount = requestCount;
+				dominantModel = model.Name;
+			}
+		}
+
+		return dominantModel;
 	}
+
+	/// <summary>
+	/// Converts GitHub's nano-AIU figure to whole AI Units.
+	/// </summary>
+	private static decimal? ReadNanoAiu(JsonElement element, string propertyName)
+	{
+		if (!element.TryGetProperty(propertyName, out var value)
+			|| value.ValueKind != JsonValueKind.Number
+			|| !value.TryGetDouble(out var nanoAiu))
+		{
+			return null;
+		}
+
+		return Math.Round((decimal)(nanoAiu / 1_000_000_000d), 6);
+	}
+
+	private static int? ReadInt(JsonElement element, string propertyName)
+		=> element.TryGetProperty(propertyName, out var value)
+			&& value.ValueKind == JsonValueKind.Number
+			&& value.TryGetDouble(out var number)
+				? (int)Math.Round(number)
+				: null;
+}
+
+/// <summary>
+/// What a Copilot session consumed, as reported by <c>--usage-output-file</c>.
+/// </summary>
+public sealed class CopilotUsageReport
+{
+	/// <summary>Premium requests billed for the session (<c>totalPremiumRequestCost</c>).</summary>
+	public int? PremiumRequests { get; set; }
+
+	/// <summary>Prompts the user submitted (<c>totalUserRequests</c>).</summary>
+	public int? UserRequests { get; set; }
+
+	/// <summary>GitHub AI Units consumed, converted from <c>totalNanoAiu</c>.</summary>
+	public decimal? AiCreditsUsed { get; set; }
+
+	/// <summary>Uncached input plus cache reads and writes.</summary>
+	public int? InputTokens { get; set; }
+
+	public int? OutputTokens { get; set; }
+	public int? CacheReadTokens { get; set; }
+	public int? CacheWriteTokens { get; set; }
+
+	/// <summary>The model that served the most requests in the session.</summary>
+	public string? Model { get; set; }
+
+	public bool HasAnyValue
+		=> PremiumRequests.HasValue
+			|| UserRequests.HasValue
+			|| AiCreditsUsed.HasValue
+			|| InputTokens.HasValue
+			|| OutputTokens.HasValue
+			|| Model != null;
 }

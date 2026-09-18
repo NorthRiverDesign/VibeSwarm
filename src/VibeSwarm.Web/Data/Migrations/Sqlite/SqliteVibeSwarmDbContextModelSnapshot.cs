@@ -1752,6 +1752,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal?>("AiCreditsConsumed")
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal?>("CostUsd")
                         .HasColumnType("TEXT");
 
@@ -1871,6 +1874,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("ProviderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("TotalAiCreditsConsumed")
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("TotalCostUsd")

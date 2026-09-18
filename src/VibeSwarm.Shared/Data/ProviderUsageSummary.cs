@@ -51,6 +51,11 @@ public class ProviderUsageSummary
 	/// </summary>
 	public int TotalPremiumRequestsConsumed { get; set; }
 
+	/// <summary>
+	/// Total GitHub AI Units consumed (Copilot-specific)
+	/// </summary>
+	public decimal TotalAiCreditsConsumed { get; set; }
+
 	#endregion
 
 	#region Latest Limit State

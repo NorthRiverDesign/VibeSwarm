@@ -196,6 +196,13 @@ public class ExecutionResult
     public int? PremiumRequestsConsumed { get; set; }
 
     /// <summary>
+    /// GitHub AI Units consumed (Copilot-specific), read from the structured usage report.
+    /// Copilot bills newer plans in AI Credits alongside premium requests, so both are
+    /// tracked. Fractional, because a single turn can cost well under one unit.
+    /// </summary>
+    public decimal? AiCreditsConsumed { get; set; }
+
+    /// <summary>
     /// True when the failure is a system-level error (model unavailable, upstream outage,
     /// authentication failure) rather than a task-level failure. System errors indicate the
     /// provider is globally unavailable and should immediately trip the circuit breaker.

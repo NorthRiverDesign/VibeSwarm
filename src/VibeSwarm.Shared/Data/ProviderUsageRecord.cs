@@ -55,6 +55,11 @@ public class ProviderUsageRecord
 	public int? PremiumRequestsConsumed { get; set; }
 
 	/// <summary>
+	/// GitHub AI Units consumed by this execution (Copilot-specific).
+	/// </summary>
+	public decimal? AiCreditsConsumed { get; set; }
+
+	/// <summary>
 	/// The AI model that was used (e.g., "claude-sonnet-4-20250514")
 	/// </summary>
 	[StringLength(200)]

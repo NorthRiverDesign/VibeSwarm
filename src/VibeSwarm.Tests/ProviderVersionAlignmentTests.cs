@@ -159,38 +159,65 @@ public sealed class ProviderVersionAlignmentTests
 		Assert.False(ProviderMetering.IsUnmetered(UsageLimitType.None));
 	}
 
-	[Fact]
-	public void CopilotUsageFileReader_ReadsUsageRegardlessOfKeyCasingAndNesting()
+	/// <summary>
+	/// Captured verbatim from `copilot -p ... --usage-output-file` on Copilot CLI 1.0.86.
+	/// GitHub publishes no schema for this file, so this sample is the contract: if the
+	/// shape changes upstream, this test is what notices.
+	/// </summary>
+	private const string CopilotUsageReportJson = """
+		{
+		  "totalPremiumRequestCost": 1,
+		  "totalUserRequests": 1,
+		  "totalNanoAiu": 1928450000,
+		  "tokenDetails": {
+		    "input": { "tokenCount": 2 },
+		    "cache_read": { "tokenCount": 14465 },
+		    "cache_write": { "tokenCount": 6539 },
+		    "output": { "tokenCount": 4 }
+		  },
+		  "totalApiDurationMs": 716,
+		  "sessionStartTime": "2026-09-18T17:13:40.349Z",
+		  "codeChanges": { "linesAdded": 0, "linesRemoved": 0, "filesModifiedCount": 0 },
+		  "modelMetrics": {
+		    "claude-sonnet-5": {
+		      "requests": { "count": 1, "cost": 1 },
+		      "usage": {
+		        "inputTokens": 21006, "outputTokens": 4,
+		        "cacheReadTokens": 14465, "cacheWriteTokens": 6539, "reasoningTokens": 0
+		      }
+		    }
+		  }
+		}
+		""";
+
+	private static string WriteTempReport(string json)
 	{
-		var path = Path.Combine(Path.GetTempPath(), $"vibeswarm-copilot-usage-test-{Guid.NewGuid():N}.json");
-		File.WriteAllText(path, """
-			{
-			  "session": {
-			    "model": "claude-opus-5",
-			    "tokens": { "input_tokens": 1200, "outputTokens": 340 },
-			    "billing": { "PremiumRequests": 3, "premium_requests_limit": 300 }
-			  },
-			  "totalCostUsd": 0.42
-			}
-			""");
+		var path = Path.Combine(Path.GetTempPath(), $"vibeswarm-copilot-usage-{Guid.NewGuid():N}.json");
+		File.WriteAllText(path, json);
+		return path;
+	}
+
+	[Fact]
+	public void CopilotUsageFileReader_ReadsTheRealReportShape()
+	{
+		var path = WriteTempReport(CopilotUsageReportJson);
 
 		try
 		{
 			var result = new ExecutionResult();
-			var applied = CopilotUsageFileReader.TryApply(path, result);
 
-			Assert.True(applied);
-			Assert.Equal(1200, result.InputTokens);
-			Assert.Equal(340, result.OutputTokens);
+			Assert.True(CopilotUsageFileReader.TryApply(path, result));
+
+			// Input is the sum of uncached input, cache reads and cache writes, which is
+			// what the per-model block independently reports as inputTokens (21006).
+			Assert.Equal(21_006, result.InputTokens);
+			Assert.Equal(4, result.OutputTokens);
 			Assert.False(result.IsTokenEstimate);
-			Assert.Equal(3, result.PremiumRequestsConsumed);
-			Assert.Equal("claude-opus-5", result.ModelUsed);
-			Assert.Equal(0.42m, result.CostUsd);
+			Assert.Equal(1, result.PremiumRequestsConsumed);
+			Assert.Equal("claude-sonnet-5", result.ModelUsed);
 
-			var window = Assert.Single(result.DetectedUsageLimits!.Windows);
-			Assert.Equal(UsageLimitType.PremiumRequests, window.LimitType);
-			Assert.Equal(3, window.CurrentUsage);
-			Assert.Equal(300, window.MaxUsage);
+			// 1,928,450,000 nano-AIU is 1.92845 AI Units.
+			Assert.Equal(1.92845m, result.AiCreditsConsumed);
 		}
 		finally
 		{
@@ -199,20 +226,20 @@ public sealed class ProviderVersionAlignmentTests
 	}
 
 	[Fact]
-	public void CopilotUsageFileReader_ReadsAiCreditsBudget()
+	public void CopilotUsageFileReader_PicksTheModelServingMostRequests()
 	{
-		var path = Path.Combine(Path.GetTempPath(), $"vibeswarm-copilot-credits-test-{Guid.NewGuid():N}.json");
-		File.WriteAllText(path, """{ "aiCreditsUsed": 12, "aiCreditsLimit": 12 }""");
+		var path = WriteTempReport("""
+			{
+			  "modelMetrics": {
+			    "gpt-5.4": { "requests": { "count": 2, "cost": 2 } },
+			    "claude-sonnet-5": { "requests": { "count": 9, "cost": 9 } }
+			  }
+			}
+			""");
 
 		try
 		{
-			var report = CopilotUsageFileReader.Read(path);
-			var limits = report!.ToUsageLimits();
-
-			var window = Assert.Single(limits!.Windows);
-			Assert.Equal(UsageLimitType.AiCredits, window.LimitType);
-			Assert.Equal(UsageLimitWindowScope.Monthly, window.Scope);
-			Assert.True(window.IsLimitReached);
+			Assert.Equal("claude-sonnet-5", CopilotUsageFileReader.Read(path)!.Model);
 		}
 		finally
 		{
@@ -226,11 +253,10 @@ public sealed class ProviderVersionAlignmentTests
 		Assert.Null(CopilotUsageFileReader.Read(null));
 		Assert.Null(CopilotUsageFileReader.Read("/nonexistent/vibeswarm-usage.json"));
 
-		var path = Path.Combine(Path.GetTempPath(), $"vibeswarm-copilot-junk-{Guid.NewGuid():N}.json");
-		File.WriteAllText(path, """{ "somethingElse": "entirely" }""");
+		// Unrecognised content must leave the caller's stderr-derived values untouched.
+		var path = WriteTempReport("""{ "somethingElse": "entirely" }""");
 		try
 		{
-			// Unrecognised content must leave the caller's stderr-derived values untouched.
 			Assert.False(CopilotUsageFileReader.TryApply(path, new ExecutionResult()));
 		}
 		finally
