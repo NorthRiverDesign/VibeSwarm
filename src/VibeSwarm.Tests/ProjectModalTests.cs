@@ -428,49 +428,37 @@ private static BunitContext CreateBunitContext(
 	return context;
 }
 
-private sealed class FakeProjectService : IProjectService
+private sealed class FakeProjectService : FakeProjectServiceBase
 {
 public GitHubRepositoryBrowserResult RepositoryBrowserResult { get; set; } = new();
 public Project? CreateProjectResult { get; set; }
 public Project? UpdateResult { get; set; }
-public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
-public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
-public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
-public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
-public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default)
+public override Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
+public override Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
+public override Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
+public override Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
+public override Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default)
 	=> Task.FromResult(CreateProjectResult ?? new Project
 	{
 		Id = Guid.NewGuid(),
 		Name = request.Project.Name,
 		WorkingPath = request.Project.WorkingPath
 	});
-public Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default) => Task.FromResult(RepositoryBrowserResult);
-public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => Task.FromResult(UpdateResult ?? project);
-public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
-public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
-public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => Task.FromResult(new DashboardJobMetrics { RangeDays = rangeDays, Buckets = [] });
-public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
+public override Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default) => Task.FromResult(RepositoryBrowserResult);
+public override Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => Task.FromResult(UpdateResult ?? project);
+public override Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
+public override Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
+public override Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => Task.FromResult(new DashboardJobMetrics { RangeDays = rangeDays, Buckets = [] });
+public override Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
 }
 
-private sealed class FakeProviderService(Provider provider) : IProviderService
+private sealed class FakeProviderService(Provider provider) : FakeProviderServiceBase
 {
 private readonly Provider _provider = provider;
-
-public Task<IEnumerable<Provider>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Provider>>([_provider]);
-public Task<Provider?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Provider?>(id == _provider.Id ? _provider : null);
-public Task<Provider?> GetDefaultAsync(CancellationToken cancellationToken = default) => Task.FromResult<Provider?>(_provider);
-public IProvider? CreateInstance(Provider config) => null;
-public Task<Provider> CreateAsync(Provider provider, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<Provider> UpdateAsync(Provider provider, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<bool> TestConnectionAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<ConnectionTestResult> TestConnectionWithDetailsAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task SetDefaultAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<SessionSummary> GetSessionSummaryAsync(Guid providerId, string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default)
+public override Task<IEnumerable<Provider>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Provider>>([_provider]);
+public override Task<Provider?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Provider?>(id == _provider.Id ? _provider : null);
+public override Task<Provider?> GetDefaultAsync(CancellationToken cancellationToken = default) => Task.FromResult<Provider?>(_provider);
+public override Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default)
 => Task.FromResult<IEnumerable<ProviderModel>>(
 [
 new ProviderModel
@@ -482,10 +470,6 @@ IsAvailable = true,
 IsDefault = true
 }
 ]);
-public Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<UsageRefreshResult> RefreshUsageAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 }
 
 private sealed class FakeSettingsService : ISettingsService
@@ -495,17 +479,13 @@ public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationT
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");
 }
 
-private sealed class FakeAgentService(IReadOnlyList<Agent> agents) : IAgentService
+private sealed class FakeAgentService(IReadOnlyList<Agent> agents) : FakeAgentServiceBase
 {
 	private readonly IReadOnlyList<Agent> _agents = agents;
-
-	public Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents);
-	public Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents.Where(agent => agent.IsEnabled));
-	public Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_agents.FirstOrDefault(agent => agent.Id == id));
-	public Task<Agent> CreateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public Task<Agent> UpdateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
+	public override Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents);
+	public override Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents.Where(agent => agent.IsEnabled));
+	public override Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_agents.FirstOrDefault(agent => agent.Id == id));
+public override Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
 }
 
 private sealed class NoOpJsRuntime : IJSRuntime
@@ -517,19 +497,15 @@ public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToke
 => ValueTask.FromResult(default(TValue)!);
 }
 
-private sealed class FakeInferenceProviderService(IReadOnlyList<InferenceProvider> providers) : IInferenceProviderService
+private sealed class FakeInferenceProviderService(IReadOnlyList<InferenceProvider> providers) : FakeInferenceProviderServiceBase
 {
 private readonly IReadOnlyList<InferenceProvider> _providers = providers;
-public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers);
-public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(_providers.FirstOrDefault(provider => provider.Id == id));
-public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers.Where(provider => provider.IsEnabled));
-public Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
-public Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
-public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
-public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>(_providers.FirstOrDefault(provider => provider.Id == providerId)?.Models ?? []);
-public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
-public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
-public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
+public override Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers);
+public override Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(_providers.FirstOrDefault(provider => provider.Id == id));
+public override Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers.Where(provider => provider.IsEnabled));
+public override Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>(_providers.FirstOrDefault(provider => provider.Id == providerId)?.Models ?? []);
+public override Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
+public override Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
 }
 
 	private sealed class FakeWorkspaceFileSystemService : IFileSystemService
@@ -540,7 +516,6 @@ public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationT
 			=> Task.FromResult(new DirectoryListResult());
 
 		public Task<bool> DirectoryExistsAsync(string path) => Task.FromResult(false);
-
 		public Task<List<DriveEntry>> GetDrivesAsync() => Task.FromResult(new List<DriveEntry>());
 
 		public Task<WorkspaceInspection> InspectWorkspaceAsync(string path)

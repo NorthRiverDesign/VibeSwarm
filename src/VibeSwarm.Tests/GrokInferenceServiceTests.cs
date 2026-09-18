@@ -97,36 +97,36 @@ public sealed class GrokInferenceServiceTests
 			=> handler(request, cancellationToken);
 	}
 
-	private sealed class FakeInferenceProviderService(IReadOnlyList<InferenceProvider> providers) : IInferenceProviderService
+	private sealed class FakeInferenceProviderService(IReadOnlyList<InferenceProvider> providers) : FakeInferenceProviderServiceBase
 	{
-		public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default)
+		public override Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default)
 			=> Task.FromResult<IEnumerable<InferenceProvider>>(providers);
 
-		public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default)
+		public override Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default)
 			=> Task.FromResult(providers.FirstOrDefault(provider => provider.Id == id));
 
-		public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default)
+		public override Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default)
 			=> Task.FromResult<IEnumerable<InferenceProvider>>(providers.Where(provider => provider.IsEnabled).ToList());
 
-		public Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default)
+		public override Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default)
 			=> throw new NotSupportedException();
 
-		public Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default)
+		public override Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default)
 			=> throw new NotSupportedException();
 
-		public Task DeleteAsync(Guid id, CancellationToken ct = default)
+		public override Task DeleteAsync(Guid id, CancellationToken ct = default)
 			=> throw new NotSupportedException();
 
-		public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
+		public override Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
 			=> Task.FromResult<IEnumerable<InferenceModel>>([]);
 
-		public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default)
+		public override Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default)
 			=> Task.FromResult<IEnumerable<InferenceModel>>([]);
 
-		public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default)
+		public override Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default)
 			=> throw new NotSupportedException();
 
-		public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default)
+		public override Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default)
 			=> Task.FromResult<InferenceModel?>(null);
 	}
 }

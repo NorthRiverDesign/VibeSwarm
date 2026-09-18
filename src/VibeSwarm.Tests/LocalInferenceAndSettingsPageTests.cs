@@ -430,7 +430,7 @@ public void LocalInferencePage_RefreshModelsDropdownActionShowsErrorWhenRefreshF
 	});
 }
 
-	private sealed class FakeInferenceProviderService : IInferenceProviderService
+	private sealed class FakeInferenceProviderService : FakeInferenceProviderServiceBase
 	{
 		private readonly IReadOnlyList<InferenceProvider> _providers;
 		private readonly Dictionary<Guid, IReadOnlyList<InferenceModel>> _modelsByProvider;
@@ -448,15 +448,12 @@ public void LocalInferencePage_RefreshModelsDropdownActionShowsErrorWhenRefreshF
 		public int RefreshModelsCallCount { get; private set; }
 		public Guid? LastRefreshedProviderId { get; private set; }
 
-	public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers);
-	public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(_providers.FirstOrDefault(provider => provider.Id == id));
-	public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers.Where(provider => provider.IsEnabled).ToList());
-	public Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
-	public Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
-	public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
-	public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
+	public override Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers);
+	public override Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(_providers.FirstOrDefault(provider => provider.Id == id));
+	public override Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers.Where(provider => provider.IsEnabled).ToList());
+	public override Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
 		=> Task.FromResult<IEnumerable<InferenceModel>>(_modelsByProvider.TryGetValue(providerId, out var models) ? models : []);
-	public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default)
+	public override Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default)
 	{
 		RefreshModelsCallCount++;
 		LastRefreshedProviderId = providerId;
@@ -474,8 +471,7 @@ public void LocalInferencePage_RefreshModelsDropdownActionShowsErrorWhenRefreshF
 
 		return Task.FromResult<IEnumerable<InferenceModel>>(_modelsByProvider.TryGetValue(providerId, out var models) ? models : []);
 	}
-	public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
-	public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
+	public override Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
 	}
 
 	private static InferenceProvider CreateInferenceProvider(Guid? id = null)
@@ -562,7 +558,6 @@ public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancella
 		=> Task.FromResult(new DirectoryListResult());
 
 	public Task<bool> DirectoryExistsAsync(string path) => Task.FromResult(false);
-
 	public Task<List<DriveEntry>> GetDrivesAsync() => Task.FromResult(new List<DriveEntry>());
 
 	public Task<WorkspaceInspection> InspectWorkspaceAsync(string path)
@@ -572,25 +567,21 @@ public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancella
 		=> Task.FromResult(new List<WorkspaceInspection>());
 	}
 
-	private sealed class FakeProjectService : IProjectService
+	private sealed class FakeProjectService : FakeProjectServiceBase
 	{
-		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
-		public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
-		public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
-		public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
-		public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
-		public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
-		public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default)
+		public override Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
+		public override Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
+		public override Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
+		public override Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
+		public override Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
+		public override Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
+		public override Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default)
 			=> Task.FromResult(new DashboardJobMetrics
 			{
 				RangeDays = rangeDays,
 				Buckets = []
 			});
-		public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
+		public override Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
 	}
 
 	private sealed class FakeDatabaseService : IDatabaseService
