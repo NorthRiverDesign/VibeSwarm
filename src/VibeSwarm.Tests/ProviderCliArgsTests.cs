@@ -1579,4 +1579,69 @@ public sealed class ProviderCliArgsTests
 
         Assert.Contains("--thinking", args);
     }
+
+    // ─── Session summary hooks ─────────────────────────────────────────
+    // GetSessionSummaryAsync is shared in CliProviderBase; these cover the per-provider
+    // pieces that used to live in three near-identical copies of the method.
+
+    [Fact]
+    public void Claude_SessionSummaryArgs_ResumesSessionForASingleTurn()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+
+        var args = provider.BuildSessionSummaryArgs("sess-123");
+
+        Assert.NotNull(args);
+        Assert.Contains("--resume sess-123", args);
+        Assert.Contains("--max-turns 1", args);
+        Assert.Contains("commit message", args);
+        Assert.DoesNotContain("--yolo", args);
+    }
+
+    [Fact]
+    public void Copilot_SessionSummaryArgs_ResumesSessionSilently()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+
+        var args = provider.BuildSessionSummaryArgs("sess-123");
+
+        Assert.NotNull(args);
+        Assert.Contains("--resume sess-123", args);
+        Assert.Contains("--yolo", args);
+        Assert.Contains("--silent", args);
+        Assert.DoesNotContain("--max-turns", args);
+    }
+
+    [Fact]
+    public void OpenCode_SessionSummaryArgs_ReadsTheStoredSessionAsJson()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+
+        Assert.Equal("session show sess-123 --format json", provider.BuildSessionSummaryArgs("sess-123"));
+    }
+
+    [Fact]
+    public void Claude_ExtractSessionSummary_TakesAssistantTextFromStreamJson()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        var output = """{"type":"assistant","message":{"content":[{"type":"text","text":"Refactored the parser"}]}}""";
+
+        Assert.Equal("Refactored the parser", provider.ExtractSessionSummary(output));
+    }
+
+    [Fact]
+    public void Copilot_ExtractSessionSummary_TrimsTheRawOutput()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+
+        Assert.Equal("Fixed the build", provider.ExtractSessionSummary("  Fixed the build\n"));
+    }
+
+    [Fact]
+    public void OpenCode_ExtractSessionSummary_ReadsTheSummaryField()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+
+        Assert.Equal("Added a test", provider.ExtractSessionSummary("""{"summary":"Added a test"}"""));
+    }
 }

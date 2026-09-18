@@ -1580,82 +1580,9 @@ public class CopilotProvider : CliProviderBase
         return Task.FromResult(limits);
     }
 
-    public override async Task<SessionSummary> GetSessionSummaryAsync(
-        string? sessionId,
-        string? workingDirectory = null,
-        string? fallbackOutput = null,
-        CancellationToken cancellationToken = default)
-    {
-        var summary = new SessionSummary();
-
-        // GitHub Copilot CLI supports sessions since v0.0.372 (--resume) and v0.0.333 (--continue).
-        // Attempt to resume the session and ask for a summary.
-        if (!string.IsNullOrEmpty(sessionId) && ConnectionMode == ProviderConnectionMode.CLI)
-        {
-            try
-            {
-                var execPath = GetExecutablePath();
-                var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
-
-                var summarizePrompt = "Please provide a concise summary (1-2 sentences) of what was accomplished in this session, suitable for a git commit message. Focus on the key changes made.";
-                var args = $"--resume {sessionId} -p \"{EscapeCliArgument(summarizePrompt)}\" --yolo --silent";
-
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = execPath,
-                    Arguments = args,
-                    WorkingDirectory = effectiveWorkingDir
-                };
-
-                PlatformHelper.ConfigureForCrossPlatform(startInfo);
-
-                using var process = new Process { StartInfo = startInfo };
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-                try
-                {
-                    process.Start();
-                    process.StandardInput.Close();
-
-                    var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
-                    await process.WaitForExitAsync(linkedCts.Token);
-
-                    if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
-                    {
-                        var cleanedOutput = output.Trim();
-                        if (!string.IsNullOrWhiteSpace(cleanedOutput))
-                        {
-                            summary.Success = true;
-                            summary.Summary = cleanedOutput;
-                            summary.Source = "session";
-                            return summary;
-                        }
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    try { PlatformHelper.TryKillProcessTree(process.Id); } catch { }
-                }
-            }
-            catch
-            {
-                // Fall through to fallback
-            }
-        }
-
-        if (!string.IsNullOrEmpty(fallbackOutput))
-        {
-            summary.Summary = GenerateSummaryFromOutput(fallbackOutput);
-            summary.Success = !string.IsNullOrEmpty(summary.Summary);
-            summary.Source = "output";
-            return summary;
-        }
-
-        summary.Success = false;
-        summary.ErrorMessage = "No session ID or output available to generate summary.";
-        return summary;
-    }
+    // Copilot CLI has supported sessions since v0.0.372 (--resume) and v0.0.333 (--continue).
+    protected internal override string? BuildSessionSummaryArgs(string sessionId)
+        => $"--resume {sessionId} -p \"{EscapeCliArgument(SessionSummaryPrompt)}\" --yolo --silent";
 
     public override async Task<PromptResponse> GetPromptResponseAsync(
         string prompt,

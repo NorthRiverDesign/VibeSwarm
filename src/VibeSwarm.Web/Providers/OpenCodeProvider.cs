@@ -1236,82 +1236,16 @@ public class OpenCodeProvider : CliProviderBase
         return Task.FromResult(limits);
     }
 
-    public override async Task<SessionSummary> GetSessionSummaryAsync(
-        string? sessionId,
-        string? workingDirectory = null,
-        string? fallbackOutput = null,
-        CancellationToken cancellationToken = default)
-    {
-        var summary = new SessionSummary();
+    protected override TimeSpan SessionSummaryTimeout => TimeSpan.FromSeconds(15);
 
-        if (!string.IsNullOrEmpty(sessionId) && ConnectionMode == ProviderConnectionMode.CLI)
-        {
-            try
-            {
-                await EnsureCliAuthenticationReadyAsync(cancellationToken);
+    protected internal override string? BuildSessionSummaryArgs(string sessionId)
+        => $"session show {sessionId} --format json";
 
-                var execPath = GetExecutablePath();
-                var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
+    protected internal override string? ExtractSessionSummary(string output)
+        => OpenCodeOutputParser.ParseSessionOutput(output);
 
-                // Try: opencode session show <id>
-                var args = $"session show {sessionId} --format json";
-
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = execPath,
-                    Arguments = args,
-                    WorkingDirectory = effectiveWorkingDir
-                };
-
-                PlatformHelper.ConfigureForCrossPlatform(startInfo);
-
-                using var process = new Process { StartInfo = startInfo };
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-                try
-                {
-                    process.Start();
-                    process.StandardInput.Close();
-
-                    var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
-                    await process.WaitForExitAsync(linkedCts.Token);
-
-                    if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
-                    {
-                        var sessionSummary = OpenCodeOutputParser.ParseSessionOutput(output);
-                        if (!string.IsNullOrWhiteSpace(sessionSummary))
-                        {
-                            summary.Success = true;
-                            summary.Summary = sessionSummary;
-                            summary.Source = "session";
-                            return summary;
-                        }
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    try { PlatformHelper.TryKillProcessTree(process.Id); } catch { }
-                }
-            }
-            catch
-            {
-                // Fall through to fallback
-            }
-        }
-
-        if (!string.IsNullOrEmpty(fallbackOutput))
-        {
-            summary.Summary = GenerateSummaryFromOutput(fallbackOutput);
-            summary.Success = !string.IsNullOrEmpty(summary.Summary);
-            summary.Source = "output";
-            return summary;
-        }
-
-        summary.Success = false;
-        summary.ErrorMessage = "No session ID or output available to generate summary";
-        return summary;
-    }
+    protected override Task PrepareForSessionSummaryAsync(CancellationToken cancellationToken)
+        => EnsureCliAuthenticationReadyAsync(cancellationToken);
 
     public override async Task<PromptResponse> GetPromptResponseAsync(
         string prompt,

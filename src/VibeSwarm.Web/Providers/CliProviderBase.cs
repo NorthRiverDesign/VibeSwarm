@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Shared.Providers;
@@ -619,4 +620,106 @@ public abstract class CliProviderBase : ProviderBase
 	/// </summary>
 	protected static string GenerateSummaryFromOutput(string output)
 		=> OutputSummaryHelper.GenerateSummaryFromOutput(output);
+
+	// Retrieving a session summary has the same shape for every CLI provider: ask the CLI about
+	// the stored session, pull the usable text out of stdout, and fall back to summarizing the
+	// job's own output. Providers differ only in the four hooks below.
+
+	protected const string SessionSummaryPrompt =
+		"Please provide a concise summary (1-2 sentences) of what was accomplished in this session, suitable for a git commit message. Focus on the key changes made.";
+
+	protected virtual TimeSpan SessionSummaryTimeout => TimeSpan.FromSeconds(30);
+
+	/// <summary>
+	/// The arguments that ask the CLI about <paramref name="sessionId"/>. Return null for a
+	/// provider that cannot read back a stored session; the output-based fallback is used instead.
+	/// </summary>
+	protected internal abstract string? BuildSessionSummaryArgs(string sessionId);
+
+	/// <summary>
+	/// Pulls the summary text out of the CLI's stdout. Null or whitespace falls through to the
+	/// output-based fallback.
+	/// </summary>
+	protected internal virtual string? ExtractSessionSummary(string output) => output.Trim();
+
+	/// <summary>
+	/// Runs before the summary process starts, for providers that must settle authentication first.
+	/// </summary>
+	protected virtual Task PrepareForSessionSummaryAsync(CancellationToken cancellationToken)
+		=> Task.CompletedTask;
+
+	public override async Task<SessionSummary> GetSessionSummaryAsync(
+		string? sessionId,
+		string? workingDirectory = null,
+		string? fallbackOutput = null,
+		CancellationToken cancellationToken = default)
+	{
+		var summary = new SessionSummary();
+		var args = string.IsNullOrEmpty(sessionId) ? null : BuildSessionSummaryArgs(sessionId);
+		// GetDefaultExecutablePath is each provider's resolved CLI path - the same value the
+		// update and version-check paths use.
+		var execPath = args == null ? null : GetDefaultExecutablePath();
+
+		if (args != null && execPath != null && ConnectionMode == ProviderConnectionMode.CLI)
+		{
+			try
+			{
+				await PrepareForSessionSummaryAsync(cancellationToken);
+
+				var startInfo = new ProcessStartInfo
+				{
+					FileName = execPath,
+					Arguments = args,
+					WorkingDirectory = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory
+				};
+
+				PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+				using var process = new Process { StartInfo = startInfo };
+				using var timeoutCts = new CancellationTokenSource(SessionSummaryTimeout);
+				using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+				try
+				{
+					process.Start();
+					process.StandardInput.Close();
+
+					var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+					await process.WaitForExitAsync(linkedCts.Token);
+
+					if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+					{
+						var extracted = ExtractSessionSummary(output);
+						if (!string.IsNullOrWhiteSpace(extracted))
+						{
+							summary.Success = true;
+							summary.Summary = extracted;
+							summary.Source = "session";
+							return summary;
+						}
+					}
+				}
+				catch (OperationCanceledException)
+				{
+					try { PlatformHelper.TryKillProcessTree(process.Id); } catch { }
+				}
+			}
+			catch
+			{
+				// Fall through to the output-based summary.
+			}
+		}
+
+		if (!string.IsNullOrEmpty(fallbackOutput))
+		{
+			summary.Summary = GenerateSummaryFromOutput(fallbackOutput);
+			summary.Success = !string.IsNullOrEmpty(summary.Summary);
+			summary.Source = "output";
+			return summary;
+		}
+
+		summary.Success = false;
+		summary.ErrorMessage = "No session ID or output available to generate summary";
+		return summary;
+	}
 }
