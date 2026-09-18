@@ -76,6 +76,19 @@ public interface IProviderUsageService
 		CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Stores usage limits observed outside a job execution, such as an on-demand refresh.
+	/// Updates only the limit state; cumulative job totals are left alone.
+	/// </summary>
+	/// <param name="providerId">The provider the limits belong to</param>
+	/// <param name="limits">The limits reported by the provider</param>
+	/// <param name="cancellationToken">Cancellation token</param>
+	/// <returns>The updated summary</returns>
+	Task<ProviderUsageSummary> ApplyDetectedLimitsAsync(
+		Guid providerId,
+		UsageLimits limits,
+		CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Resets the usage period for a provider (e.g., on monthly reset).
 	/// Archives current totals and starts a new period.
 	/// </summary>

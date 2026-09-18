@@ -70,10 +70,13 @@ public static partial class ClaudeUsageParser
 
 		var windows = new List<UsageLimitWindow>();
 
-		// Claude surfaces the 5-hour window as the current session limit, and the
-		// 7-day window as the weekly limit.
-		AddWindow(windows, info.UnifiedWindows?.FiveHour, UsageLimitWindowScope.Session, UsageLimitType.SessionLimit);
-		AddWindow(windows, info.UnifiedWindows?.SevenDay, UsageLimitWindowScope.Weekly, UsageLimitType.RateLimit);
+		// Every window the CLI reports is shown. The set varies by model and plan, so
+		// known keys get a friendly label and anything new is passed through rather
+		// than dropped.
+		foreach (var (key, window) in info.UnifiedWindows ?? [])
+		{
+			AddWindow(windows, key, window);
+		}
 
 		// The top-level figures describe whichever limit is currently binding (for example
 		// the overage balance), which is not necessarily one of the rolling windows.
@@ -105,24 +108,107 @@ public static partial class ClaudeUsageParser
 
 	private static void AddWindow(
 		List<UsageLimitWindow> windows,
-		ClaudeRateLimitWindow? window,
-		UsageLimitWindowScope scope,
-		UsageLimitType limitType)
+		string key,
+		ClaudeRateLimitWindow? window)
 	{
 		if (window?.Utilization == null)
 		{
 			return;
 		}
 
+		var (scope, label, limitType) = DescribeWindow(key);
+
 		windows.Add(new UsageLimitWindow
 		{
 			Scope = scope,
+			Label = label,
 			LimitType = limitType,
 			CurrentUsage = ToPercent(window.Utilization.Value),
 			MaxUsage = 100,
 			ResetTime = FromUnixSeconds(window.ResetsAt),
 			IsLimitReached = window.Utilization >= 1.0d
 		});
+	}
+
+	/// <summary>
+	/// Maps a CLI window key to how VibeSwarm presents it. Unrecognised keys keep their
+	/// own name, humanised, so a window Anthropic adds still renders with a sensible label.
+	/// </summary>
+	private static (UsageLimitWindowScope Scope, string Label, UsageLimitType LimitType) DescribeWindow(string key)
+	{
+		return key switch
+		{
+			"five_hour" => (UsageLimitWindowScope.Session, "Session (5 hours)", UsageLimitType.SessionLimit),
+			"seven_day" => (UsageLimitWindowScope.Weekly, "Weekly", UsageLimitType.RateLimit),
+			"seven_day_overage_included" => (UsageLimitWindowScope.Weekly, "Weekly (with overage)", UsageLimitType.RateLimit),
+			_ => (InferScopeFromKey(key), HumanizeKey(key), UsageLimitType.RateLimit)
+		};
+	}
+
+	/// <summary>
+	/// Buckets a window key by the horizon its name implies. Keys are spelled out in words
+	/// ("five_hour", "seven_day"), so a day count is resolved and then bucketed rather than
+	/// matched literally — "thirty_day" is a month, not a day.
+	/// </summary>
+	private static UsageLimitWindowScope InferScopeFromKey(string key)
+	{
+		if (key.Contains("hour", StringComparison.OrdinalIgnoreCase))
+		{
+			return UsageLimitWindowScope.Session;
+		}
+
+		if (key.Contains("month", StringComparison.OrdinalIgnoreCase))
+		{
+			return UsageLimitWindowScope.Monthly;
+		}
+
+		if (key.Contains("week", StringComparison.OrdinalIgnoreCase))
+		{
+			return UsageLimitWindowScope.Weekly;
+		}
+
+		if (!key.Contains("day", StringComparison.OrdinalIgnoreCase))
+		{
+			return UsageLimitWindowScope.Unknown;
+		}
+
+		return TryReadLeadingDayCount(key) switch
+		{
+			1 => UsageLimitWindowScope.Daily,
+			<= 7 and > 1 => UsageLimitWindowScope.Weekly,
+			> 7 => UsageLimitWindowScope.Monthly,
+			_ => UsageLimitWindowScope.Daily
+		};
+	}
+
+	private static readonly Dictionary<string, int> NumberWords = new(StringComparer.OrdinalIgnoreCase)
+	{
+		["one"] = 1, ["two"] = 2, ["three"] = 3, ["four"] = 4, ["five"] = 5,
+		["six"] = 6, ["seven"] = 7, ["fourteen"] = 14, ["thirty"] = 30
+	};
+
+	private static int? TryReadLeadingDayCount(string key)
+	{
+		var head = key.Split('_', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+		if (string.IsNullOrWhiteSpace(head))
+		{
+			return null;
+		}
+
+		if (int.TryParse(head, out var numeric))
+		{
+			return numeric;
+		}
+
+		return NumberWords.TryGetValue(head, out var word) ? word : null;
+	}
+
+	private static string HumanizeKey(string key)
+	{
+		var words = key.Replace('_', ' ').Trim();
+		return words.Length == 0
+			? "Usage"
+			: char.ToUpperInvariant(words[0]) + words[1..];
 	}
 
 	/// <summary>

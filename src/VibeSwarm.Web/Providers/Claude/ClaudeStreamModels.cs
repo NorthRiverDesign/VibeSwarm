@@ -196,28 +196,16 @@ public class ClaudeRateLimitInfo
 	public double? SurpassedThreshold { get; set; }
 
 	/// <summary>
-	/// The subscription's rolling windows.
+	/// The subscription's rolling windows, keyed by the CLI's own window name.
 	/// </summary>
+	/// <remarks>
+	/// Deliberately a dictionary rather than fixed properties. The set is not stable:
+	/// a Haiku run reports only <c>five_hour</c> and <c>seven_day</c>, while a Fable run
+	/// on the same account also reports <c>seven_day_overage_included</c>. Binding named
+	/// properties silently drops whatever Anthropic adds next.
+	/// </remarks>
 	[JsonPropertyName("unifiedWindows")]
-	public ClaudeUnifiedWindows? UnifiedWindows { get; set; }
-}
-
-/// <summary>
-/// The rolling usage windows a Claude subscription is metered against.
-/// </summary>
-public class ClaudeUnifiedWindows
-{
-	/// <summary>
-	/// The 5-hour window, which Claude surfaces as the current session limit.
-	/// </summary>
-	[JsonPropertyName("five_hour")]
-	public ClaudeRateLimitWindow? FiveHour { get; set; }
-
-	/// <summary>
-	/// The rolling 7-day window.
-	/// </summary>
-	[JsonPropertyName("seven_day")]
-	public ClaudeRateLimitWindow? SevenDay { get; set; }
+	public Dictionary<string, ClaudeRateLimitWindow>? UnifiedWindows { get; set; }
 }
 
 /// <summary>

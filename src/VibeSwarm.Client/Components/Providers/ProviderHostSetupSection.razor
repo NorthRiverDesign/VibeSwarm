@@ -1,25 +1,5 @@
 <div class="d-flex flex-column gap-4">
 	<div>
-		<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-			<h5 class="fw-semibold mb-0">Host Setup</h5>
-			<ActionButton Icon="arrow-repeat" Text="Re-scan Host" OnClick="OnRefreshStatuses"
-						  IsLoading="IsRefreshing" />
-		</div>
-		<div class="row g-2 mb-3">
-			<div class="col-6 col-xl-3">
-				<StatItem Label="Primary CLIs" Value="@Statuses.Count.ToString()" />
-			</div>
-			<div class="col-6 col-xl-3">
-				<StatItem Label="Installed" Value="@Statuses.Count(status => status.IsInstalled).ToString()" />
-			</div>
-			<div class="col-6 col-xl-3">
-				<StatItem Label="Auth Ready" Value="@Statuses.Count(status => status.IsAuthenticated).ToString()" />
-			</div>
-			<div class="col-6 col-xl-3">
-				<StatItem Label="Configured" Value="@Statuses.Sum(status => status.ConfiguredProviders.Count).ToString()" />
-			</div>
-		</div>
-
 		@if (IsLoading)
 		{
 			<LoadingSpinner Text="Loading host setup..." />
@@ -51,15 +31,26 @@
 				</ul>
 			</div>
 
-			<div class="row g-3">
-				<div class="col-12 col-lg-4">
+			@* Setup detail is reference material once the CLI is installed and authenticated,
+			   so it collapses to a single status line and only opens itself when something
+			   still needs doing. *@
+			<div class="accordion mb-3">
+				<AccordionSection Title="@($"{ActiveStatus.DisplayName} on this host")" Icon="hdd-stack"
+								  Summary="@GetSetupSummary(ActiveStatus)"
+								  Badge="@(IsSetupComplete(ActiveStatus) ? "Ready" : "Action needed")"
+								  BadgeClass="@(IsSetupComplete(ActiveStatus) ? "text-bg-success" : "text-bg-warning")"
+								  IsOpen="@IsSetupOpen(ActiveStatus)"
+								  IsOpenChanged="@(open => SetSetupOpen(ActiveStatus.ProviderType, open))">
 					<CommonProviderSetupCard Status="ActiveStatus"
 											 IsInstalling="@(InstallingProviderType == ActiveStatus.ProviderType)"
 											 IsSavingAuthentication="@(SavingAuthenticationProviderType == ActiveStatus.ProviderType)"
 											 OnInstall="OnInstallProvider"
 											 OnSaveAuthentication="OnSaveAuthentication" />
-				</div>
-				<div class="col-12 col-lg-8">
+				</AccordionSection>
+			</div>
+
+			<div class="row g-3">
+				<div class="col-12">
 					<div class="card h-100">
 						<div class="card-body d-flex flex-column gap-3">
 							<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -99,9 +90,8 @@
 							}
 							@if (providersForType.Count == 0)
 							{
-								<div class="rounded-3 bg-body-tertiary p-3 small text-body-secondary">
-									No @ActiveStatus.DisplayName connections yet.
-								</div>
+								<EmptyState Icon="plug" Title="@($"No {ActiveStatus.DisplayName} connections")"
+											Message="Add a connection to let this provider run jobs." />
 							}
 							else
 							{
@@ -116,6 +106,10 @@
 																	IsTesting="@(TestingId == provider.Id)"
 																	IsRefreshingModels="@(RefreshingModelsId == provider.Id)"
 																	IsUpdatingCli="@(UpdatingCliId == provider.Id)"
+																	IsRefreshingUsage="@(RefreshingUsageId == provider.Id)"
+																	SupportsUsageRefresh="@SupportsUsageRefresh(provider)"
+																	UsageRefreshError="@GetUsageRefreshError(provider.Id)"
+																	OnRefreshUsage="OnRefreshUsage"
 																	OnToggleEnabled="OnToggleEnabled"
 																	OnTestConnection="OnTestConnection"
 																	OnRefreshModels="OnRefreshModels"
@@ -165,6 +159,15 @@
 
 	[Parameter]
 	public IReadOnlyDictionary<Guid, ProviderUsageSummary> UsageSummaries { get; set; } = new Dictionary<Guid, ProviderUsageSummary>();
+
+	[Parameter]
+	public Guid? RefreshingUsageId { get; set; }
+
+	[Parameter]
+	public IReadOnlyDictionary<Guid, string> UsageRefreshErrors { get; set; } = new Dictionary<Guid, string>();
+
+	[Parameter]
+	public EventCallback<Provider> OnRefreshUsage { get; set; }
 
 	[Parameter]
 	public IReadOnlyDictionary<Guid, ConnectionTestResult> TestResults { get; set; } = new Dictionary<Guid, ConnectionTestResult>();
@@ -345,4 +348,46 @@
 		ProviderConnectionMode.SDK => "box",
 		_ => "plug"
 	};
+
+	/// <summary>Setup panels the user has toggled by hand, overriding the automatic open state.</summary>
+	private readonly Dictionary<ProviderType, bool> _setupOpenOverrides = [];
+
+	/// <summary>
+	/// Only CLI connections can be probed for usage. SDK connections go through the API,
+	/// which does not report subscription windows.
+	/// </summary>
+	private static bool SupportsUsageRefresh(Provider provider)
+		=> provider.ConnectionMode == ProviderConnectionMode.CLI
+			&& provider.Type is ProviderType.Claude;
+
+	private string? GetUsageRefreshError(Guid providerId)
+		=> UsageRefreshErrors.TryGetValue(providerId, out var error) ? error : null;
+
+	private static bool IsSetupComplete(CommonProviderSetupStatus status)
+		=> status.IsInstalled && status.IsAuthenticated;
+
+	private bool IsSetupOpen(CommonProviderSetupStatus status)
+		=> _setupOpenOverrides.TryGetValue(status.ProviderType, out var isOpen)
+			? isOpen
+			: !IsSetupComplete(status);
+
+	private void SetSetupOpen(ProviderType providerType, bool isOpen)
+		=> _setupOpenOverrides[providerType] = isOpen;
+
+	private static string GetSetupSummary(CommonProviderSetupStatus status)
+	{
+		var parts = new List<string>
+		{
+			status.IsInstalled ? "Installed" : "Not installed",
+			status.IsAuthenticated ? "Authenticated" : "Not authenticated"
+		};
+
+		if (!string.IsNullOrWhiteSpace(status.InstalledVersion))
+		{
+			parts.Add(status.InstalledVersion);
+		}
+
+		return string.Join(" \u00b7 ", parts);
+	}
+
 }

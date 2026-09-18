@@ -36,6 +36,11 @@ public class ClaudeProvider : CliProviderBase
     private static readonly Version IncludeHookEventsVersion = new(2, 1, 0);
     private static readonly Version AppendSystemPromptFileVersion = new(2, 1, 0);
     private UsageLimits? _lastObservedUsageLimits;
+
+    /// <summary>Shortest prompt that still produces a completed turn, so the probe costs as little as possible.</summary>
+    private const string UsageProbePrompt = "hi";
+
+    private static readonly TimeSpan UsageProbeTimeout = TimeSpan.FromSeconds(120);
     private Version? _cachedCliVersion;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -989,6 +994,118 @@ public class ClaudeProvider : CliProviderBase
         }
 
         return info;
+    }
+
+    /// <summary>
+    /// Asks the CLI for current usage by making the smallest possible request and reading the
+    /// "rate_limit_event" it emits along the way.
+    /// </summary>
+    /// <remarks>
+    /// There is no read-only way to do this: Claude Code has no usage subcommand, the
+    /// documented statusline "rate_limits" contract does not fire in -p mode, and session
+    /// transcripts do not persist the figures. So this deliberately spends one trivial turn.
+    /// Tools are disabled and turns capped at one to keep that as small as it can be.
+    /// </remarks>
+    public override async Task<UsageLimits?> RefreshUsageLimitsAsync(CancellationToken cancellationToken = default)
+    {
+        if (ConnectionMode != ProviderConnectionMode.CLI)
+        {
+            return null;
+        }
+
+        var execPath = GetExecutablePath();
+        if (string.IsNullOrEmpty(execPath))
+        {
+            return null;
+        }
+
+        var args = new List<string>
+        {
+            "-p", UsageProbePrompt,
+            "--output-format", "stream-json",
+            "--verbose",
+            "--max-turns", "1",
+            "--allowed-tools", string.Empty
+        };
+
+        // Windows are reported per model — a Fable run reports an overage window a Haiku run
+        // does not — so probe with whatever this provider actually runs.
+        var probeModel = CurrentModel ?? LastExecutedModel;
+        if (!string.IsNullOrWhiteSpace(probeModel))
+        {
+            args.Add("--model");
+            args.Add(probeModel);
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = execPath,
+            WorkingDirectory = WorkingDirectory ?? Path.GetTempPath()
+        };
+
+        foreach (var arg in args)
+        {
+            startInfo.ArgumentList.Add(arg);
+        }
+
+        PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+        using var process = new Process { StartInfo = startInfo };
+        using var timeoutCts = new CancellationTokenSource(UsageProbeTimeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+        UsageLimits? limits = null;
+
+        try
+        {
+            process.Start();
+            process.StandardInput.Close();
+
+            while (await process.StandardOutput.ReadLineAsync(linkedCts.Token) is { } line)
+            {
+                if (string.IsNullOrWhiteSpace(line) || !line.Contains("rate_limit", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                ClaudeStreamEvent? streamEvent;
+                try
+                {
+                    streamEvent = JsonSerializer.Deserialize<ClaudeStreamEvent>(line, JsonOptions);
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+
+                var parsed = ClaudeUsageParser.ParseRateLimitEvent(streamEvent?.RateLimitInfo);
+                if (parsed != null)
+                {
+                    limits = limits == null ? parsed : UsageLimitWindowHelper.Merge(limits, parsed);
+                }
+            }
+
+            await process.WaitForExitAsync(linkedCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try { PlatformHelper.TryKillProcessTree(process.Id); } catch { }
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (limits != null)
+        {
+            _lastObservedUsageLimits = limits;
+        }
+
+        return limits;
     }
 
     public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)

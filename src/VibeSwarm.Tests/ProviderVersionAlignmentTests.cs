@@ -50,8 +50,8 @@ public sealed class ProviderVersionAlignmentTests
 		Assert.Equal("overage", evt.RateLimitInfo.RateLimitType);
 		Assert.Equal(0.93, evt.RateLimitInfo.Utilization);
 		Assert.False(evt.RateLimitInfo.IsUsingOverage);
-		Assert.Equal(0.11, evt.RateLimitInfo.UnifiedWindows!.FiveHour!.Utilization);
-		Assert.Equal(0.3, evt.RateLimitInfo.UnifiedWindows.SevenDay!.Utilization);
+		Assert.Equal(0.11, evt.RateLimitInfo.UnifiedWindows!["five_hour"].Utilization);
+		Assert.Equal(0.3, evt.RateLimitInfo.UnifiedWindows["seven_day"].Utilization);
 	}
 
 	[Fact]
@@ -101,9 +101,9 @@ public sealed class ProviderVersionAlignmentTests
 		{
 			Status = status,
 			Utilization = 0.5,
-			UnifiedWindows = new ClaudeUnifiedWindows
+			UnifiedWindows = new Dictionary<string, ClaudeRateLimitWindow>
 			{
-				FiveHour = new ClaudeRateLimitWindow { Utilization = 0.5 }
+				["five_hour"] = new() { Utilization = 0.5 }
 			}
 		};
 

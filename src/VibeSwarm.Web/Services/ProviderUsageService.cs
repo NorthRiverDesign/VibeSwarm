@@ -259,6 +259,43 @@ public class ProviderUsageService : IProviderUsageService
 		_logger.LogInformation("Reset usage period for provider {ProviderId}", providerId);
 	}
 
+	public async Task<ProviderUsageSummary> ApplyDetectedLimitsAsync(
+		Guid providerId,
+		UsageLimits limits,
+		CancellationToken cancellationToken = default)
+	{
+		var provider = await _context.Providers
+			.AsNoTracking()
+			.FirstOrDefaultAsync(p => p.Id == providerId, cancellationToken);
+
+		var summary = await _context.ProviderUsageSummaries
+			.FirstOrDefaultAsync(s => s.ProviderId == providerId, cancellationToken);
+
+		if (summary == null)
+		{
+			summary = new ProviderUsageSummary
+			{
+				ProviderId = providerId,
+				PeriodStart = DateTime.UtcNow
+			};
+			_context.ProviderUsageSummaries.Add(summary);
+		}
+
+		summary.ConfiguredMaxUsage = provider?.ConfiguredUsageLimit;
+		summary.LimitWindows = BuildWindowsFromSnapshot(limits);
+		ApplyLimitSnapshot(summary, limits);
+		summary.LastUpdatedAt = DateTime.UtcNow;
+
+		await _context.SaveChangesAsync(cancellationToken);
+
+		_logger.LogInformation(
+			"Refreshed usage limits for provider {ProviderId}: {WindowCount} window(s)",
+			providerId,
+			summary.LimitWindows.Count);
+
+		return summary;
+	}
+
 	private void ApplyLimitSnapshot(ProviderUsageSummary summary, UsageLimits limits)
 	{
 		var primaryWindow = UsageLimitWindowHelper.SelectPrimaryWindow(limits.Windows);

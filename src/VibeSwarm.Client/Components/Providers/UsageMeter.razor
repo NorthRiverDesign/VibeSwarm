@@ -123,6 +123,7 @@ else if (UsageSummary != null && ShowEmptyState)
 		{
 			return UsageSummary.LimitWindows
 				.OrderBy(window => GetDisplayOrder(window.Scope))
+				.ThenBy(window => window.Label, StringComparer.OrdinalIgnoreCase)
 				.ToList();
 		}
 
@@ -150,7 +151,14 @@ else if (UsageSummary != null && ShowEmptyState)
 	{
 		long current = window.CurrentUsage ?? 0;
 		long max = window.MaxUsage ?? 0;
-		var label = GetScopeLabel(window.Scope);
+		var label = window.Label ?? GetScopeLabel(window.Scope);
+
+		// Windows the provider reports as a percentage carry their own name and already show
+		// the figure alongside, so repeating "10 / 100" next to "10%" helps nobody.
+		if (window.Label != null && max == 100)
+		{
+			return label;
+		}
 
 		return window.LimitType switch
 		{
@@ -218,7 +226,7 @@ else if (UsageSummary != null && ShowEmptyState)
 			};
 		}
 
-		return window.Message ?? "Usage update available";
+		return window.Label ?? window.Message ?? "Usage update available";
 	}
 
 	private static bool ShouldShowMessage(UsageLimitWindow window, int totalWindows)

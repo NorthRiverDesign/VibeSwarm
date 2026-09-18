@@ -94,6 +94,14 @@ public class ProvidersController : ControllerBase
         return summary == null ? NotFound() : Ok(summary);
     }
 
+    /// <summary>
+    /// Asks the provider for current usage. Costs a real request on CLI providers, so this
+    /// is a POST and only ever triggered explicitly.
+    /// </summary>
+    [HttpPost("{id:guid}/usage/refresh")]
+    public async Task<IActionResult> RefreshUsage(Guid id, CancellationToken ct)
+        => Ok(await _providerService.RefreshUsageAsync(id, ct));
+
     [HttpGet("usage-summaries")]
     public async Task<IActionResult> GetAllUsageSummaries(CancellationToken ct)
         => Ok(await _usageService.GetAllUsageSummariesAsync(ct));

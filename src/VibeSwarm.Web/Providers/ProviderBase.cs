@@ -474,6 +474,13 @@ public abstract class ProviderBase : IProvider
 
     public abstract Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Providers that can be asked for usage on demand override this. The default says
+    /// "not supported" so the UI can hide the control rather than showing a dead button.
+    /// </summary>
+    public virtual Task<UsageLimits?> RefreshUsageLimitsAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult<UsageLimits?>(null);
+
     public abstract Task<SessionSummary> GetSessionSummaryAsync(
         string? sessionId,
         string? workingDirectory = null,

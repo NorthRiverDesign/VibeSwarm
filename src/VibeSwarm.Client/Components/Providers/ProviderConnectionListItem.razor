@@ -11,31 +11,47 @@
 				}
 				<StatusBadge Status="@(Provider.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
 			</div>
-			<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2">
-				<span class="badge bg-primary-subtle text-primary-emphasis">
-					<i class="bi bi-@GetProviderTypeIcon(Provider.Type) me-1"></i>@Provider.Type
-				</span>
-				<span class="badge bg-info-subtle text-info-emphasis">
-					<i class="bi bi-@GetConnectionModeIcon(Provider.ConnectionMode) me-1"></i>@Provider.ConnectionMode
-				</span>
-				@if (ProviderCapabilities.GetConnectionTypeLabel(Provider) is string connectionType && !string.IsNullOrWhiteSpace(connectionType))
-				{
-					<span class="badge bg-secondary-subtle text-secondary-emphasis">
-						<i class="bi bi-key me-1"></i>@connectionType
-					</span>
-				}
-				@if (GetCliVersion() is string version && !string.IsNullOrEmpty(version))
-				{
-					<span class="badge bg-secondary-subtle text-secondary-emphasis text-truncate"
-						  style="max-width: min(200px, 50vw);" title="@version">
-						<i class="bi bi-tag me-1"></i>@TruncateVersion(version)
-					</span>
-				}
+			@* One muted line instead of four badges — the provider type is already the active tab. *@
+			<div class="small text-body-secondary text-truncate mt-1" title="@GetMetaTitle()">
+				@GetMetaLine()
 			</div>
-			@if (UsageSummary?.EffectiveMaxUsage > 0)
+
+			@if (SupportsUsageRefresh || UsageSummary?.LimitWindows.Count > 0 || UsageSummary?.EffectiveMaxUsage > 0)
 			{
-				<div class="mt-2" style="max-width: min(300px, 100%);">
-					<UsageMeter UsageSummary="UsageSummary" ShowResetTime="true" />
+				<div class="mt-3 p-3 rounded-3 bg-body-tertiary">
+					<div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+						<span class="text-eyebrow">Usage</span>
+						@if (SupportsUsageRefresh)
+						{
+							<ActionButton Icon="arrow-repeat" Text="Check usage"
+										  Title="Runs one tiny request to read your current limits"
+										  Size="ActionButton.ButtonSize.Small" IsLoading="IsRefreshingUsage"
+										  Disabled="IsRefreshingUsage" OnClick="HandleRefreshUsage" />
+						}
+					</div>
+
+					@if (UsageSummary?.LimitWindows.Count > 0 || UsageSummary?.EffectiveMaxUsage > 0)
+					{
+						<UsageMeter UsageSummary="UsageSummary" ShowResetTime="true" />
+						@if (UsageSummary?.LastUpdatedAt is { } updatedAt)
+						{
+							<div class="small text-body-tertiary mt-2">
+								<i class="bi bi-clock-history me-1"></i>Checked @updatedAt.FormatDateTimeShort()
+							</div>
+						}
+					}
+					else
+					{
+						<div class="small text-body-secondary">
+							No usage recorded yet. Check usage, or run a job and it fills in on its own.
+						</div>
+					}
+
+					@if (!string.IsNullOrWhiteSpace(UsageRefreshError))
+					{
+						<Alert Type="Alert.AlertType.Warning" Message="@UsageRefreshError"
+							   Class="mt-2 mb-0 py-2 px-3 small" />
+					}
 				</div>
 			}
 			@if (TestResult != null)
@@ -56,18 +72,13 @@
 			}
 		</div>
 		<div class="col-12 col-lg-auto">
-			<div class="row g-2">
-				<div class="col-12 col-sm-6 col-lg-12">
-					<div class="rounded-3 bg-body-tertiary px-3 py-2 d-flex align-items-center justify-content-between gap-3">
-						<span class="small fw-medium text-body-secondary">Active</span>
-						<label class="toggle-switch flex-shrink-0" title="@(Provider.IsEnabled ? "Disable" : "Enable")">
-							<input type="checkbox" checked="@Provider.IsEnabled" @onchange="HandleToggleEnabled" />
-							<span class="toggle-slider"></span>
-						</label>
+			<div class="d-flex align-items-center justify-content-between justify-content-lg-end gap-3">
+					<div class="form-check form-switch mb-0">
+						<input class="form-check-input" type="checkbox" role="switch" id="@_enabledSwitchId"
+							   checked="@Provider.IsEnabled" @onchange="HandleToggleEnabled" />
+						<label class="form-check-label small text-body-secondary" for="@_enabledSwitchId">Active</label>
 					</div>
-				</div>
-				<div class="col-12 col-sm-6 col-lg-12">
-					<div class="d-flex align-items-center justify-content-sm-end gap-2 flex-wrap">
+					<div class="d-flex align-items-center gap-2">
 						<ActionButton Icon="lightning" Text="Test" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
 									  IsLoading="IsTesting" OnClick="HandleTestConnection" />
 
@@ -93,7 +104,6 @@
 											OnClick="HandleDeleteProvider" />
 						</RowActionsDropdown>
 					</div>
-				</div>
 			</div>
 		</div>
 	</div>
@@ -104,10 +114,10 @@
 
 		<div class="mt-3 pt-3 border-top">
 			<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-				<button type="button" class="btn btn-sm btn-secondary d-inline-flex align-items-center gap-2"
+				<button type="button" class="btn btn-sm btn-link px-0 text-decoration-none d-inline-flex align-items-center gap-2"
 						@onclick="ToggleModels">
-					<i class="bi bi-@(ShowModels ? "chevron-up" : "chevron-down")"></i>
-					<span>@(ShowModels ? "Hide Models" : "Show Models") (@availableModels.Count)</span>
+					<i class="bi bi-chevron-@(ShowModels ? "down" : "right")"></i>
+					<span>@availableModels.Count model@(availableModels.Count == 1 ? string.Empty : "s")</span>
 				</button>
 				@if (Provider.LastModelsRefreshAt.HasValue)
 				{
@@ -192,6 +202,19 @@
 
 	[Parameter]
 	public bool IsUpdatingCli { get; set; }
+
+	[Parameter]
+	public bool IsRefreshingUsage { get; set; }
+
+	/// <summary>Set when the provider can be asked for usage on demand, so the button is not offered otherwise.</summary>
+	[Parameter]
+	public bool SupportsUsageRefresh { get; set; }
+
+	[Parameter]
+	public string? UsageRefreshError { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnRefreshUsage { get; set; }
 
 	[Parameter]
 	public EventCallback<Provider> OnToggleEnabled { get; set; }
@@ -324,4 +347,36 @@
 
 		return firstLine.Length > 40 ? firstLine[..37] + "..." : firstLine;
 	}
+
+	private readonly string _enabledSwitchId = $"provider-enabled-{Guid.NewGuid():N}";
+
+	private Task HandleRefreshUsage() => OnRefreshUsage.InvokeAsync(Provider);
+
+	/// <summary>
+	/// The connection facts that used to be four separate badges, as one quiet line.
+	/// </summary>
+	private string GetMetaLine()
+	{
+		var parts = new List<string> { Provider.ConnectionMode.ToString() };
+
+		if (ProviderCapabilities.GetConnectionTypeLabel(Provider) is { } connectionType
+			&& !string.IsNullOrWhiteSpace(connectionType))
+		{
+			parts.Add(connectionType);
+		}
+
+		if (GetCliVersion() is { } version && !string.IsNullOrEmpty(version))
+		{
+			parts.Add(TruncateVersion(version));
+		}
+
+		return string.Join(" \u00b7 ", parts);
+	}
+
+	private string GetMetaTitle()
+	{
+		var version = GetCliVersion();
+		return string.IsNullOrEmpty(version) ? GetMetaLine() : version;
+	}
+
 }

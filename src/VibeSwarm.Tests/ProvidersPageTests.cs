@@ -74,7 +74,7 @@ public sealed class ProvidersPageTests
 
 		var html = await RenderProvidersPageAsync([], statuses);
 
-		Assert.Contains("No Anthropic Claude connections yet.", html);
+		Assert.Contains("No Anthropic Claude connections", html);
 		Assert.Contains("Add CLI", html);
 		Assert.Contains("Add SDK", html);
 	}
@@ -164,9 +164,9 @@ public sealed class ProvidersPageTests
 		Assert.Contains("row g-3 align-items-start", html);
 		Assert.Contains("col-12 col-lg min-width-0", html);
 		Assert.Contains("col-12 col-lg-auto", html);
-		Assert.Contains("col-12 col-sm-6 col-lg-12", html);
-		Assert.Contains("rounded-3 bg-body-tertiary px-3 py-2 d-flex align-items-center justify-content-between gap-3", html);
-		Assert.DoesNotContain("d-flex align-items-start gap-2 gap-md-3", html);
+		// The enabled control is a plain Bootstrap switch now, not a boxed custom toggle.
+		Assert.Contains("form-check form-switch", html);
+		Assert.DoesNotContain("toggle-slider", html);
 	}
 
 	[Fact]
@@ -277,6 +277,7 @@ public sealed class ProvidersPageTests
 		public Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<UsageRefreshResult> RefreshUsageAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
 	private sealed class FakeCommonProviderSetupService(IReadOnlyList<CommonProviderSetupStatus> statuses) : ICommonProviderSetupService

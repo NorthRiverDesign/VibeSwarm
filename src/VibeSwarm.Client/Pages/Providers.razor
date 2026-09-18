@@ -7,6 +7,9 @@
 
 <PageHeader Title="Providers" Subtitle="CLI coding agents installed on this host that run your jobs.">
 	<Actions>
+		<ActionButton Icon="arrow-repeat" Text="Re-scan host" HideTextOnMobile="true"
+					  Title="Re-detect installed CLIs" OnClick="RefreshCommonProviderStatusesAsync"
+					  IsLoading="IsRefreshingCommonProviders" />
 		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
 	</Actions>
 </PageHeader>
@@ -21,6 +24,9 @@
 						  SavingAuthenticationProviderType="@SavingAuthenticationProviderType"
 						  ProviderModels="ProviderModels"
 						  UsageSummaries="UsageSummaries"
+						  RefreshingUsageId="@RefreshingUsageId"
+						  UsageRefreshErrors="UsageRefreshErrors"
+						  OnRefreshUsage="RefreshUsageAsync"
 						  TestResults="TestResults"
 						  RefreshModelsErrors="RefreshModelsErrors"
 						  TestingId="@TestingId"
@@ -70,6 +76,8 @@
 	private Dictionary<Guid, ConnectionTestResult> TestResults { get; set; } = new();
 	private Dictionary<Guid, List<ProviderModel>> ProviderModels { get; set; } = new();
 	private Dictionary<Guid, ProviderUsageSummary> UsageSummaries { get; set; } = new();
+	private Dictionary<Guid, string> UsageRefreshErrors { get; set; } = new();
+	private Guid? RefreshingUsageId { get; set; }
 	private List<CommonProviderSetupStatus> CommonProviderStatuses { get; set; } = new();
 	private ProviderType? InstallingProviderType { get; set; }
 	private ProviderType? SavingAuthenticationProviderType { get; set; }
@@ -522,4 +530,40 @@
 		DefaultModelList = [];
 		StateHasChanged();
 	}
+
+	/// <summary>
+	/// Asks the provider for its current usage. This spends one tiny request against the very
+	/// limits it reports, which is why it only ever runs from this button.
+	/// </summary>
+	private async Task RefreshUsageAsync(Provider provider)
+	{
+		RefreshingUsageId = provider.Id;
+		UsageRefreshErrors.Remove(provider.Id);
+		StateHasChanged();
+
+		try
+		{
+			var result = await HttpProviderService.RefreshUsageAsync(provider.Id);
+
+			if (result.Success && result.Summary != null)
+			{
+				UsageSummaries[provider.Id] = result.Summary;
+				NotificationService.ShowSuccess($"Read current limits from {provider.Name}.", "Usage updated");
+			}
+			else
+			{
+				UsageRefreshErrors[provider.Id] = result.ErrorMessage ?? "Could not read usage.";
+			}
+		}
+		catch (Exception ex)
+		{
+			UsageRefreshErrors[provider.Id] = ex.Message;
+		}
+		finally
+		{
+			RefreshingUsageId = null;
+			StateHasChanged();
+		}
+	}
+
 }

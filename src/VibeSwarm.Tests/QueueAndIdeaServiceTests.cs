@@ -4083,6 +4083,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<UsageRefreshResult> RefreshUsageAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
 	private sealed class FakeProviderInstance : IProvider
@@ -4124,6 +4125,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task<SessionSummary> GetSessionSummaryAsync(string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<PromptResponse> GetPromptResponseAsync(string prompt, string? workingDirectory = null, CancellationToken cancellationToken = default) => Task.FromResult(PromptResponse);
 		public Task<CliUpdateResult> UpdateCliAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<UsageLimits?> RefreshUsageLimitsAsync(CancellationToken cancellationToken = default) => Task.FromResult<UsageLimits?>(null);
 	}
 
 	private sealed class FakeVersionControlService : IVersionControlService

@@ -44,6 +44,16 @@ public interface IProvider
     Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Actively asks the provider for its current usage, rather than returning whatever was
+    /// last observed during a job. Returns null when the provider cannot report usage on demand.
+    /// </summary>
+    /// <remarks>
+    /// This generally costs a real request against the very limits it reports, so it is only
+    /// called when a user explicitly asks to refresh.
+    /// </remarks>
+    Task<UsageLimits?> RefreshUsageLimitsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Get a summary of what was accomplished during a session.
     /// Used to pre-populate commit messages after job completion.
     /// </summary>
@@ -365,6 +375,13 @@ public class UsageLimitWindow
     /// The time horizon this window applies to.
     /// </summary>
     public UsageLimitWindowScope Scope { get; set; } = UsageLimitWindowScope.Unknown;
+
+    /// <summary>
+    /// Display name for this window when the scope alone does not identify it — for example
+    /// two weekly windows that differ only by whether overage is included. Falls back to the
+    /// scope label when null.
+    /// </summary>
+    public string? Label { get; set; }
 
     /// <summary>
     /// Whether the limit has been reached for this window.

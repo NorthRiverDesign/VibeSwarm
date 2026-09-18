@@ -50,10 +50,40 @@ public interface IProviderService
     /// Updates the CLI for a provider by running its update command.
     /// </summary>
     Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Asks the provider for its current usage and stores the result.
+    /// </summary>
+    /// <remarks>
+    /// For CLI providers this costs a real request against the limits being reported, so it
+    /// is only triggered by an explicit user action.
+    /// </remarks>
+    Task<UsageRefreshResult> RefreshUsageAsync(Guid id, CancellationToken cancellationToken = default);
 }
 
 public class ConnectionTestResult
 {
     public bool IsConnected { get; set; }
     public string? ErrorMessage { get; set; }
+}
+
+/// <summary>
+/// Outcome of an on-demand usage refresh.
+/// </summary>
+public class UsageRefreshResult
+{
+    public bool Success { get; set; }
+
+    /// <summary>
+    /// True when the provider has no way to report usage on demand, so the UI can say so
+    /// rather than showing a failure.
+    /// </summary>
+    public bool IsSupported { get; set; } = true;
+
+    public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// The refreshed summary, when the refresh succeeded.
+    /// </summary>
+    public ProviderUsageSummary? Summary { get; set; }
 }
