@@ -646,20 +646,10 @@ public class DatabaseService : IDatabaseService
 			return "sqlite";
 		}
 
-		if (providerName.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
-		{
-			return "postgresql";
-		}
-
 		if (providerName.Contains("MySql", StringComparison.OrdinalIgnoreCase) ||
 			providerName.Contains("MariaDb", StringComparison.OrdinalIgnoreCase))
 		{
 			return "mysql";
-		}
-
-		if (providerName.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
-		{
-			return "sqlserver";
 		}
 
 		return string.IsNullOrWhiteSpace(providerName) ? "unknown" : providerName;
@@ -687,8 +677,6 @@ public class DatabaseService : IDatabaseService
 			"mysql" => await ExecuteScalarInt64Async(
 				"SELECT COALESCE(SUM(data_length + index_length), 0) FROM information_schema.tables WHERE table_schema = DATABASE()",
 				ct),
-			"postgresql" => await ExecuteScalarInt64Async("SELECT pg_database_size(current_database())", ct),
-			"sqlserver" => await ExecuteScalarInt64Async("SELECT SUM(CAST(size AS BIGINT)) * 8192 FROM sys.database_files", ct),
 			_ => null
 		};
 
@@ -821,8 +809,6 @@ public class DatabaseService : IDatabaseService
 		{
 			"sqlite" => "SQLite",
 			"mysql" => "MySQL",
-			"postgresql" => "PostgreSQL",
-			"sqlserver" => "SQL Server",
 			_ => provider
 		};
 	}

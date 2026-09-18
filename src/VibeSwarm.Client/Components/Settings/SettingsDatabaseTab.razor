@@ -154,8 +154,6 @@ switching from the UI.
 <select class="form-select" @bind="_databaseMigrationRequest.Provider">
 <option value="sqlite">SQLite</option>
 <option value="mysql">MySQL</option>
-<option value="postgresql">PostgreSQL</option>
-<option value="sqlserver">SQL Server</option>
 </select>
 </div>
 <div class="col-12 col-md-8">
@@ -171,7 +169,7 @@ connection string to the runtime database config file. The current database is l
 you restart the app.
 </div>
 <div class="small text-body-secondary">
-For SQLite, choose a new file path. For MySQL, PostgreSQL, or SQL Server, point to an empty
+For SQLite, choose a new file path. For MySQL, point to an empty
 database that the app can create tables in.
 </div>
 
@@ -664,8 +662,6 @@ OnConfirm="RunDatabaseMigration" />
 	{
 		"sqlite" => "SQLite database",
 		"mysql" => "MySQL database",
-		"postgresql" => "PostgreSQL database",
-		"sqlserver" => "SQL Server database",
 		{ Length: > 0 } provider => provider,
 		_ => "Database size unavailable"
 	};
@@ -674,8 +670,6 @@ OnConfirm="RunDatabaseMigration" />
 	{
 		"sqlite" => "SQLite",
 		"mysql" => "MySQL",
-		"postgresql" => "PostgreSQL",
-		"sqlserver" => "SQL Server",
 		{ Length: > 0 } value => value,
 		_ => "Unknown"
 	};
@@ -686,8 +680,6 @@ OnConfirm="RunDatabaseMigration" />
 			? @"Data Source=C:\VibeSwarm\vibeswarm.db"
 			: "Data Source=/var/lib/vibeswarm/vibeswarm.db",
 		"mysql" => "Server=localhost;Database=vibeswarm;User=vibeswarm;Password=secret",
-		"postgresql" => "Host=localhost;Database=vibeswarm;Username=vibeswarm;Password=secret",
-		"sqlserver" => "Server=localhost;Database=vibeswarm;Trusted_Connection=true;TrustServerCertificate=true",
 		_ => string.Empty
 	};
 

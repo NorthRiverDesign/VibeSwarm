@@ -99,7 +99,7 @@ The `.env` file is the **only** configuration you need. Place it in the repo roo
 | `ASPNETCORE_URLS`            | `https://localhost:5001;http://localhost:5000` | Bind addresses. Use `0.0.0.0` for remote access.         |
 | `DEFAULT_ADMIN_USER`         | `admin` when only a password is provided       | Optional admin username for automated setup.             |
 | `DEFAULT_ADMIN_PASS`         | _(empty — setup wizard)_                       | Admin password. Min 8 chars, upper + lower + digit.      |
-| `DATABASE_PROVIDER`          | `sqlite`                                       | Database engine: `sqlite`, `mysql`, `postgresql`, or `sqlserver`. |
+| `DATABASE_PROVIDER`          | `sqlite`                                       | Database engine: `sqlite` or `mysql`.                    |
 | `ConnectionStrings__Default` | `Data Source=vibeswarm.db`                     | Connection string for the chosen provider.               |
 
 You can also set these as system environment variables instead of using `.env`.
@@ -117,21 +117,7 @@ DATABASE_PROVIDER=mysql
 ConnectionStrings__Default=Server=localhost;Database=vibeswarm;User=vibeswarm;Password=secret
 ```
 
-**PostgreSQL:**
-
-```bash
-DATABASE_PROVIDER=postgresql
-ConnectionStrings__Default=Host=localhost;Database=vibeswarm;Username=vibeswarm;Password=secret
-```
-
-**SQL Server:**
-
-```bash
-DATABASE_PROVIDER=sqlserver
-ConnectionStrings__Default=Server=localhost;Database=vibeswarm;Trusted_Connection=true;TrustServerCertificate=true
-```
-
-Provider aliases are supported: `mariadb` / `mysql`, `postgres` / `postgresql`, `mssql` / `sqlserver`.
+Provider aliases are supported: `mariadb` / `mysql`.
 
 You can also switch databases from **Settings → Database**. That flow copies your current VibeSwarm
 data into an empty target database, writes the new provider and connection string to a runtime
@@ -272,7 +258,7 @@ VibeSwarm/
 - **.NET 10.0** - Web framework
 - **Blazor WebAssembly** - UI
 - **SignalR** - Real-time communication
-- **Entity Framework Core** - ORM (SQLite, PostgreSQL, SQL Server)
+- **Entity Framework Core** - ORM (SQLite, MySQL)
 - **ASP.NET Core Identity** - Authentication
 
 ---

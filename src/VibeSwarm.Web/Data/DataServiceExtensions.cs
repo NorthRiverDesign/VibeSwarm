@@ -15,10 +15,6 @@ public static class DataServiceExtensions
 		["sqlite"] = "sqlite",
 		["mysql"] = "mysql",
 		["mariadb"] = "mysql",
-		["postgres"] = "postgresql",
-		["postgresql"] = "postgresql",
-		["sqlserver"] = "sqlserver",
-		["mssql"] = "sqlserver",
 	};
 
     public static IServiceCollection AddVibeSwarmData(
@@ -90,12 +86,6 @@ public static class DataServiceExtensions
 			case "mysql":
 				options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
 				break;
-			case "postgresql":
-				options.UseNpgsql(connectionString);
-				break;
-			case "sqlserver":
-				options.UseSqlServer(connectionString);
-				break;
 			default:
 				options.UseSqlite(connectionString);
 				break;
@@ -109,7 +99,7 @@ public static class DataServiceExtensions
 	}
 
     /// <summary>
-    /// Resolves a provider alias (e.g. "postgres", "mssql") to its canonical name.
+    /// Resolves a provider alias (e.g. "mariadb") to its canonical name.
     /// Throws if the provider is not recognized.
     /// </summary>
 	public static string ResolveProviderName(string provider)
