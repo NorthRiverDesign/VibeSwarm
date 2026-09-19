@@ -284,20 +284,37 @@ public partial class IdeaService
 			idea.IsProcessing = false;
 			idea.JobId = null;
 
-			// If the job was cancelled, stop ideas auto-processing to avoid repeat failures
-			// (e.g. provider maintenance or rate limits causing the user to cancel)
+			// Stop ideas auto-processing when another attempt cannot possibly do better:
+			// a cancelled job (provider maintenance or rate limits made the user pull the
+			// plug), or a failure the host caused — a CLI that will not start fails the
+			// same way every ten seconds and quietly spends the usage budget doing it.
 			var job = await _dbContext.Jobs
 				.AsNoTracking()
 				.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
 
-			if (job?.Status == JobStatus.Cancelled)
+			var haltReason = job?.Status == JobStatus.Cancelled
+				? "it was cancelled"
+				: ProviderFailureClassifier.IsUnrecoverable(job?.ErrorMessage)
+					? "it failed with an unrecoverable error"
+					: null;
+
+			if (haltReason != null)
 			{
 				var project = await _dbContext.Projects.FindAsync(new object[] { idea.ProjectId }, cancellationToken);
 				if (project?.IdeasProcessingActive == true)
 				{
 					project.IdeasProcessingActive = false;
 					stoppedProcessing = true;
-					_logger.LogInformation("Stopped Ideas auto-processing for project {ProjectId} because Job {JobId} was cancelled", idea.ProjectId, jobId);
+					_logger.LogWarning(
+						"Stopped Ideas auto-processing for project {ProjectId} because Job {JobId} {HaltReason}: {Error}",
+						idea.ProjectId,
+						jobId,
+						haltReason,
+						job?.ErrorMessage);
+
+					// Automation going quiet is exactly how work gets lost. Leave a record the
+					// UI surfaces so the queue's owner finds out why it stopped.
+					await RecordHaltedAutomationAsync(project, jobId, haltReason, job?.ErrorMessage, cancellationToken);
 				}
 			}
 		}
@@ -320,6 +337,47 @@ public partial class IdeaService
 		}
 
 		return true;
+	}
+
+	/// <summary>
+	/// Records why ideas auto-processing stopped, so a halted queue is visible instead of
+	/// silently idle. Never throws: the halt itself matters more than the bookkeeping.
+	/// </summary>
+	private async Task RecordHaltedAutomationAsync(
+		Project project,
+		Guid jobId,
+		string reason,
+		string? errorMessage,
+		CancellationToken cancellationToken)
+	{
+		if (_criticalErrorLogService == null)
+		{
+			return;
+		}
+
+		try
+		{
+			await _criticalErrorLogService.LogAsync(
+				new CriticalErrorLogEntry
+				{
+					Source = "server",
+					Category = "ideas-automation-halted",
+					Severity = "error",
+					Message = $"Ideas auto-processing stopped for {project.Name} because a job {reason}.",
+					Details = errorMessage,
+					AdditionalDataJson = JsonSerializer.Serialize(new
+					{
+						projectId = project.Id,
+						projectName = project.Name,
+						jobId
+					})
+				},
+				cancellationToken);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to record halted ideas automation for project {ProjectId}", project.Id);
+		}
 	}
 
 	private static List<string> ResolveAttachmentPaths(string? workingPath, IEnumerable<IdeaAttachment>? attachments)

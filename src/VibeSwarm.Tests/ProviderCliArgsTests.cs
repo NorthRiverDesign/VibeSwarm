@@ -425,15 +425,53 @@ public sealed class ProviderCliArgsTests
     [Fact]
     public void Claude_AlwaysSetsUnattendedHardeningEnvVars()
     {
-        // DISABLE_UPDATES and CLAUDE_CODE_SUBPROCESS_ENV_SCRUB must be set on every
-        // Claude invocation regardless of options or stall configuration.
+        // DISABLE_UPDATES must be set on every Claude invocation regardless of options
+        // or stall configuration.
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
 
         var env = provider.BaseEnvironmentVariables;
 
         Assert.NotNull(env);
         Assert.Equal("1", env!["DISABLE_UPDATES"]);
-        Assert.Equal("1", env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"]);
+    }
+
+    [Fact]
+    public void Claude_WithSubprocessIsolationAvailable_RequestsEnvScrubbing()
+    {
+        var original = ClaudeProvider.SupportsSubprocessEnvScrub;
+        try
+        {
+            ClaudeProvider.SupportsSubprocessEnvScrub = true;
+
+            var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+
+            Assert.Equal("1", provider.BaseEnvironmentVariables!["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"]);
+        }
+        finally
+        {
+            ClaudeProvider.SupportsSubprocessEnvScrub = original;
+        }
+    }
+
+    [Fact]
+    public void Claude_WithoutBubblewrap_OmitsEnvScrubbing()
+    {
+        // The CLI aborts at startup when asked to scrub subprocess environments on a host
+        // with no bubblewrap, which would fail every job. Better to run without the extra
+        // isolation than not to run at all.
+        var original = ClaudeProvider.SupportsSubprocessEnvScrub;
+        try
+        {
+            ClaudeProvider.SupportsSubprocessEnvScrub = false;
+
+            var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+
+            Assert.False(provider.BaseEnvironmentVariables!.ContainsKey("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"));
+        }
+        finally
+        {
+            ClaudeProvider.SupportsSubprocessEnvScrub = original;
+        }
     }
 
     [Fact]

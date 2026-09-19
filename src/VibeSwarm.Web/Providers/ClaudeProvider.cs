@@ -13,6 +13,7 @@ namespace VibeSwarm.Shared.Providers;
 public class ClaudeProvider : CliProviderBase
 {
     private const string DefaultExecutable = "claude";
+    private const string SubprocessIsolationExecutable = "bwrap";
     private static readonly Version AgentVersion = new(2, 1, 64);
     private static readonly Version BareModeVersion = new(2, 1, 81);
     private static readonly Version DisallowedToolsVersion = new(2, 1, 0);
@@ -57,10 +58,17 @@ public class ClaudeProvider : CliProviderBase
         var baseEnv = new Dictionary<string, string>
         {
             // Block in-flight CLI self-updates during unattended jobs (Claude v2.1.118+).
-            ["DISABLE_UPDATES"] = "1",
-            // Strip cloud credentials from any subprocess Claude spawns (v2.1.83/2.1.114).
-            ["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] = "1"
+            ["DISABLE_UPDATES"] = "1"
         };
+
+        // Strip cloud credentials from any subprocess Claude spawns (v2.1.83/2.1.114).
+        // The CLI implements this with bubblewrap and aborts at startup when bwrap is
+        // missing, which would fail every job on the host, so only ask for the hardening
+        // where it can actually be honoured.
+        if (SupportsSubprocessEnvScrub)
+        {
+            baseEnv["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] = "1";
+        }
 
         if (!string.IsNullOrWhiteSpace(config.ApiKey))
         {
@@ -107,6 +115,25 @@ public class ClaudeProvider : CliProviderBase
     {
         get => _cachedCliVersion;
         set => _cachedCliVersion = value;
+    }
+
+    /// <summary>
+    /// Whether this host can isolate subprocesses with bubblewrap, which is what the CLI
+    /// uses to scrub credentials out of the subprocesses it spawns. Resolved once from
+    /// PATH; settable so tests can cover both kinds of host.
+    /// </summary>
+    public static bool SupportsSubprocessEnvScrub { get; set; } = DetectSubprocessIsolation();
+
+    private static bool DetectSubprocessIsolation()
+    {
+        if (PlatformHelper.IsWindows)
+        {
+            return false;
+        }
+
+        var resolved = PlatformHelper.ResolveExecutablePath(SubprocessIsolationExecutable);
+        return !string.Equals(resolved, SubprocessIsolationExecutable, StringComparison.Ordinal) &&
+            File.Exists(resolved);
     }
 
     public override async Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default)
@@ -321,7 +348,9 @@ public class ClaudeProvider : CliProviderBase
         var error = errorBuilder.ToString();
         if (!result.Success && !string.IsNullOrEmpty(error))
         {
-            result.ErrorMessage = error;
+            // A CLI crash prints its own bundled stack trace; show the line that says what
+            // went wrong rather than a screenful of minified JavaScript.
+            result.ErrorMessage = ProviderFailureClassifier.Summarize(error) ?? error;
         }
 
         // Fall back to scraping stderr for limit warnings. Structured "rate_limit_event"

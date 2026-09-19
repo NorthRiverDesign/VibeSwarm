@@ -23,6 +23,7 @@ public partial class IdeaService : IIdeaService
 	private readonly IProjectMemoryService _projectMemoryService;
 	private readonly IInferenceService? _inferenceService;
 	private readonly IJobUpdateService? _jobUpdateService;
+	private readonly ICriticalErrorLogService? _criticalErrorLogService;
 	private readonly ILogger<IdeaService> _logger;
 
 	/// <summary>
@@ -108,7 +109,8 @@ public partial class IdeaService : IIdeaService
 		IProjectMemoryService projectMemoryService,
 		ILogger<IdeaService> logger,
 		IInferenceService? inferenceService = null,
-		IJobUpdateService? jobUpdateService = null)
+		IJobUpdateService? jobUpdateService = null,
+		ICriticalErrorLogService? criticalErrorLogService = null)
 	{
 		_dbContext = dbContext;
 		_jobService = jobService;
@@ -118,6 +120,7 @@ public partial class IdeaService : IIdeaService
 		_logger = logger;
 		_inferenceService = inferenceService;
 		_jobUpdateService = jobUpdateService;
+		_criticalErrorLogService = criticalErrorLogService;
 	}
 
 	public async Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default)

@@ -50,6 +50,23 @@ public sealed class ClaudeUsageWindowTests
 		}
 		""";
 
+	/// <summary>The same shape once the included allowance runs out and billing starts.</summary>
+	private const string OverageInUseEventJson = """
+		{
+		  "type": "rate_limit_event",
+		  "rate_limit_info": {
+		    "status": "allowed",
+		    "resetsAt": 1790812800,
+		    "rateLimitType": "overage",
+		    "utilization": 0.42,
+		    "isUsingOverage": true,
+		    "unifiedWindows": {
+		      "five_hour": { "utilization": 0.1, "resetsAt": 1789775400 }
+		    }
+		  }
+		}
+		""";
+
 	private static ClaudeRateLimitInfo Parse(string json)
 		=> JsonSerializer.Deserialize<ClaudeStreamEvent>(
 			json,
@@ -144,5 +161,27 @@ public sealed class ClaudeUsageWindowTests
 		var limits = ClaudeUsageParser.ParseRateLimitEvent(new ClaudeRateLimitInfo { Status = "allowed" });
 
 		Assert.Null(limits);
+	}
+
+	[Fact]
+	public void DrawingOnOverage_CountsAsLimitReached_EvenWhileStillAllowed()
+	{
+		// The CLI keeps saying "allowed" while it bills the overage balance. Treating that
+		// as headroom is how an unattended queue runs up a bill, so it has to read as the
+		// limit being reached and push the job to the next provider.
+		var limits = ClaudeUsageParser.ParseRateLimitEvent(Parse(OverageInUseEventJson));
+
+		Assert.NotNull(limits);
+		Assert.True(limits!.IsLimitReached);
+	}
+
+	[Fact]
+	public void IncludedUsageBelowTheLimit_IsNotTreatedAsReached()
+	{
+		// 93% of the included allowance with no overage drawn is still usable.
+		var limits = ClaudeUsageParser.ParseRateLimitEvent(Parse(HaikuEventJson));
+
+		Assert.NotNull(limits);
+		Assert.False(limits!.IsLimitReached);
 	}
 }

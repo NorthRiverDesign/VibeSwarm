@@ -3112,6 +3112,120 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task HandleJobCompletionAsync_UnrecoverableFailure_StopsIdeasProcessing()
+	{
+		// A CLI that cannot start fails the same way on every retry, so the idea loop has
+		// to stop instead of re-queueing the same job every few seconds.
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Broken Host Project",
+			WorkingPath = "/tmp/broken-host-project",
+			IdeasProcessingActive = true
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude Code",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Implement the idea",
+			Status = JobStatus.Failed,
+			ErrorMessage = "error: bubblewrap is required for subprocess env scrubbing and isolation."
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Queued idea",
+			JobId = job.Id,
+			IsProcessing = true,
+			SortOrder = 0
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		dbContext.Ideas.Add(idea);
+		await dbContext.SaveChangesAsync();
+
+		var jobUpdateService = new FakeJobUpdateService();
+		var ideaService = CreateIdeaService(dbContext, provider, jobUpdateService: jobUpdateService);
+		var handled = await ideaService.HandleJobCompletionAsync(job.Id, success: false);
+
+		Assert.True(handled);
+		var refreshedProject = await dbContext.Projects.SingleAsync(item => item.Id == project.Id);
+		Assert.False(refreshedProject.IdeasProcessingActive);
+		Assert.Contains(jobUpdateService.IdeasProcessingStateChanges, change => change.ProjectId == project.Id && !change.IsActive);
+
+		// The idea itself stays queued so it runs once the host is fixed.
+		var refreshedIdea = await dbContext.Ideas.SingleAsync(item => item.Id == idea.Id);
+		Assert.False(refreshedIdea.IsProcessing);
+		Assert.Null(refreshedIdea.JobId);
+	}
+
+	[Fact]
+	public async Task HandleJobCompletionAsync_RetryableFailure_KeepsIdeasProcessing()
+	{
+		// A provider-issued error may not repeat, so automation keeps going.
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Transient Failure Project",
+			WorkingPath = "/tmp/transient-failure-project",
+			IdeasProcessingActive = true
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude Code",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Implement the idea",
+			Status = JobStatus.Failed,
+			ErrorMessage = "API Error: 529 upstream service temporarily unavailable"
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Queued idea",
+			JobId = job.Id,
+			IsProcessing = true,
+			SortOrder = 0
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		dbContext.Ideas.Add(idea);
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		var handled = await ideaService.HandleJobCompletionAsync(job.Id, success: false);
+
+		Assert.True(handled);
+		var refreshedProject = await dbContext.Projects.SingleAsync(item => item.Id == project.Id);
+		Assert.True(refreshedProject.IdeasProcessingActive);
+	}
+
+	[Fact]
 	public async Task HandleJobCompletionAsync_Success_StopsIdeasProcessingWhenLastIdeaCompletes()
 	{
 		await using var dbContext = CreateDbContext();

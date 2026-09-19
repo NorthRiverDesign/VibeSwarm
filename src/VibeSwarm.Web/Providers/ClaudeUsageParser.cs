@@ -65,8 +65,13 @@ public static partial class ClaudeUsageParser
 			return null;
 		}
 
+		// Drawing on the overage balance means the included allowance is gone and every
+		// further request is billed, so it counts as the limit being reached even while
+		// the CLI still reports "allowed". Jobs then fall to the next provider instead of
+		// quietly spending money.
 		var isLimitReached = IsLimitReachedStatus(info.Status)
-			|| info.Utilization >= 1.0d;
+			|| info.Utilization >= 1.0d
+			|| info.IsUsingOverage == true;
 
 		var windows = new List<UsageLimitWindow>();
 
