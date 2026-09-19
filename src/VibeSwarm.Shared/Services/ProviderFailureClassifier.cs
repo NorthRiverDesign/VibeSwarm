@@ -37,6 +37,10 @@ public static class ProviderFailureClassifier
 		// The CLI needs an OS package the host does not have (e.g. bubblewrap for
 		// subprocess isolation).
 		"bubblewrap is required",
+		// The CLI declined the permission mode it was given, so the agent cannot write
+		// any code. Every retry produces the same empty run.
+		"permission mode forced to default",
+		"refused to run with bypasspermissions",
 		// The CLI binary itself is missing or not executable.
 		"claude: command not found",
 		"executable path is not configured",

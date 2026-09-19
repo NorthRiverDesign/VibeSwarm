@@ -13,7 +13,12 @@ namespace VibeSwarm.Shared.Providers;
 public class ClaudeProvider : CliProviderBase
 {
     private const string DefaultExecutable = "claude";
-    private const string SubprocessIsolationExecutable = "bwrap";
+
+    /// <summary>
+    /// What the CLI prints when it declines the permission mode it was asked for. It stays
+    /// on stderr and the run still exits 0, so nothing else would notice.
+    /// </summary>
+    private const string PermissionModeDowngradedMarker = "Permission mode forced to default";
     private static readonly Version AgentVersion = new(2, 1, 64);
     private static readonly Version BareModeVersion = new(2, 1, 81);
     private static readonly Version DisallowedToolsVersion = new(2, 1, 0);
@@ -61,14 +66,19 @@ public class ClaudeProvider : CliProviderBase
             ["DISABLE_UPDATES"] = "1"
         };
 
-        // Strip cloud credentials from any subprocess Claude spawns (v2.1.83/2.1.114).
-        // The CLI implements this with bubblewrap and aborts at startup when bwrap is
-        // missing, which would fail every job on the host, so only ask for the hardening
-        // where it can actually be honoured.
-        if (SupportsSubprocessEnvScrub)
-        {
-            baseEnv["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] = "1";
-        }
+        // Subprocess env scrubbing (v2.1.83/2.1.114) is switched off deliberately, and set
+        // to "0" rather than left unset so a value inherited from the service environment
+        // cannot switch it back on without anyone noticing.
+        //
+        // Two measured reasons, both fatal to an unattended orchestrator:
+        //  1. The CLI answers the flag by forcing the permission mode back to "default"
+        //     ("Permission mode forced to default — CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is
+        //     set"), which strips the bypassPermissions every job runs with. The agent
+        //     then reads the code, writes a description of the edits it would make, and
+        //     changes nothing — a job that reports success having done no work.
+        //  2. Its sandbox materialises empty .env, .npmrc and lockfiles in the working
+        //     tree, so it edits the repository it was asked to leave alone.
+        baseEnv["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] = "0";
 
         if (!string.IsNullOrWhiteSpace(config.ApiKey))
         {
@@ -115,25 +125,6 @@ public class ClaudeProvider : CliProviderBase
     {
         get => _cachedCliVersion;
         set => _cachedCliVersion = value;
-    }
-
-    /// <summary>
-    /// Whether this host can isolate subprocesses with bubblewrap, which is what the CLI
-    /// uses to scrub credentials out of the subprocesses it spawns. Resolved once from
-    /// PATH; settable so tests can cover both kinds of host.
-    /// </summary>
-    public static bool SupportsSubprocessEnvScrub { get; set; } = DetectSubprocessIsolation();
-
-    private static bool DetectSubprocessIsolation()
-    {
-        if (PlatformHelper.IsWindows)
-        {
-            return false;
-        }
-
-        var resolved = PlatformHelper.ResolveExecutablePath(SubprocessIsolationExecutable);
-        return !string.Equals(resolved, SubprocessIsolationExecutable, StringComparison.Ordinal) &&
-            File.Exists(resolved);
     }
 
     public override async Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default)
@@ -346,6 +337,18 @@ public class ClaudeProvider : CliProviderBase
         }
 
         var error = errorBuilder.ToString();
+
+        // The CLI can quietly downgrade the permission mode and still exit 0. A job that
+        // cannot write is useless to an orchestrator whose whole output is code changes,
+        // and reporting it as success is worse than failing: it looks like the work was
+        // done. Fail it here, with the reason, so it is visible and stops the idea loop.
+        if (error.Contains(PermissionModeDowngradedMarker, StringComparison.OrdinalIgnoreCase))
+        {
+            result.Success = false;
+            result.ErrorMessage =
+                "Claude refused to run with bypassPermissions and fell back to manual approval, " +
+                "so no file could be written. " + ProviderFailureClassifier.Summarize(error);
+        }
         if (!result.Success && !string.IsNullOrEmpty(error))
         {
             // A CLI crash prints its own bundled stack trace; show the line that says what

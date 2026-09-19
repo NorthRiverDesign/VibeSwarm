@@ -436,42 +436,28 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void Claude_WithSubprocessIsolationAvailable_RequestsEnvScrubbing()
+    public void Claude_TurnsSubprocessEnvScrubbingOff_SoJobsCanActuallyWriteCode()
     {
-        var original = ClaudeProvider.SupportsSubprocessEnvScrub;
-        try
-        {
-            ClaudeProvider.SupportsSubprocessEnvScrub = true;
+        // Measured on Claude Code 2.1.277: with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB set, the
+        // CLI prints "Permission mode forced to default" and ignores the bypassPermissions
+        // every unattended job runs with, so the agent can only describe changes. It is
+        // pinned to "0" rather than left unset so an inherited value cannot re-enable it.
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
 
-            var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
-
-            Assert.Equal("1", provider.BaseEnvironmentVariables!["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"]);
-        }
-        finally
-        {
-            ClaudeProvider.SupportsSubprocessEnvScrub = original;
-        }
+        Assert.Equal("0", provider.BaseEnvironmentVariables!["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"]);
     }
 
     [Fact]
-    public void Claude_WithoutBubblewrap_OmitsEnvScrubbing()
+    public void Claude_StillRunsWithBypassPermissions_SoWritesAreNotGated()
     {
-        // The CLI aborts at startup when asked to scrub subprocess environments on a host
-        // with no bubblewrap, which would fail every job. Better to run without the extra
-        // isolation than not to run at all.
-        var original = ClaudeProvider.SupportsSubprocessEnvScrub;
-        try
-        {
-            ClaudeProvider.SupportsSubprocessEnvScrub = false;
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.ApplyOptions(new ExecutionOptions { PermissionMode = "bypassPermissions" });
 
-            var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        var args = provider.BuildCliArgs("test", null);
 
-            Assert.False(provider.BaseEnvironmentVariables!.ContainsKey("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"));
-        }
-        finally
-        {
-            ClaudeProvider.SupportsSubprocessEnvScrub = original;
-        }
+        var idx = args.IndexOf("--permission-mode");
+        Assert.True(idx >= 0);
+        Assert.Equal("bypassPermissions", args[idx + 1]);
     }
 
     [Fact]

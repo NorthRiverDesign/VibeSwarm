@@ -6,6 +6,7 @@ public class ProviderFailureClassifierTests
 {
 	[Theory]
 	[InlineData("error: bubblewrap is required for subprocess env scrubbing and isolation.")]
+	[InlineData("\u26a0 Permission mode forced to default \u2014 CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is set (allowed_non_write_users hardening).")]
 	[InlineData("claude: command not found")]
 	[InlineData("Failed to start Claude CLI process: No such file or directory")]
 	[InlineData("error: unknown option '--exclude-dynamic-system-prompt-sections'")]
