@@ -1,6 +1,7 @@
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
+using VibeSwarm.Client.Components.Common;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
@@ -16,8 +17,8 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_RendersTemplateLibraryControls()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
+		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		context.Services.AddSingleton<IAgentService>(new FakeAgentService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
@@ -56,8 +57,8 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_SelectingAgentPresetAppliesAssignedExecutionDefaults()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
+		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
@@ -118,8 +119,8 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_SelectedAgentWithInstructions_AllowsBlankGoalPromptAndSubmitsFallback()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
+		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
@@ -166,8 +167,8 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_SelectedAgentWithoutInstructions_StillRequiresGoalPrompt()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
+		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
@@ -208,8 +209,8 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_RefreshesAgentAssignmentsFromProjectService_WhenParentProjectIsStale()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
+		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
 

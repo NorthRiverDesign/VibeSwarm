@@ -214,6 +214,9 @@
 .drag-drop-item.drag-drop-over {
 	box-shadow: 0 -2px 0 0 var(--bs-primary);
 }
+.max-height-50dvh {
+	max-height: 50dvh;
+}
 .text-truncate-lines-2 {
 	display: -webkit-box;
 	-webkit-line-clamp: 2;
@@ -854,12 +857,20 @@ body.vs-modal-open .app-main {
 	z-index: 1050 !important;
 }
 
+/* A backdrop rendered inside its own modal container belongs to that container's
+   stacking context, so it only has to sit behind that modal's dialog. Everything
+   below — including a modal this one was opened from — is dimmed by it. */
+.vs-modal-container > .vs-modal-backdrop {
+	z-index: 0 !important;
+}
+
 .vs-modal-dialog {
 	width: min(
 		100%,
 		calc(100vw - var(--vs-safe-area-left) - var(--vs-safe-area-right))
 	);
 	min-width: 0;
+	z-index: 1;
 }
 
 .vs-modal-content {
@@ -895,6 +906,18 @@ body.vs-modal-open .app-main {
 			calc(100vw - var(--vs-safe-area-left) - var(--vs-safe-area-right) - 3rem)
 		);
 	}
+}
+
+/* Actions pinned to the bottom of a scrolling modal body, clear of the home
+   indicator. Long forms stay submittable without scrolling to the end. */
+.vs-modal-sticky-actions {
+	background: var(--bs-modal-bg, var(--bs-body-bg));
+	/* The bar sticks to the modal body's content edge, which leaves the body's own
+	   bottom padding as a strip the form scrolls through. Offset the bar over that
+	   strip and pad the buttons back up, clear of the home indicator. */
+	bottom: calc(-1 * (var(--bs-modal-padding, 1rem) + var(--vs-safe-area-bottom)));
+	padding-bottom: calc(var(--bs-modal-padding, 1rem) + var(--vs-safe-area-bottom));
+	margin-bottom: calc(-1 * (var(--bs-modal-padding, 1rem) + var(--vs-safe-area-bottom)));
 }
 
 .directory-list {

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
+using VibeSwarm.Client.Components.Common;
 using VibeSwarm.Client.Components.Projects;
 using VibeSwarm.Client.Models;
 using VibeSwarm.Client.Services;
@@ -407,8 +408,8 @@ private static BunitContext CreateBunitContext(
 	IFileSystemService? fileSystemService = null)
 {
 	var context = new BunitContext();
-	context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-	context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+	context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
+	context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
 	context.JSInterop.SetupVoid("vibeSwarmInitTouchDrag", _ => true);
 	context.Services.AddLogging();
 	var resolvedProvider = provider ?? new Provider

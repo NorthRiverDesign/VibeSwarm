@@ -100,7 +100,8 @@ Summary="Where new projects live and which clock the app runs on"
 <label for="defaultProjectsDirectory" class="form-label">Default Projects Directory</label>
 <div class="input-group">
 <input type="text" id="defaultProjectsDirectory" class="form-control font-monospace"
-   @bind="_settings.DefaultProjectsDirectory" placeholder="@_placeholder" />
+   @bind="_settings.DefaultProjectsDirectory" @bind:after="CheckDirectoryExists"
+   placeholder="@_placeholder" />
 <button type="button" class="btn btn-secondary" @onclick="OpenDirectoryBrowser"
 title="Browse directories">
 <i class="bi bi-folder2-open"></i>

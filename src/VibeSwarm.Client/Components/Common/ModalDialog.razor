@@ -4,9 +4,12 @@
 
 @if (IsVisible)
 {
-	<div class="modal-backdrop fade show vs-modal-backdrop position-fixed inset-0"></div>
 	<div class="modal fade show d-block vs-modal-container position-fixed inset-0 d-flex align-items-center justify-content-center overflow-x-hidden overflow-y-auto @ContainerClass" tabindex="-1" role="dialog"
 		@onmousedown="HandleBackdropMouseDown" @onclick="HandleBackdropClick">
+		@* The backdrop sits inside the container, not beside it: a modal opened on top of
+		   another one has to dim the modal below it, and a sibling backdrop would paint
+		   underneath it instead. *@
+		<div class="modal-backdrop fade show vs-modal-backdrop position-fixed inset-0"></div>
 		<div class="modal-dialog vs-modal-dialog pe-none m-auto @SizeClass @(IsCentered ? "modal-dialog-centered" : "") @(IsScrollable ? "modal-dialog-scrollable" : "") @DialogClass"
 			@onmousedown:stopPropagation="true" @onclick:stopPropagation="true">
 			<div class="modal-content vs-modal-content pe-auto mw-100 @ContentClass">
@@ -106,18 +109,25 @@
 	private bool _mouseDownOnBackdrop;
 	private bool _wasVisible;
 
+	// Scroll locking is reference counted: closing a modal that was opened on top of
+	// another one must not unlock the page while the one underneath is still open.
+	public const string LockBodyScrollScript =
+		"window.vsModalDepth = (window.vsModalDepth || 0) + 1; document.body.classList.add('vs-modal-open');";
+
+	public const string UnlockBodyScrollScript =
+		"window.vsModalDepth = Math.max(0, (window.vsModalDepth || 1) - 1); " +
+		"if (window.vsModalDepth === 0) { document.body.classList.remove('vs-modal-open'); }";
+
 	protected override async Task OnAfterRenderAsync(bool firstRender)
 	{
 		if (IsVisible && !_wasVisible)
 		{
-			// Modal just opened - lock body scroll
-			await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.add('vs-modal-open')");
+			await JSRuntime.InvokeVoidAsync("eval", LockBodyScrollScript);
 			_wasVisible = true;
 		}
 		else if (!IsVisible && _wasVisible)
 		{
-			// Modal just closed - unlock body scroll
-			await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.remove('vs-modal-open')");
+			await JSRuntime.InvokeVoidAsync("eval", UnlockBodyScrollScript);
 			_wasVisible = false;
 		}
 	}
@@ -156,7 +166,7 @@
 	{
 		if (_wasVisible)
 		{
-			try { await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.remove('vs-modal-open')"); } catch { }
+			try { await JSRuntime.InvokeVoidAsync("eval", UnlockBodyScrollScript); } catch { }
 			_wasVisible = false;
 		}
 	}

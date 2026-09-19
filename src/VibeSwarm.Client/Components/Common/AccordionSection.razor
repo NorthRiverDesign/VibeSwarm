@@ -10,7 +10,9 @@
 				<i class="bi bi-@Icon fs-5 text-body-secondary flex-shrink-0"></i>
 			}
 			<span class="d-flex flex-column min-width-0 flex-grow-1">
-				<span class="fw-semibold text-truncate">@Title</span>
+				@* The title wraps rather than truncates: on a phone the badge leaves it
+				   little room, and "Providers and ag…" tells the user nothing. *@
+				<span class="fw-semibold">@Title</span>
 				@if (!string.IsNullOrWhiteSpace(Summary))
 				{
 					<span class="small text-body-secondary text-truncate fw-normal">@Summary</span>

@@ -38,7 +38,10 @@
 			@(FormModel.CreationMode == ProjectCreationMode.CloneGitHubRepository ? "Repository to clone" : "New repository name")
 		</label>
 		<div class="input-group">
-			<span class="input-group-text d-none d-sm-inline-flex">github.com/</span>
+			@* Always rendered: a prefix hidden with d-none is still the input group's
+			   first child, which leaves the field beside it with a square, border-less
+			   edge. Phones get the icon, wider screens the full host. *@
+			<span class="input-group-text"><i class="bi bi-github d-sm-none"></i><span class="d-none d-sm-inline">github.com/</span></span>
 			<input id="modal-githubRepo" type="text" class="form-control"
 				   value="@FormModel.GitHubRepositoryInput" @oninput="HandleGitHubRepositoryChanged"
 				   placeholder="@(FormModel.CreationMode == ProjectCreationMode.CloneGitHubRepository ? "owner/repo" : "my-project")"

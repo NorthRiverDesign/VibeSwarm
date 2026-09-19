@@ -13,8 +13,11 @@ Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "
 Size="ModalDialog.ModalSize.Large" DialogClass="vs-modal-dialog-wide-lg" OnClose="HandleClose"
 BodyClass="vs-project-modal-body">
 <ChildContent>
+@* No overflow-x-hidden here: it would make the form its own scroll container and
+   the sticky action bar below would have nothing to stick to. The modal body and
+   content already clip horizontally. *@
 <EditForm Model="@FormModel" OnValidSubmit="HandleValidSubmit" OnInvalidSubmit="HandleInvalidSubmit"
-class="overflow-x-hidden mw-100">
+class="mw-100">
 <DataAnnotationsValidator />
 <ValidationSummary class="text-danger mb-3" />
 
@@ -114,9 +117,11 @@ BadgeClass="text-bg-success" @bind-IsOpen="_openBuildVerification">
 </div>
 }
 
-<div class="d-grid d-sm-flex gap-2 justify-content-sm-end">
-<button type="button" class="btn btn-secondary order-2 order-sm-1" @onclick="HandleCancel">Cancel</button>
-<button type="submit" class="btn btn-primary order-1 order-sm-2" disabled="@IsSaving">
+@* Pinned to the bottom of the scrolling body: the form is long on a phone and
+   Create should never be a scroll away. *@
+<div class="d-flex gap-2 justify-content-sm-end position-sticky pt-3 border-top vs-modal-sticky-actions">
+<button type="button" class="btn btn-secondary flex-shrink-0" @onclick="HandleCancel">Cancel</button>
+<button type="submit" class="btn btn-primary flex-grow-1 flex-sm-grow-0" disabled="@IsSaving">
 @if (IsSaving)
 {
 <span class="spinner-border spinner-border-sm me-1" role="status"></span>
