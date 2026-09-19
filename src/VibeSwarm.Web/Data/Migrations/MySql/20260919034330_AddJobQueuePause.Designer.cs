@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using VibeSwarm.Shared.Data;
 
@@ -11,9 +12,11 @@ using VibeSwarm.Shared.Data;
 namespace VibeSwarm.Web.Data.Migrations.MySql
 {
     [DbContext(typeof(MySqlVibeSwarmDbContext))]
-    partial class MySqlVibeSwarmDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260919034330_AddJobQueuePause")]
+    partial class AddJobQueuePause
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -60,6 +60,12 @@ public interface IJobUpdateService
     /// <param name="isActive">Whether auto-processing is now active</param>
     Task NotifyIdeasProcessingStateChanged(Guid projectId, bool isActive);
 
+    /// <summary>
+    /// Notifies all clients that the job queue was paused or resumed, so a stop made from
+    /// one device shows up on every other one.
+    /// </summary>
+    Task NotifyJobQueuePausedChanged(bool isPaused);
+
     Task NotifyIdeaCreated(Guid ideaId, Guid projectId);
 
     Task NotifyIdeaDeleted(Guid ideaId, Guid projectId);

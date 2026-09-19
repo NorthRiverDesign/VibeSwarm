@@ -1,4 +1,5 @@
 @inject IIdeaService IdeaService
+@inject IJobQueueControlService JobQueueControl
 @inject NotificationService NotificationService
 @inject QueuePanelStateService QueuePanelStateService
 @implements IDisposable
@@ -12,7 +13,7 @@
 			title="Queue"
 			aria-label="Queue"
 			@onclick="HandleToggleAsync">
-		<i class="bi bi-list-task"></i>
+		<i class="bi @(_queueState.IsPaused ? "bi-pause-circle-fill text-warning" : "bi-list-task")"></i>
 		@if (BadgeCount > 0)
 		{
 			<span class="notification-bell-badge position-absolute badge rounded-pill bg-primary"
@@ -38,44 +39,71 @@
 						@_snapshot.UpcomingIdeasCount upcoming
 					</div>
 				</div>
-				<span class="badge @(IsQueueActive ? "text-bg-info" : "bg-body-secondary text-body")">
-					@(IsQueueActive ? "Running" : "Idle")
-				</span>
+				<span class="badge @QueueStatusClass">@QueueStatusLabel</span>
 			</div>
 
-			<div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2 mt-3">
-				@if (IsQueueActive)
+			@if (_queueState.IsPaused)
+			{
+				<div class="small text-warning-emphasis mt-2">
+					<i class="bi bi-pause-circle me-1"></i>
+					@(_queueState.RunningJobs > 0
+						? "Nothing new will start. Jobs already running are finishing."
+						: "Stopped. Nothing will start until you start it again.")
+				</div>
+			}
+
+			@* One button, and it does the obvious thing. Stopping work that is already
+			   running is offered afterwards, so a tap can never throw away a job by
+			   accident. *@
+			<div class="d-grid gap-2 mt-3">
+				@if (_queueState.IsPaused)
 				{
-					<button type="button" class="btn btn-sm btn-danger" @onclick="StopQueueAsync" disabled="@_isMutatingQueue">
+					<button type="button" class="btn btn-primary btn-lg" @onclick="ResumeQueueAsync" disabled="@_isMutatingQueue">
 						@if (_isMutatingQueue)
 						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							<span class="spinner-border spinner-border-sm me-2" role="status"></span>
 						}
 						else
 						{
-							<i class="bi bi-stop-fill me-1"></i>
+							<i class="bi bi-play-fill me-2"></i>
 						}
-						Stop Queue
+						Start queue
 					</button>
+
+					@if (_queueState.RunningJobs > 0)
+					{
+						<button type="button" class="btn btn-outline-danger" @onclick="() => StopQueueAsync(true)" disabled="@_isMutatingQueue">
+							<i class="bi bi-stop-fill me-2"></i>
+							Also stop @_queueState.RunningJobs job@(_queueState.RunningJobs == 1 ? "" : "s") still finishing
+						</button>
+					}
 				}
 				else
 				{
-					<button type="button" class="btn btn-sm btn-primary" @onclick="StartQueueAsync" disabled="@(_isMutatingQueue || _snapshot.UpcomingIdeasCount == 0)">
+					<button type="button" class="btn btn-danger btn-lg" @onclick="() => StopQueueAsync(false)" disabled="@_isMutatingQueue">
 						@if (_isMutatingQueue)
 						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							<span class="spinner-border spinner-border-sm me-2" role="status"></span>
 						}
 						else
 						{
-							<i class="bi bi-play-fill me-1"></i>
+							<i class="bi bi-stop-fill me-2"></i>
 						}
-						Start Queue
+						Stop queue
 					</button>
 				}
-				<a class="btn btn-sm btn-secondary" href="/jobs">
-					<i class="bi bi-box-arrow-up-right me-1"></i>All Jobs
+
+				<a class="btn btn-secondary" href="/jobs">
+					<i class="bi bi-box-arrow-up-right me-2"></i>All jobs
 				</a>
 			</div>
+
+			@if (!_queueState.IsPaused && _snapshot.UpcomingIdeasCount > 0 && _snapshot.ProjectsCurrentlyProcessing == 0)
+			{
+				<button type="button" class="btn btn-sm btn-link px-0 mt-1" @onclick="StartQueueAsync" disabled="@_isMutatingQueue">
+					<i class="bi bi-play-circle me-1"></i>Start queued ideas across active projects
+				</button>
+			}
 		</div>
 
 		@if (!string.IsNullOrWhiteSpace(_loadError))
@@ -208,7 +236,17 @@
 	private bool _isMutatingQueue;
 	private string? _loadError;
 
+	private JobQueueState _queueState = new();
+
 	private bool IsQueueActive => _snapshot.ProjectsCurrentlyProcessing > 0;
+
+	private string QueueStatusLabel => _queueState.IsPaused
+		? "Paused"
+		: _queueState.RunningJobs > 0 || IsQueueActive ? "Running" : "Idle";
+
+	private string QueueStatusClass => _queueState.IsPaused
+		? "text-bg-warning"
+		: _queueState.RunningJobs > 0 || IsQueueActive ? "text-bg-info" : "bg-body-secondary text-body";
 	private int BadgeCount => _snapshot.RunningJobsCount + _snapshot.QueuedJobsCount;
 	private int TotalItemCount => BadgeCount + _snapshot.UpcomingIdeasCount;
 
@@ -239,6 +277,7 @@
 			try
 			{
 				_snapshot = await IdeaService.GetGlobalQueueSnapshotAsync();
+				_queueState = await JobQueueControl.GetStateAsync();
 				_loadError = null;
 				_hasLoadedSnapshot = true;
 			}
@@ -281,9 +320,13 @@
 		}
 	}
 
-	private async Task StopQueueAsync()
+	/// <summary>
+	/// Stops the queue for real: no new jobs start, and idea auto-processing stops feeding
+	/// it. <paramref name="cancelRunning"/> also stops the jobs already in flight.
+	/// </summary>
+	private async Task StopQueueAsync(bool cancelRunning)
 	{
-		if (_isMutatingQueue || !IsQueueActive)
+		if (_isMutatingQueue)
 		{
 			return;
 		}
@@ -291,13 +334,55 @@
 		_isMutatingQueue = true;
 		try
 		{
-			await IdeaService.StopAllProcessingAsync();
-			NotificationService.ShowSuccess("Stopped automatic idea queue processing.", "Queue stopped");
+			var state = await JobQueueControl.PauseAsync("Stopped from the queue panel", cancelRunning);
+
+			// Leaving idea processing on would keep converting ideas into jobs that then
+			// pile up pending, which is not what "stop" means to anyone.
+			try
+			{
+				await IdeaService.StopAllProcessingAsync();
+			}
+			catch
+			{
+				// The queue is already stopped; idea processing can be stopped separately.
+			}
+
+			NotificationService.ShowSuccess(
+				cancelRunning
+					? $"Queue stopped. {state.CancelledJobs} running job{(state.CancelledJobs == 1 ? string.Empty : "s")} asked to stop."
+					: "Queue stopped. Running jobs will finish.",
+				"Queue stopped");
+
 			await RefreshQueueAsync();
 		}
 		catch (Exception ex)
 		{
 			NotificationService.ShowError($"Failed to stop queue: {ex.Message}");
+		}
+		finally
+		{
+			_isMutatingQueue = false;
+			await InvokeAsync(StateHasChanged);
+		}
+	}
+
+	private async Task ResumeQueueAsync()
+	{
+		if (_isMutatingQueue)
+		{
+			return;
+		}
+
+		_isMutatingQueue = true;
+		try
+		{
+			await JobQueueControl.ResumeAsync();
+			NotificationService.ShowSuccess("Queue resumed. Pending jobs will start again.", "Queue resumed");
+			await RefreshQueueAsync();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to resume queue: {ex.Message}");
 		}
 		finally
 		{

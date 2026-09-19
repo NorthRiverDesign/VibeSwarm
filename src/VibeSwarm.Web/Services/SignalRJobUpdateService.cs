@@ -380,6 +380,22 @@ public class SignalRJobUpdateService : IJobUpdateService
         }
     }
 
+    public async Task NotifyJobQueuePausedChanged(bool isPaused)
+    {
+        try
+        {
+            await _hubContext.Clients
+                .Group("global-events")
+                .SendAsync("JobQueuePausedChanged", isPaused);
+
+            _logger.LogDebug("Sent JobQueuePausedChanged notification: {IsPaused}", isPaused);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending JobQueuePausedChanged notification");
+        }
+    }
+
     public async Task NotifyIdeaCreated(Guid ideaId, Guid projectId)
     {
         try

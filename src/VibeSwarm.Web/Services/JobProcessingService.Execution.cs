@@ -1334,6 +1334,14 @@ public partial class JobProcessingService
                 }
                 else
                 {
+                    // Before calling it a failure, see whether another provider in the plan
+                    // can take it. A provider that is out of quota or briefly broken should
+                    // cost the job a detour, not the run.
+                    if (await TryFailOverAsync(job, finalResult, dbContext))
+                    {
+                        return;
+                    }
+
                     await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
                         finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                         executionContext, workingDirectory, dbContext, CancellationToken.None,
@@ -1558,6 +1566,45 @@ public partial class JobProcessingService
             // Never fail a job because a skill can't be written to disk — the agent still
             // receives name + description via the system prompt, just without an absolute path.
             _logger.LogWarning(ex, "Failed to materialize skill {SkillId} ({SkillName}); continuing without storage path", skill.Id, skill.Name);
+        }
+    }
+
+    /// <summary>
+    /// Hands a failed run to the next provider in the job's execution plan, if there is one
+    /// left that is enabled and still has quota. Records the switch so the job's history
+    /// shows why it moved.
+    /// </summary>
+    private async Task<bool> TryFailOverAsync(Job job, ExecutionResult finalResult, VibeSwarmDbContext dbContext)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var jobService = scope.ServiceProvider.GetRequiredService<IJobService>();
+
+            if (!await jobService.TryFailOverToNextExecutionTargetAsync(job.Id, finalResult.ErrorMessage, CancellationToken.None))
+            {
+                return false;
+            }
+
+            _logger.LogWarning(
+                "Job {JobId} failed on provider {ProviderId} and was handed to the next provider in its plan: {Error}",
+                job.Id,
+                job.ProviderId,
+                finalResult.ErrorMessage);
+
+            // The provider that just failed still owes the circuit breaker an answer.
+            if (finalResult.IsSystemError && _healthTracker != null)
+            {
+                _healthTracker.RecordSystemFailure(job.ProviderId, finalResult.ErrorMessage);
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Failover is an improvement on failing, never a reason to lose the job.
+            _logger.LogWarning(ex, "Failover check failed for job {JobId}; recording the failure instead", job.Id);
+            return false;
         }
     }
 }

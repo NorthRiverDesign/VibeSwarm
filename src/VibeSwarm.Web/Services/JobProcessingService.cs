@@ -373,6 +373,29 @@ public partial class JobProcessingService : BackgroundService
         _wakeSignal.Writer.TryWrite(0);
     }
 
+    /// <summary>Set once while paused so a stopped queue does not fill the log.</summary>
+    private bool _queuePauseLogged;
+
+    private static async Task<bool> IsQueuePausedAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var dbContext = services.GetRequiredService<VibeSwarmDbContext>();
+            var settings = await dbContext.AppSettings
+                .AsNoTracking()
+                .Select(appSettings => new { appSettings.JobQueuePaused })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return settings?.JobQueuePaused ?? false;
+        }
+        catch
+        {
+            // A queue that cannot read its own stop switch keeps working rather than
+            // stalling on a transient database hiccup.
+            return false;
+        }
+    }
+
     private async Task ProcessPendingJobsAsync(CancellationToken stoppingToken)
     {
         await _jobsLock.WaitAsync(stoppingToken);
@@ -385,8 +408,23 @@ public partial class JobProcessingService : BackgroundService
                 return; // All slots are filled
             }
 
-            // Get pending jobs
             using var scope = _scopeFactory.CreateScope();
+
+            // The stop switch. Checked on every dispatch rather than cached, so pausing
+            // from a phone takes effect on the next poll instead of the next restart.
+            if (await IsQueuePausedAsync(scope.ServiceProvider, stoppingToken))
+            {
+                if (!_queuePauseLogged)
+                {
+                    _queuePauseLogged = true;
+                    _logger.LogWarning("Job queue is paused — no further jobs will be started");
+                }
+
+                return;
+            }
+
+            _queuePauseLogged = false;
+
             var jobService = scope.ServiceProvider.GetRequiredService<IJobService>();
             var pendingJobs = (await jobService.GetPendingJobsAsync(stoppingToken)).ToList();
 

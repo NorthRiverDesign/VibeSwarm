@@ -4324,6 +4324,14 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task NotifyJobInteractionRequired(Guid jobId, string prompt, string interactionType, List<string>? choices = null, string? defaultResponse = null) => Task.CompletedTask;
 		public Task NotifyJobResumed(Guid jobId) => Task.CompletedTask;
 		public Task NotifyJobCycleProgress(Guid jobId, int currentCycle, int maxCycles) => Task.CompletedTask;
+		public bool? LastQueuePausedState { get; private set; }
+
+		public Task NotifyJobQueuePausedChanged(bool isPaused)
+		{
+			LastQueuePausedState = isPaused;
+			return Task.CompletedTask;
+		}
+
 		public Task NotifyIdeasProcessingStateChanged(Guid projectId, bool isActive)
 		{
 			IdeasProcessingStateChanges.Add((projectId, isActive));

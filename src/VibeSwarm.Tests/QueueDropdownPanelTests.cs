@@ -67,7 +67,7 @@ public sealed class QueueDropdownPanelTests
 		Assert.Contains("Add queue controls to navbar", cut.Markup);
 		Assert.Contains("Queued", cut.Markup);
 		Assert.Contains("Pending", cut.Markup);
-		Assert.Contains("All Jobs", cut.Markup);
+		Assert.Contains("All jobs", cut.Markup);
 	}
 
 	[Fact]
@@ -250,10 +250,23 @@ public sealed class QueueDropdownPanelTests
 		using var context = CreateContext(ideaService);
 		var cut = context.Render<QueueDropdownPanel>();
 
-		cut.FindAll("button").Single(button => button.TextContent.Contains("Start Queue")).Click();
+		cut.FindAll("button").Single(button => button.TextContent.Contains("Start queued ideas")).Click();
 
 		Assert.Equal(1, ideaService.StartAllProcessingCalls);
-		Assert.Contains("Stop Queue", cut.Markup);
+		Assert.Contains("Stop queue", cut.Markup);
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_PausedQueue_StartsAgainFromOneButton()
+	{
+		var queueControl = new FakeQueueControl(isPaused: true);
+		using var context = CreateContext(new FakeIdeaService(), queueControl: queueControl);
+		var cut = context.Render<QueueDropdownPanel>();
+
+		Assert.Contains("Stopped", cut.Markup);
+		cut.FindAll("button").Single(button => button.TextContent.Contains("Start queue")).Click();
+
+		Assert.Equal(1, queueControl.ResumeCalls);
 	}
 
 	[Fact]
@@ -284,13 +297,29 @@ public sealed class QueueDropdownPanelTests
 				ProjectsCurrentlyProcessing = 0
 			});
 
-		using var context = CreateContext(ideaService);
+		var queueControl = new FakeQueueControl(runningJobs: 1);
+		using var context = CreateContext(ideaService, queueControl: queueControl);
 		var cut = context.Render<QueueDropdownPanel>();
 
-		cut.FindAll("button").Single(button => button.TextContent.Contains("Stop Queue")).Click();
+		cut.FindAll("button").Single(button => button.TextContent.Contains("Stop queue")).Click();
 
+		// Stopping means both: no new jobs start, and ideas stop feeding the queue.
+		Assert.Equal(1, queueControl.PauseCalls);
+		Assert.False(queueControl.LastPauseCancelledRunningJobs);
 		Assert.Equal(1, ideaService.StopAllProcessingCalls);
-		Assert.Contains("Start Queue", cut.Markup);
+		Assert.Contains("Start queue", cut.Markup);
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_WhenPaused_OffersToStopTheJobsStillRunning()
+	{
+		var queueControl = new FakeQueueControl(isPaused: true, runningJobs: 2);
+		using var context = CreateContext(new FakeIdeaService(), queueControl: queueControl);
+		var cut = context.Render<QueueDropdownPanel>();
+
+		cut.FindAll("button").Single(button => button.TextContent.Contains("Also stop 2 jobs")).Click();
+
+		Assert.True(queueControl.LastPauseCancelledRunningJobs);
 	}
 
 	[Fact]
@@ -339,19 +368,55 @@ public sealed class QueueDropdownPanelTests
 		cut.WaitForAssertion(() =>
 		{
 			Assert.Equal("1 queue item", cut.Find(".notification-bell-badge").GetAttribute("aria-label"));
-			Assert.Contains("Start Queue", cut.Markup);
+			Assert.Contains("Start queued ideas", cut.Markup);
 		});
 	}
 
-	private static BunitContext CreateContext(FakeIdeaService ideaService, QueuePanelStateService? queuePanelStateService = null)
+	private static BunitContext CreateContext(
+		FakeIdeaService ideaService,
+		QueuePanelStateService? queuePanelStateService = null,
+		FakeQueueControl? queueControl = null)
 	{
 		var context = new BunitContext();
 		context.Services.AddLogging();
 		context.Services.AddSingleton<IIdeaService>(ideaService);
+		context.Services.AddSingleton<IJobQueueControlService>(queueControl ?? new FakeQueueControl());
 		context.Services.AddSingleton<NotificationService>();
 		context.Services.AddSingleton(queuePanelStateService ?? new QueuePanelStateService());
 		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 		return context;
+	}
+
+	/// <summary>Records what the panel asked the queue to do.</summary>
+	private sealed class FakeQueueControl : IJobQueueControlService
+	{
+		public FakeQueueControl(bool isPaused = false, int runningJobs = 0)
+		{
+			State = new JobQueueState { IsPaused = isPaused, RunningJobs = runningJobs };
+		}
+
+		public JobQueueState State { get; private set; }
+		public int PauseCalls { get; private set; }
+		public int ResumeCalls { get; private set; }
+		public bool LastPauseCancelledRunningJobs { get; private set; }
+
+		public Task<JobQueueState> GetStateAsync(CancellationToken cancellationToken = default)
+			=> Task.FromResult(State);
+
+		public Task<JobQueueState> PauseAsync(string? reason = null, bool cancelRunningJobs = false, CancellationToken cancellationToken = default)
+		{
+			PauseCalls++;
+			LastPauseCancelledRunningJobs = cancelRunningJobs;
+			State = new JobQueueState { IsPaused = true, PausedReason = reason, RunningJobs = State.RunningJobs };
+			return Task.FromResult(State);
+		}
+
+		public Task<JobQueueState> ResumeAsync(CancellationToken cancellationToken = default)
+		{
+			ResumeCalls++;
+			State = new JobQueueState { IsPaused = false, RunningJobs = State.RunningJobs };
+			return Task.FromResult(State);
+		}
 	}
 
 	private sealed class FakeIdeaService(params GlobalQueueSnapshot[] snapshots) : FakeIdeaServiceBase

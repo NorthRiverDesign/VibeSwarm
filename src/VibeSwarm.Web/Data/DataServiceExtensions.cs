@@ -35,6 +35,7 @@ public static class DataServiceExtensions
 		services.AddScoped<IJobScheduleService, JobScheduleService>();
 		services.AddScoped<IJobTemplateService, JobTemplateService>();
 		services.AddScoped<ISettingsService, SettingsService>();
+		services.AddScoped<IJobQueueControlService, JobQueueControlService>();
 		services.AddScoped<ICriticalErrorLogService, CriticalErrorLogService>();
 		services.AddScoped<ISkillService, SkillService>();
 		services.AddScoped<ISkillStorageService, SkillStorageService>();

@@ -107,6 +107,12 @@ public interface IJobService
     /// This ensures queued jobs pick up provider/model changes made after creation.
     /// No-op if the job has already started processing.
     /// </summary>
+    /// <summary>
+    /// Hands a failed job to the next provider in its execution plan and queues it again.
+    /// Returns false when no usable provider is left, which is when the job really failed.
+    /// </summary>
+    Task<bool> TryFailOverToNextExecutionTargetAsync(Guid id, string? reason, CancellationToken cancellationToken = default);
+
     Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
