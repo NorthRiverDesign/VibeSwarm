@@ -41,6 +41,10 @@ public static class ProviderFailureClassifier
 		// any code. Every retry produces the same empty run.
 		"permission mode forced to default",
 		"refused to run with bypasspermissions",
+		// The run touched nothing. Every provider in the plan is tried before the job
+		// fails, so by the time this is classified the work has already been attempted
+		// everywhere it could be; looping the idea round again would only repeat it.
+		"finished without changing any code",
 		// The CLI binary itself is missing or not executable.
 		"claude: command not found",
 		"executable path is not configured",

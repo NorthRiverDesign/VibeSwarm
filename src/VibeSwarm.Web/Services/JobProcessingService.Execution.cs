@@ -1208,6 +1208,21 @@ public partial class JobProcessingService
             var checkJobService = checkScope.ServiceProvider.GetRequiredService<IJobService>();
             var wasCancelled = await checkJobService.IsCancellationRequestedAsync(job.Id, CancellationToken.None);
 
+            // A job's deliverable is a change to the code. A run that ends with the working
+            // tree untouched has not done the work, however articulate its answer was, and
+            // recording it as success hides that. Questions and guidance belong to
+            // Inference, which does not pretend to have edited anything.
+            if (!wasCancelled && finalResult.Success &&
+                await ProducedNoCodeChangesAsync(workingDirectory, executionContext.GitCommitBefore, CancellationToken.None))
+            {
+                finalResult.Success = false;
+                finalResult.ErrorMessage =
+                    "The run finished without changing any code. A job has to end in code changes — " +
+                    "use Inference for questions, reviews or guidance.";
+
+                _logger.LogWarning("Job {JobId} finished without changing any code and was recorded as failed", job.Id);
+            }
+
             if (wasCancelled)
             {
                 await UpdateProviderAttemptOutcomeAsync(job.Id, job.ActiveExecutionIndex, false, finalResult.ModelUsed ?? job.ModelUsed, dbContext, CancellationToken.None);
@@ -1566,6 +1581,47 @@ public partial class JobProcessingService
             // Never fail a job because a skill can't be written to disk — the agent still
             // receives name + description via the system prompt, just without an absolute path.
             _logger.LogWarning(ex, "Failed to materialize skill {SkillId} ({SkillName}); continuing without storage path", skill.Id, skill.Name);
+        }
+    }
+
+    /// <summary>
+    /// Whether the run left the working tree exactly as it found it. Counts committed work,
+    /// uncommitted edits and brand-new untracked files, so an agent that committed its own
+    /// changes still reads as having done something.
+    /// </summary>
+    /// <remarks>
+    /// Answers false whenever it cannot tell — a working directory that is not a git
+    /// repository, or a run with no recorded base commit — because failing a job on a
+    /// guess is worse than missing one.
+    /// </remarks>
+    private async Task<bool> ProducedNoCodeChangesAsync(
+        string? workingDirectory,
+        string? baseCommit,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(workingDirectory) || !Directory.Exists(workingDirectory) ||
+            string.IsNullOrEmpty(baseCommit))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (!await _versionControlService.IsGitRepositoryAsync(workingDirectory, cancellationToken))
+            {
+                return false;
+            }
+
+            // Git can still be holding locks from the agent's own process.
+            await Task.Delay(750, cancellationToken);
+
+            var changedFiles = await _versionControlService.GetChangedFilesAsync(workingDirectory, baseCommit, cancellationToken);
+            return changedFiles.Count == 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not tell whether the working tree changed; treating the run as productive");
+            return false;
         }
     }
 

@@ -370,6 +370,11 @@ public static class PromptBuilder
 
 			sb.AppendLine("- If the build or tests fail, fix them before finishing.");
 			sb.AppendLine("- Do not leave the repository in a broken state.");
+			// Installing dependencies rewrites lockfiles when the local tool version differs
+			// from the one that wrote them, and everything in the tree gets committed. That
+			// churn lands in every commit and reverses itself on the next machine.
+			sb.AppendLine("- Install dependencies without rewriting lockfiles (npm ci, not npm install; composer install, not update).");
+			sb.AppendLine("- Leave lockfiles alone unless the task changes dependencies. If a build rewrote one as a side effect, restore it before finishing.");
 
 			var commitAttributionRules = CommitAttributionHelper.BuildPromptRules(providerType, enableCommitAttribution);
 			if (commitAttributionRules.Count > 0)
