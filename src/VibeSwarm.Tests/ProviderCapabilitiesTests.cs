@@ -26,6 +26,25 @@ public sealed class ProviderCapabilitiesTests
 		Assert.True(ProviderCapabilities.SupportsReasoningEffort(provider, "max"));
 	}
 
+	[Fact]
+	public void ClaudeCli_OffersMedium_AndRewritesLegacyStandard()
+	{
+		// Claude Code ignores "--effort standard" with a warning and runs at its default effort.
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			ConnectionMode = ProviderConnectionMode.CLI
+		};
+
+		var efforts = ProviderCapabilities.GetSupportedReasoningEfforts(provider);
+
+		Assert.Equal(["low", "medium", "high", "xhigh", "max"], efforts);
+		Assert.Equal("medium", ProviderCapabilities.NormalizeReasoningEffort(provider, "standard"));
+		Assert.True(ProviderCapabilities.SupportsReasoningEffort(provider, "standard"));
+	}
+
 	[Theory]
 	[InlineData(ProviderConnectionMode.CLI)]
 	[InlineData(ProviderConnectionMode.SDK)]

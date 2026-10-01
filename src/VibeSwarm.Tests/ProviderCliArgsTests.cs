@@ -59,13 +59,34 @@ public sealed class ProviderCliArgsTests
     [Fact]
     public void Claude_WithBareMode_AndSupportedVersion_AddsBareFlag()
     {
-        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        var config = CreateConfig(ProviderType.Claude);
+        config.ApiKey = "sk-ant-test";
+        var provider = new ClaudeProvider(config);
         provider.CachedCliVersion = new Version(2, 1, 81);
         provider.ApplyOptions(new ExecutionOptions { UseBareMode = true });
 
         var args = provider.BuildCliArgs("test", null);
 
         Assert.Contains("--bare", args);
+    }
+
+    [Fact]
+    public void Claude_WithBareMode_AndNoApiKey_OmitsBareFlag()
+    {
+        // --bare never reads the OAuth login, so a subscription-only provider would get
+        // "Not logged in" on every run.
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")))
+        {
+            return;
+        }
+
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 287);
+        provider.ApplyOptions(new ExecutionOptions { UseBareMode = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--bare", args);
     }
 
     [Fact]
@@ -254,6 +275,35 @@ public sealed class ProviderCliArgsTests
         var idx = args.IndexOf("--effort");
         Assert.True(idx >= 0);
         Assert.Equal("high", args[idx + 1]);
+    }
+
+    [Theory]
+    [InlineData("medium")]
+    [InlineData("standard")]
+    public void Claude_WithMediumOrLegacyStandardEffort_SendsMedium(string effort)
+    {
+        // The CLI ignores "standard" with a warning and runs at its default effort.
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 287);
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = effort });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--effort");
+        Assert.True(idx >= 0);
+        Assert.Equal("medium", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Claude_SessionSummary_DoesNotPersistIntoTheJobSession()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+
+        var args = provider.BuildSessionSummaryArgs("3f2b1c9e-1111-4222-8333-944445555666");
+
+        Assert.NotNull(args);
+        Assert.Contains("--resume 3f2b1c9e-1111-4222-8333-944445555666", args);
+        Assert.Contains("--no-session-persistence", args);
     }
 
     [Fact]

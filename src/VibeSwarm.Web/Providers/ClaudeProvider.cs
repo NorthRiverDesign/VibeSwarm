@@ -43,6 +43,9 @@ public class ClaudeProvider : CliProviderBase
     private static readonly Version AppendSystemPromptFileVersion = new(2, 1, 0);
     private UsageLimits? _lastObservedUsageLimits;
 
+    /// <summary>Whether runs can authenticate with an API key, which <c>--bare</c> requires.</summary>
+    private readonly bool _hasApiKey;
+
     /// <summary>Shortest prompt that still produces a completed turn, so the probe costs as little as possible.</summary>
     private const string UsageProbePrompt = "hi";
 
@@ -84,6 +87,9 @@ public class ClaudeProvider : CliProviderBase
         {
             baseEnv["ANTHROPIC_API_KEY"] = config.ApiKey;
         }
+
+        _hasApiKey = !string.IsNullOrWhiteSpace(config.ApiKey)
+            || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY"));
 
         // Mirror the queue's stall threshold into Claude's own streaming watchdog
         // so the CLI bails on the same boundary as JobWatchdogService (v2.1.85+).
@@ -450,7 +456,9 @@ public class ClaudeProvider : CliProviderBase
         }
 
         // Bare mode reduces Claude Code startup overhead and disables implicit local context loading.
-        if (SupportsCliVersion(BareModeVersion) && CurrentUseBareMode)
+        // It also stops the CLI reading the OAuth login, so without an API key every run answers
+        // "Not logged in" — only honour the request when there is a key to authenticate with.
+        if (SupportsCliVersion(BareModeVersion) && CurrentUseBareMode && _hasApiKey)
         {
             args.Add("--bare");
         }
@@ -558,14 +566,16 @@ public class ClaudeProvider : CliProviderBase
             args.Add($"--{CurrentInitMode}");
         }
 
-        // Reasoning effort level (v2.1.63+). Claude v2.1.72+ renamed "medium" to "standard"
-        // and added "xhigh"; "max" is Opus 4.7 only (other models silently downgrade to "high").
+        // Reasoning effort level (v2.1.63+). The CLI accepts low/medium/high/xhigh/max. It does
+        // not reject anything else: 2.1.287 prints "Unknown --effort value 'standard' — ignoring
+        // it" and runs at the default effort, so a wrong value fails silently. "standard" was
+        // stored by older VibeSwarm builds and is translated rather than passed through.
         var rawEffort = CurrentReasoningEffort?.Trim().ToLowerInvariant();
-        if (string.Equals(rawEffort, "medium", StringComparison.Ordinal))
+        if (string.Equals(rawEffort, "standard", StringComparison.Ordinal))
         {
-            rawEffort = "standard";
+            rawEffort = "medium";
         }
-        var reasoningEffort = NormalizeReasoningEffort(rawEffort, "low", "standard", "high", "xhigh", "max");
+        var reasoningEffort = NormalizeReasoningEffort(rawEffort, "low", "medium", "high", "xhigh", "max");
         if (SupportsCliVersion(ReasoningEffortVersion) && !string.IsNullOrEmpty(reasoningEffort))
         {
             args.Add("--effort");
@@ -1049,13 +1059,19 @@ public class ClaudeProvider : CliProviderBase
             return null;
         }
 
+        // "--tools ''" is what removes the tool definitions; "--allowed-tools ''" only changes
+        // which tools skip the permission prompt, so all ~40 still went out with the request.
+        // --strict-mcp-config with no --mcp-config drops every MCP server, including the
+        // account's claude.ai connectors, and the probe is not worth keeping as a session.
         var args = new List<string>
         {
             "-p", UsageProbePrompt,
             "--output-format", "stream-json",
             "--verbose",
             "--max-turns", "1",
-            "--allowed-tools", string.Empty
+            "--tools", string.Empty,
+            "--strict-mcp-config",
+            "--no-session-persistence"
         };
 
         // Windows are reported per model — a Fable run reports an overage window a Haiku run
@@ -1156,7 +1172,9 @@ public class ClaudeProvider : CliProviderBase
     }
 
     protected internal override string? BuildSessionSummaryArgs(string sessionId)
-        => $"--resume {sessionId} -p \"{EscapeCliArgument(SessionSummaryPrompt)}\" --max-turns 1";
+        // --no-session-persistence keeps the summary turn out of the job's own transcript;
+        // without it the summary request is appended to the session a follow-up would resume.
+        => $"--resume {sessionId} -p \"{EscapeCliArgument(SessionSummaryPrompt)}\" --max-turns 1 --no-session-persistence";
 
     protected internal override string? ExtractSessionSummary(string output) => CleanSummaryOutput(output);
 

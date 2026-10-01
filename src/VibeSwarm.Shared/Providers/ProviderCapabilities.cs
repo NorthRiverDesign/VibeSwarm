@@ -92,11 +92,11 @@ public static class ProviderCapabilities
 
 	public static IReadOnlyList<string> GetSupportedReasoningEfforts(ProviderType providerType, ProviderConnectionMode mode) => (providerType, mode) switch
 	{
-		// Claude Code v2.1.72+ restructured effort levels. The CLI advertises
-		// low/medium/high/xhigh/max and still accepts "standard" as an alias for "medium".
-		// "max" is Opus-only; other models silently downgrade to "high".
-		(ProviderType.Claude, ProviderConnectionMode.CLI) => ["low", "standard", "high", "xhigh", "max"],
-		(ProviderType.Claude, ProviderConnectionMode.SDK) => ["low", "standard", "high", "xhigh", "max"],
+		// Claude Code takes low/medium/high/xhigh/max. "standard" is not an alias: the CLI
+		// warns and falls back to its default effort, so it is only kept as a legacy input
+		// that NormalizeReasoningEffort rewrites to "medium".
+		(ProviderType.Claude, ProviderConnectionMode.CLI) => ["low", "medium", "high", "xhigh", "max"],
+		(ProviderType.Claude, ProviderConnectionMode.SDK) => ["low", "medium", "high", "xhigh", "max"],
 		// Copilot widened its effort levels to add none/minimal/max. CopilotProvider gates the
 		// extra values by CLI version, so older CLIs still only receive low/medium/high/xhigh.
 		(ProviderType.Copilot, ProviderConnectionMode.CLI) => ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
@@ -116,16 +116,16 @@ public static class ProviderCapabilities
 
 	/// <summary>
 	/// Normalizes an effort value for a specific provider, applying legacy aliases
-	/// (e.g. Claude's old "medium" is now "standard" after the v2.1.72 rename).
+	/// (e.g. Claude's "standard", saved by older builds, is sent as "medium").
 	/// </summary>
 	public static string? NormalizeReasoningEffort(Provider provider, string? reasoningEffort)
 	{
 		var normalized = NormalizeReasoningEffort(reasoningEffort);
 		if (normalized == null) return null;
 
-		if (provider.Type == ProviderType.Claude && normalized == "medium")
+		if (provider.Type == ProviderType.Claude && normalized == "standard")
 		{
-			return "standard";
+			return "medium";
 		}
 
 		return normalized;

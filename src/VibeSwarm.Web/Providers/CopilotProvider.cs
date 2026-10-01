@@ -260,7 +260,7 @@ public class CopilotProvider : CliProviderBase
 
             try
             {
-                var jsonEvent = JsonSerializer.Deserialize<CopilotStreamEvent>(e.Data, JsonOptions);
+                var jsonEvent = ParseStreamEvent(e.Data);
                 if (jsonEvent != null)
                 {
                     ProcessStreamEvent(jsonEvent, result, currentAssistantMessage, progress, _toolNamesById);
@@ -875,7 +875,17 @@ public class CopilotProvider : CliProviderBase
         }
     }
 
-    private void ProcessStreamEvent(
+    /// <summary>
+    /// Deserializes one stdout line. Throws on non-JSON, which the caller treats as plain text.
+    /// Internal for unit testing.
+    /// </summary>
+    internal static CopilotStreamEvent? ParseStreamEvent(string line)
+        => JsonSerializer.Deserialize<CopilotStreamEvent>(line, JsonOptions);
+
+    /// <summary>
+    /// Applies one stream event to the run's result. Internal for unit testing.
+    /// </summary>
+    internal void ProcessStreamEvent(
         CopilotStreamEvent evt,
         ExecutionResult result,
         System.Text.StringBuilder currentMessage,
@@ -883,14 +893,21 @@ public class CopilotProvider : CliProviderBase
         Dictionary<string, string> toolNamesById)
     {
         // Capture session ID from any event that includes it (v0.0.372+)
-        if (!string.IsNullOrEmpty(evt.SessionId) && string.IsNullOrEmpty(result.SessionId))
+        var eventSessionId = evt.SessionId ?? evt.CliSessionId;
+        if (!string.IsNullOrEmpty(eventSessionId) && string.IsNullOrEmpty(result.SessionId))
         {
-            result.SessionId = evt.SessionId;
+            result.SessionId = eventSessionId;
             progress?.Report(new ExecutionProgress
             {
-                SessionId = evt.SessionId,
+                SessionId = eventSessionId,
                 IsStreaming = false
             });
+        }
+
+        if (evt.Data is { ValueKind: JsonValueKind.Object } data
+            && ProcessSessionEvent(evt.Type, data, result, progress, toolNamesById))
+        {
+            return;
         }
 
         // Track premium request usage
@@ -1223,6 +1240,156 @@ public class CopilotProvider : CliProviderBase
                 break;
         }
     }
+
+    /// <summary>
+    /// Handles the session events <c>--output-format json</c> emits on current CLIs: dotted
+    /// types (<c>assistant.message</c>, <c>tool.execution_start</c>, ...) with their fields in
+    /// <c>data</c>. Shapes verified against a captured 1.0.91 run; they match the SDK's typed
+    /// events, so this reports a job the same way <c>CopilotSdkProvider</c> does.
+    /// </summary>
+    /// <returns>True when the event was a session event, handled or deliberately ignored.</returns>
+    private bool ProcessSessionEvent(
+        string? type,
+        JsonElement data,
+        ExecutionResult result,
+        IProgress<ExecutionProgress>? progress,
+        Dictionary<string, string> toolNamesById)
+    {
+        if (string.IsNullOrEmpty(type) || !type.Contains('.'))
+        {
+            return false;
+        }
+
+        // Deltas (assistant.message_delta, assistant.tool_call_delta) are not handled: they are
+        // token-sized and the closing assistant.message / tool.execution_start repeat them whole.
+        switch (type)
+        {
+            case "assistant.message":
+                var model = ReadString(data, "model");
+                if (!string.IsNullOrEmpty(model))
+                {
+                    result.ModelUsed = model;
+                }
+
+                // The full text of the turn; the deltas before it were only progress.
+                var content = ReadString(data, "content");
+                if (!string.IsNullOrWhiteSpace(content))
+                {
+                    result.Messages.Add(new ExecutionMessage
+                    {
+                        Role = "assistant",
+                        Content = content,
+                        Timestamp = DateTime.UtcNow
+                    });
+                    progress?.Report(new ExecutionProgress
+                    {
+                        CurrentMessage = content.Length > 100 ? content[..100] + "..." : content,
+                        IsStreaming = false
+                    });
+                }
+                break;
+
+            case "assistant.reasoning":
+                ReportStructuredEvent(ReadString(data, "content"), "reasoning", result, progress, true);
+                break;
+
+            case "tool.execution_start":
+                var toolName = ReadString(data, "toolName") ?? "unknown";
+                var toolCallId = ReadString(data, "toolCallId");
+                if (!string.IsNullOrEmpty(toolCallId))
+                {
+                    toolNamesById[toolCallId] = toolName;
+                }
+
+                result.Messages.Add(new ExecutionMessage
+                {
+                    Role = "tool_use",
+                    Content = toolName,
+                    ToolName = toolName,
+                    ToolInput = data.TryGetProperty("arguments", out var arguments)
+                        && arguments.ValueKind != JsonValueKind.Null
+                            ? arguments.GetRawText()
+                            : null,
+                    Timestamp = DateTime.UtcNow
+                });
+                progress?.Report(new ExecutionProgress
+                {
+                    ToolName = toolName,
+                    IsStreaming = false
+                });
+                break;
+
+            case "tool.execution_complete":
+                var completedId = ReadString(data, "toolCallId");
+                var completedName = !string.IsNullOrEmpty(completedId)
+                    && toolNamesById.TryGetValue(completedId, out var knownName)
+                        ? knownName
+                        : completedId;
+                var succeeded = !data.TryGetProperty("success", out var success)
+                    || success.ValueKind != JsonValueKind.False;
+                var output = data.TryGetProperty("result", out var toolResult)
+                    && toolResult.ValueKind == JsonValueKind.Object
+                        ? ReadString(toolResult, "content")
+                        : null;
+                if (output == null
+                    && data.TryGetProperty("error", out var toolError)
+                    && toolError.ValueKind == JsonValueKind.Object)
+                {
+                    output = ReadString(toolError, "message");
+                }
+
+                result.Messages.Add(new ExecutionMessage
+                {
+                    Role = succeeded ? "tool_result" : "tool_error",
+                    Content = output ?? "",
+                    ToolName = completedName,
+                    ToolOutput = output,
+                    Timestamp = DateTime.UtcNow
+                });
+                break;
+
+            case "session.usage_checkpoint":
+                // Running total, so a killed run still reports what it spent. The usage file
+                // written at exit supersedes it.
+                if (data.TryGetProperty("totalPremiumRequests", out var premium)
+                    && premium.TryGetDouble(out var premiumRequests))
+                {
+                    result.PremiumRequestsConsumed = (int)Math.Ceiling(premiumRequests);
+                }
+                break;
+
+            case "session.error":
+                var errorMessage = ReadString(data, "message")
+                    ?? ReadString(data, "errorType")
+                    ?? "Copilot reported a session error";
+                result.ErrorMessage = errorMessage;
+                if (IsSystemLevelError(errorMessage))
+                {
+                    _systemErrorDetected = true;
+                    _systemErrorMessage = errorMessage;
+                    result.IsSystemError = true;
+                }
+                result.Messages.Add(new ExecutionMessage
+                {
+                    Role = "system",
+                    Content = $"[Error] {errorMessage}",
+                    Timestamp = DateTime.UtcNow
+                });
+                progress?.Report(new ExecutionProgress
+                {
+                    CurrentMessage = $"Error: {errorMessage}",
+                    IsStreaming = false
+                });
+                break;
+        }
+
+        return true;
+    }
+
+    private static string? ReadString(JsonElement element, string propertyName)
+        => element.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     private static void ReportStructuredEvent(
         string? content,
