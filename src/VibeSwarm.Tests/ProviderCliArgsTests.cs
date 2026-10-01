@@ -621,6 +621,73 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void Copilot_NewSession_WithPreassignedIdAndName_AddsSessionIdAndName()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 91);
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            PreassignedSessionId = "3f2b1c9e-1111-4222-8333-944445555666",
+            SessionName = "Add dark mode"
+        });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Equal("3f2b1c9e-1111-4222-8333-944445555666", args[args.IndexOf("--session-id") + 1]);
+        Assert.Equal("Add dark mode", args[args.IndexOf("--name") + 1]);
+    }
+
+    [Fact]
+    public void Copilot_ResumedSession_OmitsSessionIdAndName()
+    {
+        // Since 1.0.71 the CLI rejects --name alongside an existing session.
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 91);
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            PreassignedSessionId = "3f2b1c9e-1111-4222-8333-944445555666",
+            SessionName = "Add dark mode"
+        });
+
+        var args = provider.BuildCliArgs("test", "sess-abc");
+
+        Assert.Contains("--resume", args);
+        Assert.DoesNotContain("--session-id", args);
+        Assert.DoesNotContain("--name", args);
+    }
+
+    [Theory]
+    [InlineData(1, 0, 34, false, false)]
+    [InlineData(1, 0, 35, false, true)]
+    [InlineData(1, 0, 51, true, true)]
+    public void Copilot_SessionIdAndName_AreVersionGated(int major, int minor, int build, bool expectSessionId, bool expectName)
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(major, minor, build);
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            PreassignedSessionId = "3f2b1c9e-1111-4222-8333-944445555666",
+            SessionName = "Add dark mode"
+        });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Equal(expectSessionId, args.Contains("--session-id"));
+        Assert.Equal(expectName, args.Contains("--name"));
+    }
+
+    [Fact]
+    public void Claude_ResumedSession_OmitsName()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 287);
+        provider.ApplyOptions(new ExecutionOptions { SessionName = "Add dark mode" });
+
+        Assert.Contains("--name", provider.BuildCliArgs("test", null));
+        Assert.DoesNotContain("--name", provider.BuildCliArgs("test", "3f2b1c9e-1111-4222-8333-944445555666"));
+    }
+
+    [Fact]
     public void Copilot_WithMaxTurns_AddsMaxAutopilotContinues()
     {
         var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));

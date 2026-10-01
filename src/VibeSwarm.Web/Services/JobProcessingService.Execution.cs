@@ -872,9 +872,11 @@ public partial class JobProcessingService
             await UpdateJobStatusAsync(job.Id, JobStatus.Processing, dbContext, cancellationToken);
             await NotifyStatusChangedAsync(job.Id, JobStatus.Processing);
 
-            async Task<string?> TryPrepareClaudeSessionIdAsync(string? requestedSessionId)
+            // Claude and Copilot CLIs both accept a UUID for a new session, so the job records
+            // its session before the run starts and an interrupted run can still be resumed.
+            async Task<string?> TryPreassignSessionIdAsync(string? requestedSessionId)
             {
-                if (provider.Type != ProviderType.Claude
+                if (provider.Type is not (ProviderType.Claude or ProviderType.Copilot)
                     || provider.ConnectionMode != ProviderConnectionMode.CLI
                     || !string.IsNullOrEmpty(requestedSessionId)
                     || !string.IsNullOrEmpty(executionContext.SessionId))
@@ -909,7 +911,7 @@ public partial class JobProcessingService
                 var wantsOneHourCache = provider.Type == ProviderType.Claude
                     && (job.CycleMode != CycleMode.SingleCycle || job.SwarmId != null);
                 var hasMcp = !string.IsNullOrEmpty(mcpOptions.McpConfigPath);
-                var preassignedSessionId = await TryPrepareClaudeSessionIdAsync(requestedSessionId);
+                var preassignedSessionId = await TryPreassignSessionIdAsync(requestedSessionId);
                 using var executionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 executionContext.ActiveExecutionCancellationTokenSource = executionCts;
 
@@ -933,6 +935,7 @@ public partial class JobProcessingService
                             AppendSystemPrompt = systemPromptRules,
                             EnvironmentVariables = jobEnvironmentVariables,
                             PreassignedSessionId = preassignedSessionId,
+                            SessionName = job.Title,
                             EnableOneHourPromptCache = wantsOneHourCache,
                             ExcludeDynamicSystemPromptSections = provider.Type == ProviderType.Claude,
                             NonBlockingMcpConnection = provider.Type == ProviderType.Claude && hasMcp,

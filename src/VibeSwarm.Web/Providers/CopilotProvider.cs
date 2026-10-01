@@ -23,6 +23,10 @@ public class CopilotProvider : CliProviderBase
     private static readonly Version ModernFlagsVersion = new(1, 0, 0);
     private static readonly Version SessionIdleTimeoutVersion = new(1, 0, 35);
 
+    // Release numbers from the CLI's own changelog.json, not inferred.
+    private static readonly Version SessionNameVersion = new(1, 0, 35);
+    private static readonly Version SessionIdVersion = new(1, 0, 51);
+
     // Flags first confirmed present on the verified release (see ProviderVersionReference).
     // Gated conservatively: Copilot rejects unknown flags outright, which would fail the job.
     private static readonly Version UsageOutputFileVersion = new(1, 0, 86);
@@ -435,6 +439,28 @@ public class CopilotProvider : CliProviderBase
         else if (CurrentContinueLastSession)
         {
             args.Add("--continue");
+        }
+        else
+        {
+            // Fresh session with a UUID pre-assigned by VibeSwarm (v1.0.51+), so the job knows
+            // its session before the first event and an interrupted run can still be resumed.
+            if (!string.IsNullOrEmpty(CurrentPreassignedSessionId)
+                && _cachedCliVersion != null
+                && _cachedCliVersion >= SessionIdVersion)
+            {
+                args.Add("--session-id");
+                args.Add(CurrentPreassignedSessionId);
+            }
+
+            // Name for `copilot --resume=<name>` (v1.0.35+). New sessions only: since 1.0.71
+            // the CLI rejects --name alongside an existing session.
+            if (!string.IsNullOrWhiteSpace(CurrentSessionName)
+                && _cachedCliVersion != null
+                && _cachedCliVersion >= SessionNameVersion)
+            {
+                args.Add("--name");
+                args.Add(CurrentSessionName.Trim());
+            }
         }
 
         // Model selection (v0.0.329+)

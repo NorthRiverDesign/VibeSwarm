@@ -448,8 +448,12 @@ public class ClaudeProvider : CliProviderBase
             args.Add(CurrentFallbackModel);
         }
 
-        // Display name for the session (enables `claude --resume <name>` for debugging).
-        if (!string.IsNullOrEmpty(CurrentSessionName) && SupportsCliVersion(SessionNameVersion))
+        // Display name for the session (enables `claude --resume <name>` for debugging). Only a
+        // new session is named, so later cycles that resume it keep the name it started with.
+        if (!string.IsNullOrEmpty(CurrentSessionName)
+            && string.IsNullOrEmpty(sessionId)
+            && !CurrentContinueLastSession
+            && SupportsCliVersion(SessionNameVersion))
         {
             args.Add("--name");
             args.Add(CurrentSessionName);
