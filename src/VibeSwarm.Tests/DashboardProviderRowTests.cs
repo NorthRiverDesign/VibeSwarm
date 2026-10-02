@@ -2,16 +2,16 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using VibeSwarm.Client.Components.Providers;
+using VibeSwarm.Client.Components.Dashboard;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Tests;
 
-public sealed class ProviderCardTests
+public sealed class DashboardProviderRowTests
 {
 	[Fact]
-	public async Task ProviderCard_ShowsLatestUsageFallbackMessage_WhenNoMaxBudgetIsAvailable()
+	public async Task DashboardProviderRow_ShowsLatestUsageFallbackMessage_WhenNoMaxBudgetIsAvailable()
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
@@ -20,11 +20,11 @@ public sealed class ProviderCardTests
 
 		var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
 		{
-			[nameof(ProviderCard.Name)] = "Claude",
-			[nameof(ProviderCard.ProviderType)] = "Claude",
-			[nameof(ProviderCard.ConnectionMode)] = "CLI",
-			[nameof(ProviderCard.IsEnabled)] = true,
-			[nameof(ProviderCard.UsageSummary)] = new ProviderUsageSummary
+			[nameof(DashboardProviderRow.Name)] = "Claude",
+			[nameof(DashboardProviderRow.ProviderType)] = "Claude",
+			[nameof(DashboardProviderRow.ConnectionMode)] = "CLI",
+			[nameof(DashboardProviderRow.IsEnabled)] = true,
+			[nameof(DashboardProviderRow.UsageSummary)] = new ProviderUsageSummary
 			{
 				LimitType = UsageLimitType.RateLimit,
 				CurrentUsage = 72,
@@ -35,7 +35,7 @@ public sealed class ProviderCardTests
 
 		var html = await renderer.Dispatcher.InvokeAsync(async () =>
 		{
-			var output = await renderer.RenderComponentAsync<ProviderCard>(parameters);
+			var output = await renderer.RenderComponentAsync<DashboardProviderRow>(parameters);
 			return output.ToHtmlString();
 		});
 

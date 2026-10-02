@@ -1,0 +1,88 @@
+@* One provider on the dashboard: a link to the Providers page that shows how it connects and,
+   when known, how much of its usage limit is left. *@
+
+<a href="/providers" class="list-group-item list-group-item-action d-flex flex-column gap-2">
+	<span class="d-flex align-items-center gap-3">
+		<i class="bi bi-@GetProviderTypeIcon(ProviderType) flex-shrink-0 @(IsEnabled ? "text-primary" : "text-body-tertiary")"></i>
+		<span class="flex-grow-1 min-width-0">
+			<span class="d-block fw-medium text-truncate @(IsEnabled ? "" : "text-body-secondary")">@Name</span>
+			<span class="d-block small text-body-secondary text-truncate" title="@CliVersion">@GetSummary()</span>
+		</span>
+		@if (UsageSummary?.IsLimitReached == true)
+		{
+			<span class="small text-danger-emphasis flex-shrink-0">Limit reached</span>
+		}
+		else if (!IsEnabled)
+		{
+			<span class="small text-body-tertiary flex-shrink-0">Off</span>
+		}
+		<i class="bi bi-chevron-right text-body-tertiary flex-shrink-0"></i>
+	</span>
+	@if (ShouldShowUsageSection())
+	{
+		<UsageMeter UsageSummary="UsageSummary" Compact="true" ShowResetTime="true" ShowEmptyState="true" />
+	}
+</a>
+
+@code {
+	[Parameter]
+	public string Name { get; set; } = string.Empty;
+
+	[Parameter]
+	public string ProviderType { get; set; } = string.Empty;
+
+	[Parameter]
+	public string ConnectionMode { get; set; } = string.Empty;
+
+	[Parameter]
+	public bool IsEnabled { get; set; }
+
+	[Parameter]
+	public string? CliVersion { get; set; }
+
+	[Parameter]
+	public ProviderUsageSummary? UsageSummary { get; set; }
+
+	private bool ShouldShowUsageSection()
+	{
+		return UsageSummary != null && (
+			UsageSummary.LimitWindows.Count > 0 ||
+			UsageSummary.EffectiveMaxUsage > 0 ||
+			UsageSummary.CurrentUsage.HasValue ||
+			UsageSummary.TotalPremiumRequestsConsumed > 0 ||
+			UsageSummary.IsLimitReached ||
+			!string.IsNullOrWhiteSpace(UsageSummary.LimitMessage));
+	}
+
+	private static string GetProviderTypeIcon(string type) => type switch
+	{
+		"OpenCode" => "code-slash",
+		"Claude" => "robot",
+		"Copilot" => "github",
+		_ => "cpu"
+	};
+
+	private string GetSummary()
+	{
+		var parts = new List<string> { ConnectionMode };
+		if (!string.IsNullOrEmpty(CliVersion))
+		{
+			parts.Add(TruncateVersion(CliVersion));
+		}
+
+		return string.Join(" · ", parts);
+	}
+
+	/// <summary>Just the version number from whatever the CLI prints ("Copilot binary version: 1.0.91").</summary>
+	private static string TruncateVersion(string version)
+	{
+		var match = System.Text.RegularExpressions.Regex.Match(version, @"\d+\.\d+(\.\d+)?");
+		if (match.Success)
+		{
+			return match.Value;
+		}
+
+		var firstLine = version.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? version;
+		return firstLine.Length > 40 ? firstLine[..37] + "..." : firstLine;
+	}
+}

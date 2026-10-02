@@ -53,8 +53,8 @@ public sealed class DashboardPageTests
 		Assert.Contains("Name", html);
 		Assert.Contains("Claude", html);
 		Assert.DoesNotContain("Copilot", html);
-		Assert.Contains("row g-3", html);
-		Assert.Contains("row row-cols-1 row-cols-md-2 row-cols-xl-3 g-2 g-lg-3", html);
+		Assert.Contains("list-group rounded-4", html);
+		Assert.DoesNotContain("row-cols", html);
 		Assert.True(html.IndexOf("Beta", StringComparison.Ordinal) < html.IndexOf("Alpha", StringComparison.Ordinal));
 		Assert.True(html.IndexOf("Alpha", StringComparison.Ordinal) < html.IndexOf("Gamma", StringComparison.Ordinal));
 	}
@@ -141,7 +141,7 @@ public sealed class DashboardPageTests
 			new FakeProjectService(dashboardProjects, runningJobs),
 			new FakeProviderService([]));
 
-		Assert.Contains("Running Jobs", html);
+		Assert.Contains("Running now", html);
 		Assert.Contains("Beta active job", html);
 		Assert.Contains("Alpha active job", html);
 		Assert.Contains("Updating files", html);
@@ -174,9 +174,9 @@ public sealed class DashboardPageTests
 				]
 			}));
 
-		var runningJobsIndex = html.IndexOf("Running Jobs", StringComparison.Ordinal);
-		var ideasProcessingIndex = html.IndexOf("Ideas Processing", StringComparison.Ordinal);
-		var jobAnalyticsIndex = html.IndexOf("Job Analytics", StringComparison.Ordinal);
+		var runningJobsIndex = html.IndexOf("aria-label=\"Running now\"", StringComparison.Ordinal);
+		var ideasProcessingIndex = html.IndexOf("aria-label=\"Ideas\"", StringComparison.Ordinal);
+		var jobAnalyticsIndex = html.IndexOf("aria-label=\"Job analytics\"", StringComparison.Ordinal);
 
 		Assert.True(runningJobsIndex >= 0);
 		Assert.True(ideasProcessingIndex > runningJobsIndex);
@@ -195,7 +195,7 @@ public sealed class DashboardPageTests
 			new FakeProjectService(dashboardProjects, []),
 			new FakeProviderService([]));
 
-		Assert.DoesNotContain("Running Jobs", html);
+		Assert.DoesNotContain("Running now", html);
 	}
 
 	[Fact]
@@ -227,13 +227,9 @@ public sealed class DashboardPageTests
 				]
 			}));
 
-		Assert.Contains("Ideas Processing", html);
-		Assert.Contains("2 projects processing", html);
-		Assert.Contains(">Stop<", html);
-		Assert.DoesNotContain("Start All Ideas", html);
-		Assert.Contains("d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2 align-self-stretch align-self-sm-auto", html);
-		Assert.Contains("d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2", html);
-		Assert.Contains("badge bg-success-subtle text-success-emphasis d-inline-flex align-items-center justify-content-center justify-content-sm-start gap-1 text-wrap align-self-start align-self-sm-auto", html);
+		Assert.Contains("aria-label=\"Ideas\"", html);
+		Assert.Contains("Stop all", html);
+		Assert.DoesNotContain("Start all", html);
 	}
 
 	[Fact]
@@ -258,8 +254,8 @@ public sealed class DashboardPageTests
 				]
 			}));
 
-		Assert.Contains("Start All Ideas", html);
-		Assert.DoesNotContain(">Stop<", html);
+		Assert.Contains("Start all", html);
+		Assert.DoesNotContain("Stop all", html);
 	}
 
 	[Fact]
@@ -285,10 +281,10 @@ public sealed class DashboardPageTests
 				]
 			}));
 
-		Assert.Contains("Ideas Processing", html);
-		Assert.Contains("1 idea remaining", html);
+		Assert.Contains("aria-label=\"Ideas\"", html);
+		Assert.Contains("1 idea left", html);
 		Assert.Contains(">Queued<", html);
-		Assert.DoesNotContain("Start All Ideas", html);
+		Assert.DoesNotContain("Start all", html);
 	}
 
 	[Fact]
@@ -315,7 +311,6 @@ public sealed class DashboardPageTests
 				]
 			}));
 
-		Assert.Contains("View Project", html);
 		Assert.Contains($"href=\"/projects/{projectId}\"", html);
 	}
 
