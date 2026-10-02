@@ -72,5 +72,5 @@ Every page draws on one set of tokens, defined in section 1 of `site.css`. Don't
 Use Bootstrap's spacer scale only (`1` = 4px, `2` = 8px, `3` = 16px, `4` = 24px). Pages share one rhythm:
 - **Page:** a `d-flex flex-column gap-4` stack, or `<PageHeader>`, which leaves the same `mb-4` below the title.
 - **Title row:** `d-flex align-items-center gap-2` holding `<h1 class="mb-0 me-auto">` and `<TitleAction>` round buttons, with the primary action last. When there are more than two actions, put them behind one `+` menu (Skills does this).
-- **Section:** `d-flex flex-column gap-2` holding an `<h2 class="text-eyebrow mb-0">` header (with a quiet `btn-link` action on the right) above a `list-group rounded-4`.
-- **Rows:** default `list-group-item` padding. A row that expands in place opens a panel with `py-3` and `gap-3` between its parts.
+- **Section:** `d-flex flex-column gap-2` holding a `<SectionHeader>` (an eyebrow label with quiet `btn-link` actions on the right) above a `list-group rounded-4`. Separate groups (Active, then Paused) instead of filter tabs.
+- **Rows:** `<ListRow>` with an icon, a title and one quiet second line. It opens in place (`ChildContent`), links (`Href`) or acts as a button (`OnClick`). `AttentionLine` replaces the second line in amber while something needs doing, and `Trailing` holds short status text such as Off or Running. Open panels show a short fact list, then switches, then actions: secondary buttons first, with Delete last as a quiet `text-danger` link that confirms.
