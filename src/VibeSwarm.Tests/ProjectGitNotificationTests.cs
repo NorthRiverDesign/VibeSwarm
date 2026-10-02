@@ -19,7 +19,6 @@ public sealed class ProjectGitNotificationTests
 
 		var cut = context.Render<ProjectDetailHeaderCompact>(parameters => parameters
 			.Add(p => p.Name, "Demo Project")
-			.Add(p => p.WorkingPath, "/repo")
 			.Add(p => p.IsGitRepository, true)
 			.Add(p => p.IsGitOperationInProgress, true)
 			.Add(p => p.GitProgressMessage, "Syncing with origin..."));

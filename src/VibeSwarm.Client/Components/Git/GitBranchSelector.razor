@@ -3,18 +3,18 @@
 @if (Branches.Any())
 {
 	<div class="dropdown git-branch-dropdown">
-		<button class="btn btn-sm bg-body-tertiary border d-flex align-items-center gap-2 dropdown-toggle" type="button"
+		<button class="@(Subtle ? "btn btn-sm btn-link text-body-secondary text-decoration-none px-0 d-inline-flex align-items-center gap-1 dropdown-toggle" : "btn btn-sm bg-body-tertiary border d-flex align-items-center gap-2 dropdown-toggle")" type="button"
 			data-bs-toggle="dropdown" aria-expanded="false" disabled="@(IsDisabled || !Branches.Any())"
 			title="Current branch">
-			<i class="bi bi-git text-danger"></i>
+			<i class="bi bi-git @(Subtle ? "" : "text-danger")"></i>
 			<span class="fw-medium text-truncate" style="max-width: 120px;">@(CurrentBranch ?? "No branch")</span>
-			@if (!string.IsNullOrEmpty(CurrentCommitHash))
+			@if (!Subtle && !string.IsNullOrEmpty(CurrentCommitHash))
 			{
 				<span class="font-monospace text-body-secondary small d-none d-md-inline">@CurrentCommitHash[..Math.Min(7,
 								CurrentCommitHash.Length)]</span>
 				}
 		</button>
-		<ul class="dropdown-menu dropdown-menu-end overflow-y-auto" style="max-height: 300px;">
+		<ul class="dropdown-menu @(Subtle ? "" : "dropdown-menu-end") overflow-y-auto" style="max-height: 300px;">
 			<li>
 				<h6 class="dropdown-header">Local Branches</h6>
 			</li>
@@ -78,6 +78,10 @@ else if (!string.IsNullOrEmpty(CurrentBranch))
 
 	[Parameter]
 	public bool IsDisabled { get; set; }
+
+	/// <summary>Renders the trigger as plain secondary text, for use inside a line of metadata.</summary>
+	[Parameter]
+	public bool Subtle { get; set; }
 
 	[Parameter]
 	public EventCallback<string> OnBranchSelected { get; set; }

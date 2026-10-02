@@ -15,7 +15,7 @@ namespace VibeSwarm.Tests;
 public sealed class ProjectDetailTabMergeTests
 {
 	[Fact]
-	public void ProjectDetail_RendersUnifiedJobsTabWithManualButtonIdeaComposerAndLists()
+	public void ProjectDetail_RendersUnifiedJobsTabWithIdeaComposerAndLists()
 	{
 		using var context = CreateContext(
 			ideas: [new Idea { Id = Guid.NewGuid(), ProjectId = TestProject.Id, Description = "Existing idea" }],
@@ -25,27 +25,26 @@ public sealed class ProjectDetailTabMergeTests
 
 		cut.WaitForAssertion(() =>
 		{
-			var tabLabels = cut.FindAll("ul.nav-tabs button.nav-link")
+			var tabLabels = cut.FindAll("ul.nav-pills button.nav-link")
 				.Select(button => button.TextContent.Trim())
 				.ToList();
 
-			Assert.Contains("flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain", cut.Markup);
+			Assert.Contains("flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain", cut.Markup);
 			Assert.DoesNotContain(tabLabels, label => label.StartsWith("Ideas", StringComparison.Ordinal));
 			Assert.Contains(tabLabels, label => label.StartsWith("Jobs", StringComparison.Ordinal));
 			Assert.Equal(4, tabLabels.Count);
 
 			var createJobButtons = cut.FindAll("button")
-				.Count(button => button.TextContent.Contains("Create Job", StringComparison.Ordinal));
+				.Count(button => button.TextContent.Contains("New job with options", StringComparison.Ordinal));
 			Assert.Equal(1, createJobButtons);
 
 			var markup = cut.Markup;
-			Assert.Contains("Describe a feature, bug, or improvement to turn into a job", markup);
+			Assert.Contains("Add an idea", markup);
 			Assert.Contains("Existing idea", markup);
 			Assert.Contains("Existing job", markup);
 			Assert.Empty(cut.FindAll("[aria-label='Pagination']"));
 
-			Assert.True(markup.IndexOf("Create Job", StringComparison.Ordinal) < markup.IndexOf("Describe a feature, bug, or improvement to turn into a job", StringComparison.Ordinal));
-			Assert.True(markup.IndexOf("Describe a feature, bug, or improvement to turn into a job", StringComparison.Ordinal) < markup.IndexOf("Existing idea", StringComparison.Ordinal));
+			Assert.True(markup.IndexOf("Add an idea", StringComparison.Ordinal) < markup.IndexOf("Existing idea", StringComparison.Ordinal));
 			Assert.True(markup.IndexOf("Existing idea", StringComparison.Ordinal) < markup.IndexOf("Existing job", StringComparison.Ordinal));
 		});
 	}
@@ -62,7 +61,7 @@ public sealed class ProjectDetailTabMergeTests
 		cut.WaitForAssertion(() =>
 		{
 			var markup = cut.Markup;
-			Assert.Contains("Describe a feature, bug, or improvement to turn into a job", markup);
+			Assert.Contains("Add an idea", markup);
 			Assert.Contains("Existing job", markup);
 			Assert.DoesNotContain("No ideas yet", markup);
 		});
@@ -80,7 +79,7 @@ public sealed class ProjectDetailTabMergeTests
 		cut.WaitForAssertion(() =>
 		{
 			var markup = cut.Markup;
-			Assert.Contains("Describe a feature, bug, or improvement to turn into a job", markup);
+			Assert.Contains("Add an idea", markup);
 			Assert.Contains("No jobs yet", markup);
 			Assert.DoesNotContain("No ideas yet", markup);
 		});

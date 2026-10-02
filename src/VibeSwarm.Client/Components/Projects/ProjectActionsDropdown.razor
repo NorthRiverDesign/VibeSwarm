@@ -1,11 +1,21 @@
 @* Project actions dropdown menu component *@
 
 <div class="dropdown flex-shrink-0">
-	<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-			aria-expanded="false" title="Project actions">
-		<i class="bi bi-gear me-sm-1"></i>
-		<span class="d-none d-sm-inline">Options</span>
-	</button>
+	@if (IconOnly)
+	{
+		<button class="btn btn-secondary rounded-circle d-inline-flex align-items-center justify-content-center p-0 icon-button-round" type="button"
+				data-bs-toggle="dropdown" aria-expanded="false" title="Project actions" aria-label="Options">
+			<i class="bi bi-three-dots"></i>
+		</button>
+	}
+	else
+	{
+		<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+				aria-expanded="false" title="Project actions">
+			<i class="bi bi-gear me-sm-1"></i>
+			<span class="d-none d-sm-inline">Options</span>
+		</button>
+	}
 	<ul class="dropdown-menu dropdown-menu-end">
 		@if (!string.IsNullOrEmpty(DetailsHref))
 		{
@@ -150,6 +160,10 @@
 </div>
 
 @code {
+	/// <summary>Renders the trigger as a round "⋯" button instead of the labelled Options button.</summary>
+	[Parameter]
+	public bool IconOnly { get; set; }
+
 	[Parameter]
 	public string? DetailsHref { get; set; }
 

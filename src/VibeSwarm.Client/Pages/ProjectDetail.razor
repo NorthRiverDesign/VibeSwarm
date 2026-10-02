@@ -26,63 +26,41 @@ else if (Project == null)
 }
 else
 {
-    @* Project Header Component *@
-    <ProjectDetailHeaderCompact Name="@Project.Name" WorkingPath="@Project.WorkingPath"
+    <ProjectDetailHeaderCompact Name="@Project.Name"
                                 GitHubRepository="@Project.GitHubRepository" IsGitRepository="@IsGitRepository"
                                 IsLoadingGitInfo="@_isLoadingGitInfo" Branches="@Branches" CurrentBranch="@CurrentBranch"
                                 CurrentCommitHash="@CurrentCommitHash" IsGitOperationInProgress="@IsGitOperationInProgress"
                                 GitProgressMessage="@GitProgressMessage" HasUncommittedChanges="@_hasUncommittedChangesHeader"
-                                UncommittedFilesCount="@_uncommittedFilesCount" HasTokenData="@HasProjectTokenData()"
-                                TotalInputTokens="@GetProjectTotalInputTokens()" TotalOutputTokens="@GetProjectTotalOutputTokens()"
-                                TotalCost="@GetProjectTotalCost()" OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
+                                UncommittedFilesCount="@_uncommittedFilesCount"
+                                OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
                                 OnRefresh="RefreshBranches" OnBranchSelected="RequestBranchSwitch"
                                 OnUncommittedChangesClick="ShowUncommittedChangesModal"
                                 OnEdit="ShowEditProjectModal" OnPruneBranches="PruneRemoteBranches"
                                 ShowMergeBranchAction="@HasMergeBranchTargets" IsMerging="@_isMergingBranch"
                                 OnMergeBranch="ShowMergeBranchModal" IsActive="@(Project?.IsActive ?? true)"
-                                OnToggleActive="ToggleProjectActive"
-                                AutoPilotStatus="@_autoPilotStatus"
-                                IsIdeasProcessingActive="@IsIdeasProcessingActive"
-                                IdeasUnprocessedCount="@IdeasUnprocessedCount"
-                                ActiveJob="@ActiveJob"
-                                IsStoppingAll="@_isStoppingAll"
-                                CanSuggestIdeas="@CanSuggestIdeas"
-                                OnStop="StopAllActive"
-                                OnSuggestIdeas="SuggestIdeasFromCodebase" />
+                                OnToggleActive="ToggleProjectActive" />
 
-    @* Tabs use Bootstrap's nav-tabs directly; horizontally scrollable on narrow screens *@
-    <ul class="nav nav-tabs project-detail-tabs mt-3 flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain" role="tablist">
+    @* Tabs are Bootstrap pills; horizontally scrollable on narrow screens *@
+    <ul class="nav nav-pills project-detail-tabs gap-1 small flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain" role="tablist">
         <li class="nav-item">
-            <button type="button" class="nav-link @(IsActiveTab("jobs") ? "active" : "")"
-                    @onclick='@(() => SetActiveTab("jobs"))' role="tab">
-                <i class="bi bi-list-task me-1"></i>Jobs
-                @if (CombinedJobsTabCount > 0) { <span class="badge rounded-pill text-bg-secondary ms-1">@CombinedJobsTabCount</span> }
-            </button>
+            <button type="button" class="nav-link rounded-pill px-3 @(IsActiveTab("jobs") ? "active" : "")"
+                    @onclick='@(() => SetActiveTab("jobs"))' role="tab">Jobs</button>
         </li>
         <li class="nav-item">
-            <button type="button" class="nav-link @(IsActiveTab("environments") ? "active" : "")"
-                    @onclick='@(() => SetActiveTab("environments"))' role="tab">
-                <i class="bi bi-box-seam me-1"></i>Environments
-                @if (EnabledEnvironmentCount > 0) { <span class="badge rounded-pill text-bg-secondary ms-1">@EnabledEnvironmentCount</span> }
-            </button>
+            <button type="button" class="nav-link rounded-pill px-3 @(IsActiveTab("changes") ? "active" : "")"
+                    @onclick="OpenChangesTabAsync" role="tab" disabled="@(!IsGitRepository)">Changes</button>
         </li>
         <li class="nav-item">
-            <button type="button" class="nav-link @(IsActiveTab("changes") ? "active" : "")"
-                    @onclick="OpenChangesTabAsync" role="tab" disabled="@(!IsGitRepository)">
-                <i class="bi bi-code-square me-1"></i>Changes
-                @if (HasChangesTabContent && _workingTreeStatus.ChangedFilesCount > 0)
-                {
-                    <span class="badge rounded-pill text-bg-warning ms-1">@_workingTreeStatus.ChangedFilesCount</span>
-                }
-            </button>
+            <button type="button" class="nav-link rounded-pill px-3 @(IsActiveTab("environments") ? "active" : "")"
+                    @onclick='@(() => SetActiveTab("environments"))' role="tab">Environments</button>
         </li>
         <li class="nav-item">
-            <button type="button" class="nav-link @(IsActiveTab("autopilot") ? "active" : "")"
+            <button type="button" class="nav-link rounded-pill px-3 d-inline-flex align-items-center gap-2 @(IsActiveTab("autopilot") ? "active" : "")"
                     @onclick='@(() => SetActiveTab("autopilot"))' role="tab">
-                <i class="bi bi-compass me-1"></i>Auto-Pilot
-                @if (_autoPilotStatus != null && !AutoPilotPanel.IsTerminal(_autoPilotStatus.Status))
+                Auto-Pilot
+                @if (IsAutoPilotRunning)
                 {
-                    <span class="badge rounded-pill text-bg-primary ms-1">@_autoPilotStatus.Status</span>
+                    <span class="live-dot" title="Auto-Pilot is @_autoPilotStatus!.Status"></span>
                 }
             </button>
         </li>
@@ -91,17 +69,10 @@ else
     <div class="tab-content pt-3">
         @if (_activeTab == "jobs")
         {
-            <div class="tab-pane fade show active d-grid gap-3">
-                <div class="d-grid d-sm-flex justify-content-sm-end">
-                    <button type="button" class="btn btn-primary" @onclick="ShowCreateJobModal"
-                            title="@(HasActiveJobs ? "Create a new job. It will be queued behind the current run." : "Create a new job")">
-                        <i class="bi bi-plus-lg me-1"></i>Create Job
-                    </button>
-                </div>
-
+            <div class="tab-pane fade show active d-flex flex-column gap-4">
                 @if (_isLoadingIdeas)
                 {
-                    <div class="border rounded-3 bg-body-tertiary p-3 p-lg-4">
+                    <div class="border rounded-4 bg-body-tertiary p-3">
                         <SkeletonLoader Lines="4" LineHeight="20" />
                     </div>
                 }
@@ -126,38 +97,78 @@ else
                                 DefaultInferenceProviderId="@(Project?.IdeaInferenceProviderId)"
                                 DefaultInferenceModelId="@(Project?.IdeaInferenceModelId)"
                                 OnSuggestIdeas="SuggestIdeasFromCodebase" OnPreviousPage="LoadPreviousIdeasPage"
-                                OnNextPage="LoadNextIdeasPage" ShowEmptyState="false" />
+                                OnNextPage="LoadNextIdeasPage" OnCreateJob="ShowCreateJobModal" ShowEmptyState="false">
+                        <RunningContent>
+                            @if (ActiveJob != null || IsAutoPilotRunning)
+                            {
+                                <section class="d-flex flex-column gap-2" aria-label="Running">
+                                    <h2 class="text-eyebrow mb-0 px-1">Running</h2>
+                                    <div class="list-group rounded-4">
+                                        @if (ActiveJob != null)
+                                        {
+                                            <div class="list-group-item d-flex align-items-center gap-3 py-3">
+                                                <span class="spinner-border spinner-border-sm text-primary flex-shrink-0" role="status" aria-hidden="true"></span>
+                                                <a href="/jobs/view/@ActiveJob.Id" class="flex-grow-1 min-width-0 text-reset text-decoration-none">
+                                                    <span class="d-block fw-medium text-truncate" title="@ActiveJob.DisplayTitle">@ActiveJob.DisplayTitle</span>
+                                                    @if (!string.IsNullOrEmpty(ActiveJob.CurrentActivity))
+                                                    {
+                                                        <span class="d-block small text-body-secondary text-truncate">@ActiveJob.CurrentActivity</span>
+                                                    }
+                                                </a>
+                                                <button type="button" class="btn btn-sm btn-outline-danger rounded-pill flex-shrink-0"
+                                                        @onclick="StopActiveJob" disabled="@_isStoppingActiveJob" title="Cancel this job">
+                                                    @if (_isStoppingActiveJob)
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                                    }
+                                                    Stop
+                                                </button>
+                                            </div>
+                                        }
+                                        @if (IsAutoPilotRunning)
+                                        {
+                                            <div class="list-group-item d-flex align-items-center gap-3 py-3">
+                                                <i class="bi bi-compass text-primary flex-shrink-0"></i>
+                                                <button type="button" class="btn btn-link p-0 border-0 text-start text-reset text-decoration-none flex-grow-1 min-width-0"
+                                                        @onclick='@(() => SetActiveTab("autopilot"))'>
+                                                    <span class="d-block fw-medium">Auto-Pilot</span>
+                                                    <span class="d-block small text-body-secondary text-truncate">@GetAutoPilotSummary()</span>
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-outline-danger rounded-pill flex-shrink-0"
+                                                        @onclick="StopAutoPilot" disabled="@_isStoppingAutoPilot" title="Stop Auto-Pilot">
+                                                    @if (_isStoppingAutoPilot)
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                                    }
+                                                    Stop
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                </section>
+                            }
+                        </RunningContent>
+                    </IdeasPanel>
                 }
 
                 @if (_isLoadingJobs)
                 {
-                    <div class="border rounded-3 bg-body-tertiary p-3 p-lg-4">
+                    <div class="border rounded-4 bg-body-tertiary p-3">
                         <SkeletonLoader Lines="5" LineHeight="20" />
                     </div>
                 }
                 else
                 {
-                    <div class="d-grid gap-2">
-                        <div class="d-flex align-items-center gap-2">
-                            <h2 class="h6 mb-0 d-flex align-items-center gap-2">
-                                <i class="bi bi-list-task"></i>Jobs
-                            </h2>
-                            @if (JobsTotalCount > 0)
-                            {
-                                <span class="badge rounded-pill text-bg-secondary">@JobsTotalCount</span>
-                            }
-                        </div>
-                        <ProjectJobsList Jobs="@PagedJobs" TotalJobsCount="@JobsTotalCount" CurrentPage="@_jobsPageNumber"
-                                          PageSize="@ProjectJobsPageSize" IsPageLoading="@_isLoadingJobsPage" HasActiveJobs="@HasActiveJobs"
-                                          HasCompletedJobs="@HasCompletedJobs" SearchQuery="@_jobSearchQuery" StatusFilter="@_jobStatusFilter"
-                                          OnDeleteJob="DeleteJob" OnRetryJob="RetryJob" OnCreateJob="ShowCreateJobModal" OnPreviousPage="LoadPreviousJobsPage"
-                                          OnNextPage="LoadNextJobsPage" OnCancelAll="CancelAllJobs"
-                                          OnDeleteCompleted="DeleteCompletedJobs" OnRetrySelected="RetrySelectedJobs"
-                                          OnCancelSelected="CancelSelectedJobs" OnPrioritizeSelected="PrioritizeSelectedJobs"
-                                          OnSearchChanged="HandleJobSearchChanged"
-                                          OnStatusFilterChanged="HandleJobStatusFilterChanged"
-                                          ShowCreateJobButton="false" />
-                    </div>
+                    <ProjectJobsList Jobs="@PagedJobs" TotalJobsCount="@JobsTotalCount" CurrentPage="@_jobsPageNumber"
+                                     PageSize="@ProjectJobsPageSize" IsPageLoading="@_isLoadingJobsPage" HasActiveJobs="@HasActiveJobs"
+                                     HasCompletedJobs="@HasCompletedJobs" SearchQuery="@_jobSearchQuery" StatusFilter="@_jobStatusFilter"
+                                     HiddenJobId="@ActiveJob?.Id"
+                                     OnDeleteSelected="DeleteSelectedJobs" OnPreviousPage="LoadPreviousJobsPage"
+                                     OnNextPage="LoadNextJobsPage" OnCancelAll="CancelAllJobs"
+                                     OnDeleteCompleted="DeleteCompletedJobs" OnRetrySelected="RetrySelectedJobs"
+                                     OnCancelSelected="CancelSelectedJobs" OnPrioritizeSelected="PrioritizeSelectedJobs"
+                                     OnSearchChanged="HandleJobSearchChanged"
+                                     OnStatusFilterChanged="HandleJobStatusFilterChanged" />
                 }
             </div>
         }
@@ -343,9 +354,6 @@ else
 
     // Tab state
     private string _activeTab = "jobs";
-    private int EnabledEnvironmentCount => Project?.Environments.Count(environment => environment.IsEnabled) ?? 0;
-    private bool IsOverflowTabActive => _activeTab is "environments" or "changes" or "autopilot";
-    private int CombinedJobsTabCount => JobsTotalCount + IdeasTotalCount;
 
     // Auto-pilot state
     private AutoPilotPanel? _autoPilotPanel;
@@ -398,7 +406,8 @@ else
 
     private bool CanSuggestIdeas => _hasInference || Providers.Any(p => p.IsEnabled);
 
-    private bool _isStoppingAll;
+    private bool _isStoppingActiveJob;
+    private bool _isStoppingAutoPilot;
 
     private void SetActiveTab(string tab)
     {
