@@ -32,4 +32,21 @@ public class HttpJobQueueControlService : IJobQueueControlService
 		response.EnsureSuccessStatusCode();
 		return await response.ReadJsonAsync(new JobQueueState(), ct);
 	}
+
+	public async Task<ProjectQueueState> GetProjectStateAsync(Guid projectId, CancellationToken ct = default)
+		=> await _http.GetJsonAsync($"/api/queue/projects/{projectId}", new ProjectQueueState { ProjectId = projectId }, ct);
+
+	public async Task<ProjectQueueState> PauseProjectAsync(Guid projectId, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsync($"/api/queue/projects/{projectId}/pause", null, ct);
+		response.EnsureSuccessStatusCode();
+		return await response.ReadJsonAsync(new ProjectQueueState { ProjectId = projectId, IsProjectPaused = true }, ct);
+	}
+
+	public async Task<ProjectQueueState> ResumeProjectAsync(Guid projectId, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsync($"/api/queue/projects/{projectId}/resume", null, ct);
+		response.EnsureSuccessStatusCode();
+		return await response.ReadJsonAsync(new ProjectQueueState { ProjectId = projectId }, ct);
+	}
 }

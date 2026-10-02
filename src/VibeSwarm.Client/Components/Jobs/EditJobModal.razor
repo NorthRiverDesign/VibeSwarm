@@ -1,0 +1,320 @@
+@* Edits a queued job's prompt. Warns while the queue could start the job, can hold the
+   project's queue for the length of the edit, and locks itself once the job starts. *@
+@implements IAsyncDisposable
+@inject IJobService JobService
+@inject IJobQueueControlService QueueControl
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged" Title="Edit Job" Icon="pencil-square">
+	<ChildContent>
+		<div class="d-flex flex-column gap-3">
+			@if (IsLocked)
+			{
+				<Alert Type="Alert.AlertType.Warning" Class="d-flex align-items-start mb-0">
+					<div class="d-flex flex-column gap-2 min-width-0">
+						<span>@LockedMessage</span>
+						@if (CanStop)
+						{
+							<div>
+								<ActionButton Icon="x-circle" Text="Stop job" LoadingText="Stopping..."
+											  Style="ActionButton.ButtonStyle.Danger" Size="ActionButton.ButtonSize.Small"
+											  IsLoading="@IsStopping" OnClick="OnStop" />
+							</div>
+						}
+					</div>
+				</Alert>
+			}
+			else if (_queueState?.IsProjectPaused == true)
+			{
+				<Alert Type="Alert.AlertType.Info" Class="d-flex align-items-start mb-0">
+					<div class="d-flex flex-column gap-2 min-width-0">
+						<span>This project's queue is paused while you edit. It resumes when you close this editor.</span>
+						<div>
+							<ActionButton Icon="play-circle" Text="Resume now" Size="ActionButton.ButtonSize.Small"
+										  IsLoading="@_isChangingHold" OnClick="ResumeProjectAsync" />
+						</div>
+					</div>
+				</Alert>
+			}
+			else if (_queueState?.IsQueuePaused == true)
+			{
+				<Alert Type="Alert.AlertType.Secondary" Class="d-flex align-items-start mb-0">
+					<span>The queue is paused, so this job won't start while you edit.</span>
+				</Alert>
+			}
+			else if (_queueState != null)
+			{
+				<Alert Type="Alert.AlertType.Warning" Class="d-flex align-items-start mb-0">
+					<div class="d-flex flex-column gap-2 min-width-0">
+						<span>@QueueRunningMessage</span>
+						<div>
+							<ActionButton Icon="pause-circle" Text="Pause this project while editing"
+										  Style="ActionButton.ButtonStyle.Warning" Size="ActionButton.ButtonSize.Small"
+										  IsLoading="@_isChangingHold" OnClick="PauseProjectAsync" />
+						</div>
+					</div>
+				</Alert>
+			}
+
+			<div>
+				<label for="edit-job-prompt" class="form-label">Goal prompt</label>
+				<textarea id="edit-job-prompt" class="form-control lh-base" rows="8"
+						  @bind="_editedPrompt" @bind:event="oninput" disabled="@(IsLocked || _isSaving)"
+						  placeholder="Enter the goal prompt for the AI agent..."></textarea>
+			</div>
+
+			@if (!string.IsNullOrEmpty(_errorMessage))
+			{
+				<Alert Type="Alert.AlertType.Danger" Class="py-2 mb-0">@_errorMessage</Alert>
+			}
+		</div>
+	</ChildContent>
+	<FooterContent>
+		<ModalFooterActions OnCancel="CloseAsync" CancelText="@(IsLocked ? "Close" : "Cancel")"
+							OnSubmit="SaveAsync" SubmitText="Save" SubmitIcon="check-lg" SubmitLoadingText="Saving..."
+							SubmitDisabled="@(!CanSave)" Busy="@_isSaving" />
+	</FooterContent>
+</ModalDialog>
+
+@code {
+	/// <summary>How often a hold this editor placed is renewed; well inside the server's lapse time.</summary>
+	private static readonly TimeSpan HoldRenewInterval = TimeSpan.FromMinutes(2);
+
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter, EditorRequired]
+	public Job Job { get; set; } = default!;
+
+	[Parameter]
+	public bool IsStopping { get; set; }
+
+	/// <summary>Raised with the saved prompt.</summary>
+	[Parameter]
+	public EventCallback<string> OnSaved { get; set; }
+
+	[Parameter]
+	public EventCallback OnStop { get; set; }
+
+	private ProjectQueueState? _queueState;
+	private string _editedPrompt = string.Empty;
+	private string? _errorMessage;
+	private bool _isSaving;
+	private bool _isChangingHold;
+	private bool _wasVisible;
+	private bool _holdPlacedByEditor;
+	private Timer? _holdRenewTimer;
+
+	private bool IsLocked => Job.Status != JobStatus.New || Job.CancellationRequested;
+
+	private bool IsStarted => Job.Status is JobStatus.Pending or JobStatus.Started or JobStatus.Planning
+		or JobStatus.Processing or JobStatus.Paused;
+
+	private bool CanStop => IsStarted && !Job.CancellationRequested && OnStop.HasDelegate;
+
+	private bool CanSave => !IsLocked
+		&& !string.IsNullOrWhiteSpace(_editedPrompt)
+		&& !string.Equals(_editedPrompt.Trim(), Job.GoalPrompt?.Trim(), StringComparison.Ordinal);
+
+	private string LockedMessage
+	{
+		get
+		{
+			if (Job.CancellationRequested)
+			{
+				return IsStarted
+					? "This job is stopping, so its prompt can no longer be changed."
+					: "This job was cancelled, so its prompt can no longer be changed.";
+			}
+
+			return IsStarted
+				? "This job has started, so its prompt can no longer be changed. Stop it if it shouldn't run as it is."
+				: "This job is no longer queued, so its prompt can no longer be changed here.";
+		}
+	}
+
+	private string QueueRunningMessage
+	{
+		get
+		{
+			var running = _queueState?.RunningJobs ?? 0;
+			// The job being edited is one of the project's queued jobs.
+			var otherQueued = Math.Max(0, (_queueState?.QueuedJobs ?? 0) - 1);
+			var parts = new List<string>();
+			if (running > 0)
+			{
+				parts.Add($"{running} running");
+			}
+
+			if (otherQueued > 0)
+			{
+				parts.Add($"{otherQueued} other queued");
+			}
+
+			var projectJobs = parts.Count == 0
+				? string.Empty
+				: $" This project has {string.Join(" and ", parts)} job{(running + otherQueued == 1 ? string.Empty : "s")}.";
+
+			return $"The queue is running, so this job could start before you save.{projectJobs}";
+		}
+	}
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (IsVisible && !_wasVisible)
+		{
+			_wasVisible = true;
+			_editedPrompt = Job.GoalPrompt ?? string.Empty;
+			_errorMessage = null;
+			await LoadQueueStateAsync();
+		}
+		else if (!IsVisible && _wasVisible)
+		{
+			_wasVisible = false;
+			await ReleaseHoldAsync();
+		}
+	}
+
+	private async Task LoadQueueStateAsync()
+	{
+		try
+		{
+			_queueState = await QueueControl.GetProjectStateAsync(Job.ProjectId);
+		}
+		catch
+		{
+			// Without the queue state the editor still works; it just can't warn.
+			_queueState = null;
+		}
+	}
+
+	private async Task PauseProjectAsync()
+	{
+		_isChangingHold = true;
+		try
+		{
+			_queueState = await QueueControl.PauseProjectAsync(Job.ProjectId);
+			_holdPlacedByEditor = true;
+			_holdRenewTimer ??= new Timer(_ => _ = InvokeAsync(RenewHoldAsync), null, HoldRenewInterval, HoldRenewInterval);
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = $"Couldn't pause the project's queue: {ex.Message}";
+		}
+		finally
+		{
+			_isChangingHold = false;
+		}
+	}
+
+	private async Task RenewHoldAsync()
+	{
+		if (!_holdPlacedByEditor || IsLocked)
+		{
+			return;
+		}
+
+		try
+		{
+			_queueState = await QueueControl.PauseProjectAsync(Job.ProjectId);
+			StateHasChanged();
+		}
+		catch
+		{
+			// The next tick tries again; the hold outlasts a missed renewal.
+		}
+	}
+
+	private async Task ResumeProjectAsync()
+	{
+		_isChangingHold = true;
+		try
+		{
+			StopRenewingHold();
+			_holdPlacedByEditor = false;
+			_queueState = await QueueControl.ResumeProjectAsync(Job.ProjectId);
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = $"Couldn't resume the project's queue: {ex.Message}";
+		}
+		finally
+		{
+			_isChangingHold = false;
+		}
+	}
+
+	private async Task ReleaseHoldAsync()
+	{
+		StopRenewingHold();
+		if (!_holdPlacedByEditor)
+		{
+			return;
+		}
+
+		_holdPlacedByEditor = false;
+		try
+		{
+			await QueueControl.ResumeProjectAsync(Job.ProjectId);
+		}
+		catch
+		{
+			// The hold lapses on its own on the server.
+		}
+	}
+
+	private void StopRenewingHold()
+	{
+		_holdRenewTimer?.Dispose();
+		_holdRenewTimer = null;
+	}
+
+	private async Task SaveAsync()
+	{
+		if (!CanSave)
+		{
+			return;
+		}
+
+		_isSaving = true;
+		_errorMessage = null;
+		try
+		{
+			var prompt = _editedPrompt.Trim();
+			if (!await JobService.UpdateJobPromptAsync(Job.Id, prompt))
+			{
+				_errorMessage = "Couldn't save: the job has already started.";
+				return;
+			}
+
+			await OnSaved.InvokeAsync(prompt);
+			await CloseAsync();
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = $"Couldn't save the prompt: {ex.Message}";
+		}
+		finally
+		{
+			_isSaving = false;
+		}
+	}
+
+	private async Task CloseAsync() => await HandleVisibilityChanged(false);
+
+	private async Task HandleVisibilityChanged(bool isVisible)
+	{
+		if (!isVisible)
+		{
+			_wasVisible = false;
+			await ReleaseHoldAsync();
+		}
+
+		IsVisible = isVisible;
+		await IsVisibleChanged.InvokeAsync(isVisible);
+	}
+
+	public async ValueTask DisposeAsync() => await ReleaseHoldAsync();
+}

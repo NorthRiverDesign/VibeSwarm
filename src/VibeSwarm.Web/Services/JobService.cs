@@ -303,11 +303,18 @@ public partial class JobService : IJobService
 
         // Return at most one job per provider and one job per project so the worker never
         // launches two concurrent runs against the same provider or the same checkout.
+        var projectHolds = _serviceProvider.GetService<ProjectQueueHolds>();
         var seen = new HashSet<Guid>();
         var seenProviders = new HashSet<Guid>();
         var result = new List<Job>();
         foreach (var job in pendingJobs)
         {
+            // Held projects (a queued job is being edited) wait without blocking anyone else.
+            if (projectHolds?.IsHeld(job.ProjectId) == true)
+            {
+                continue;
+            }
+
             if (job.ProviderId != Guid.Empty && !seenProviders.Add(job.ProviderId))
             {
                 continue;

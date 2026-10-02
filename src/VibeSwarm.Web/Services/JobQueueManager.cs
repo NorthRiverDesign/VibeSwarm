@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -89,9 +90,11 @@ public class JobQueueManager
 				.ThenBy(j => j.CreatedAt)
 				.ToListAsync(cancellationToken);
 
-			// Filter out recently dequeued jobs
+			// Filter out recently dequeued jobs and projects held while a queued job is edited
+			var projectHolds = scope.ServiceProvider.GetService<ProjectQueueHolds>();
 			var eligibleJobs = pendingJobs
 				.Where(j => !_recentlyDequeued.ContainsKey(j.Id))
+				.Where(j => projectHolds?.IsHeld(j.ProjectId) != true)
 				.ToList();
 
 			// Filter out jobs with unsatisfied dependencies

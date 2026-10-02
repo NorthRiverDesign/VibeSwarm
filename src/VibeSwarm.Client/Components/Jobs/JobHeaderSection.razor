@@ -115,6 +115,10 @@
 						</ul>
 					</div>
 				}
+				@if (CanEdit)
+				{
+					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" OnClick="OnEdit" />
+				}
 				@if (CanCancel)
 				{
 					<ActionButton Icon="x-circle" Text="@(IsCancelling ? "Cancelling..." : "Cancel")"
@@ -431,6 +435,12 @@
 
 	[Parameter]
 	public EventCallback OnCancel { get; set; }
+
+	[Parameter]
+	public bool CanEdit { get; set; }
+
+	[Parameter]
+	public EventCallback OnEdit { get; set; }
 
 	[Parameter]
 	public EventCallback OnForceCancel { get; set; }

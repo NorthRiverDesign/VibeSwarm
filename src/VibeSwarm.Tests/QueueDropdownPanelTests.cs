@@ -417,6 +417,15 @@ public sealed class QueueDropdownPanelTests
 			State = new JobQueueState { IsPaused = false, RunningJobs = State.RunningJobs };
 			return Task.FromResult(State);
 		}
+
+		public Task<ProjectQueueState> GetProjectStateAsync(Guid projectId, CancellationToken cancellationToken = default)
+			=> Task.FromResult(new ProjectQueueState { ProjectId = projectId });
+
+		public Task<ProjectQueueState> PauseProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
+			=> Task.FromResult(new ProjectQueueState { ProjectId = projectId, IsProjectPaused = true });
+
+		public Task<ProjectQueueState> ResumeProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
+			=> Task.FromResult(new ProjectQueueState { ProjectId = projectId });
 	}
 
 	private sealed class FakeIdeaService(params GlobalQueueSnapshot[] snapshots) : FakeIdeaServiceBase

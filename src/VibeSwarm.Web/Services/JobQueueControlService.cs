@@ -18,17 +18,23 @@ public class JobQueueControlService : IJobQueueControlService
 	private readonly IJobService _jobService;
 	private readonly ILogger<JobQueueControlService> _logger;
 	private readonly IJobUpdateService? _jobUpdateService;
+	private readonly ProjectQueueHolds? _projectHolds;
+	private readonly JobProcessingService? _jobProcessingService;
 
 	public JobQueueControlService(
 		VibeSwarmDbContext dbContext,
 		IJobService jobService,
 		ILogger<JobQueueControlService> logger,
-		IJobUpdateService? jobUpdateService = null)
+		IJobUpdateService? jobUpdateService = null,
+		ProjectQueueHolds? projectHolds = null,
+		JobProcessingService? jobProcessingService = null)
 	{
 		_dbContext = dbContext;
 		_jobService = jobService;
 		_logger = logger;
 		_jobUpdateService = jobUpdateService;
+		_projectHolds = projectHolds;
+		_jobProcessingService = jobProcessingService;
 	}
 
 	public async Task<JobQueueState> GetStateAsync(CancellationToken cancellationToken = default)
@@ -84,6 +90,33 @@ public class JobQueueControlService : IJobQueueControlService
 		await NotifyStateChangedAsync(false);
 
 		return await BuildStateAsync(false, null, null, cancelledJobs: 0, cancellationToken);
+	}
+
+	public async Task<ProjectQueueState> GetProjectStateAsync(Guid projectId, CancellationToken cancellationToken = default)
+		=> await BuildProjectStateAsync(projectId, cancellationToken);
+
+	public async Task<ProjectQueueState> PauseProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
+	{
+		if (_projectHolds == null)
+		{
+			throw new InvalidOperationException("Project queue holds are not available.");
+		}
+
+		var heldUntil = _projectHolds.Hold(projectId);
+		_logger.LogInformation("Queue for project {ProjectId} held until {HeldUntil:u}", projectId, heldUntil);
+
+		return await BuildProjectStateAsync(projectId, cancellationToken);
+	}
+
+	public async Task<ProjectQueueState> ResumeProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
+	{
+		if (_projectHolds?.Release(projectId) == true)
+		{
+			_logger.LogInformation("Queue for project {ProjectId} resumed", projectId);
+			_jobProcessingService?.TriggerProcessing();
+		}
+
+		return await BuildProjectStateAsync(projectId, cancellationToken);
 	}
 
 	/// <summary>
@@ -151,6 +184,36 @@ public class JobQueueControlService : IJobQueueControlService
 				job => job.Status == JobStatus.Pending || job.Status == JobStatus.New,
 				cancellationToken),
 			CancelledJobs = cancelledJobs
+		};
+	}
+
+	private async Task<ProjectQueueState> BuildProjectStateAsync(Guid projectId, CancellationToken cancellationToken)
+	{
+		var queuePaused = await _dbContext.AppSettings
+			.AsNoTracking()
+			.Select(settings => settings.JobQueuePaused)
+			.FirstOrDefaultAsync(cancellationToken);
+		var activeStatuses = await _dbContext.Jobs
+			.Where(job => job.ProjectId == projectId)
+			.Where(job =>
+				(job.Status == JobStatus.New && !job.CancellationRequested) ||
+				job.Status == JobStatus.Pending ||
+				job.Status == JobStatus.Started ||
+				job.Status == JobStatus.Planning ||
+				job.Status == JobStatus.Processing ||
+				job.Status == JobStatus.Paused)
+			.Select(job => job.Status)
+			.ToListAsync(cancellationToken);
+		var heldUntil = _projectHolds?.GetHeldUntil(projectId);
+
+		return new ProjectQueueState
+		{
+			ProjectId = projectId,
+			IsQueuePaused = queuePaused,
+			IsProjectPaused = heldUntil.HasValue,
+			ProjectPausedUntil = heldUntil,
+			QueuedJobs = activeStatuses.Count(status => status == JobStatus.New),
+			RunningJobs = activeStatuses.Count(status => status != JobStatus.New)
 		};
 	}
 

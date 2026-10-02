@@ -21,4 +21,15 @@ public interface IJobQueueControlService
 		CancellationToken cancellationToken = default);
 
 	Task<JobQueueState> ResumeAsync(CancellationToken cancellationToken = default);
+
+	Task<ProjectQueueState> GetProjectStateAsync(Guid projectId, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Holds back one project's queued jobs, e.g. while one of them is being edited.
+	/// Running jobs are untouched. The hold lapses after a few minutes unless this is
+	/// called again, so an abandoned editor cannot stall the project for good.
+	/// </summary>
+	Task<ProjectQueueState> PauseProjectAsync(Guid projectId, CancellationToken cancellationToken = default);
+
+	Task<ProjectQueueState> ResumeProjectAsync(Guid projectId, CancellationToken cancellationToken = default);
 }
