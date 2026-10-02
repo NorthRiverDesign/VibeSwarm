@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
-using GitHub.Copilot.SDK;
+using GitHub.Copilot;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
@@ -427,19 +427,17 @@ public class CommonProviderSetupService(
 		{
 			var options = new CopilotClientOptions
 			{
-				AutoStart = true,
-				UseStdio = true,
-				LogLevel = "error",
-				UseLoggedInUser = true
+				LogLevel = CopilotLogLevel.Error,
+				UseLoggedInUser = true,
+				Connection = CopilotSdkProvider.BuildRuntimeConnection(executablePath)
 			};
 
-			if (!string.IsNullOrWhiteSpace(executablePath))
-			{
-				options.CliPath = executablePath;
-			}
+			// The page waits on this probe, so a CLI that never answers must not hang it.
+			using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+			timeout.CancelAfter(TimeSpan.FromSeconds(15));
 
 			await using var client = new CopilotClient(options);
-			var authStatus = await client.GetAuthStatusAsync(cancellationToken);
+			var authStatus = await client.GetAuthStatusAsync(timeout.Token);
 			if (authStatus is null || !authStatus.IsAuthenticated)
 			{
 				return null;
@@ -485,16 +483,21 @@ public class CommonProviderSetupService(
 
 		try
 		{
+			// Copilot CLI 1.x writes "//" header comments and camelCase keys; older builds wrote plain
+			// JSON with snake_case keys. Accept both.
 			using var stream = File.OpenRead(configPath);
-			using var document = JsonDocument.Parse(stream);
+			using var document = JsonDocument.Parse(stream, new JsonDocumentOptions
+			{
+				CommentHandling = JsonCommentHandling.Skip,
+				AllowTrailingCommas = true
+			});
 			if (document.RootElement.ValueKind != JsonValueKind.Object)
 			{
 				return false;
 			}
 
-			return HasNonEmptyObjectOrArray(document.RootElement, "last_logged_in_user") ||
-				HasNonEmptyObjectOrArray(document.RootElement, "logged_in_users") ||
-				HasNonEmptyObjectOrArray(document.RootElement, "copilot_tokens");
+			string[] loginProperties = ["lastLoggedInUser", "loggedInUsers", "last_logged_in_user", "logged_in_users", "copilot_tokens"];
+			return loginProperties.Any(propertyName => HasNonEmptyObjectOrArray(document.RootElement, propertyName));
 		}
 		catch
 		{

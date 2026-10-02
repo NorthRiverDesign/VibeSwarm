@@ -1,4 +1,4 @@
-using GitHub.Copilot.SDK;
+using GitHub.Copilot;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
@@ -66,7 +66,7 @@ public sealed class CopilotSdkProviderTests
 
 		var options = provider.BuildClientOptions("/repo");
 
-		Assert.Equal("/repo", options.Cwd);
+		Assert.Equal("/repo", options.WorkingDirectory);
 		Assert.NotNull(options.Environment);
 		Assert.Equal("https://app.example.com", options.Environment!["APP_URL"]);
 		Assert.Equal("admin@example.com", options.Environment["APP_USERNAME"]);
@@ -83,7 +83,7 @@ public sealed class CopilotSdkProviderTests
 				"--add-dir",
 				"/tmp/review"
 			],
-			options.CliArgs!.ToList());
+			Assert.IsType<StdioRuntimeConnection>(options.Connection).Args!.ToList());
 	}
 
 	[Fact]
@@ -93,9 +93,9 @@ public sealed class CopilotSdkProviderTests
 
 		var options = provider.BuildClientOptions("/repo");
 
-		Assert.Equal("/repo", options.Cwd);
+		Assert.Equal("/repo", options.WorkingDirectory);
 		Assert.Null(options.Environment);
-		Assert.Null(options.CliArgs);
+		Assert.Null(Assert.IsType<StdioRuntimeConnection>(options.Connection).Args);
 	}
 
 	[Fact]

@@ -311,6 +311,9 @@
 		{
 			var result = await ProviderService.TestConnectionWithDetailsAsync(provider.Id);
 			TestResults[provider.Id] = result;
+
+			// A login made on the host since the page loaded should clear "Auth Needed" here too.
+			CommonProviderStatuses = (await CommonProviderSetupService.GetStatusesAsync()).ToList();
 		}
 		catch (Exception ex)
 		{

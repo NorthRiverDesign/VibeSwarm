@@ -117,6 +117,62 @@ public sealed class CommonProviderSetupServiceTests : IDisposable
 	}
 
 	[Fact]
+	public void TryReadCopilotAuthStatus_ReadsCopilotCli1ConfigWithCommentsAndCamelCaseKeys()
+	{
+		var homeDirectory = Path.Combine(_tempDirectory, "cli1-home");
+		var copilotDirectory = Path.Combine(homeDirectory, ".copilot");
+		Directory.CreateDirectory(copilotDirectory);
+		File.WriteAllText(
+			Path.Combine(copilotDirectory, "config.json"),
+			"""
+			// User settings belong in settings.json.
+			// This file is managed automatically.
+			{
+			  "firstLaunchAt": "2026-09-07T22:28:00.000Z",
+			  "trustedFolders": [
+			    "/home/pi"
+			  ],
+			  "lastLoggedInUser": {
+			    "host": "https://github.com",
+			    "login": "octocat"
+			  },
+			  "loggedInUsers": [
+			    {
+			      "host": "https://github.com",
+			      "login": "octocat",
+			      "kind": "oauth"
+			    }
+			  ]
+			}
+			""");
+
+		using var homeScope = new EnvironmentVariableScope("HOME", homeDirectory);
+
+		Assert.True(CommonProviderSetupService.TryReadCopilotAuthStatus());
+	}
+
+	[Fact]
+	public void TryReadCopilotAuthStatus_ReturnsFalseWhenNoUserIsLoggedIn()
+	{
+		var homeDirectory = Path.Combine(_tempDirectory, "cli1-signed-out-home");
+		var copilotDirectory = Path.Combine(homeDirectory, ".copilot");
+		Directory.CreateDirectory(copilotDirectory);
+		File.WriteAllText(
+			Path.Combine(copilotDirectory, "config.json"),
+			"""
+			// This file is managed automatically.
+			{
+			  "trustedFolders": [],
+			  "loggedInUsers": []
+			}
+			""");
+
+		using var homeScope = new EnvironmentVariableScope("HOME", homeDirectory);
+
+		Assert.False(CommonProviderSetupService.TryReadCopilotAuthStatus());
+	}
+
+	[Fact]
 	public async Task GetStatusesAsync_ReportsCopilotHostSearchTools()
 	{
 		await using var dbContext = CreateDbContext();

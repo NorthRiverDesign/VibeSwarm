@@ -4,6 +4,8 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<DefaultItemExcludes>$(DefaultItemExcludes);**/*.db;**/*.db-shm;**/*.db-wal</DefaultItemExcludes>
+		<!-- Jobs run the Copilot CLI installed on the host, so skip the ~165 MB runtime the SDK would bundle. -->
+		<CopilotSkipCliDownload>true</CopilotSkipCliDownload>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -13,7 +15,7 @@
 	<ItemGroup>
 		<PackageReference Include="Anthropic" Version="12.*" />
 		<PackageReference Include="DotNetEnv" Version="3.1.1" />
-		<PackageReference Include="GitHub.Copilot.SDK" Version="0.2.2" />
+		<PackageReference Include="GitHub.Copilot.SDK" Version="1.0.16" />
 		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.5" />
 		<PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.14" />
 		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.5" />

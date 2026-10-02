@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
-using GitHub.Copilot.SDK;
+using GitHub.Copilot;
 using VibeSwarm.Shared.Providers.Claude;
 using VibeSwarm.Shared.Providers.Copilot;
 using VibeSwarm.Shared.Services;
@@ -1468,27 +1468,14 @@ public class CopilotProvider : CliProviderBase
     {
         var options = new CopilotClientOptions
         {
-            AutoStart = true,
-            UseStdio = true,
-            LogLevel = "warning"
+            LogLevel = CopilotLogLevel.Warning,
+            Connection = CopilotSdkProvider.BuildRuntimeConnection(ExecutablePath)
         };
 
         var cwd = WorkingDirectory ?? Environment.CurrentDirectory;
         if (!string.IsNullOrWhiteSpace(cwd))
         {
-            options.Cwd = cwd;
-        }
-
-        if (!string.IsNullOrEmpty(ExecutablePath))
-        {
-            var resolvedPath = Path.IsPathRooted(ExecutablePath)
-                ? ExecutablePath
-                : Path.GetFullPath(ExecutablePath);
-
-            if (File.Exists(resolvedPath))
-            {
-                options.CliPath = resolvedPath;
-            }
+            options.WorkingDirectory = cwd;
         }
 
         return options;
