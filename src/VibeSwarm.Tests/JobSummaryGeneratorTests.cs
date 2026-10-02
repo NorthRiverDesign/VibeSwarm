@@ -67,6 +67,97 @@ public sealed class JobSummaryGeneratorTests
 	}
 
 	[Fact]
+	public void BuildCommitSubject_ReadsCommitSummaryOnlyFromWhatTheAgentWrote()
+	{
+		// A job on VibeSwarm itself reads the prompt templates, so tool results hold the tag too.
+		var consoleOutput = string.Join('\n',
+			"[System] Process started (PID: 1). Waiting for CLI to initialize...",
+			"""{"type":"user","message":{"role":"user","content":[{"tool_use_id":"t1","type":"tool_result","content":"    79\t\t<commit-summary>\n    80\t\tA concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)\n    81\t\t</commit-summary>"}]}}""",
+			"""{"type":"user","message":{"role":"user","content":[{"tool_use_id":"t2","type":"tool_result","content":"<commit-summary>Add user auth</commit-summary>"}]}}""",
+			"""{"type":"assistant","message":{"content":[{"type":"text","text":"Done.\n\n<commit-summary>Drop commit attribution from the job prompt</commit-summary>"}]}}""",
+			"""{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t3","name":"Edit","input":{"new_string":"<commit-summary>Edited fixture subject</commit-summary>"}}]}}""",
+			"""{"type":"result","subtype":"success","result":"Done.\n\n<commit-summary>Drop commit attribution from the job prompt</commit-summary>"}""");
+
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: null,
+			title: null,
+			goalPrompt: "fallback prompt",
+			consoleOutput: consoleOutput);
+
+		Assert.Equal("Drop commit attribution from the job prompt", subject);
+	}
+
+	[Fact]
+	public void BuildCommitSubject_IgnoresCommitSummaryTagsThatOnlyAppearInToolOutput()
+	{
+		var consoleOutput = string.Join('\n',
+			"""{"type":"user","message":{"role":"user","content":[{"tool_use_id":"t1","type":"tool_result","content":"    80\t\tA concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)\n</commit-summary> <commit-summary>Add user auth</commit-summary>"}]}}""",
+			"""{"type":"result","subtype":"success","result":"Two jobs for the same project can no longer run at the same time."}""");
+
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: null,
+			title: null,
+			goalPrompt: "fix the queue",
+			consoleOutput: consoleOutput);
+
+		Assert.Equal(JobSummaryGenerator.BuildCommitSubject(null, null, "fix the queue"), subject);
+	}
+
+	[Fact]
+	public void BuildCommitSubject_ReadsCommitSummaryFromCopilotAssistantMessage()
+	{
+		var consoleOutput = string.Join('\n',
+			"""{"type":"tool.execution_complete","data":{"result":{"content":"<commit-summary>Add user auth</commit-summary>"}}}""",
+			"""{"type":"assistant.message","data":{"messageId":"m1","content":"All set.\n<commit-summary>Name Copilot sessions after the job</commit-summary>","toolRequests":[]}}""",
+			"""{"type":"result","sessionId":"s1","exitCode":0}""");
+
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: null,
+			title: null,
+			goalPrompt: "fallback prompt",
+			consoleOutput: consoleOutput);
+
+		Assert.Equal("Name Copilot sessions after the job", subject);
+	}
+
+	[Fact]
+	public void BuildCommitSubject_TakesTheLastRealCommitSummaryFromPlainText()
+	{
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: null,
+			title: null,
+			goalPrompt: "fallback prompt",
+			consoleOutput: """
+				When you are finished, end your response with a short summary in this exact format:
+				<commit-summary>
+				A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)
+				</commit-summary>
+				Working on it.
+				<commit-summary>Add a refresh button beside each model selector</commit-summary>
+				""");
+
+		Assert.Equal("Add a refresh button beside each model selector", subject);
+	}
+
+	[Fact]
+	public void BuildCommitSubject_NeverUsesThePromptPlaceholder()
+	{
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: "80 A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)",
+			title: null,
+			goalPrompt: "fix the queue",
+			consoleOutput: """
+				<commit-summary>
+				A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)
+				</commit-summary>
+				""");
+
+		Assert.DoesNotContain("concise one-line description", subject, StringComparison.OrdinalIgnoreCase);
+		Assert.Null(JobSummaryGenerator.ExtractCommitSummary(
+			"<commit-summary>A concise one-line description of what was implemented (max 72 chars)</commit-summary>"));
+	}
+
+	[Fact]
 	public void BuildCommitSubject_PreservesGeneratedSummaryPastSeventyTwoCharacters()
 	{
 		var subject = JobSummaryGenerator.BuildCommitSubject(

@@ -131,6 +131,7 @@ public sealed class BuildVerificationPromptTests
 		Assert.Contains("do not commit, push, stash, reset, rebase, or switch branches", rules);
 		Assert.Contains("The next queued job starts from it.", rules);
 		Assert.Contains("End with a short summary", rules);
+		Assert.Contains("<commit-summary>", rules);
 	}
 
 	[Fact]

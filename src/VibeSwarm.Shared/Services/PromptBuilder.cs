@@ -373,6 +373,7 @@ public static class PromptBuilder
 			sb.AppendLine("- The deliverable is a code change. A run that leaves the working tree unchanged is recorded as failed.");
 			sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. VibeSwarm delivers your working-tree changes after you exit.");
 			sb.AppendLine("- End with a short summary: what changed, how you verified it, any assumptions you made, and anything left undone.");
+			sb.AppendLine("- Make the last line of your response the commit subject VibeSwarm will use, in this exact format: <commit-summary>A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)</commit-summary>");
 			sb.AppendLine();
 			sb.AppendLine("SESSION ARTIFACTS:");
 			sb.AppendLine("- Commits are for project code. Anything you leave in the working tree may be committed with your change.");
