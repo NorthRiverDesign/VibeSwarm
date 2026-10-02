@@ -112,48 +112,54 @@ else if (!_skillsList.Any())
 }
 else
 {
-	<div class="list-group">
+	<div class="list-group rounded-4">
 		@foreach (var skill in _skillsList)
 		{
-			<div
-				class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3 p-3 hover-bg-tertiary">
-				<div class="flex-grow-1 min-width-0">
-					<div class="d-flex align-items-center gap-2 flex-wrap">
-						<span class="fw-semibold font-monospace">@skill.Name</span>
-						<StatusBadge Status="@(skill.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
-					</div>
-					@if (!string.IsNullOrEmpty(skill.Description))
+			<ListRow @key="skill.Id" Icon="lightbulb"
+					 IconClass="@(skill.IsEnabled ? "text-primary" : "text-body-tertiary")"
+					 Title="@skill.Name" TitleClass="@(skill.IsEnabled ? "font-monospace" : "font-monospace text-body-secondary")"
+					 Subtitle="@skill.Description">
+				<Trailing>
+					@if (!skill.IsEnabled)
 					{
-						<div class="small text-body-secondary mt-1">@TruncateText(skill.Description, 120)</div>
+						<span class="small text-body-tertiary flex-shrink-0">Off</span>
 					}
-					<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-						<span class="d-flex align-items-center gap-1">
-							<i class="bi bi-file-text opacity-75"></i>
-							@skill.Content.Length chars
-						</span>
-						<span class="d-flex align-items-center gap-1">
-							<i class="bi bi-calendar-plus opacity-75"></i>
-							@skill.CreatedAt.FormatDateTimeShort()
-						</span>
-						@if (skill.UpdatedAt.HasValue)
+				</Trailing>
+				<ChildContent>
+					@if (!string.IsNullOrWhiteSpace(skill.Description))
+					{
+						<div class="small text-body-secondary">@skill.Description</div>
+					}
+					<dl class="d-flex flex-column gap-2 small mb-0">
+						<div class="d-flex justify-content-between gap-3">
+							<dt class="fw-normal text-body-secondary">Size</dt>
+							<dd class="mb-0">@skill.Content.Length.ToString("N0") characters</dd>
+						</div>
+						<div class="d-flex justify-content-between gap-3">
+							<dt class="fw-normal text-body-secondary">Added</dt>
+							<dd class="mb-0">@skill.CreatedAt.FormatDateTimeShort()</dd>
+						</div>
+						@if (skill.UpdatedAt is { } updatedAt)
 						{
-							<span class="d-flex align-items-center gap-1">
-								<i class="bi bi-pencil opacity-75"></i>
-								@skill.UpdatedAt.Value.FormatDateTimeShort()
-							</span>
+							<div class="d-flex justify-content-between gap-3">
+								<dt class="fw-normal text-body-secondary">Changed</dt>
+								<dd class="mb-0">@updatedAt.FormatDateTimeShort()</dd>
+							</div>
 						}
+					</dl>
+					<div class="form-check form-switch mb-0">
+						<input class="form-check-input" type="checkbox" role="switch" id="@($"skill-enabled-{skill.Id:N}")"
+							   checked="@skill.IsEnabled" @onchange="() => ToggleEnabled(skill)" />
+						<label class="form-check-label" for="@($"skill-enabled-{skill.Id:N}")">Agents can load this skill</label>
 					</div>
-				</div>
-				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-					<ToggleSwitch Value="@skill.IsEnabled" Title="@(skill.IsEnabled ? "Disable" : "Enable")"
-								  Class="me-1" OnChange="() => ToggleEnabled(skill)" />
-					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
-								  OnClick="@(() => EditSkill(skill))" />
-					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
-								  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
-								  OnClick="@(() => ShowDeleteConfirmation(skill))" />
-				</div>
-			</div>
+					<div class="d-flex align-items-center gap-2">
+						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => EditSkill(skill)">Edit</button>
+						<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none px-0 ms-auto" @onclick="() => ShowDeleteConfirmation(skill)">
+							<i class="bi bi-trash me-1"></i>Delete
+						</button>
+					</div>
+				</ChildContent>
+			</ListRow>
 		}
 	</div>
 }
@@ -216,13 +222,6 @@ else
 		{
 			_isLoading = false;
 		}
-	}
-
-	private static string TruncateText(string text, int maxLength)
-	{
-		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-			return text;
-		return text[..maxLength] + "...";
 	}
 
 	private void ShowAddModal()
