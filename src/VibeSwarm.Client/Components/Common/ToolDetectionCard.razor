@@ -1,17 +1,14 @@
 @* Tool Detection Card - Shows status of detected CLI tools with install support *@
 @inject HttpClient Http
 
-<div class="card mt-3">
-	<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between flex-wrap gap-2">
-		<h5 class="mb-0 fw-semibold">
-			<i class="bi bi-tools me-2"></i>Detected Tools
-		</h5>
-		<button type="button" class="btn btn-sm btn-secondary" @onclick="DetectTools" disabled="@(_isLoading || _isInstalling != null)"
-				title="Re-detect tools">
-			<i class="bi bi-arrow-clockwise @(_isLoading ? "spin" : "")"></i>
+<div class="d-flex flex-column gap-2">
+	<div class="d-flex align-items-center gap-3 px-1">
+		<h2 class="text-eyebrow mb-0 me-auto">Tools on this host</h2>
+		<button type="button" class="btn btn-sm btn-link text-decoration-none px-0" @onclick="DetectTools" disabled="@(_isLoading || _isInstalling != null)">
+			<i class="bi bi-arrow-clockwise me-1 @(_isLoading ? "spin" : "")"></i>Check again
 		</button>
 	</div>
-	<div class="card-body">
+	<div class="border rounded-4 p-3">
 		@if (_isLoading)
 		{
 			<div class="d-flex align-items-center gap-2 text-body-secondary">

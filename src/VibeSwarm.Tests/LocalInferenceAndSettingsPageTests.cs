@@ -71,7 +71,7 @@ var output = await renderer.RenderComponentAsync<Settings>();
 return output.ToHtmlString();
 });
 
-	Assert.Contains("App Settings", html);
+	Assert.Contains(">General<", html);
 	Assert.Contains("Timezone", html);
 	Assert.Contains("Enable provider commit attribution", html);
 	Assert.Contains("Idea Prompt Templates", html);
@@ -79,7 +79,7 @@ return output.ToHtmlString();
 	Assert.Contains("Direct idea implementation template", html);
 	Assert.Contains("Critical error logs", html);
 	Assert.Contains("Database", html);
-	Assert.Contains("Developer Mode", html);
+	Assert.Contains("Developer mode", html);
 	Assert.Contains("Rebuild And Restart", html);
 	Assert.DoesNotContain("Add Provider", html);
 	Assert.DoesNotContain("inference provider", html);

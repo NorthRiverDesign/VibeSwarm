@@ -4,94 +4,44 @@
 @using System.Text.Json
 @using System.Text.Json.Serialization
 
-<div class="card mb-3">
-<div class="card-header bg-body-secondary">
-<h5 class="mb-0 fw-semibold">
-<i class="bi bi-hdd-stack me-2"></i>Storage
-</h5>
-</div>
-<div class="card-body">
+<div class="d-flex flex-column gap-2 mb-4">
+<h2 class="text-eyebrow mb-0 px-1">Storage</h2>
 @if (DatabaseSummary == null)
 {
 <LoadingSpinner />
 }
-else if (DatabaseSummary != null)
+else
 {
-<div class="row g-3">
-<div class="col-12 col-lg-4">
-<div class="border rounded-3 p-3 h-100 bg-body-tertiary">
-<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Current Size</div>
-<div class="text-title fw-semibold">@FormatBytes(DatabaseSummary.TotalSizeBytes)</div>
-<div class="small text-body-secondary">@GetDatabaseProviderLabel()</div>
-@if (!string.IsNullOrWhiteSpace(DatabaseSummary.Location))
-{
-<div class="small text-body-secondary font-monospace text-break mt-2">@DatabaseSummary.Location</div>
-}
-</div>
-</div>
-<div class="col-12 col-lg-8">
-<div class="row g-3">
-<div class="col-12 col-sm-6">
-<div class="border rounded-3 p-3 h-100">
-<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Jobs</div>
-<div class="fw-semibold">@DatabaseSummary.JobsCount total</div>
-<div class="small text-body-secondary">@DatabaseSummary.CompletedJobsOlderThanRetentionCount completed older than @DatabaseMaintenanceDefaults.HistoryRetentionDays days</div>
-</div>
-</div>
-<div class="col-12 col-sm-6">
-<div class="border rounded-3 p-3 h-100">
-<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Messages</div>
-<div class="fw-semibold">@DatabaseSummary.JobMessagesCount total</div>
-<div class="small text-body-secondary">Stored session transcript rows</div>
-</div>
-</div>
-<div class="col-12 col-sm-6">
-<div class="border rounded-3 p-3 h-100">
-<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Usage Records</div>
-<div class="fw-semibold">@DatabaseSummary.ProviderUsageRecordsCount total</div>
-<div class="small text-body-secondary">@DatabaseSummary.ProviderUsageRecordsOlderThanRetentionCount older than @DatabaseMaintenanceDefaults.HistoryRetentionDays days</div>
-</div>
-</div>
-<div class="col-12 col-sm-6">
-<div class="border rounded-3 p-3 h-100">
-<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Critical Error Logs</div>
-<div class="fw-semibold">@DatabaseSummary.CriticalErrorLogsCount total</div>
-<div class="small text-body-secondary">Managed by the retention settings on this page</div>
-</div>
-</div>
-</div>
-</div>
-@if (DatabaseSummary.DataFileSizeBytes.HasValue || DatabaseSummary.WalFileSizeBytes.HasValue || DatabaseSummary.SharedMemoryFileSizeBytes.HasValue)
-{
-<div class="col-12">
-<div class="small text-body-secondary d-flex flex-wrap gap-3">
-@if (DatabaseSummary.DataFileSizeBytes.HasValue)
-{
-<span>Data: @FormatBytes(DatabaseSummary.DataFileSizeBytes)</span>
-}
-@if (DatabaseSummary.WalFileSizeBytes.HasValue)
-{
-<span>WAL: @FormatBytes(DatabaseSummary.WalFileSizeBytes)</span>
-}
-@if (DatabaseSummary.SharedMemoryFileSizeBytes.HasValue)
-{
-<span>SHM: @FormatBytes(DatabaseSummary.SharedMemoryFileSizeBytes)</span>
-}
-</div>
+<div class="list-group rounded-4">
+	<div class="list-group-item d-flex flex-column gap-1 py-3">
+		<span class="text-title fw-semibold">@FormatBytes(DatabaseSummary.TotalSizeBytes)</span>
+		<span class="small text-body-secondary">@GetDatabaseProviderLabel()</span>
+		@if (!string.IsNullOrWhiteSpace(DatabaseSummary.Location))
+		{
+			<span class="small text-body-secondary font-monospace text-break">@DatabaseSummary.Location</span>
+		}
+		@if (GetFileSizeParts() is { Count: > 0 } fileParts)
+		{
+			<span class="small text-body-tertiary">@string.Join(" · ", fileParts)</span>
+		}
+	</div>
+	@foreach (var (label, count, note) in GetStorageRows())
+	{
+		<div class="list-group-item d-flex align-items-center gap-3">
+			<span class="flex-grow-1 min-width-0">
+				<span class="d-block">@label</span>
+				<span class="d-block small text-body-secondary">@note</span>
+			</span>
+			<span class="text-body-secondary flex-shrink-0">@count.ToString("N0")</span>
+		</div>
+	}
 </div>
 }
-</div>
-}
-</div>
 </div>
 
-<div class="card mb-3">
-<div class="card-header bg-body-secondary">
-<h5 class="mb-0 fw-semibold">
-<i class="bi bi-arrow-left-right me-2"></i>Migration
-</h5>
-</div>
-<div class="card-body d-flex flex-column gap-3">
+<div class="d-flex flex-column gap-2 mb-4">
+<h2 class="text-eyebrow mb-0 px-1">Migration</h2>
+<div class="border rounded-4 p-3 d-flex flex-column gap-3">
 @if (_databaseMigrationResult != null)
 {
 <Alert Type="Alert.AlertType.Info" Class="mb-0">
@@ -199,13 +149,9 @@ disabled="@_isLoadingDatabaseConfiguration">
 </div>
 </div>
 
-<div class="card mb-3">
-<div class="card-header bg-body-secondary">
-<h5 class="mb-0 fw-semibold">
-<i class="bi bi-trash3 me-2"></i>Cleanup
-</h5>
-</div>
-<div class="card-body d-flex flex-column gap-3">
+<div class="d-flex flex-column gap-2 mb-4">
+<h2 class="text-eyebrow mb-0 px-1">Cleanup</h2>
+<div class="border rounded-4 p-3 d-flex flex-column gap-3">
 @if (_databaseMaintenanceResult != null)
 {
 <Alert Type="Alert.AlertType.Info" Class="mb-0">
@@ -263,13 +209,9 @@ Size: @FormatBytes(_databaseMaintenanceResult.SizeBeforeBytes) -> @FormatBytes(_
 </div>
 </div>
 
-<div class="card mb-3">
-<div class="card-header bg-body-secondary">
-<h5 class="mb-0 fw-semibold">
-<i class="bi bi-box-arrow-up me-2"></i>Export
-</h5>
-</div>
-<div class="card-body">
+<div class="d-flex flex-column gap-2 mb-4">
+<h2 class="text-eyebrow mb-0 px-1">Export</h2>
+<div class="border rounded-4 p-3">
 <p class="text-body-secondary small mb-3">
 Download a JSON backup of your configuration including projects, ideas, skills, agents,
 and schedules. Provider credentials and job history are not included.
@@ -280,13 +222,9 @@ and schedules. Provider credentials and job history are not included.
 </div>
 </div>
 
-<div class="card">
-<div class="card-header bg-body-secondary">
-<h5 class="mb-0 fw-semibold">
-<i class="bi bi-box-arrow-in-down me-2"></i>Import
-</h5>
-</div>
-<div class="card-body">
+<div class="d-flex flex-column gap-2 mb-4">
+<h2 class="text-eyebrow mb-0 px-1">Import</h2>
+<div class="border rounded-4 p-3">
 <p class="text-body-secondary small mb-3">
 Import a previously exported JSON file. Existing records with the same name will be skipped
 to avoid duplicates. New ideas will be added to existing projects.
@@ -431,6 +369,45 @@ ConfirmText="Migrate" ButtonClass="btn-primary" IsProcessing="@_isMigratingDatab
 OnConfirm="RunDatabaseMigration" />
 
 @code {
+	/// <summary>Row counts worth knowing, each with the note that says what it covers.</summary>
+	private List<(string Label, int Count, string Note)> GetStorageRows()
+	{
+		if (DatabaseSummary == null)
+		{
+			return [];
+		}
+
+		var days = DatabaseMaintenanceDefaults.HistoryRetentionDays;
+		return
+		[
+			("Jobs", DatabaseSummary.JobsCount, $"{DatabaseSummary.CompletedJobsOlderThanRetentionCount:N0} completed more than {days} days ago"),
+			("Messages", DatabaseSummary.JobMessagesCount, "Stored session transcript rows"),
+			("Usage records", DatabaseSummary.ProviderUsageRecordsCount, $"{DatabaseSummary.ProviderUsageRecordsOlderThanRetentionCount:N0} older than {days} days"),
+			("Critical error logs", DatabaseSummary.CriticalErrorLogsCount, "Kept for the retention period set in General")
+		];
+	}
+
+	private List<string> GetFileSizeParts()
+	{
+		var parts = new List<string>();
+		if (DatabaseSummary?.DataFileSizeBytes.HasValue == true)
+		{
+			parts.Add($"Data {FormatBytes(DatabaseSummary.DataFileSizeBytes)}");
+		}
+
+		if (DatabaseSummary?.WalFileSizeBytes.HasValue == true)
+		{
+			parts.Add($"WAL {FormatBytes(DatabaseSummary.WalFileSizeBytes)}");
+		}
+
+		if (DatabaseSummary?.SharedMemoryFileSizeBytes.HasValue == true)
+		{
+			parts.Add($"SHM {FormatBytes(DatabaseSummary.SharedMemoryFileSizeBytes)}");
+		}
+
+		return parts;
+	}
+
 	private static readonly JsonSerializerOptions ImportJsonOptions = new()
 	{
 		PropertyNameCaseInsensitive = true,

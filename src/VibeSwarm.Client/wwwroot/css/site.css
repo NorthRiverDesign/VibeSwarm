@@ -1351,7 +1351,15 @@ small, .small {
 
 /* ── Accordion — Bootstrap's subtle palette is keyed to its stock primary,
    so point the active state at this app's accent token instead ── */
+/* Cards round like the grouped lists (rounded-4), so the few left read as the same surface. */
+.card {
+	--bs-card-border-radius: var(--bs-border-radius-xl);
+	--bs-card-inner-border-radius: calc(var(--bs-border-radius-xl) - var(--bs-border-width));
+}
 .accordion {
+	/* Same rounded group as list-group rounded-4, so accordions read as grouped lists. */
+	--bs-accordion-border-radius: var(--bs-border-radius-xl);
+	--bs-accordion-inner-border-radius: calc(var(--bs-border-radius-xl) - var(--bs-border-width));
 	--bs-accordion-bg: transparent;
 	--bs-accordion-btn-bg: transparent;
 	--bs-accordion-active-bg: rgba(var(--bs-primary-rgb), 0.1);
