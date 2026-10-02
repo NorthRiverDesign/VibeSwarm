@@ -314,7 +314,7 @@
                     }
                     else if (!_displayedMessages.Any() && !HasGoalPrompt)
                     {
-                        <div class="empty-state text-center py-5">
+                        <div class="text-center py-5">
                             @if (Status == JobStatus.Completed)
                             {
                                 <i class="bi bi-check-circle opacity-50 d-block mb-2 fs-1"></i>
@@ -519,6 +519,10 @@
     [Parameter]
     public EventCallback<string> OnGoalPromptChanged { get; set; }
 
+    /// <summary>Opens the queued-job editor instead of editing a New job's prompt inline.</summary>
+    [Parameter]
+    public EventCallback OnEditQueuedJob { get; set; }
+
     private const int ToolActivityGroupThreshold = 3;
 
     private string _activeTab = "session";
@@ -693,8 +697,15 @@
         }
     }
 
-    private void StartGoalPromptEdit()
+    private async Task StartGoalPromptEdit()
     {
+        // A queued job can start mid-edit, so it is edited where the queue is visible.
+        if (Status == JobStatus.New && OnEditQueuedJob.HasDelegate)
+        {
+            await OnEditQueuedJob.InvokeAsync();
+            return;
+        }
+
         _editedGoalPrompt = GoalPrompt ?? string.Empty;
         _isEditingGoalPrompt = true;
     }

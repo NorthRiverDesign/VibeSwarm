@@ -30,7 +30,6 @@ public class ProviderUsageService : IProviderUsageService
 			.AsNoTracking()
 			.FirstOrDefaultAsync(p => p.Id == providerId, cancellationToken);
 
-		// Create the usage record
 		var record = new ProviderUsageRecord
 		{
 			ProviderId = providerId,
@@ -39,6 +38,7 @@ public class ProviderUsageService : IProviderUsageService
 			OutputTokens = executionResult.OutputTokens,
 			CostUsd = executionResult.CostUsd,
 			PremiumRequestsConsumed = executionResult.PremiumRequestsConsumed,
+			AiCreditsConsumed = executionResult.AiCreditsConsumed,
 			ModelUsed = executionResult.ModelUsed,
 			RecordedAt = DateTime.UtcNow
 		};
@@ -59,7 +59,6 @@ public class ProviderUsageService : IProviderUsageService
 
 		_context.ProviderUsageRecords.Add(record);
 
-		// Update or create the summary
 		var summary = await _context.ProviderUsageSummaries
 			.FirstOrDefaultAsync(s => s.ProviderId == providerId, cancellationToken);
 
@@ -80,6 +79,7 @@ public class ProviderUsageService : IProviderUsageService
 		summary.TotalOutputTokens += executionResult.OutputTokens ?? 0;
 		summary.TotalCostUsd += executionResult.CostUsd ?? 0;
 		summary.TotalPremiumRequestsConsumed += executionResult.PremiumRequestsConsumed ?? 0;
+		summary.TotalAiCreditsConsumed += executionResult.AiCreditsConsumed ?? 0m;
 
 		if (jobId.HasValue)
 		{
@@ -180,6 +180,11 @@ public class ProviderUsageService : IProviderUsageService
 		if (summary == null)
 			return null;
 
+		// A provider with no upstream quota can never be exhausted, and has no window to
+		// wait for, so it must never raise an exhaustion warning.
+		if (ProviderMetering.IsUnmetered(summary.LimitType))
+			return null;
+
 		// Get the effective max usage (user-configured or detected)
 		var effectiveMax = summary.EffectiveMaxUsage;
 		if (!effectiveMax.HasValue || effectiveMax <= 0)
@@ -250,6 +255,43 @@ public class ProviderUsageService : IProviderUsageService
 		await _context.SaveChangesAsync(cancellationToken);
 
 		_logger.LogInformation("Reset usage period for provider {ProviderId}", providerId);
+	}
+
+	public async Task<ProviderUsageSummary> ApplyDetectedLimitsAsync(
+		Guid providerId,
+		UsageLimits limits,
+		CancellationToken cancellationToken = default)
+	{
+		var provider = await _context.Providers
+			.AsNoTracking()
+			.FirstOrDefaultAsync(p => p.Id == providerId, cancellationToken);
+
+		var summary = await _context.ProviderUsageSummaries
+			.FirstOrDefaultAsync(s => s.ProviderId == providerId, cancellationToken);
+
+		if (summary == null)
+		{
+			summary = new ProviderUsageSummary
+			{
+				ProviderId = providerId,
+				PeriodStart = DateTime.UtcNow
+			};
+			_context.ProviderUsageSummaries.Add(summary);
+		}
+
+		summary.ConfiguredMaxUsage = provider?.ConfiguredUsageLimit;
+		summary.LimitWindows = BuildWindowsFromSnapshot(limits);
+		ApplyLimitSnapshot(summary, limits);
+		summary.LastUpdatedAt = DateTime.UtcNow;
+
+		await _context.SaveChangesAsync(cancellationToken);
+
+		_logger.LogInformation(
+			"Refreshed usage limits for provider {ProviderId}: {WindowCount} window(s)",
+			providerId,
+			summary.LimitWindows.Count);
+
+		return summary;
 	}
 
 	private void ApplyLimitSnapshot(ProviderUsageSummary summary, UsageLimits limits)

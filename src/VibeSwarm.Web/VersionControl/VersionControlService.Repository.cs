@@ -26,7 +26,6 @@ public sealed partial class VersionControlService
 				return GitOperationResult.Failed("Target directory cannot be empty.");
 			}
 
-			// Check if git is available
 			var gitAvailable = await IsGitAvailableAsync(cancellationToken);
 			if (!gitAvailable)
 			{
@@ -66,7 +65,6 @@ public sealed partial class VersionControlService
 			// Add progress flag for better feedback
 			cloneArgs.Append(" --progress");
 
-			// Add the repository URL and target directory
 			cloneArgs.Append($" \"{repositoryUrl}\" \"{targetDirectory}\"");
 
 			// Use the parent directory as working directory since target doesn't exist yet

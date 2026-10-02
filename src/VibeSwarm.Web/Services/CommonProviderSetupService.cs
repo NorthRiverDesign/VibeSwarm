@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
-using GitHub.Copilot.SDK;
+using GitHub.Copilot;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
@@ -427,19 +427,17 @@ public class CommonProviderSetupService(
 		{
 			var options = new CopilotClientOptions
 			{
-				AutoStart = true,
-				UseStdio = true,
-				LogLevel = "error",
-				UseLoggedInUser = true
+				LogLevel = CopilotLogLevel.Error,
+				UseLoggedInUser = true,
+				Connection = CopilotSdkProvider.BuildRuntimeConnection(executablePath)
 			};
 
-			if (!string.IsNullOrWhiteSpace(executablePath))
-			{
-				options.CliPath = executablePath;
-			}
+			// The page waits on this probe, so a CLI that never answers must not hang it.
+			using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+			timeout.CancelAfter(TimeSpan.FromSeconds(15));
 
 			await using var client = new CopilotClient(options);
-			var authStatus = await client.GetAuthStatusAsync(cancellationToken);
+			var authStatus = await client.GetAuthStatusAsync(timeout.Token);
 			if (authStatus is null || !authStatus.IsAuthenticated)
 			{
 				return null;
@@ -485,16 +483,21 @@ public class CommonProviderSetupService(
 
 		try
 		{
+			// Copilot CLI 1.x writes "//" header comments and camelCase keys; older builds wrote plain
+			// JSON with snake_case keys. Accept both.
 			using var stream = File.OpenRead(configPath);
-			using var document = JsonDocument.Parse(stream);
+			using var document = JsonDocument.Parse(stream, new JsonDocumentOptions
+			{
+				CommentHandling = JsonCommentHandling.Skip,
+				AllowTrailingCommas = true
+			});
 			if (document.RootElement.ValueKind != JsonValueKind.Object)
 			{
 				return false;
 			}
 
-			return HasNonEmptyObjectOrArray(document.RootElement, "last_logged_in_user") ||
-				HasNonEmptyObjectOrArray(document.RootElement, "logged_in_users") ||
-				HasNonEmptyObjectOrArray(document.RootElement, "copilot_tokens");
+			string[] loginProperties = ["lastLoggedInUser", "loggedInUsers", "last_logged_in_user", "logged_in_users", "copilot_tokens"];
+			return loginProperties.Any(propertyName => HasNonEmptyObjectOrArray(document.RootElement, propertyName));
 		}
 		catch
 		{
@@ -551,72 +554,6 @@ public class CommonProviderSetupService(
 		catch
 		{
 			return false;
-		}
-	}
-
-	private static string? NormalizeVersion(string? output)
-	{
-		if (string.IsNullOrWhiteSpace(output))
-		{
-			return null;
-		}
-
-		var firstLine = output
-			.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-			.FirstOrDefault();
-
-		return string.IsNullOrWhiteSpace(firstLine) ? null : firstLine;
-	}
-
-	private static async Task<ProcessResult> RunExecutableAsync(string fileName, string arguments, CancellationToken cancellationToken)
-	{
-		try
-		{
-			using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-			using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-			var startInfo = new ProcessStartInfo
-			{
-				FileName = fileName,
-				Arguments = arguments
-			};
-
-			PlatformHelper.ConfigureForCrossPlatform(startInfo);
-
-			using var process = new Process { StartInfo = startInfo };
-			process.Start();
-
-			var outputTask = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
-			var errorTask = process.StandardError.ReadToEndAsync(CancellationToken.None);
-
-			try
-			{
-				await process.WaitForExitAsync(linkedCts.Token);
-			}
-			catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
-			{
-				try
-				{
-					process.Kill(entireProcessTree: true);
-				}
-				catch
-				{
-					// Ignore best-effort cleanup failures.
-				}
-
-				return new ProcessResult(false, null, "Timed out while detecting the installed CLI version.");
-			}
-
-			var output = await outputTask;
-			var error = await errorTask;
-
-			return process.ExitCode == 0
-				? new ProcessResult(true, output, null)
-				: new ProcessResult(false, output, string.IsNullOrWhiteSpace(error) ? output : error);
-		}
-		catch (Exception ex)
-		{
-			return new ProcessResult(false, null, ex.Message);
 		}
 	}
 

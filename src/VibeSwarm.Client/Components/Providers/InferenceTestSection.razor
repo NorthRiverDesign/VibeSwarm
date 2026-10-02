@@ -3,11 +3,9 @@
 @inject NotificationService NotificationService
 @inject IJSRuntime JSRuntime
 
-<div class="border-top pt-3 mt-3">
+<div>
 	<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-		<h6 class="fw-semibold mb-0">
-			<i class="bi bi-chat-square-dots me-2"></i>Test Inference
-		</h6>
+		<h3 class="text-eyebrow mb-0">Try a prompt</h3>
 		@if (!Provider.IsEnabled)
 		{
 			<span class="badge bg-warning-subtle text-warning-emphasis">Enable to test</span>
@@ -17,23 +15,28 @@
 	<div class="row g-3 mb-3">
 		<div class="col-12 col-lg-4">
 			<label for="@GetModelInputId()" class="form-label">Model</label>
-			<select id="@GetModelInputId()"
-					class="form-select"
-					value="@_selectedModelId"
-					@onchange="HandleModelChanged"
-					disabled="@(!Provider.IsEnabled || _isLoadingModels || _testModels.Count == 0)">
-				<option value="">@(_isLoadingModels ? "Loading..." : "Use provider default model")</option>
-				@foreach (var model in _testModels)
-				{
-					<option value="@model.ModelId">
-						@(model.DisplayName ?? model.ModelId)
-						@if (model.IsDefault)
-						{
-							@(" (Default)")
-						}
-					</option>
-				}
-			</select>
+			<div class="input-group">
+				<select id="@GetModelInputId()"
+						class="form-select"
+						value="@_selectedModelId"
+						@onchange="HandleModelChanged"
+						disabled="@(!Provider.IsEnabled || _isLoadingModels || _testModels.Count == 0)">
+					<option value="">@(_isLoadingModels ? "Loading..." : "Use provider default model")</option>
+					@foreach (var model in _testModels)
+					{
+						<option value="@model.ModelId">
+							@(model.DisplayName ?? model.ModelId)
+							@if (model.IsDefault)
+							{
+								@(" (Default)")
+							}
+						</option>
+					}
+				</select>
+				<ModelRefreshButton ProviderId="@Provider.Id" IsInference="true" ProviderName="@Provider.Name"
+									Disabled="@(!Provider.IsEnabled || _isLoadingModels)"
+									OnInferenceRefreshed="HandleModelsRefreshed" />
+			</div>
 			<div class="form-text">@GetTestModelHelpText()</div>
 		</div>
 		<div class="col-12 col-lg-8">
@@ -160,6 +163,20 @@
 		finally
 		{
 			_isLoadingModels = false;
+		}
+	}
+
+	private void HandleModelsRefreshed(List<InferenceModel> models)
+	{
+		_testModels.Clear();
+		_testModels.AddRange(models
+			.Where(model => model.IsAvailable)
+			.OrderByDescending(model => model.IsDefault)
+			.ThenBy(model => model.DisplayName ?? model.ModelId));
+
+		if (_testModels.All(model => model.ModelId != _selectedModelId))
+		{
+			_selectedModelId = string.Empty;
 		}
 	}
 

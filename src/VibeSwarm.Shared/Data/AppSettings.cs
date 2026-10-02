@@ -70,6 +70,20 @@ public class AppSettings
 	public string? ApprovedIdeaImplementationPromptTemplate { get; set; }
 
 	/// <summary>
+	/// When set, the worker starts no further jobs. Running jobs are unaffected unless the
+	/// caller also cancels them. This is the stop switch for unattended operation: one
+	/// flag, checked on every dispatch, that survives a restart.
+	/// </summary>
+	public bool JobQueuePaused { get; set; }
+
+	/// <summary>Why the queue was paused, shown wherever the paused state is surfaced.</summary>
+	[StringLength(ValidationLimits.JobQueuePausedReasonMaxLength)]
+	public string? JobQueuePausedReason { get; set; }
+
+	/// <summary>When the queue was paused.</summary>
+	public DateTime? JobQueuePausedAt { get; set; }
+
+	/// <summary>
 	/// Optional GitHub personal access token used when querying the skills marketplace.
 	/// Anonymous requests are limited to 60/hour; an unscoped read-only token raises that
 	/// to 5000/hour. The token is only used for outbound requests to <c>api.github.com</c>

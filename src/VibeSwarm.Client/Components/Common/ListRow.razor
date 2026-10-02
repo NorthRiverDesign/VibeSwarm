@@ -1,0 +1,122 @@
+@* One row of a grouped list (`list-group rounded-4`): an icon, a title, one quiet second line and an
+   optional trailing status. With ChildContent the row opens in place to show it; with Href or
+   OnClick instead it acts as a link or a plain tappable row. Pass AttentionLine to replace the second line when
+   something needs looking at. *@
+
+@if (!string.IsNullOrEmpty(Href) && ChildContent == null)
+{
+	<a href="@Href" class="list-group-item list-group-item-action d-flex align-items-center gap-3 @Class">
+		@Body
+		<i class="bi bi-chevron-right text-body-tertiary flex-shrink-0"></i>
+	</a>
+}
+else if (ChildContent != null || OnClick.HasDelegate)
+{
+	<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-3 @Class"
+			@onclick="HandleClick" aria-expanded="@(ChildContent != null ? (_isExpanded ? "true" : "false") : null)">
+		@Body
+		@if (ChildContent != null)
+		{
+			<i class="bi @(_isExpanded ? "bi-chevron-up" : "bi-chevron-down") text-body-tertiary flex-shrink-0"></i>
+		}
+		else
+		{
+			<i class="bi bi-chevron-right text-body-tertiary flex-shrink-0"></i>
+		}
+	</button>
+	@if (ChildContent != null && _isExpanded)
+	{
+		<div class="list-group-item d-flex flex-column gap-3 py-3">
+			@ChildContent
+		</div>
+	}
+}
+else
+{
+	<div class="list-group-item d-flex align-items-center gap-3 @Class">
+		@Body
+	</div>
+}
+
+@code {
+	[Parameter]
+	public string? Icon { get; set; }
+
+	/// <summary>Colors the icon; defaults to the accent, pass text-body-tertiary for something switched off.</summary>
+	[Parameter]
+	public string IconClass { get; set; } = "text-primary";
+
+	[Parameter, EditorRequired]
+	public string Title { get; set; } = string.Empty;
+
+	[Parameter]
+	public string? TitleClass { get; set; }
+
+	/// <summary>A small mark after the title, such as a default star.</summary>
+	[Parameter]
+	public RenderFragment? TitleAdornment { get; set; }
+
+	[Parameter]
+	public string? Subtitle { get; set; }
+
+	/// <summary>Shown in place of the subtitle, in the warning color, while something needs doing.</summary>
+	[Parameter]
+	public string? AttentionLine { get; set; }
+
+	/// <summary>Short status text or a control at the end of the row.</summary>
+	[Parameter]
+	public RenderFragment? Trailing { get; set; }
+
+	[Parameter]
+	public RenderFragment? ChildContent { get; set; }
+
+	[Parameter]
+	public EventCallback OnClick { get; set; }
+
+	/// <summary>Makes the row a link to this address.</summary>
+	[Parameter]
+	public string? Href { get; set; }
+
+	[Parameter]
+	public bool InitiallyExpanded { get; set; }
+
+	[Parameter]
+	public string? Class { get; set; }
+
+	private bool _isExpanded;
+
+	protected override void OnInitialized() => _isExpanded = InitiallyExpanded;
+
+	private async Task HandleClick()
+	{
+		if (ChildContent != null)
+		{
+			_isExpanded = !_isExpanded;
+		}
+
+		await OnClick.InvokeAsync();
+	}
+
+	private RenderFragment Body => __builder =>
+	{
+		@if (!string.IsNullOrEmpty(Icon))
+		{
+			<i class="bi bi-@Icon flex-shrink-0 @IconClass"></i>
+		}
+		<span class="flex-grow-1 min-width-0 text-start">
+			<span class="d-flex align-items-center gap-2 min-width-0">
+				<span class="fw-medium text-truncate @TitleClass">@Title</span>
+				@TitleAdornment
+			</span>
+			@if (!string.IsNullOrWhiteSpace(AttentionLine))
+			{
+				<span class="d-block small text-warning-emphasis text-truncate">@AttentionLine</span>
+			}
+			else if (!string.IsNullOrWhiteSpace(Subtitle))
+			{
+				<span class="d-block small text-body-secondary text-truncate">@Subtitle</span>
+			}
+		</span>
+		@Trailing
+	};
+}

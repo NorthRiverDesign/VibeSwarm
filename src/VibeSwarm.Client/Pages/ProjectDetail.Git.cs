@@ -969,16 +969,6 @@ public partial class ProjectDetail
 
 
 
-    private static string ShortCommitHash(string? commitHash)
-    {
-        if (string.IsNullOrWhiteSpace(commitHash))
-        {
-            return "unknown commit";
-        }
-
-        return commitHash[..Math.Min(7, commitHash.Length)];
-    }
-
     private static List<DiffFile> BuildPlaceholderDiffFiles(IReadOnlyList<string> changedFiles)
     {
         return changedFiles
@@ -996,14 +986,6 @@ public partial class ProjectDetail
     private static List<DiffFile> ParseGitDiff(string diffOutput)
     {
         return GitDiffParser.ParseDiff(diffOutput);
-    }
-
-    private static string FormatDiffContent(string diffContent)
-    {
-        if (string.IsNullOrWhiteSpace(diffContent))
-            return "<span class=\"text-muted\">No changes</span>";
-
-        return GitDiffParser.FormatDiffHtml(diffContent);
     }
 
     private List<Job> GetPendingCommitAttributionJobs()

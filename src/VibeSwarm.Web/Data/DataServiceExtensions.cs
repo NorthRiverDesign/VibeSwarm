@@ -15,10 +15,6 @@ public static class DataServiceExtensions
 		["sqlite"] = "sqlite",
 		["mysql"] = "mysql",
 		["mariadb"] = "mysql",
-		["postgres"] = "postgresql",
-		["postgresql"] = "postgresql",
-		["sqlserver"] = "sqlserver",
-		["mssql"] = "sqlserver",
 	};
 
     public static IServiceCollection AddVibeSwarmData(
@@ -39,6 +35,8 @@ public static class DataServiceExtensions
 		services.AddScoped<IJobScheduleService, JobScheduleService>();
 		services.AddScoped<IJobTemplateService, JobTemplateService>();
 		services.AddScoped<ISettingsService, SettingsService>();
+		services.AddSingleton<ProjectQueueHolds>();
+		services.AddScoped<IJobQueueControlService, JobQueueControlService>();
 		services.AddScoped<ICriticalErrorLogService, CriticalErrorLogService>();
 		services.AddScoped<ISkillService, SkillService>();
 		services.AddScoped<ISkillStorageService, SkillStorageService>();
@@ -90,12 +88,6 @@ public static class DataServiceExtensions
 			case "mysql":
 				options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
 				break;
-			case "postgresql":
-				options.UseNpgsql(connectionString);
-				break;
-			case "sqlserver":
-				options.UseSqlServer(connectionString);
-				break;
 			default:
 				options.UseSqlite(connectionString);
 				break;
@@ -108,8 +100,38 @@ public static class DataServiceExtensions
 		options.EnableDetailedErrors();
 	}
 
+	/// <summary>
+	/// Creates a context that owns the migration set for the given provider.
+	/// </summary>
+	/// <remarks>
+	/// Migrations are resolved by context type, and each provider has its own set (see
+	/// <see cref="SqliteVibeSwarmDbContext"/>), so <see cref="VibeSwarmDbContext"/> itself
+	/// owns none and calling <c>Database.MigrateAsync()</c> on it would silently do nothing.
+	/// Anything that applies migrations must go through here.
+	///
+	/// The returned context is a <see cref="VibeSwarmDbContext"/>, so callers can also read
+	/// and write through it normally. The caller owns disposal.
+	/// </remarks>
+	public static VibeSwarmDbContext CreateMigrationContext(
+		string connectionString,
+		string databaseProvider = "sqlite")
+	{
+		var canonical = ResolveProviderName(databaseProvider);
+
+		if (canonical == "mysql")
+		{
+			var mySqlOptions = new DbContextOptionsBuilder<MySqlVibeSwarmDbContext>();
+			ConfigureDbContext(mySqlOptions, connectionString, canonical);
+			return new MySqlVibeSwarmDbContext(mySqlOptions.Options);
+		}
+
+		var sqliteOptions = new DbContextOptionsBuilder<SqliteVibeSwarmDbContext>();
+		ConfigureDbContext(sqliteOptions, connectionString, canonical);
+		return new SqliteVibeSwarmDbContext(sqliteOptions.Options);
+	}
+
     /// <summary>
-    /// Resolves a provider alias (e.g. "postgres", "mssql") to its canonical name.
+    /// Resolves a provider alias (e.g. "mariadb") to its canonical name.
     /// Throws if the provider is not recognized.
     /// </summary>
 	public static string ResolveProviderName(string provider)

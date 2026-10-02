@@ -302,6 +302,7 @@ return HasEnabledWebEnvironment(project) || projectMcpConfig?.McpServers.Count >
 		Directory.CreateDirectory(Path.Combine(directoryPath, "tmp"));
 		Directory.CreateDirectory(Path.Combine(directoryPath, "ms-playwright"));
 		Directory.CreateDirectory(Path.Combine(directoryPath, "cache"));
+		Directory.CreateDirectory(Path.Combine(directoryPath, "output"));
 		return directoryPath;
 	}
 
@@ -316,6 +317,9 @@ return HasEnabledWebEnvironment(project) || projectMcpConfig?.McpServers.Count >
 			environmentVariables["TMP"] = temporaryDirectory;
 			environmentVariables["TEMP"] = temporaryDirectory;
 			environmentVariables["XDG_CACHE_HOME"] = Path.Combine(browserArtifactsDirectory, "cache");
+			// Screenshots and snapshots taken without an explicit file name land here instead of
+			// the working tree, where they would be swept into the job's commit.
+			environmentVariables["PLAYWRIGHT_MCP_OUTPUT_DIR"] = Path.Combine(browserArtifactsDirectory, "output");
 		}
 
 		var webEnvironments = project?.Environments

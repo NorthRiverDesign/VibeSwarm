@@ -59,13 +59,34 @@ public sealed class ProviderCliArgsTests
     [Fact]
     public void Claude_WithBareMode_AndSupportedVersion_AddsBareFlag()
     {
-        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        var config = CreateConfig(ProviderType.Claude);
+        config.ApiKey = "sk-ant-test";
+        var provider = new ClaudeProvider(config);
         provider.CachedCliVersion = new Version(2, 1, 81);
         provider.ApplyOptions(new ExecutionOptions { UseBareMode = true });
 
         var args = provider.BuildCliArgs("test", null);
 
         Assert.Contains("--bare", args);
+    }
+
+    [Fact]
+    public void Claude_WithBareMode_AndNoApiKey_OmitsBareFlag()
+    {
+        // --bare never reads the OAuth login, so a subscription-only provider would get
+        // "Not logged in" on every run.
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")))
+        {
+            return;
+        }
+
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 287);
+        provider.ApplyOptions(new ExecutionOptions { UseBareMode = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--bare", args);
     }
 
     [Fact]
@@ -256,6 +277,35 @@ public sealed class ProviderCliArgsTests
         Assert.Equal("high", args[idx + 1]);
     }
 
+    [Theory]
+    [InlineData("medium")]
+    [InlineData("standard")]
+    public void Claude_WithMediumOrLegacyStandardEffort_SendsMedium(string effort)
+    {
+        // The CLI ignores "standard" with a warning and runs at its default effort.
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 287);
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = effort });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--effort");
+        Assert.True(idx >= 0);
+        Assert.Equal("medium", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Claude_SessionSummary_DoesNotPersistIntoTheJobSession()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+
+        var args = provider.BuildSessionSummaryArgs("3f2b1c9e-1111-4222-8333-944445555666");
+
+        Assert.NotNull(args);
+        Assert.Contains("--resume 3f2b1c9e-1111-4222-8333-944445555666", args);
+        Assert.Contains("--no-session-persistence", args);
+    }
+
     [Fact]
     public void Claude_WithMaxReasoningEffort_AddsEffortFlag()
     {
@@ -425,15 +475,39 @@ public sealed class ProviderCliArgsTests
     [Fact]
     public void Claude_AlwaysSetsUnattendedHardeningEnvVars()
     {
-        // DISABLE_UPDATES and CLAUDE_CODE_SUBPROCESS_ENV_SCRUB must be set on every
-        // Claude invocation regardless of options or stall configuration.
+        // DISABLE_UPDATES must be set on every Claude invocation regardless of options
+        // or stall configuration.
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
 
         var env = provider.BaseEnvironmentVariables;
 
         Assert.NotNull(env);
         Assert.Equal("1", env!["DISABLE_UPDATES"]);
-        Assert.Equal("1", env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"]);
+    }
+
+    [Fact]
+    public void Claude_TurnsSubprocessEnvScrubbingOff_SoJobsCanActuallyWriteCode()
+    {
+        // Measured on Claude Code 2.1.277: with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB set, the
+        // CLI prints "Permission mode forced to default" and ignores the bypassPermissions
+        // every unattended job runs with, so the agent can only describe changes. It is
+        // pinned to "0" rather than left unset so an inherited value cannot re-enable it.
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+
+        Assert.Equal("0", provider.BaseEnvironmentVariables!["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"]);
+    }
+
+    [Fact]
+    public void Claude_StillRunsWithBypassPermissions_SoWritesAreNotGated()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.ApplyOptions(new ExecutionOptions { PermissionMode = "bypassPermissions" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--permission-mode");
+        Assert.True(idx >= 0);
+        Assert.Equal("bypassPermissions", args[idx + 1]);
     }
 
     [Fact]
@@ -544,6 +618,73 @@ public sealed class ProviderCliArgsTests
         var idx = args.IndexOf("--resume");
         Assert.True(idx >= 0);
         Assert.Equal("sess-abc", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Copilot_NewSession_WithPreassignedIdAndName_AddsSessionIdAndName()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 91);
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            PreassignedSessionId = "3f2b1c9e-1111-4222-8333-944445555666",
+            SessionName = "Add dark mode"
+        });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Equal("3f2b1c9e-1111-4222-8333-944445555666", args[args.IndexOf("--session-id") + 1]);
+        Assert.Equal("Add dark mode", args[args.IndexOf("--name") + 1]);
+    }
+
+    [Fact]
+    public void Copilot_ResumedSession_OmitsSessionIdAndName()
+    {
+        // Since 1.0.71 the CLI rejects --name alongside an existing session.
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 91);
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            PreassignedSessionId = "3f2b1c9e-1111-4222-8333-944445555666",
+            SessionName = "Add dark mode"
+        });
+
+        var args = provider.BuildCliArgs("test", "sess-abc");
+
+        Assert.Contains("--resume", args);
+        Assert.DoesNotContain("--session-id", args);
+        Assert.DoesNotContain("--name", args);
+    }
+
+    [Theory]
+    [InlineData(1, 0, 34, false, false)]
+    [InlineData(1, 0, 35, false, true)]
+    [InlineData(1, 0, 51, true, true)]
+    public void Copilot_SessionIdAndName_AreVersionGated(int major, int minor, int build, bool expectSessionId, bool expectName)
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(major, minor, build);
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            PreassignedSessionId = "3f2b1c9e-1111-4222-8333-944445555666",
+            SessionName = "Add dark mode"
+        });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Equal(expectSessionId, args.Contains("--session-id"));
+        Assert.Equal(expectName, args.Contains("--name"));
+    }
+
+    [Fact]
+    public void Claude_ResumedSession_OmitsName()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 287);
+        provider.ApplyOptions(new ExecutionOptions { SessionName = "Add dark mode" });
+
+        Assert.Contains("--name", provider.BuildCliArgs("test", null));
+        Assert.DoesNotContain("--name", provider.BuildCliArgs("test", "3f2b1c9e-1111-4222-8333-944445555666"));
     }
 
     [Fact]
@@ -1578,5 +1719,70 @@ public sealed class ProviderCliArgsTests
         var args = provider.BuildRunCommandArgs("test", null);
 
         Assert.Contains("--thinking", args);
+    }
+
+    // ─── Session summary hooks ─────────────────────────────────────────
+    // GetSessionSummaryAsync is shared in CliProviderBase; these cover the per-provider
+    // pieces that used to live in three near-identical copies of the method.
+
+    [Fact]
+    public void Claude_SessionSummaryArgs_ResumesSessionForASingleTurn()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+
+        var args = provider.BuildSessionSummaryArgs("sess-123");
+
+        Assert.NotNull(args);
+        Assert.Contains("--resume sess-123", args);
+        Assert.Contains("--max-turns 1", args);
+        Assert.Contains("commit message", args);
+        Assert.DoesNotContain("--yolo", args);
+    }
+
+    [Fact]
+    public void Copilot_SessionSummaryArgs_ResumesSessionSilently()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+
+        var args = provider.BuildSessionSummaryArgs("sess-123");
+
+        Assert.NotNull(args);
+        Assert.Contains("--resume sess-123", args);
+        Assert.Contains("--yolo", args);
+        Assert.Contains("--silent", args);
+        Assert.DoesNotContain("--max-turns", args);
+    }
+
+    [Fact]
+    public void OpenCode_SessionSummaryArgs_ReadsTheStoredSessionAsJson()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+
+        Assert.Equal("session show sess-123 --format json", provider.BuildSessionSummaryArgs("sess-123"));
+    }
+
+    [Fact]
+    public void Claude_ExtractSessionSummary_TakesAssistantTextFromStreamJson()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        var output = """{"type":"assistant","message":{"content":[{"type":"text","text":"Refactored the parser"}]}}""";
+
+        Assert.Equal("Refactored the parser", provider.ExtractSessionSummary(output));
+    }
+
+    [Fact]
+    public void Copilot_ExtractSessionSummary_TrimsTheRawOutput()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+
+        Assert.Equal("Fixed the build", provider.ExtractSessionSummary("  Fixed the build\n"));
+    }
+
+    [Fact]
+    public void OpenCode_ExtractSessionSummary_ReadsTheSummaryField()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+
+        Assert.Equal("Added a test", provider.ExtractSessionSummary("""{"summary":"Added a test"}"""));
     }
 }

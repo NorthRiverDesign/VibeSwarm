@@ -1,0 +1,265 @@
+using Bunit;
+using VibeSwarm.Client.Components.Providers;
+using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Services;
+
+namespace VibeSwarm.Tests;
+
+public sealed class ProviderConnectionRowTests
+{
+	[Fact]
+	public void CollapsedRow_ShowsOneSummaryLineAndOpensInPlace()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<ProviderConnectionRow>(parameters => parameters
+			.Add(component => component.Provider, CreateProvider()));
+
+		Assert.Contains("aria-expanded=\"false\"", cut.Markup);
+		Assert.DoesNotContain("Test connection", cut.Markup);
+
+		cut.Find("button[aria-expanded]").Click();
+
+		Assert.Contains("aria-expanded=\"true\"", cut.Markup);
+		Assert.Contains("Test connection", cut.Markup);
+		Assert.Contains("aria-label=\"More connection actions\"", cut.Markup);
+		Assert.Contains("Delete", cut.Markup);
+	}
+
+	[Fact]
+	public void DeleteLink_RaisesTheDeleteCallbackSoThePageCanConfirm()
+	{
+		using var context = new BunitContext();
+		var provider = CreateProvider();
+		Provider? deleted = null;
+
+		var cut = RenderExpanded(context, parameters => parameters
+			.Add(component => component.Provider, provider)
+			.Add(component => component.OnDeleteProvider, p => deleted = p));
+
+		cut.FindAll("button")
+			.Single(button => button.TextContent.Trim() == "Delete")
+			.Click();
+
+		Assert.Same(provider, deleted);
+	}
+
+	[Fact]
+	public void FailedConnectionTest_ReplacesTheSummaryLine()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<ProviderConnectionRow>(parameters => parameters
+			.Add(component => component.Provider, CreateProvider())
+			.Add(component => component.TestResult, new ConnectionTestResult { IsConnected = false, ErrorMessage = "copilot: not found" }));
+
+		Assert.Contains("Last connection test failed", cut.Markup);
+	}
+
+	[Fact]
+	public void ModelList_TogglesOpenWithMultipliers()
+	{
+		using var context = new BunitContext();
+
+		var cut = RenderExpanded(context, parameters => parameters
+			.Add(component => component.Provider, CreateProvider())
+			.Add(component => component.Models,
+			[
+				new ProviderModel
+				{
+					Id = Guid.NewGuid(),
+					ProviderId = Guid.NewGuid(),
+					ModelId = "claude-3.7-sonnet",
+					DisplayName = "Claude Sonnet 3.7",
+					IsAvailable = true,
+					PriceMultiplier = 1.5m
+				},
+				new ProviderModel
+				{
+					Id = Guid.NewGuid(),
+					ProviderId = Guid.NewGuid(),
+					ModelId = "claude-haiku",
+					DisplayName = "Claude Haiku",
+					IsDefault = true,
+					IsAvailable = false,
+					PriceMultiplier = 0.5m
+				}
+			]));
+
+		Assert.DoesNotContain("Claude Sonnet 3.7", cut.Markup);
+		Assert.Contains("1 model", cut.Markup);
+
+		cut.FindAll("button")
+			.Single(button => button.TextContent.Contains("1 model", StringComparison.Ordinal))
+			.Click();
+
+		Assert.Contains("Claude Sonnet 3.7", cut.Markup);
+		Assert.Contains("1.5x", cut.Markup);
+		Assert.DoesNotContain("claude-haiku", cut.Markup);
+		Assert.DoesNotContain("0.5x", cut.Markup);
+		Assert.Contains("Claude Haiku is no longer available.", cut.Markup);
+	}
+
+
+	[Fact]
+	public void UsagePanel_OffersTheCheckButtonAndExplainsItselfBeforeAnyDataExists()
+	{
+		using var context = new BunitContext();
+
+		var cut = RenderExpanded(context, parameters => parameters
+			.Add(component => component.Provider, CreateProvider())
+			.Add(component => component.SupportsUsageRefresh, true));
+
+		Assert.Contains("Check usage", cut.Markup);
+		Assert.Contains("No usage recorded yet", cut.Markup);
+	}
+
+	[Fact]
+	public void UsagePanel_IsHiddenWhenTheProviderCannotReportUsage()
+	{
+		using var context = new BunitContext();
+
+		var cut = RenderExpanded(context, parameters => parameters
+			.Add(component => component.Provider, CreateProvider())
+			.Add(component => component.SupportsUsageRefresh, false));
+
+		Assert.DoesNotContain("Check usage", cut.Markup);
+	}
+
+	[Fact]
+	public void UsagePanel_RendersOneMeterPerReportedWindow()
+	{
+		using var context = new BunitContext();
+
+		var cut = RenderExpanded(context, parameters => parameters
+			.Add(component => component.Provider, CreateProvider())
+			.Add(component => component.SupportsUsageRefresh, true)
+			.Add(component => component.UsageSummary, new ProviderUsageSummary
+			{
+				ProviderId = Guid.NewGuid(),
+				LimitType = UsageLimitType.RateLimit,
+				LimitWindows =
+				[
+					new UsageLimitWindow
+					{
+						Label = "Session (5 hours)",
+						Scope = UsageLimitWindowScope.Session,
+						LimitType = UsageLimitType.SessionLimit,
+						CurrentUsage = 10,
+						MaxUsage = 100
+					},
+					new UsageLimitWindow
+					{
+						Label = "Weekly",
+						Scope = UsageLimitWindowScope.Weekly,
+						LimitType = UsageLimitType.RateLimit,
+						CurrentUsage = 34,
+						MaxUsage = 100
+					},
+					new UsageLimitWindow
+					{
+						Label = "Weekly (with overage)",
+						Scope = UsageLimitWindowScope.Weekly,
+						LimitType = UsageLimitType.RateLimit,
+						CurrentUsage = 0,
+						MaxUsage = 100
+					}
+				]
+			}));
+
+		Assert.Equal(3, cut.FindAll(".progress-bar").Count);
+		Assert.Contains("Session (5 hours)", cut.Markup);
+		Assert.Contains("Weekly (with overage)", cut.Markup);
+		Assert.Contains("10%", cut.Markup);
+		Assert.Contains("34%", cut.Markup);
+		// The window carries its own name and the percentage sits beside it, so the
+		// raw "10 / 100" pair is not repeated.
+		Assert.DoesNotContain("10 / 100", cut.Markup);
+	}
+
+	[Fact]
+	public void CheckUsageButton_RaisesTheRefreshCallbackForThisProvider()
+	{
+		using var context = new BunitContext();
+		var provider = CreateProvider();
+		Provider? refreshed = null;
+
+		var cut = RenderExpanded(context, parameters => parameters
+			.Add(component => component.Provider, provider)
+			.Add(component => component.SupportsUsageRefresh, true)
+			.Add(component => component.OnRefreshUsage, p => refreshed = p));
+
+		cut.FindAll("button")
+			.Single(button => button.TextContent.Contains("Check usage", StringComparison.Ordinal))
+			.Click();
+
+		Assert.Same(provider, refreshed);
+	}
+
+	[Fact]
+	public void UsagePanel_ShowsWhyARefreshFailed()
+	{
+		using var context = new BunitContext();
+
+		var cut = RenderExpanded(context, parameters => parameters
+			.Add(component => component.Provider, CreateProvider())
+			.Add(component => component.SupportsUsageRefresh, true)
+			.Add(component => component.UsageRefreshError, "Timed out waiting for the provider to report usage."));
+
+		Assert.Contains("Timed out waiting for the provider to report usage.", cut.Markup);
+	}
+
+	[Fact]
+	public void UnavailableDefaultModel_IsFlaggedCollapsedAndExplainedOpen()
+	{
+		using var context = new BunitContext();
+
+		var cut = RenderExpanded(context, parameters => parameters
+			.Add(component => component.Provider, CreateProvider())
+			.Add(component => component.Models,
+			[
+				new ProviderModel
+				{
+					Id = Guid.NewGuid(),
+					ProviderId = Guid.NewGuid(),
+					ModelId = "claude-sonnet-4.6",
+					DisplayName = "Claude Sonnet 4.6",
+					IsAvailable = true
+				},
+				new ProviderModel
+				{
+					Id = Guid.NewGuid(),
+					ProviderId = Guid.NewGuid(),
+					ModelId = "claude-haiku",
+					DisplayName = "Claude Haiku",
+					IsDefault = true,
+					IsAvailable = false
+				}
+			]));
+
+		Assert.Contains("Claude Haiku is no longer available.", cut.Markup);
+		Assert.Contains("Default model is no longer available", cut.Markup);
+	}
+
+	private static Provider CreateProvider()
+	{
+		return new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude CLI Main",
+			Type = ProviderType.Claude,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true
+		};
+	}
+
+	private static IRenderedComponent<ProviderConnectionRow> RenderExpanded(
+		BunitContext context,
+		Action<ComponentParameterCollectionBuilder<ProviderConnectionRow>> parameters)
+	{
+		var cut = context.Render<ProviderConnectionRow>(parameters);
+		cut.Find("button[aria-expanded]").Click();
+		return cut;
+	}
+}

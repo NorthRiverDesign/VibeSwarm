@@ -110,6 +110,25 @@ public class HttpProviderService : IProviderService
         return await response.ReadJsonOrNullAsync<ProviderUsageSummary>(ct);
     }
 
+    public async Task<UsageRefreshResult> RefreshUsageAsync(Guid id, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.PostAsync($"/api/providers/{id}/usage/refresh", null, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                return new UsageRefreshResult { Success = false, ErrorMessage = "Could not reach the server." };
+            }
+
+            return await response.Content.ReadFromJsonAsync<UsageRefreshResult>(cancellationToken: ct)
+                ?? new UsageRefreshResult { Success = false, ErrorMessage = "Empty response from the server." };
+        }
+        catch (Exception ex)
+        {
+            return new UsageRefreshResult { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
     public async Task<Dictionary<Guid, ProviderUsageSummary>> GetAllUsageSummariesAsync(CancellationToken ct = default)
         => await _http.GetJsonAsync("/api/providers/usage-summaries", new Dictionary<Guid, ProviderUsageSummary>(), ct);
 

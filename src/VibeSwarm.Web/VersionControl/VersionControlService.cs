@@ -155,11 +155,13 @@ public sealed partial class VersionControlService : IVersionControlService
 	{
 		try
 		{
+			// A timed-out status reads as a clean tree, which skips the auto-commit after a job and
+			// the checkpoint before one. Large trees on slow disks need more than a few seconds.
 			var result = await _commandExecutor.ExecuteAsync(
 				"status --porcelain=v1 --untracked-files=all",
 				workingDirectory,
 				cancellationToken,
-				timeoutSeconds: 10);
+				timeoutSeconds: 60);
 
 			if (!result.Success)
 			{

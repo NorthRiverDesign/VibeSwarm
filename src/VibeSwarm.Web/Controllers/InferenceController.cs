@@ -84,6 +84,12 @@ public class InferenceController : ControllerBase
 	public async Task<IActionResult> CheckHealth([FromQuery] string? endpoint, [FromQuery] InferenceProviderType? providerType, CancellationToken ct)
 		=> Ok(await _inferenceService.CheckHealthAsync(endpoint, providerType, ct));
 
+	// POST rather than GET: the body may carry an API key, which must not end up in a query
+	// string, browser history or server access log.
+	[HttpPost("probe")]
+	public async Task<IActionResult> Probe([FromBody] InferenceProbeRequest request, CancellationToken ct)
+		=> Ok(await _inferenceService.ProbeAsync(request, ct));
+
 	[HttpPost("generate")]
 	public async Task<IActionResult> Generate([FromBody] InferenceRequest request, CancellationToken ct)
 		=> Ok(await _inferenceService.GenerateAsync(request, ct));

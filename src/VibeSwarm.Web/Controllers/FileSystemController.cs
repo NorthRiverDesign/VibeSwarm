@@ -23,4 +23,12 @@ public class FileSystemController : ControllerBase
 
     [HttpGet("drives")]
     public async Task<IActionResult> GetDrives() => Ok(await _fileSystemService.GetDrivesAsync());
+
+    [HttpGet("inspect")]
+    public async Task<IActionResult> Inspect([FromQuery] string path)
+        => Ok(await _fileSystemService.InspectWorkspaceAsync(path));
+
+    [HttpGet("scan")]
+    public async Task<IActionResult> Scan([FromQuery] string path)
+        => Ok(await _fileSystemService.ScanWorkspacesAsync(path));
 }

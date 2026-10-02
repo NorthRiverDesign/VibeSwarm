@@ -11,7 +11,6 @@ public static class VersionControlServiceExtensions
 	/// Adds version control services to the service collection.
 	/// </summary>
 	/// <param name="services">The service collection.</param>
-	/// <returns>The service collection for chaining.</returns>
 	public static IServiceCollection AddVersionControlServices(this IServiceCollection services)
 	{
 		services.AddSingleton<IGitCommandExecutor, GitCommandExecutor>();

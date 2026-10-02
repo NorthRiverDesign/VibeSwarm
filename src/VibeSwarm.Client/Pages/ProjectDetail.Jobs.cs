@@ -17,9 +17,6 @@ public partial class ProjectDetail
     private bool _isRefreshingJobs;
 
     // Aggregated data from the paged result (replaces full Jobs list)
-    private int _projectTotalInputTokens;
-    private int _projectTotalOutputTokens;
-    private decimal _projectTotalCost;
     private JobSummary? _activeJobSummary;
 
     private async Task RefreshJobs(bool force = false)
@@ -41,9 +38,6 @@ public partial class ProjectDetail
             JobsTotalCount = result.TotalCount;
             ProjectActiveJobsCount = result.ActiveCount;
             ProjectCompletedJobsCount = result.CompletedCount;
-            _projectTotalInputTokens = result.TotalInputTokens;
-            _projectTotalOutputTokens = result.TotalOutputTokens;
-            _projectTotalCost = result.TotalCostUsd;
             _activeJobSummary = result.ActiveJobSummary;
             _lastJobsRefreshTime = DateTime.UtcNow;
         }
@@ -260,39 +254,27 @@ public partial class ProjectDetail
         return NewJob.ProviderId != Guid.Empty;
     }
 
-    private async Task DeleteJob(Guid jobId)
+    private async Task DeleteSelectedJobs(List<Guid> jobIds)
     {
+        var deleted = 0;
         try
         {
-            await JobService.DeleteAsync(jobId);
-            ClampJobsPageNumber(Math.Max(JobsTotalCount - 1, 0));
-            await RefreshJobs();
-            NotificationService.ShowProjectSuccess(Project?.Name, "Job deleted successfully.");
+            foreach (var jobId in jobIds)
+            {
+                await JobService.DeleteAsync(jobId);
+                deleted++;
+            }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowProjectError(Project?.Name, $"Error deleting job: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error deleting jobs: {ex.Message}");
         }
-    }
 
-    private async Task RetryJob(Guid jobId)
-    {
-        try
+        if (deleted > 0)
         {
-            var success = await JobService.ResetJobWithOptionsAsync(jobId);
-            if (success)
-            {
-                await RefreshJobs();
-                NotificationService.ShowProjectSuccess(Project?.Name, "Job queued for retry.");
-            }
-            else
-            {
-                NotificationService.ShowProjectError(Project?.Name, "Could not retry this job. It may no longer be in a retryable state.");
-            }
-        }
-        catch (Exception ex)
-        {
-            NotificationService.ShowProjectError(Project?.Name, $"Error retrying job: {ex.Message}");
+            ClampJobsPageNumber(Math.Max(JobsTotalCount - deleted, 0));
+            await RefreshJobs(force: true);
+            NotificationService.ShowProjectSuccess(Project?.Name, deleted == 1 ? "Job deleted." : $"Deleted {deleted} jobs.");
         }
     }
 
@@ -952,22 +934,34 @@ public partial class ProjectDetail
         await Task.WhenAll(tasks);
     }
 
-    private int GetProjectTotalInputTokens() => _projectTotalInputTokens;
-    private int GetProjectTotalOutputTokens() => _projectTotalOutputTokens;
-    private decimal GetProjectTotalCost() => _projectTotalCost;
-    private bool HasProjectTokenData() => _projectTotalInputTokens > 0 || _projectTotalOutputTokens > 0 ||
-    _projectTotalCost > 0;
-
-    private static string TruncateForToast(string text, int maxLength = 50)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-            return text;
-        return text[..(maxLength - 3)] + "...";
-    }
 
     private void ShowEditProjectModal()
     {
         _showEditProjectModal = true;
+    }
+
+    private void ShowDeleteProjectModal() => _showDeleteProjectModal = true;
+
+    private async Task DeleteProject()
+    {
+        if (Project == null) return;
+
+        _isDeletingProject = true;
+        try
+        {
+            await ProjectService.DeleteAsync(Project.Id);
+            NotificationService.ShowSuccess($"Deleted {Project.Name}.");
+            NavigationManager.NavigateTo("/projects");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowProjectError(Project.Name, $"Error deleting project: {ex.Message}");
+        }
+        finally
+        {
+            _isDeletingProject = false;
+            _showDeleteProjectModal = false;
+        }
     }
 
     private async Task ToggleProjectActive()
@@ -1004,32 +998,47 @@ public partial class ProjectDetail
         _showEditProjectModal = false;
     }
 
-    private async Task HandleRepositoryCreated(string? gitHubRepository)
+    private bool IsAutoPilotRunning => _autoPilotStatus != null && !AutoPilotPanel.IsTerminal(_autoPilotStatus.Status);
+
+    private string GetAutoPilotSummary()
     {
-        // Reload data after a repository is created (this updates Project.GitHubRepository in UI)
-        await LoadData();
-        await LoadGitInfo();
-        NotificationService.ShowProjectSuccess(Project?.Name, "GitHub repository created and linked successfully!");
+        if (_autoPilotStatus == null)
+            return string.Empty;
+
+        var iterations = _autoPilotStatus.CompletedIterations;
+        return iterations > 0
+            ? $"{_autoPilotStatus.Status} · {iterations} iteration{(iterations == 1 ? "" : "s")} done"
+            : _autoPilotStatus.Status.ToString();
     }
 
-    private async Task StopAllActive()
+    private async Task StopActiveJob()
     {
-        _isStoppingAll = true;
+        if (ActiveJob == null) return;
+
+        _isStoppingActiveJob = true;
         try
         {
-            if (IsIdeasProcessingActive)
-                await StopIdeasProcessing();
-            if (_autoPilotStatus != null && !AutoPilotPanel.IsTerminal(_autoPilotStatus.Status))
-            {
-                try { await AutoPilotService.StopAsync(ProjectId); } catch { }
-                try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { }
-                if (_autoPilotPanel != null)
-                    await _autoPilotPanel.RefreshAsync();
-            }
+            await CancelSelectedJobs([ActiveJob.Id]);
         }
         finally
         {
-            _isStoppingAll = false;
+            _isStoppingActiveJob = false;
+        }
+    }
+
+    private async Task StopAutoPilot()
+    {
+        _isStoppingAutoPilot = true;
+        try
+        {
+            try { await AutoPilotService.StopAsync(ProjectId); } catch { }
+            try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { }
+            if (_autoPilotPanel != null)
+                await _autoPilotPanel.RefreshAsync();
+        }
+        finally
+        {
+            _isStoppingAutoPilot = false;
         }
     }
 }

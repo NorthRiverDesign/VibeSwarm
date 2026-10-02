@@ -1,37 +1,36 @@
+@* Users as grouped lists: the people who can sign in, then any switched-off accounts. *@
 
 @if (Users.Count == 0)
 {
 	<EmptyState Icon="people" Title="No users found" Message="Add users to allow access to VibeSwarm." />
 }
-else if (FilteredUsers.Count == 0)
-{
-	<EmptyState Icon="@(ActiveFilter == ActiveFilterValue ? "people" : "pause-circle")"
-				Title="@(ActiveFilter == ActiveFilterValue ? "No active users" : "No inactive users")"
-				Message="@(ActiveFilter == ActiveFilterValue ? "All users are currently inactive." : "All users are currently active.")" />
-}
 else
 {
-	<ul class="list-group list-group-flush border border-top-0 rounded-top-0">
-		@foreach (var user in FilteredUsers)
+	<div class="d-flex flex-column gap-4">
+		@foreach (var (heading, users) in GetGroups())
 		{
-			<UserListItem User="user"
-						  CurrentUserId="CurrentUserId"
-						  OnResetPassword="OnResetPassword"
-						  OnEditRole="OnEditRole"
-						  OnToggleActive="OnToggleActive"
-						  OnDelete="OnDelete" />
+			<section class="d-flex flex-column gap-2" aria-label="@heading">
+				<h2 class="text-eyebrow mb-0 px-1">@heading</h2>
+				<div class="list-group rounded-4">
+					@foreach (var user in users)
+					{
+						<UserRow @key="user.Id"
+								 User="user"
+								 CurrentUserId="CurrentUserId"
+								 OnResetPassword="OnResetPassword"
+								 OnEditRole="OnEditRole"
+								 OnToggleActive="OnToggleActive"
+								 OnDelete="OnDelete" />
+					}
+				</div>
+			</section>
 		}
-	</ul>
+	</div>
 }
 
 @code {
-	private const string ActiveFilterValue = "active";
-
 	[Parameter]
 	public IReadOnlyList<UserDto> Users { get; set; } = [];
-
-	[Parameter]
-	public string ActiveFilter { get; set; } = ActiveFilterValue;
 
 	[Parameter]
 	public Guid CurrentUserId { get; set; }
@@ -48,7 +47,19 @@ else
 	[Parameter]
 	public EventCallback<UserDto> OnDelete { get; set; }
 
-	private IReadOnlyList<UserDto> FilteredUsers => ActiveFilter == ActiveFilterValue
-		? Users.Where(user => user.IsActive).ToList()
-		: Users.Where(user => !user.IsActive).ToList();
+	private IEnumerable<(string Heading, List<UserDto> Users)> GetGroups()
+	{
+		var active = Users.Where(user => user.IsActive).OrderBy(user => user.UserName, StringComparer.OrdinalIgnoreCase).ToList();
+		var inactive = Users.Where(user => !user.IsActive).OrderBy(user => user.UserName, StringComparer.OrdinalIgnoreCase).ToList();
+
+		if (active.Count > 0)
+		{
+			yield return ("Can sign in", active);
+		}
+
+		if (inactive.Count > 0)
+		{
+			yield return ("Switched off", inactive);
+		}
+	}
 }

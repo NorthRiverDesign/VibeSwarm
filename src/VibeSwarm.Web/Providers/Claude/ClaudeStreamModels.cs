@@ -59,11 +59,13 @@ public class ClaudeStreamEvent
 
 	[JsonPropertyName("stop_reason")]
 	public string? StopReason { get; set; }
+
+	// Present on "rate_limit_event" messages, which the CLI emits in stream-json mode
+	// whenever the account's usage windows change.
+	[JsonPropertyName("rate_limit_info")]
+	public ClaudeRateLimitInfo? RateLimitInfo { get; set; }
 }
 
-/// <summary>
-/// Represents a message in Claude's streaming output.
-/// </summary>
 public class ClaudeMessage
 {
 	[JsonPropertyName("id")]
@@ -125,9 +127,6 @@ public class ClaudeContentBlock
 	public bool? IsError { get; set; }
 }
 
-/// <summary>
-/// Token usage information from Claude.
-/// </summary>
 public class ClaudeUsageInfo
 {
 	[JsonPropertyName("input_tokens")]
@@ -141,4 +140,79 @@ public class ClaudeUsageInfo
 
 	[JsonPropertyName("cache_creation_input_tokens")]
 	public int? CacheCreationInputTokens { get; set; }
+}
+
+/// <summary>
+/// Usage limit state reported by a "rate_limit_event" stream message.
+/// </summary>
+/// <remarks>
+/// Verified against Claude Code 2.1.276. Unlike the human-readable warnings on stderr,
+/// this payload is structured and arrives during a normal headless run, so it is the
+/// preferred source of limit data.
+/// </remarks>
+public class ClaudeRateLimitInfo
+{
+	/// <summary>
+	/// Overall state, e.g. "allowed" or "allowed_warning". Values that do not begin with
+	/// "allowed" are treated as the limit having been hit.
+	/// </summary>
+	[JsonPropertyName("status")]
+	public string? Status { get; set; }
+
+	/// <summary>
+	/// Which limit is currently binding, e.g. "overage".
+	/// </summary>
+	[JsonPropertyName("rateLimitType")]
+	public string? RateLimitType { get; set; }
+
+	/// <summary>
+	/// Fraction of the binding limit consumed, from 0 to 1 (and above 1 once exceeded).
+	/// </summary>
+	[JsonPropertyName("utilization")]
+	public double? Utilization { get; set; }
+
+	/// <summary>
+	/// Unix epoch seconds when the binding limit resets.
+	/// </summary>
+	[JsonPropertyName("resetsAt")]
+	public long? ResetsAt { get; set; }
+
+	/// <summary>
+	/// Whether the account is currently drawing on paid overage.
+	/// </summary>
+	[JsonPropertyName("isUsingOverage")]
+	public bool? IsUsingOverage { get; set; }
+
+	/// <summary>
+	/// Utilization fraction at which the CLI started warning.
+	/// </summary>
+	[JsonPropertyName("surpassedThreshold")]
+	public double? SurpassedThreshold { get; set; }
+
+	/// <summary>
+	/// The subscription's rolling windows, keyed by the CLI's own window name.
+	/// </summary>
+	/// <remarks>
+	/// Deliberately a dictionary rather than fixed properties. The set is not stable:
+	/// a Haiku run reports only <c>five_hour</c> and <c>seven_day</c>, while a Fable run
+	/// on the same account also reports <c>seven_day_overage_included</c>. Binding named
+	/// properties silently drops whatever Anthropic adds next.
+	/// </remarks>
+	[JsonPropertyName("unifiedWindows")]
+	public Dictionary<string, ClaudeRateLimitWindow>? UnifiedWindows { get; set; }
+}
+
+public class ClaudeRateLimitWindow
+{
+	/// <summary>
+	/// Fraction of the window consumed, from 0 to 1.
+	/// </summary>
+	[JsonPropertyName("utilization")]
+	public double? Utilization { get; set; }
+
+	/// <summary>
+	/// Unix epoch seconds when the window resets.
+	/// </summary>
+	[JsonPropertyName("resetsAt")]
+	public long? ResetsAt { get; set; }
 }

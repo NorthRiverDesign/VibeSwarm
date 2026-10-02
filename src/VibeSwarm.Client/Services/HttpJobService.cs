@@ -193,6 +193,9 @@ public class HttpJobService : IJobService
     public Task RefreshExecutionPlanAsync(Guid id, CancellationToken ct = default)
         => Task.CompletedTask; // Execution plan refresh is server-side only
 
+    public Task<bool> TryFailOverToNextExecutionTargetAsync(Guid id, string? reason, CancellationToken ct = default)
+        => Task.FromResult(false); // The worker decides when a job moves to another provider
+
     public async Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken ct = default)
     {
         var response = await _http.PostAsync($"/api/jobs/project/{projectId}/cancel-all", null, ct);

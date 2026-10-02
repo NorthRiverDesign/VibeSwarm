@@ -1,6 +1,5 @@
 using System.Text;
 using VibeSwarm.Shared.Data;
-using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Services;
@@ -189,7 +188,7 @@ public static class PromptBuilder
 
 			if (job.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
 			{
-				sb.AppendLine("  Deliver changes through a pull request instead of leaving them only on the working branch.");
+				sb.AppendLine("  VibeSwarm opens a pull request for your changes after you finish. Do not open one yourself.");
 			}
 
 			sb.AppendLine("  Only modify files directly related to the task.");
@@ -321,20 +320,10 @@ public static class PromptBuilder
 			]);
 	}
 
-	public static string? BuildIdeaSystemPromptRules(
-		Project? project,
-		bool injectEfficiencyRules = true,
-		bool injectRepoMap = true)
-	{
-		return BuildSystemPromptRules(project, injectEfficiencyRules, injectRepoMap, providerType: null);
-	}
-
 	public static string? BuildSystemPromptRules(
 		Project? project,
 		bool injectEfficiencyRules = true,
-		bool injectRepoMap = true,
-		ProviderType? providerType = null,
-		bool enableCommitAttribution = true)
+		bool injectRepoMap = true)
 	{
 		if (project == null)
 		{
@@ -369,18 +358,28 @@ public static class PromptBuilder
 			}
 
 			sb.AppendLine("- If the build or tests fail, fix them before finishing.");
-			sb.AppendLine("- Do not leave the repository in a broken state.");
-
-			var commitAttributionRules = CommitAttributionHelper.BuildPromptRules(providerType, enableCommitAttribution);
-			if (commitAttributionRules.Count > 0)
-			{
-				sb.AppendLine();
-				sb.AppendLine("COMMIT ATTRIBUTION:");
-				foreach (var rule in commitAttributionRules)
-				{
-					sb.AppendLine($"- {rule}");
-				}
-			}
+			sb.AppendLine("- Do not leave the repository in a broken state. The next queued job starts from it.");
+			// Installing dependencies rewrites lockfiles when the local tool version differs
+			// from the one that wrote them, and everything in the tree gets committed. That
+			// churn lands in every commit and reverses itself on the next machine.
+			sb.AppendLine("- Install dependencies without rewriting lockfiles (npm ci, not npm install; composer install, not update).");
+			sb.AppendLine("- Leave lockfiles alone unless the task changes dependencies. If a build rewrote one as a side effect, restore it before finishing.");
+			sb.AppendLine();
+			// Jobs run one after another from a queue, unattended. VibeSwarm owns git: it
+			// resets the checkout before each job and commits the working tree after it,
+			// with its own attribution settings, so agent commits only get in the way.
+			sb.AppendLine("COMPLETING THE JOB:");
+			sb.AppendLine("- This job runs unattended in a queue. Do not stop to ask questions or wait for confirmation; a question pauses the queue until someone answers. Make the reasonable call and keep going.");
+			sb.AppendLine("- The deliverable is a code change. A run that leaves the working tree unchanged is recorded as failed.");
+			sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. VibeSwarm delivers your working-tree changes after you exit.");
+			sb.AppendLine("- End with a short summary: what changed, how you verified it, any assumptions you made, and anything left undone.");
+			sb.AppendLine("- Make the last line of your response the commit subject VibeSwarm will use, in this exact format: <commit-summary>A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)</commit-summary>");
+			sb.AppendLine();
+			sb.AppendLine("SESSION ARTIFACTS:");
+			sb.AppendLine("- Commits are for project code. Anything you leave in the working tree may be committed with your change.");
+			sb.AppendLine("- Write screenshots, browser traces, test logs and reports, scratch scripts and temp files outside the repository (for example under /tmp) or under .vibeswarm/, which git ignores.");
+			sb.AppendLine("- If a tool can only write inside the repository, delete its output before finishing or list the path in .git/info/exclude, not .gitignore.");
+			sb.AppendLine("- Do not add agent instruction, plan or memory files (such as CLAUDE.md, AGENTS.md or notes) unless the task asks for them. Keep durable notes in the project memory file when one is provided.");
 		}
 
 		var enabledEnvironments = project.Environments
@@ -713,7 +712,7 @@ public static class PromptBuilder
 	/// <summary>
 	/// Builds a role-specific system prompt context block that is prepended to the agent's
 	/// append-system-prompt when the job is part of a team swarm. This establishes the agent's
-	/// persona, responsibilities, and coordination guidelines for parallel execution.
+	/// persona, responsibilities, and coordination guidelines for taking turns on one checkout.
 	/// </summary>
 	public static string BuildRoleSystemPromptContext(Agent role, int totalSwarmSize)
 	{
@@ -747,10 +746,10 @@ public static class PromptBuilder
 		if (totalSwarmSize > 1)
 		{
 			sb.AppendLine();
-			sb.AppendLine($"You are one of {totalSwarmSize} specialized agents working in parallel on the same repository.");
+			sb.AppendLine($"You are one of {totalSwarmSize} specialized agents taking turns on the same repository; the others run before or after you, never at the same time.");
 			sb.AppendLine("Each agent focuses exclusively on their designated area of responsibility.");
 			sb.AppendLine("Limit your changes to your area of expertise and avoid modifying files clearly owned by other roles.");
-			sb.AppendLine("Make small, focused, atomic commits so that parallel work integrates cleanly.");
+			sb.AppendLine("Keep your changes small and focused, and build on what earlier agents left in the repository rather than redoing or reverting it.");
 		}
 
 		return sb.ToString().TrimEnd();

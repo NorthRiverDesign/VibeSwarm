@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
+using VibeSwarm.Client.Components.Common;
 using VibeSwarm.Client.Components.Projects;
 using VibeSwarm.Client.Models;
 using VibeSwarm.Client.Services;
@@ -17,6 +18,9 @@ namespace VibeSwarm.Tests;
 
 public sealed class ProjectModalTests
 {
+	/// <summary>The workspace inspection debounces, so waits need headroom on a loaded runner.</summary>
+	private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(10);
+
 [Fact]
 public async Task RenderedProjectModal_UsesProjectBodyClassAndRendersRefactoredSections()
 {
@@ -35,6 +39,7 @@ services.AddSingleton<IProviderService>(new FakeProviderService(provider));
 	services.AddSingleton<IAgentService>(new FakeAgentService([]));
 services.AddSingleton<ISettingsService>(new FakeSettingsService());
 services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService([]));
+services.AddSingleton<IFileSystemService>(new FakeWorkspaceFileSystemService());
 services.AddSingleton<NotificationService>();
 services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
@@ -54,16 +59,16 @@ return output.ToHtmlString();
 Assert.Contains("vs-project-modal-body", html);
 Assert.Contains("vs-modal-dialog-wide-lg", html);
 Assert.Contains("modal-lg", html);
-Assert.Contains("Project Details", html);
-Assert.Contains("Workspace", html);
-Assert.Contains("Project Source", html);
-Assert.Contains("Job Behavior", html);
-Assert.Contains("Planning", html);
-Assert.Contains("Job Execution", html);
-Assert.Contains("Instructions &amp; Memory", html);
-Assert.Contains("Default Job Model", html);
-Assert.Contains("Agents", html);
-Assert.Contains("Build Verification", html);
+// Essentials render up front; everything else lives in collapsed accordion sections.
+Assert.Contains("Start from", html);
+Assert.Contains("Working folder", html);
+Assert.Contains("Project name", html);
+Assert.Contains("accordion-item", html);
+Assert.Contains("When a job finishes", html);
+Assert.Contains("Providers and agents", html);
+Assert.Contains("Ideas and planning", html);
+Assert.Contains("Instructions and memory", html);
+Assert.Contains("Build verification", html);
 Assert.Contains("Create Project", html);
 }
 
@@ -75,9 +80,7 @@ public void SubmitCloneModeWithoutOwnerRepository_ShowsValidationMessage()
 var cut = context.Render<ProjectModal>(parameters => parameters
 .Add(component => component.IsVisible, true));
 
-cut.FindAll("button")
-.Single(button => button.TextContent.Contains("Clone Existing GitHub Repository", StringComparison.Ordinal))
-.Click();
+cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
 cut.Find("#modal-githubRepo").Input("sample-project");
 cut.Find("form").Submit();
 
@@ -107,9 +110,7 @@ public void BrowseGitHubRepositories_SelectingRepositoryPopulatesCloneInput()
 	var cut = context.Render<ProjectModal>(parameters => parameters
 		.Add(component => component.IsVisible, true));
 
-	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Clone Existing GitHub Repository", StringComparison.Ordinal))
-		.Click();
+	cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
 	cut.Find("#modal-githubRepoBrowse").Click();
 	cut.FindAll("button")
 		.Single(button => button.TextContent.Contains("octocat/hello-world", StringComparison.Ordinal))
@@ -137,9 +138,7 @@ public void BrowseGitHubRepositories_NullRepositoryListShowsEmptyState()
 	var cut = context.Render<ProjectModal>(parameters => parameters
 		.Add(component => component.IsVisible, true));
 
-	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Clone Existing GitHub Repository", StringComparison.Ordinal))
-		.Click();
+	cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
 	cut.Find("#modal-githubRepoBrowse").Click();
 
 	Assert.Contains("No repositories matched the current filter.", cut.Markup);
@@ -216,7 +215,7 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 			CommitSummaryInferenceModelId = "qwen3"
 		}));
 
-	Assert.Contains("Commit Summary Source", cut.Markup);
+	Assert.Contains("Commit message writer", cut.Markup);
 	Assert.Equal(inferenceProviderId.ToString(), cut.Find("#modal-commitSummaryInferenceProvider").GetAttribute("value"));
 	Assert.Equal("qwen3", cut.Find("#modal-commitSummaryInferenceModel").GetAttribute("value"));
 	}
@@ -299,7 +298,7 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 			.Add(component => component.IsVisible, true));
 
 		cut.Find("#modal-name").Change("  Demo Project  ");
-		cut.Find("#modal-workingPath").Change("/tmp/demo-project");
+		cut.Find("#modal-workingPath").Input("/tmp/demo-project");
 		cut.Find("form").Submit();
 
 		cut.WaitForAssertion(() =>
@@ -307,18 +306,110 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 			var notification = Assert.Single(notificationService.Notifications);
 			Assert.Equal("Demo Project", notification.Title);
 			Assert.Equal(NotificationType.Success, notification.Type);
-		});
+		}, WaitTimeout);
+	}
+
+
+	[Fact]
+	public void InspectingAGitWorkingFolder_FillsInNameRepositoryAndBuildCommands()
+	{
+		var fileSystem = new FakeWorkspaceFileSystemService
+		{
+			Inspection = new WorkspaceInspection
+			{
+				Path = "/srv/code/api",
+				Exists = true,
+				IsGitRepository = true,
+				GitHubRepository = "acme/api",
+				CurrentBranch = "main",
+				SuggestedName = "api",
+				DetectedStack = ".NET",
+				SuggestedBuildCommand = "dotnet build",
+				SuggestedTestCommand = "dotnet test"
+			}
+		};
+
+		using var context = CreateBunitContext(fileSystemService: fileSystem);
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true));
+
+		cut.Find("#modal-workingPath").Input("/srv/code/api");
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Equal("api", cut.Find("#modal-name").GetAttribute("value"));
+			Assert.Contains("Git repository detected", cut.Markup);
+		}, WaitTimeout);
+
+		// Build commands are pre-filled inside the collapsed section, but verification stays opt-in.
+		Assert.Equal("dotnet build", cut.Find("#modal-buildCommand").GetAttribute("value"));
+		Assert.Equal("dotnet test", cut.Find("#modal-testCommand").GetAttribute("value"));
+		Assert.Contains("Detected a <strong>.NET</strong> project", cut.Markup);
+		Assert.False(cut.Find("#modal-buildVerificationEnabled").HasAttribute("checked"));
+	}
+
+	[Fact]
+	public void InspectingAWorkingFolder_DoesNotOverwriteWhatTheUserAlreadyTyped()
+	{
+		var fileSystem = new FakeWorkspaceFileSystemService
+		{
+			Inspection = new WorkspaceInspection
+			{
+				Path = "/srv/code/api",
+				Exists = true,
+				IsGitRepository = true,
+				SuggestedName = "api"
+			}
+		};
+
+		using var context = CreateBunitContext(fileSystemService: fileSystem);
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true));
+
+		cut.Find("#modal-name").Change("My Own Name");
+		cut.Find("#modal-workingPath").Input("/srv/code/api");
+
+		cut.WaitForAssertion(() => Assert.Contains("Git repository detected", cut.Markup), WaitTimeout);
+		Assert.Equal("My Own Name", cut.Find("#modal-name").GetAttribute("value"));
+	}
+
+
+	[Fact]
+	public void SubmittingWithAnErrorInsideACollapsedSection_OpensThatSection()
+	{
+		using var context = CreateBunitContext();
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true));
+
+		cut.Find("#modal-name").Change("Demo");
+		cut.Find("#modal-workingPath").Input("/tmp/demo");
+
+		// Build verification lives in a collapsed section and requires a build command.
+		Assert.DoesNotContain("show", cut.FindAll(".accordion-collapse")
+			.Last().ClassList.ToArray());
+		cut.Find("#modal-buildVerificationEnabled").Change(true);
+		cut.Find("form").Submit();
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Contains("Build command is required when build verification is enabled.", cut.Markup);
+			Assert.Contains("show", cut.FindAll(".accordion-collapse").Last().ClassList.ToArray());
+		}, WaitTimeout);
 	}
 
 private static BunitContext CreateBunitContext(
 	FakeProjectService? projectService = null,
 	IReadOnlyList<Agent>? agents = null,
 	Provider? provider = null,
-	IReadOnlyList<InferenceProvider>? inferenceProviders = null)
+	IReadOnlyList<InferenceProvider>? inferenceProviders = null,
+	IFileSystemService? fileSystemService = null)
 {
 	var context = new BunitContext();
-	context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-	context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+	context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
+	context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
 	context.JSInterop.SetupVoid("vibeSwarmInitTouchDrag", _ => true);
 	context.Services.AddLogging();
 	var resolvedProvider = provider ?? new Provider
@@ -333,53 +424,42 @@ private static BunitContext CreateBunitContext(
 	context.Services.AddSingleton<IAgentService>(new FakeAgentService(agents ?? []));
 	context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 	context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService(inferenceProviders ?? []));
+	context.Services.AddSingleton<IFileSystemService>(fileSystemService ?? new FakeWorkspaceFileSystemService());
 	context.Services.AddSingleton<NotificationService>();
 	return context;
 }
 
-private sealed class FakeProjectService : IProjectService
+private sealed class FakeProjectService : FakeProjectServiceBase
 {
 public GitHubRepositoryBrowserResult RepositoryBrowserResult { get; set; } = new();
 public Project? CreateProjectResult { get; set; }
 public Project? UpdateResult { get; set; }
-public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
-public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
-public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
-public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
-public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default)
+public override Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
+public override Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
+public override Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
+public override Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
+public override Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default)
 	=> Task.FromResult(CreateProjectResult ?? new Project
 	{
 		Id = Guid.NewGuid(),
 		Name = request.Project.Name,
 		WorkingPath = request.Project.WorkingPath
 	});
-public Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default) => Task.FromResult(RepositoryBrowserResult);
-public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => Task.FromResult(UpdateResult ?? project);
-public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
-public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
-public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => Task.FromResult(new DashboardJobMetrics { RangeDays = rangeDays, Buckets = [] });
-public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
+public override Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default) => Task.FromResult(RepositoryBrowserResult);
+public override Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => Task.FromResult(UpdateResult ?? project);
+public override Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
+public override Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
+public override Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => Task.FromResult(new DashboardJobMetrics { RangeDays = rangeDays, Buckets = [] });
+public override Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
 }
 
-private sealed class FakeProviderService(Provider provider) : IProviderService
+private sealed class FakeProviderService(Provider provider) : FakeProviderServiceBase
 {
 private readonly Provider _provider = provider;
-
-public Task<IEnumerable<Provider>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Provider>>([_provider]);
-public Task<Provider?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Provider?>(id == _provider.Id ? _provider : null);
-public Task<Provider?> GetDefaultAsync(CancellationToken cancellationToken = default) => Task.FromResult<Provider?>(_provider);
-public IProvider? CreateInstance(Provider config) => null;
-public Task<Provider> CreateAsync(Provider provider, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<Provider> UpdateAsync(Provider provider, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<bool> TestConnectionAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<ConnectionTestResult> TestConnectionWithDetailsAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task SetDefaultAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<SessionSummary> GetSessionSummaryAsync(Guid providerId, string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default)
+public override Task<IEnumerable<Provider>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Provider>>([_provider]);
+public override Task<Provider?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Provider?>(id == _provider.Id ? _provider : null);
+public override Task<Provider?> GetDefaultAsync(CancellationToken cancellationToken = default) => Task.FromResult<Provider?>(_provider);
+public override Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default)
 => Task.FromResult<IEnumerable<ProviderModel>>(
 [
 new ProviderModel
@@ -391,9 +471,6 @@ IsAvailable = true,
 IsDefault = true
 }
 ]);
-public Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 }
 
 private sealed class FakeSettingsService : ISettingsService
@@ -403,17 +480,13 @@ public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationT
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");
 }
 
-private sealed class FakeAgentService(IReadOnlyList<Agent> agents) : IAgentService
+private sealed class FakeAgentService(IReadOnlyList<Agent> agents) : FakeAgentServiceBase
 {
 	private readonly IReadOnlyList<Agent> _agents = agents;
-
-	public Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents);
-	public Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents.Where(agent => agent.IsEnabled));
-	public Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_agents.FirstOrDefault(agent => agent.Id == id));
-	public Task<Agent> CreateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public Task<Agent> UpdateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
+	public override Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents);
+	public override Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents.Where(agent => agent.IsEnabled));
+	public override Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_agents.FirstOrDefault(agent => agent.Id == id));
+public override Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
 }
 
 private sealed class NoOpJsRuntime : IJSRuntime
@@ -425,18 +498,32 @@ public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToke
 => ValueTask.FromResult(default(TValue)!);
 }
 
-private sealed class FakeInferenceProviderService(IReadOnlyList<InferenceProvider> providers) : IInferenceProviderService
+private sealed class FakeInferenceProviderService(IReadOnlyList<InferenceProvider> providers) : FakeInferenceProviderServiceBase
 {
 private readonly IReadOnlyList<InferenceProvider> _providers = providers;
-public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers);
-public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(_providers.FirstOrDefault(provider => provider.Id == id));
-public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers.Where(provider => provider.IsEnabled));
-public Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
-public Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
-public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
-public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>(_providers.FirstOrDefault(provider => provider.Id == providerId)?.Models ?? []);
-public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
-public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
-public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
+public override Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers);
+public override Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(_providers.FirstOrDefault(provider => provider.Id == id));
+public override Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers.Where(provider => provider.IsEnabled));
+public override Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>(_providers.FirstOrDefault(provider => provider.Id == providerId)?.Models ?? []);
+public override Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
+public override Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
 }
+
+	private sealed class FakeWorkspaceFileSystemService : IFileSystemService
+	{
+		public WorkspaceInspection? Inspection { get; set; }
+
+		public Task<DirectoryListResult> ListDirectoryAsync(string? path, bool directoriesOnly = false)
+			=> Task.FromResult(new DirectoryListResult());
+
+		public Task<bool> DirectoryExistsAsync(string path) => Task.FromResult(false);
+		public Task<List<DriveEntry>> GetDrivesAsync() => Task.FromResult(new List<DriveEntry>());
+
+		public Task<WorkspaceInspection> InspectWorkspaceAsync(string path)
+			=> Task.FromResult(Inspection ?? new WorkspaceInspection { Path = path });
+
+		public Task<List<WorkspaceInspection>> ScanWorkspacesAsync(string rootPath)
+			=> Task.FromResult(new List<WorkspaceInspection>());
+	}
+
 }

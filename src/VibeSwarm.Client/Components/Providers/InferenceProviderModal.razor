@@ -40,14 +40,14 @@
 						}
 					</label>
 					<input type="password" id="inference-apikey" class="form-control font-monospace"
-						   @bind="Provider.ApiKey"
+						   @bind="Provider.ApiKey" @bind:event="oninput"
 						   placeholder="@(Provider.ProviderType == InferenceProviderType.Grok ? "xai-..." : "(optional)")" />
 				</div>
 				<div class="col-12 col-md-6">
 					<label for="inference-endpoint" class="form-label">Endpoint URL</label>
 					<div class="input-group">
 						<input type="url" id="inference-endpoint" class="form-control font-monospace"
-							   @bind="Provider.Endpoint"
+							   @bind="Provider.Endpoint" @bind:event="oninput"
 							   placeholder="@GetEndpointPlaceholder(Provider.ProviderType)" />
 						<button type="button" class="btn btn-secondary"
 								@onclick="TestConnection"
@@ -85,8 +85,8 @@
 						</select>
 						<button type="button" class="btn btn-secondary"
 								@onclick="RefreshModels"
-								disabled="@_isRefreshingModels"
-								title="Refresh models from provider">
+								disabled="@(_isRefreshingModels || !CanRefreshModels)"
+								title="@RefreshModelsTitle">
 							@if (_isRefreshingModels)
 							{
 								<span class="spinner-border spinner-border-sm" role="status"></span>
@@ -97,7 +97,11 @@
 							}
 						</button>
 					</div>
-					@if (!_models.Any() && !_isRefreshingModels)
+					@if (!CanRefreshModels)
+					{
+						<div class="form-text text-warning">@RefreshBlockedReason</div>
+					}
+					else if (!_models.Any() && !_isRefreshingModels)
 					{
 						<div class="form-text text-warning">
 							No models found. Click refresh to discover models from the provider.
@@ -251,7 +255,7 @@
 		_isTesting = true;
 		try
 		{
-			var result = await InferenceService.CheckHealthAsync(Provider.Endpoint, Provider.ProviderType);
+			var result = await InferenceService.ProbeAsync(BuildProbeRequest());
 			if (result.IsAvailable)
 			{
 				NotificationService.ShowSuccess($"Connected! {result.DiscoveredModels.Count} model(s) available.");
@@ -271,14 +275,40 @@
 		}
 	}
 
+	/// <summary>Grok needs credentials to list models; Ollama is unauthenticated.</summary>
+	private bool RequiresApiKey => Provider.ProviderType == InferenceProviderType.Grok;
+
+	private bool CanRefreshModels =>
+		!string.IsNullOrWhiteSpace(Provider.Endpoint)
+		&& (!RequiresApiKey || !string.IsNullOrWhiteSpace(Provider.ApiKey));
+
+	private string RefreshBlockedReason => string.IsNullOrWhiteSpace(Provider.Endpoint)
+		? "Enter an endpoint URL to discover models."
+		: $"Enter an API key to discover {Provider.ProviderType} models.";
+
+	private string RefreshModelsTitle =>
+		CanRefreshModels ? "Refresh models from provider" : RefreshBlockedReason;
+
+	private InferenceProbeRequest BuildProbeRequest() => new()
+	{
+		Endpoint = Provider.Endpoint,
+		ProviderType = Provider.ProviderType,
+		ApiKey = Provider.ApiKey
+	};
+
 	private async Task RefreshModels()
 	{
-		if (!IsEdit) return;
+		if (!CanRefreshModels) return;
 
 		_isRefreshingModels = true;
 		try
 		{
-			_models = (await InferenceProviderService.RefreshModelsAsync(Provider.Id)).ToList();
+			// A saved provider refreshes through its own record so the discovered models persist.
+			// An unsaved one has no id yet, so probe the endpoint with the values in the form.
+			_models = IsEdit
+				? (await InferenceProviderService.RefreshModelsAsync(Provider.Id)).ToList()
+				: await ProbeForModelsAsync();
+
 			if (!_models.Any(m => m.ModelId == _selectedModelId))
 			{
 				_selectedModelId = _models.FirstOrDefault(m => m.IsDefault)?.ModelId ?? string.Empty;
@@ -293,6 +323,33 @@
 		{
 			_isRefreshingModels = false;
 		}
+	}
+
+	/// <summary>
+	/// Discovers models for a provider that has no database row yet. The results are held in
+	/// memory only; they are persisted by the normal refresh once the provider is saved.
+	/// </summary>
+	private async Task<List<InferenceModel>> ProbeForModelsAsync()
+	{
+		var result = await InferenceService.ProbeAsync(BuildProbeRequest());
+
+		if (!result.IsAvailable)
+		{
+			throw new InvalidOperationException(result.Error ?? "Unable to reach the provider endpoint.");
+		}
+
+		return result.DiscoveredModels
+			.Select(model => new InferenceModel
+			{
+				ModelId = model.Name,
+				DisplayName = model.DisplayName ?? model.Name,
+				ParameterSize = model.ParameterSize,
+				Family = model.Family,
+				QuantizationLevel = model.QuantizationLevel,
+				SizeBytes = model.SizeBytes,
+				IsAvailable = true
+			})
+			.ToList();
 	}
 
 	private void OnProviderTypeChanged(InferenceProviderType newType)

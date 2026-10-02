@@ -108,7 +108,6 @@ public class ProcessSupervisor : IDisposable
 			supervisedProcess.Process = process;
 			supervisedProcess.ProcessId = process.Id;
 
-			// Set up output handling
 			SetupOutputHandling(supervisedProcess, process);
 
 			// Close stdin
@@ -202,7 +201,6 @@ public class ProcessSupervisor : IDisposable
 		// Wait before restart
 		await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
 
-		// Start a new process
 		var startInfo = new ProcessStartInfo
 		{
 			FileName = PlatformHelper.ResolveExecutablePath(supervised.Options.Executable),
@@ -418,7 +416,6 @@ public class ProcessSupervisor : IDisposable
 			RestartCount = supervised.RestartCount
 		};
 
-		// Check if process has exited
 		if (supervised.Process == null || supervised.Process.HasExited)
 		{
 			status.IsHealthy = false;

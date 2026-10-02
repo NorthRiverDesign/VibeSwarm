@@ -14,9 +14,6 @@ public interface IProvider
     Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
     Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Execute a prompt with full session management and message streaming
-    /// </summary>
     Task<ExecutionResult> ExecuteWithSessionAsync(
         string prompt,
         string? sessionId = null,
@@ -24,24 +21,25 @@ public interface IProvider
         IProgress<ExecutionProgress>? progress = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Execute a prompt with full session management, message streaming, and additional options
-    /// </summary>
     Task<ExecutionResult> ExecuteWithOptionsAsync(
         string prompt,
         ExecutionOptions options,
         IProgress<ExecutionProgress>? progress = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Get information about the provider's capabilities
-    /// </summary>
     Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Get current usage limits for the provider
-    /// </summary>
     Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Actively asks the provider for its current usage, rather than returning whatever was
+    /// last observed during a job. Returns null when the provider cannot report usage on demand.
+    /// </summary>
+    /// <remarks>
+    /// This generally costs a real request against the very limits it reports, so it is only
+    /// called when a user explicitly asks to refresh.
+    /// </remarks>
+    Task<UsageLimits?> RefreshUsageLimitsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Get a summary of what was accomplished during a session.
@@ -50,7 +48,6 @@ public interface IProvider
     /// <param name="sessionId">The session ID from a previous execution</param>
     /// <param name="workingDirectory">The working directory where the session ran</param>
     /// <param name="fallbackOutput">Fallback output to summarize if session data isn't available</param>
-    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>A concise summary suitable for a commit message</returns>
     Task<SessionSummary> GetSessionSummaryAsync(
         string? sessionId,
@@ -66,54 +63,23 @@ public interface IProvider
     /// </summary>
     /// <param name="prompt">The prompt or question to send to the provider</param>
     /// <param name="workingDirectory">Optional working directory for context</param>
-    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>A simple text response from the provider</returns>
     Task<PromptResponse> GetPromptResponseAsync(
         string prompt,
         string? workingDirectory = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Update the CLI tool to the latest version.
-    /// </summary>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Result of the update operation</returns>
     Task<CliUpdateResult> UpdateCliAsync(CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// Result of a CLI update operation
-/// </summary>
 public class CliUpdateResult
 {
-    /// <summary>
-    /// Whether the update was successful
-    /// </summary>
     public bool Success { get; set; }
-
-    /// <summary>
-    /// The version before the update (if known)
-    /// </summary>
     public string? PreviousVersion { get; set; }
-
-    /// <summary>
-    /// The version after the update (if known)
-    /// </summary>
     public string? NewVersion { get; set; }
-
-    /// <summary>
-    /// Output from the update command
-    /// </summary>
     public string? Output { get; set; }
-
-    /// <summary>
-    /// Error message if the update failed
-    /// </summary>
     public string? ErrorMessage { get; set; }
 
-    /// <summary>
-    /// Creates a successful update result
-    /// </summary>
     public static CliUpdateResult Ok(string? previousVersion, string? newVersion, string? output = null)
     {
         return new CliUpdateResult
@@ -125,9 +91,6 @@ public class CliUpdateResult
         };
     }
 
-    /// <summary>
-    /// Creates a failed update result
-    /// </summary>
     public static CliUpdateResult Fail(string errorMessage, string? previousVersion = null)
     {
         return new CliUpdateResult
@@ -139,9 +102,6 @@ public class CliUpdateResult
     }
 }
 
-/// <summary>
-/// Result of an execution including session info and messages
-/// </summary>
 public class ExecutionResult
 {
     public bool Success { get; set; }
@@ -174,14 +134,7 @@ public class ExecutionResult
     /// </summary>
     public string? CommandUsed { get; set; }
 
-    /// <summary>
-    /// True if the execution was paused due to an interaction request
-    /// </summary>
     public bool IsPaused { get; set; }
-
-    /// <summary>
-    /// Details of the pending interaction if IsPaused is true
-    /// </summary>
     public InteractionInfo? PendingInteraction { get; set; }
 
     /// <summary>
@@ -196,6 +149,13 @@ public class ExecutionResult
     public int? PremiumRequestsConsumed { get; set; }
 
     /// <summary>
+    /// GitHub AI Units consumed (Copilot-specific), read from the structured usage report.
+    /// Copilot bills newer plans in AI Credits alongside premium requests, so both are
+    /// tracked. Fractional, because a single turn can cost well under one unit.
+    /// </summary>
+    public decimal? AiCreditsConsumed { get; set; }
+
+    /// <summary>
     /// True when the failure is a system-level error (model unavailable, upstream outage,
     /// authentication failure) rather than a task-level failure. System errors indicate the
     /// provider is globally unavailable and should immediately trip the circuit breaker.
@@ -203,14 +163,8 @@ public class ExecutionResult
     public bool IsSystemError { get; set; }
 }
 
-/// <summary>
-/// Information about a pending user interaction
-/// </summary>
 public class InteractionInfo
 {
-    /// <summary>
-    /// The prompt/question being asked
-    /// </summary>
     public string Prompt { get; set; } = string.Empty;
 
     /// <summary>
@@ -218,25 +172,11 @@ public class InteractionInfo
     /// </summary>
     public string Type { get; set; } = "unknown";
 
-    /// <summary>
-    /// Available choices if applicable
-    /// </summary>
     public List<string>? Choices { get; set; }
-
-    /// <summary>
-    /// Suggested default response
-    /// </summary>
     public string? DefaultResponse { get; set; }
-
-    /// <summary>
-    /// Timestamp when the interaction was detected
-    /// </summary>
     public DateTime DetectedAt { get; set; } = DateTime.UtcNow;
 }
 
-/// <summary>
-/// A message from the execution
-/// </summary>
 public class ExecutionMessage
 {
     public string Role { get; set; } = string.Empty;
@@ -247,9 +187,6 @@ public class ExecutionMessage
     public string? ToolOutput { get; set; }
 }
 
-/// <summary>
-/// Progress update during execution
-/// </summary>
 public class ExecutionProgress
 {
     public string? CurrentMessage { get; set; }
@@ -273,9 +210,6 @@ public class ExecutionProgress
     /// </summary>
     public string? CommandUsed { get; set; }
 
-    /// <summary>
-    /// Raw output line from the CLI process (for streaming to UI)
-    /// </summary>
     public string? OutputLine { get; set; }
 
     /// <summary>
@@ -293,20 +227,10 @@ public class ExecutionProgress
     /// </summary>
     public string? ContentCategory { get; set; }
 
-    /// <summary>
-    /// True if an interaction is being requested by the CLI agent
-    /// </summary>
     public bool IsInteractionRequested { get; set; }
-
-    /// <summary>
-    /// Details of the interaction request if IsInteractionRequested is true
-    /// </summary>
     public InteractionInfo? InteractionRequest { get; set; }
 }
 
-/// <summary>
-/// Information about a provider's capabilities
-/// </summary>
 public class ProviderInfo
 {
     public string Version { get; set; } = string.Empty;
@@ -323,9 +247,6 @@ public class ProviderInfo
     public Dictionary<string, DateTime> ModelRetirementDates { get; set; } = new();
 }
 
-/// <summary>
-/// Information about an available agent
-/// </summary>
 public class AgentInfo
 {
     public string Name { get; set; } = string.Empty;
@@ -333,9 +254,6 @@ public class AgentInfo
     public bool IsDefault { get; set; }
 }
 
-/// <summary>
-/// Pricing information for the provider
-/// </summary>
 public class PricingInfo
 {
     public decimal? InputTokenPricePerMillion { get; set; }
@@ -349,39 +267,20 @@ public class PricingInfo
 /// </summary>
 public class UsageLimitWindow
 {
-    /// <summary>
-    /// The provider limit type represented by this window.
-    /// </summary>
     public UsageLimitType LimitType { get; set; } = UsageLimitType.None;
-
-    /// <summary>
-    /// The time horizon this window applies to.
-    /// </summary>
     public UsageLimitWindowScope Scope { get; set; } = UsageLimitWindowScope.Unknown;
 
     /// <summary>
-    /// Whether the limit has been reached for this window.
+    /// Display name for this window when the scope alone does not identify it — for example
+    /// two weekly windows that differ only by whether overage is included. Falls back to the
+    /// scope label when null.
     /// </summary>
+    public string? Label { get; set; }
+
     public bool IsLimitReached { get; set; }
-
-    /// <summary>
-    /// Current usage count for this window.
-    /// </summary>
     public int? CurrentUsage { get; set; }
-
-    /// <summary>
-    /// Maximum allowed usage for this window.
-    /// </summary>
     public int? MaxUsage { get; set; }
-
-    /// <summary>
-    /// When this window resets, if known.
-    /// </summary>
     public DateTime? ResetTime { get; set; }
-
-    /// <summary>
-    /// Human-readable message about this window.
-    /// </summary>
     public string? Message { get; set; }
 
     /// <summary>
@@ -392,39 +291,13 @@ public class UsageLimitWindow
         : null;
 }
 
-/// <summary>
-/// Information about provider usage limits
-/// </summary>
 public class UsageLimits
 {
-    /// <summary>
-    /// The type of limit this provider has
-    /// </summary>
     public UsageLimitType LimitType { get; set; } = UsageLimitType.None;
-
-    /// <summary>
-    /// Whether the limit has been reached
-    /// </summary>
     public bool IsLimitReached { get; set; }
-
-    /// <summary>
-    /// Current usage count (requests, sessions, etc.)
-    /// </summary>
     public int? CurrentUsage { get; set; }
-
-    /// <summary>
-    /// Maximum allowed usage (if known)
-    /// </summary>
     public int? MaxUsage { get; set; }
-
-    /// <summary>
-    /// When the limit resets (if known)
-    /// </summary>
     public DateTime? ResetTime { get; set; }
-
-    /// <summary>
-    /// Human-readable message about the limit status
-    /// </summary>
     public string? Message { get; set; }
 
     /// <summary>
@@ -440,9 +313,6 @@ public class UsageLimits
         : null;
 }
 
-/// <summary>
-/// Time horizons for provider usage windows.
-/// </summary>
 public enum UsageLimitWindowScope
 {
     Unknown,
@@ -480,22 +350,25 @@ public enum UsageLimitType
     /// <summary>
     /// Rate limit (requests per time period)
     /// </summary>
-    RateLimit
+    RateLimit,
+
+    /// <summary>
+    /// GitHub AI Credits, the credit-based budget Copilot meters sessions against
+    /// alongside (and increasingly in place of) premium requests.
+    /// </summary>
+    AiCredits,
+
+    /// <summary>
+    /// The provider has no upstream quota — for example a self-hosted open-source model.
+    /// Distinct from <see cref="None"/>, which only means no limit has been observed yet.
+    /// Providers reporting this are never treated as exhausted.
+    /// </summary>
+    Unmetered
 }
 
-/// <summary>
-/// Options for executing prompts with providers
-/// </summary>
 public class ExecutionOptions
 {
-    /// <summary>
-    /// Session ID for continuing a previous session
-    /// </summary>
     public string? SessionId { get; set; }
-
-    /// <summary>
-    /// Working directory for the execution
-    /// </summary>
     public string? WorkingDirectory { get; set; }
 
     /// <summary>
@@ -503,14 +376,7 @@ public class ExecutionOptions
     /// </summary>
     public string? McpConfigPath { get; set; }
 
-    /// <summary>
-    /// Additional CLI arguments to pass to the provider
-    /// </summary>
     public List<string>? AdditionalArgs { get; set; }
-
-    /// <summary>
-    /// Environment variables to set for the execution
-    /// </summary>
     public Dictionary<string, string>? EnvironmentVariables { get; set; }
 
     /// <summary>
@@ -518,19 +384,8 @@ public class ExecutionOptions
     /// </summary>
     public string? Model { get; set; }
 
-    /// <summary>
-    /// Title for the session (useful for tracking and display)
-    /// </summary>
     public string? Title { get; set; }
-
-    /// <summary>
-    /// Agent to use for execution (provider-specific)
-    /// </summary>
     public string? Agent { get; set; }
-
-    /// <summary>
-    /// File paths to attach to the message
-    /// </summary>
     public List<string>? AttachedFiles { get; set; }
 
     /// <summary>
@@ -796,9 +651,6 @@ public class ExecutionOptions
     /// </summary>
     public bool ShowThinking { get; set; }
 
-    /// <summary>
-    /// Creates ExecutionOptions from the legacy parameters
-    /// </summary>
     public static ExecutionOptions FromLegacy(string? sessionId = null, string? workingDirectory = null)
     {
         return new ExecutionOptions
@@ -815,19 +667,8 @@ public class ExecutionOptions
 /// </summary>
 public class PromptResponse
 {
-    /// <summary>
-    /// Whether the prompt was executed successfully
-    /// </summary>
     public bool Success { get; set; }
-
-    /// <summary>
-    /// The text response from the provider
-    /// </summary>
     public string? Response { get; set; }
-
-    /// <summary>
-    /// Error message if the prompt failed
-    /// </summary>
     public string? ErrorMessage { get; set; }
 
     /// <summary>
@@ -835,14 +676,8 @@ public class PromptResponse
     /// </summary>
     public long? ElapsedMilliseconds { get; set; }
 
-    /// <summary>
-    /// The model used for the response (if available)
-    /// </summary>
     public string? ModelUsed { get; set; }
 
-    /// <summary>
-    /// Creates a successful response
-    /// </summary>
     public static PromptResponse Ok(string response, long? elapsedMs = null, string? model = null)
     {
         return new PromptResponse
@@ -854,9 +689,6 @@ public class PromptResponse
         };
     }
 
-    /// <summary>
-    /// Creates a failed response
-    /// </summary>
     public static PromptResponse Fail(string errorMessage)
     {
         return new PromptResponse

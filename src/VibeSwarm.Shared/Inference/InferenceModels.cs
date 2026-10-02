@@ -14,9 +14,6 @@ public class DiscoveredModel
 	public DateTime? ModifiedAt { get; set; }
 }
 
-/// <summary>
-/// Result of a health/connectivity check against an inference provider.
-/// </summary>
 public class InferenceHealthResult
 {
 	public bool IsAvailable { get; set; }
@@ -26,8 +23,28 @@ public class InferenceHealthResult
 }
 
 /// <summary>
-/// A request to generate a completion from an inference provider.
+/// A request to probe an inference provider using configuration that has not been saved yet,
+/// such as the values typed into the Add Provider form.
 /// </summary>
+public class InferenceProbeRequest
+{
+	/// <summary>
+	/// Endpoint to probe. When null the service falls back to the stored provider's endpoint.
+	/// </summary>
+	public string? Endpoint { get; set; }
+
+	/// <summary>
+	/// Provider backend to route to. When null the service infers it from the endpoint.
+	/// </summary>
+	public InferenceProviderType? ProviderType { get; set; }
+
+	/// <summary>
+	/// Credentials supplied by the caller. When blank the service falls back to the stored
+	/// provider's key. Providers that need no key (Ollama) ignore this.
+	/// </summary>
+	public string? ApiKey { get; set; }
+}
+
 public class InferenceRequest
 {
 	public string Prompt { get; set; } = string.Empty;
@@ -57,28 +74,13 @@ public class InferenceRequest
 	public InferenceProviderType? ProviderType { get; set; }
 }
 
-/// <summary>
-/// The result of a completion generation from an inference provider.
-/// </summary>
 public class InferenceResponse
 {
 	public bool Success { get; set; }
 	public string? Response { get; set; }
 	public string? Error { get; set; }
 	public string? ModelUsed { get; set; }
-
-	/// <summary>
-	/// Total generation time in milliseconds
-	/// </summary>
 	public long? DurationMs { get; set; }
-
-	/// <summary>
-	/// Number of tokens in the prompt
-	/// </summary>
 	public int? PromptTokens { get; set; }
-
-	/// <summary>
-	/// Number of tokens generated in the response
-	/// </summary>
 	public int? CompletionTokens { get; set; }
 }

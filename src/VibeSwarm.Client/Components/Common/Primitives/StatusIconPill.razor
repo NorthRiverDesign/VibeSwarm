@@ -1,7 +1,8 @@
-@* Bootstrap badge with a status-tinted background + icon. Uses only text-bg-* + rounded-pill utilities. *@
+@* Status-tinted disc with one icon. A fixed status-disc-* box keeps it round; the icon is a flex
+   item so the icon font's baseline offset can't push it off centre. *@
 
-<span class="badge @TextBgClass d-inline-flex align-items-center justify-content-center @SizeClass @CssClass">
-	<i class="bi @ResolvedIcon"></i>
+<span class="d-inline-flex align-items-center justify-content-center flex-shrink-0 rounded-circle @TextBgClass @SizeClass @CssClass">
+	<i class="bi @ResolvedIcon d-flex"></i>
 </span>
 
 @code {
@@ -26,9 +27,9 @@
 
 	private string SizeClass => Size switch
 	{
-		"sm" => "p-1 fs-6",
-		"lg" => "p-2 fs-5",
-		_ => "p-1 fs-6"
+		"sm" => "status-disc-sm",
+		"lg" => "status-disc-lg",
+		_ => "status-disc-md"
 	};
 
 	private string ResolvedIcon => Icon ?? DefaultIconFor(Normalized);

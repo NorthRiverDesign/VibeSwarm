@@ -29,7 +29,6 @@ public partial class IdeaService
 			return idea;
 		}
 
-		// Mark as expanding
 		idea.ExpansionStatus = IdeaExpansionStatus.Expanding;
 		idea.ExpansionError = null;
 		await _dbContext.SaveChangesAsync(cancellationToken);

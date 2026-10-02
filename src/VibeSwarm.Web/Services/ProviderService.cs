@@ -238,6 +238,61 @@ public class ProviderService : IProviderService
         }
     }
 
+    public async Task<UsageRefreshResult> RefreshUsageAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var provider = await GetByIdAsync(id, cancellationToken);
+        if (provider == null)
+        {
+            return new UsageRefreshResult { Success = false, ErrorMessage = "Provider not found." };
+        }
+
+        IProvider instance;
+        try
+        {
+            instance = CreateProviderInstance(provider);
+        }
+        catch (Exception ex)
+        {
+            return new UsageRefreshResult { Success = false, ErrorMessage = ex.Message };
+        }
+
+        UsageLimits? limits;
+        try
+        {
+            limits = await instance.RefreshUsageLimitsAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new UsageRefreshResult
+            {
+                Success = false,
+                ErrorMessage = "Timed out waiting for the provider to report usage."
+            };
+        }
+        catch (Exception ex)
+        {
+            return new UsageRefreshResult { Success = false, ErrorMessage = ex.Message };
+        }
+
+        if (limits == null)
+        {
+            return new UsageRefreshResult
+            {
+                Success = false,
+                IsSupported = false,
+                ErrorMessage = $"{provider.Name} cannot report usage on demand."
+            };
+        }
+
+        if (_providerUsageService == null)
+        {
+            return new UsageRefreshResult { Success = false, ErrorMessage = "Usage tracking is unavailable." };
+        }
+
+        var summary = await _providerUsageService.ApplyDetectedLimitsAsync(id, limits, cancellationToken);
+        return new UsageRefreshResult { Success = true, Summary = summary };
+    }
+
     private static IProvider CreateProviderInstance(Provider config)
     {
         return (config.Type, config.ConnectionMode) switch
@@ -307,7 +362,6 @@ public class ProviderService : IProviderService
             }
         }
 
-        // Get existing models for this provider
         var existingModels = await _dbContext.ProviderModels
             .Where(m => m.ProviderId == providerId)
             .ToListAsync(cancellationToken);
@@ -408,7 +462,6 @@ public class ProviderService : IProviderService
             model.IsDefault = false;
         }
 
-        // Set the new default
         var newDefault = await _dbContext.ProviderModels
             .FirstOrDefaultAsync(m => m.Id == modelId && m.ProviderId == providerId, cancellationToken);
 

@@ -47,6 +47,8 @@ public sealed class CliProviderBaseTests
 		public void EmitProcessStarted(int processId, IProgress<ExecutionProgress>? progress, string? fullCommand = null)
 			=> ReportProcessStarted(processId, progress, fullCommand);
 
+		protected internal override string? BuildSessionSummaryArgs(string sessionId) => null;
+
 		public override Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
 			=> throw new NotSupportedException();
 

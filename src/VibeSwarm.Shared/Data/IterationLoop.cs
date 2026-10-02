@@ -2,9 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace VibeSwarm.Shared.Data;
 
-/// <summary>
-/// Status of an auto-pilot iteration loop.
-/// </summary>
 public enum IterationLoopStatus
 {
 	/// <summary>
@@ -56,8 +53,8 @@ public class IterationLoop
 	/// The project this loop belongs to. Only one loop may be active per project at a time.
 	/// </summary>
 	public Guid ProjectId { get; set; }
-	public Project? Project { get; set; }
 
+	public Project? Project { get; set; }
 	public IterationLoopStatus Status { get; set; } = IterationLoopStatus.Idle;
 
 	#region Configuration
@@ -68,9 +65,6 @@ public class IterationLoop
 	/// </summary>
 	public Guid? InferenceProviderId { get; set; }
 
-	/// <summary>
-	/// Model to use for inference-based idea generation.
-	/// </summary>
 	[StringLength(200)]
 	public string? InferenceModelId { get; set; }
 
@@ -101,9 +95,6 @@ public class IterationLoop
 	/// </summary>
 	public int MaxConsecutiveFailures { get; set; } = 3;
 
-	/// <summary>
-	/// Seconds to wait between iterations (cooldown).
-	/// </summary>
 	public int CooldownSeconds { get; set; } = 60;
 
 	/// <summary>
@@ -111,9 +102,6 @@ public class IterationLoop
 	/// </summary>
 	public bool AutoCommit { get; set; } = true;
 
-	/// <summary>
-	/// Whether to auto-push after committing.
-	/// </summary>
 	public bool AutoPush { get; set; }
 
 	#endregion
@@ -130,20 +118,9 @@ public class IterationLoop
 	/// </summary>
 	public int ConsecutiveFailures { get; set; }
 
-	/// <summary>
-	/// Accumulated cost across all iterations in this loop run.
-	/// </summary>
 	public decimal TotalCostUsd { get; set; }
-
-	/// <summary>
-	/// The job currently being executed by this iteration, if any.
-	/// </summary>
 	public Guid? CurrentJobId { get; set; }
 	public Job? CurrentJob { get; set; }
-
-	/// <summary>
-	/// The idea generated for the current iteration, if any.
-	/// </summary>
 	public Guid? CurrentIdeaId { get; set; }
 
 	#endregion
@@ -151,7 +128,6 @@ public class IterationLoop
 	#region Timestamps
 
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
 	public DateTime? StartedAt { get; set; }
 
 	/// <summary>
@@ -159,9 +135,6 @@ public class IterationLoop
 	/// </summary>
 	public DateTime? LastIterationAt { get; set; }
 
-	/// <summary>
-	/// When the loop was stopped or finished.
-	/// </summary>
 	public DateTime? StoppedAt { get; set; }
 
 	/// <summary>

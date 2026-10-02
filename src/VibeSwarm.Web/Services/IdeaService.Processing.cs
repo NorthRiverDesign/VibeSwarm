@@ -205,7 +205,6 @@ public partial class IdeaService
 			}
 		}
 
-		// Get the next unprocessed idea
 		var nextIdea = await GetNextUnprocessedAsync(projectId, cancellationToken);
 		if (nextIdea == null)
 		{
@@ -303,7 +302,6 @@ public partial class IdeaService
 
 		var sourceProjectId = idea.ProjectId;
 
-		// Update the idea's project
 		idea.ProjectId = targetProjectId;
 		var now = DateTime.UtcNow;
 		targetProject.UpdatedAt = now;
@@ -313,7 +311,6 @@ public partial class IdeaService
 			sourceProject.UpdatedAt = now;
 		}
 
-		// Update sort order in new project
 		var maxSortOrder = await _dbContext.Ideas
 			.Where(i => i.ProjectId == targetProjectId && i.Id != ideaId)
 			.MaxAsync(i => (int?)i.SortOrder, cancellationToken) ?? -1;
@@ -401,13 +398,17 @@ public partial class IdeaService
 			StartedAt = j.StartedAt
 		});
 
-		var runningJobsTask = jobSummarySelector(runningJobsQuery).Take(maxItemsPerSection).ToListAsync(cancellationToken);
-		var runningJobsCountTask = runningJobsQuery.CountAsync(cancellationToken);
+		// A single DbContext cannot serve concurrent queries, so these run in sequence.
+		// Issuing them together and awaiting Task.WhenAll threw "A second operation was started
+		// on this context instance" against MySQL, where the round trips genuinely overlap.
+		// SQLite completed each one fast enough to hide the overlap, so the tests stayed green.
+		var runningJobs = await jobSummarySelector(runningJobsQuery).Take(maxItemsPerSection).ToListAsync(cancellationToken);
+		var runningJobsCount = await runningJobsQuery.CountAsync(cancellationToken);
 
-		var queuedJobsTask = jobSummarySelector(queuedJobsQuery).Take(maxItemsPerSection).ToListAsync(cancellationToken);
-		var queuedJobsCountTask = queuedJobsQuery.CountAsync(cancellationToken);
+		var queuedJobs = await jobSummarySelector(queuedJobsQuery).Take(maxItemsPerSection).ToListAsync(cancellationToken);
+		var queuedJobsCount = await queuedJobsQuery.CountAsync(cancellationToken);
 
-		var upcomingIdeasTask = upcomingIdeasQuery
+		var upcomingIdeas = await upcomingIdeasQuery
 			.Select(i => new GlobalQueueIdeaSummary
 			{
 				IdeaId = i.Id,
@@ -422,29 +423,20 @@ public partial class IdeaService
 			.Take(maxItemsPerSection)
 			.ToListAsync(cancellationToken);
 
-		var upcomingIdeasCountTask = upcomingIdeasQuery.CountAsync(cancellationToken);
-		var projectsCurrentlyProcessingTask = _dbContext.Projects
+		var upcomingIdeasCount = await upcomingIdeasQuery.CountAsync(cancellationToken);
+		var projectsCurrentlyProcessing = await _dbContext.Projects
 			.AsNoTracking()
 			.CountAsync(p => p.IsActive && p.IdeasProcessingActive, cancellationToken);
 
-		await Task.WhenAll(
-			runningJobsTask,
-			runningJobsCountTask,
-			queuedJobsTask,
-			queuedJobsCountTask,
-			upcomingIdeasTask,
-			upcomingIdeasCountTask,
-			projectsCurrentlyProcessingTask);
-
 		return new GlobalQueueSnapshot
 		{
-			RunningJobsCount = runningJobsCountTask.Result,
-			QueuedJobsCount = queuedJobsCountTask.Result,
-			UpcomingIdeasCount = upcomingIdeasCountTask.Result,
-			ProjectsCurrentlyProcessing = projectsCurrentlyProcessingTask.Result,
-			RunningJobs = runningJobsTask.Result,
-			QueuedJobs = queuedJobsTask.Result,
-			UpcomingIdeas = upcomingIdeasTask.Result
+			RunningJobsCount = runningJobsCount,
+			QueuedJobsCount = queuedJobsCount,
+			UpcomingIdeasCount = upcomingIdeasCount,
+			ProjectsCurrentlyProcessing = projectsCurrentlyProcessing,
+			RunningJobs = runningJobs,
+			QueuedJobs = queuedJobs,
+			UpcomingIdeas = upcomingIdeas
 		};
 	}
 

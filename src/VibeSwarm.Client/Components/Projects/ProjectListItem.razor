@@ -1,276 +1,67 @@
+@* One project in the projects list: its mark, its name and one line saying what it is doing.
+   Every action lives on the project page, so the whole row is a link to it. *@
 
-<div class="list-group-item p-3 hover-bg-tertiary">
-	<div class="d-flex flex-column flex-lg-row align-items-stretch align-items-lg-start gap-2 gap-lg-3">
-		<div class="flex-grow-1 min-width-0">
-			<div class="d-flex align-items-start justify-content-between gap-2">
-				<div class="min-width-0">
-					<div class="d-flex align-items-center gap-2 flex-wrap">
-						<a href="/projects/@Project.Id" class="fw-semibold text-decoration-none text-break">@Project.Name</a>
-						@if (!Project.IsActive)
-						{
-							<span class="small text-body-tertiary">Inactive</span>
-						}
-					</div>
-					@if (!string.IsNullOrEmpty(Project.Description))
-					{
-						<div class="small text-body-secondary mt-1 d-md-none">@TruncateText(Project.Description, 80)</div>
-					}
-				</div>
-				<div class="d-flex d-lg-none align-items-center gap-2 flex-shrink-0">
-					<ProjectActionsDropdown DetailsHref="@($"/projects/{Project.Id}")" OnEdit="OnEdit"
-											IsActive="@Project.IsActive" OnToggleActive="OnToggleActive"
-											ShowStartIdeaQueueAction="@(Stats.TotalIdeas > 0 && !Project.IdeasProcessingActive)"
-											StartIdeaQueueEnabled="@StartIdeaQueueEnabled"
-											IsStartingIdeaQueue="@IsStartingIdeaQueue"
-											StartIdeaQueueTooltip="@StartIdeaQueueTooltip"
-											OnStartIdeaQueue="OnStartIdeaQueue"
-											ShowSyncAction="@(!string.IsNullOrEmpty(CurrentBranch))"
-											SyncLabel="Sync with Origin" OnSync="OnSync"
-											ShowMergeBranchAction="@(!string.IsNullOrWhiteSpace(CurrentBranch))"
-											IsSyncing="@IsSyncing"
-											IsMerging="@IsMerging"
-											OnMergeBranch="OnMergeBranch"
-											ShowDeleteAction="true" OnDelete="OnDelete" />
-				</div>
-			</div>
-			<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small">
-				@if (Project.AutoCommitMode != AutoCommitMode.Off)
-				{
-					<span class="badge bg-info-subtle text-info-emphasis">Auto-commit</span>
-				}
-				@if (ShowStats && Project.Environments.Any(environment => environment.IsEnabled))
-				{
-					<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-						<i class="bi bi-globe2 opacity-75"></i>@Project.Environments.Count(environment => environment.IsEnabled)
-					</span>
-				}
-				@if (ShowStats && Stats.ActiveJobs > 0)
-				{
-					<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-						<i class="bi bi-activity opacity-75"></i>@Stats.ActiveJobs running
-					</span>
-				}
-				@if (Project.IdeasProcessingActive)
-				{
-					<span class="small text-info-emphasis d-inline-flex align-items-center gap-1" title="Idea queue is running">
-						<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>Queue running
-					</span>
-				}
-			</div>
-			@if (ShowStats)
+<a href="/projects/@Project.Id" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3">
+	<ProjectMark Name="@Project.Name" Size="lg" CssClass="@(Project.IsActive ? null : "opacity-50")" />
+	<span class="flex-grow-1 min-width-0">
+		<span class="d-flex align-items-baseline gap-2 min-width-0">
+			<span class="fw-semibold text-truncate">@Project.Name</span>
+			@if (!Project.IsActive)
 			{
-				<div class="d-flex d-md-none flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
-					@if (!string.IsNullOrEmpty(CurrentBranch))
-					{
-						<span class="d-inline-flex align-items-center gap-1">
-							<i class="bi bi-git opacity-75"></i>
-							@CurrentBranch
-						</span>
-					}
-					@if (Project.ProviderSelections.Any(pp => pp.IsEnabled))
-					{
-						<span class="d-inline-flex align-items-center gap-1">
-							<i class="bi bi-diagram-3 opacity-75"></i>
-							@Project.ProviderSelections.Count(pp => pp.IsEnabled) provider@(Project.ProviderSelections.Count(pp => pp.IsEnabled) == 1 ? string.Empty : "s")
-						</span>
-					}
-					@if (Project.AgentAssignments.Any(assignment => assignment.IsEnabled && assignment.Agent != null))
-					{
-						<span class="d-inline-flex align-items-center gap-1">
-							<i class="bi bi-people opacity-75"></i>
-							@Project.AgentAssignments.Count(assignment => assignment.IsEnabled && assignment.Agent != null) role@(Project.AgentAssignments.Count(assignment => assignment.IsEnabled && assignment.Agent != null) == 1 ? string.Empty : "s")
-						</span>
-					}
-				</div>
+				<span class="small text-body-tertiary flex-shrink-0">Inactive</span>
 			}
-			@if (!string.IsNullOrEmpty(Project.Description))
+		</span>
+		<span class="d-flex align-items-center gap-2 small text-body-secondary min-width-0">
+			@if (ActiveJobs.FirstOrDefault() is { } activeJob)
 			{
-				<div class="small text-body-secondary mt-1 d-none d-md-block">@TruncateText(Project.Description, 100)</div>
+				<span class="spinner-border spinner-border-sm text-primary flex-shrink-0" role="status" aria-hidden="true"></span>
+				<span class="text-truncate" title="@activeJob.DisplayTitle">@activeJob.DisplayTitle</span>
 			}
-			@if (ShowStats)
+			else if (Project.IdeasProcessingActive)
 			{
-				<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-					@if (!string.IsNullOrEmpty(Project.GitHubRepository))
-					{
-						<span class="d-flex align-items-center gap-1" title="GitHub Repository">
-							<i class="bi bi-github opacity-75"></i>
-							<a href="https://github.com/@Project.GitHubRepository" target="_blank"
-								   class="text-body-secondary text-decoration-none hover-underline">
-								@Project.GitHubRepository
-							</a>
-						</span>
-					}
-					else
-					{
-						<span class="font-monospace bg-body-tertiary px-2 py-1 rounded-1 text-truncate"
-							  style="max-width: min(280px, 50vw);" title="@Project.WorkingPath">
-							@Project.WorkingPath
-						</span>
-					}
-					@if (!string.IsNullOrEmpty(CurrentBranch))
-					{
-						<span class="d-flex align-items-center gap-1" title="Current branch">
-							<i class="bi bi-git opacity-75"></i>
-							@CurrentBranch
-						</span>
-					}
-				</div>
-				@if (Project.ProviderSelections.Any(pp => pp.IsEnabled))
-				{
-					<div class="d-none d-md-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
-						<span class="d-flex align-items-center gap-1">
-							<i class="bi bi-diagram-3 opacity-75"></i>
-							Providers
-						</span>
-						<span>@string.Join("  •  ", Project.ProviderSelections.Where(pp => pp.IsEnabled).OrderBy(pp => pp.Priority).Select(selection => $"#{selection.Priority + 1} {selection.Provider?.Name ?? "Unknown"}"))</span>
-					</div>
-				}
+				<i class="bi bi-arrow-repeat text-info flex-shrink-0"></i>
+				<span class="text-truncate">Running ideas automatically</span>
 			}
-			@if (ShowStats && Project.AgentAssignments.Any(assignment => assignment.IsEnabled && assignment.Agent != null))
+			else if (LatestJob != null)
 			{
-				<div class="d-none d-md-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
-					<span class="d-flex align-items-center gap-1">
-						<i class="bi bi-people opacity-75"></i>
-						Team
-					</span>
-					<span>@string.Join("  •  ", Project.AgentAssignments.Where(assignment => assignment.IsEnabled && assignment.Agent != null).OrderBy(assignment => assignment.Agent!.Name).Select(assignment => $"{assignment.Agent!.Name} ({assignment.Provider?.Name ?? "Unassigned"})"))</span>
-				</div>
+				<i class="bi @GetLatestJobIcon(LatestJob.Status) flex-shrink-0" title="@LatestJob.Status.ToString()"></i>
+				<span class="text-truncate" title="@LatestJob.DisplayTitle">@LatestJob.DisplayTitle</span>
+				<span class="flex-shrink-0 text-body-tertiary">@((LatestJob.CompletedAt ?? LatestJob.CreatedAt).FormatShortAge())</span>
 			}
-			@if (ShowStats)
+			else if (!string.IsNullOrWhiteSpace(Project.Description))
 			{
-				<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small">
-					<span class="d-flex align-items-center gap-1 text-body-secondary" title="Total ideas">
-						<i class="bi bi-lightbulb opacity-75"></i>
-						@Stats.TotalIdeas idea@(Stats.TotalIdeas == 1 ? string.Empty : "s")
-					</span>
-					@if (Stats.UnprocessedIdeas > 0)
-					{
-						<span class="d-flex align-items-center gap-1 text-body-secondary" title="Ideas waiting to run">
-							<i class="bi bi-hourglass-split opacity-75"></i>
-							@Stats.UnprocessedIdeas pending
-						</span>
-					}
-					@if (Stats.TotalJobs > 0)
-					{
-						<span class="d-flex align-items-center gap-1 text-body-secondary" title="Total jobs">
-							<i class="bi bi-list-check opacity-75"></i>
-							@Stats.TotalJobs jobs
-						</span>
-						@if (Stats.TotalInputTokens > 0 || Stats.TotalOutputTokens > 0)
-						{
-							<span class="d-flex align-items-center gap-1 text-body-secondary"
-								  title="Total tokens (input / output)">
-								<i class="bi bi-braces opacity-75"></i>
-								@TokenHelper.FormatTokenCount(Stats.TotalInputTokens) /
-								@TokenHelper.FormatTokenCount(Stats.TotalOutputTokens)
-							</span>
-						}
-						@if (Stats.TotalCostUsd > 0)
-						{
-							<span class="d-flex align-items-center gap-1 text-success fw-medium" title="Total cost">
-								<i class="bi bi-currency-dollar opacity-75"></i>
-								@TokenHelper.FormatCost(Stats.TotalCostUsd)
-							</span>
-						}
-					}
-				</div>
+				<span class="text-truncate">@Project.Description</span>
 			}
-			@if (LatestJob != null)
+			else
 			{
-				<div class="border-top pt-2 mt-2 d-flex flex-column gap-2 min-width-0">
-					<div class="d-flex align-items-center gap-2 small min-width-0">
-						<a href="/jobs/view/@LatestJob.Id"
-							   class="d-flex align-items-center gap-2 text-decoration-none min-width-0 w-100"
-							   title="@LatestJob.DisplayTitle">
-							@switch (LatestJob.Status)
-							{
-								case JobStatus.Completed:
-									<i class="bi bi-check-circle-fill text-success flex-shrink-0" title="Completed"></i>
-									break;
-								case JobStatus.Failed:
-									<i class="bi bi-x-circle-fill text-danger flex-shrink-0" title="Failed"></i>
-									break;
-								case JobStatus.Started:
-								case JobStatus.Planning:
-								case JobStatus.Processing:
-									<span class="spinner-border spinner-border-sm text-info flex-shrink-0" role="status"
-										  title="Running"></span>
-									break;
-								case JobStatus.Cancelled:
-									<i class="bi bi-slash-circle text-secondary flex-shrink-0" title="Cancelled"></i>
-									break;
-								case JobStatus.Stalled:
-									<i class="bi bi-exclamation-triangle-fill text-warning flex-shrink-0" title="Stalled"></i>
-									break;
-								default:
-									<i class="bi bi-clock text-secondary flex-shrink-0" title="Pending"></i>
-									break;
-							}
-							<span class="text-truncate text-body-secondary flex-grow-1 min-width-0">@TruncateText(LatestJob.DisplayTitle, 60)</span>
-						</a>
-					</div>
-					<div class="min-width-0">
-						<JobOutcomeSummarySnippet SessionSummary="@LatestJob.SessionSummary" />
-					</div>
-				</div>
+				<span class="text-truncate">@(Project.GitHubRepository ?? Project.WorkingPath)</span>
 			}
-			@if (ActiveJobs.Any())
-			{
-				<div class="@(LatestJob == null ? "border-top pt-2 mt-2" : "mt-1")">
-					@foreach (var job in ActiveJobs)
-					{
-						<div class="bg-body-tertiary rounded-2 p-2 mb-1 small">
-							<a href="/jobs/view/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none small min-width-0 w-100">
-								<StatusBadge Status="@job.Status.ToString()" />
-								<span class="text-truncate flex-grow-1 min-width-0">@TruncateText(job.DisplayTitle, 50)</span>
-								@if (!string.IsNullOrEmpty(job.CurrentActivity))
-								{
-									<span class="text-info fst-italic small d-none d-md-inline">@job.CurrentActivity</span>
-								}
-							</a>
-						</div>
-					}
-				</div>
-			}
-		</div>
-		<div class="d-none d-lg-flex align-items-center gap-2 flex-shrink-0">
-			<ProjectActionsDropdown DetailsHref="@($"/projects/{Project.Id}")" OnEdit="OnEdit"
-									IsActive="@Project.IsActive" OnToggleActive="OnToggleActive"
-									ShowStartIdeaQueueAction="@(Stats.TotalIdeas > 0 && !Project.IdeasProcessingActive)"
-									StartIdeaQueueEnabled="@StartIdeaQueueEnabled"
-									IsStartingIdeaQueue="@IsStartingIdeaQueue"
-									StartIdeaQueueTooltip="@StartIdeaQueueTooltip"
-									OnStartIdeaQueue="OnStartIdeaQueue"
-									ShowSyncAction="@(!string.IsNullOrEmpty(CurrentBranch))"
-									SyncLabel="Sync with Origin" OnSync="OnSync"
-									ShowMergeBranchAction="@(!string.IsNullOrWhiteSpace(CurrentBranch))"
-									IsSyncing="@IsSyncing"
-									IsMerging="@IsMerging"
-									OnMergeBranch="OnMergeBranch"
-									ShowDeleteAction="true" OnDelete="OnDelete" />
-		</div>
-	</div>
-</div>
+		</span>
+	</span>
+	@if (Stats.UnprocessedIdeas > 0)
+	{
+		<span class="badge rounded-pill bg-body-tertiary text-body-secondary fw-normal d-inline-flex align-items-center gap-1 flex-shrink-0"
+			  title="@($"{Stats.UnprocessedIdeas} idea{(Stats.UnprocessedIdeas == 1 ? "" : "s")} waiting")">
+			<i class="bi bi-lightbulb"></i>@Stats.UnprocessedIdeas
+		</span>
+	}
+	<i class="bi bi-chevron-right text-body-tertiary flex-shrink-0"></i>
+</a>
 
 @code {
 	[Parameter] public required Project Project { get; set; }
 	[Parameter] public required ProjectJobStats Stats { get; set; }
 	[Parameter] public JobSummary? LatestJob { get; set; }
-	[Parameter] public string? CurrentBranch { get; set; }
 	[Parameter] public List<JobSummary> ActiveJobs { get; set; } = [];
-	[Parameter] public bool ShowStats { get; set; }
-	[Parameter] public bool IsSyncing { get; set; }
-	[Parameter] public bool IsMerging { get; set; }
-	[Parameter] public bool StartIdeaQueueEnabled { get; set; }
-	[Parameter] public bool IsStartingIdeaQueue { get; set; }
-	[Parameter] public string? StartIdeaQueueTooltip { get; set; }
-	[Parameter] public EventCallback OnEdit { get; set; }
-	[Parameter] public EventCallback OnToggleActive { get; set; }
-	[Parameter] public EventCallback OnStartIdeaQueue { get; set; }
-	[Parameter] public EventCallback OnSync { get; set; }
-	[Parameter] public EventCallback OnMergeBranch { get; set; }
-	[Parameter] public EventCallback OnDelete { get; set; }
 
-	private static string TruncateText(string text, int maxLength)
-		=> string.IsNullOrEmpty(text) || text.Length <= maxLength ? text : text[..maxLength] + "...";
+	private static string GetLatestJobIcon(JobStatus status) => status switch
+	{
+		JobStatus.Completed => "bi-check-circle-fill text-success",
+		JobStatus.Failed => "bi-x-circle-fill text-danger",
+		JobStatus.Cancelled => "bi-slash-circle",
+		JobStatus.Stalled => "bi-exclamation-triangle-fill text-warning",
+		JobStatus.Paused => "bi-chat-dots-fill text-warning",
+		JobStatus.New or JobStatus.Pending => "bi-hourglass-split text-warning",
+		_ => "bi-circle"
+	};
 }

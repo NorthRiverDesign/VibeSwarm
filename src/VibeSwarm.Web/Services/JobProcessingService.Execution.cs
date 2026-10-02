@@ -126,7 +126,6 @@ public partial class JobProcessingService
             executionContext.ProviderId = job.ProviderId;
             await ReserveProviderExecutionSlotAsync(job.ProviderId, dbContext, cancellationToken);
 
-            // Create provider instance
             var provider = CreateProviderInstance(providerResolution.Provider);
             executionContext.ProviderInstance = provider;
 
@@ -515,7 +514,6 @@ public partial class JobProcessingService
                                 "Interaction detected for job {JobId}: Type={Type}, Confidence={Confidence:P0}, Prompt={Prompt}",
                                 job.Id, interactionRequest.Type, interactionRequest.Confidence, interactionRequest.Prompt);
 
-                            // Mark context as paused
                             executionContext.IsPausedForInteraction = true;
                             executionContext.CurrentInteractionRequest = interactionRequest;
 
@@ -628,28 +626,11 @@ public partial class JobProcessingService
             }
 
             var enableStructuring = appSettings?.EnablePromptStructuring ?? true;
-            var enableCommitAttribution = appSettings?.EnableCommitAttribution ?? true;
 
             // Build system prompt rules for agent efficiency
             var injectEfficiencyRules = appSettings?.InjectEfficiencyRules ?? true;
             var injectRepoMap = appSettings?.InjectRepoMap ?? true;
-            var isIdeaJob = await dbContext.Ideas
-                .AsNoTracking()
-                .AnyAsync(idea => idea.JobId == job.Id, cancellationToken);
-
-            string? BuildExecutionSystemPromptRules(ProviderType providerType)
-            {
-                return isIdeaJob
-                    ? PromptBuilder.BuildIdeaSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap)
-                    : PromptBuilder.BuildSystemPromptRules(
-                        job.Project,
-                        injectEfficiencyRules,
-                        injectRepoMap,
-                        providerType,
-                        enableCommitAttribution);
-            }
-
-            var systemPromptRules = BuildExecutionSystemPromptRules(provider.Type);
+            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap);
             projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
             var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
             if (!string.IsNullOrWhiteSpace(projectMemoryRules))
@@ -733,18 +714,6 @@ public partial class JobProcessingService
                         forceFreshSession: true);
                 }
 
-                var planningSystemPromptRules = systemPromptRules;
-                if (provider.Type != planningProviderConfig.Type)
-                {
-                    planningSystemPromptRules = BuildExecutionSystemPromptRules(planningProviderConfig.Type);
-                    if (!string.IsNullOrWhiteSpace(projectMemoryRules))
-                    {
-                        planningSystemPromptRules = string.IsNullOrWhiteSpace(planningSystemPromptRules)
-                            ? projectMemoryRules
-                            : $"{planningSystemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
-                    }
-                }
-
                 ExecutionResult? planningResult = null;
                 while (!cancellationToken.IsCancellationRequested)
                 {
@@ -767,12 +736,11 @@ public partial class JobProcessingService
                                 BashEnvPath = planningMcpOptions.BashEnvPath,
                                 AdditionalArgs = planningMcpOptions.AdditionalArgs,
                                 UseBareMode = planningProviderConfig.Type == ProviderType.Claude
-                                    && planningProviderConfig.ConnectionMode == ProviderConnectionMode.CLI
-                                    && ShouldUseClaudeBareMode(planningProviderConfig),
+                                    && planningProviderConfig.ConnectionMode == ProviderConnectionMode.CLI,
                                 Model = job.Project.PlanningModelId,
                                 ReasoningEffort = job.Project.PlanningReasoningEffort,
                                 Title = job.Title,
-                                AppendSystemPrompt = planningSystemPromptRules,
+                                AppendSystemPrompt = systemPromptRules,
                                 EnvironmentVariables = jobEnvironmentVariables,
                                 DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools
                             },
@@ -875,9 +843,11 @@ public partial class JobProcessingService
             await UpdateJobStatusAsync(job.Id, JobStatus.Processing, dbContext, cancellationToken);
             await NotifyStatusChangedAsync(job.Id, JobStatus.Processing);
 
-            async Task<string?> TryPrepareClaudeSessionIdAsync(string? requestedSessionId)
+            // Claude and Copilot CLIs both accept a UUID for a new session, so the job records
+            // its session before the run starts and an interrupted run can still be resumed.
+            async Task<string?> TryPreassignSessionIdAsync(string? requestedSessionId)
             {
-                if (provider.Type != ProviderType.Claude
+                if (provider.Type is not (ProviderType.Claude or ProviderType.Copilot)
                     || provider.ConnectionMode != ProviderConnectionMode.CLI
                     || !string.IsNullOrEmpty(requestedSessionId)
                     || !string.IsNullOrEmpty(executionContext.SessionId))
@@ -912,7 +882,7 @@ public partial class JobProcessingService
                 var wantsOneHourCache = provider.Type == ProviderType.Claude
                     && (job.CycleMode != CycleMode.SingleCycle || job.SwarmId != null);
                 var hasMcp = !string.IsNullOrEmpty(mcpOptions.McpConfigPath);
-                var preassignedSessionId = await TryPrepareClaudeSessionIdAsync(requestedSessionId);
+                var preassignedSessionId = await TryPreassignSessionIdAsync(requestedSessionId);
                 using var executionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 executionContext.ActiveExecutionCancellationTokenSource = executionCts;
 
@@ -928,8 +898,7 @@ public partial class JobProcessingService
                             BashEnvPath = mcpOptions.BashEnvPath,
                             AdditionalArgs = mcpOptions.AdditionalArgs,
                             UseBareMode = provider.Type == ProviderType.Claude
-                                && provider.ConnectionMode == ProviderConnectionMode.CLI
-                                && ShouldUseClaudeBareMode(job.Provider!),
+                                && provider.ConnectionMode == ProviderConnectionMode.CLI,
                             Model = job.ModelUsed,
                             ReasoningEffort = job.ReasoningEffort,
                             Title = job.Title,
@@ -937,6 +906,7 @@ public partial class JobProcessingService
                             AppendSystemPrompt = systemPromptRules,
                             EnvironmentVariables = jobEnvironmentVariables,
                             PreassignedSessionId = preassignedSessionId,
+                            SessionName = job.Title,
                             EnableOneHourPromptCache = wantsOneHourCache,
                             ExcludeDynamicSystemPromptSections = provider.Type == ProviderType.Claude,
                             NonBlockingMcpConnection = provider.Type == ProviderType.Claude && hasMcp,
@@ -1210,6 +1180,21 @@ public partial class JobProcessingService
             var checkJobService = checkScope.ServiceProvider.GetRequiredService<IJobService>();
             var wasCancelled = await checkJobService.IsCancellationRequestedAsync(job.Id, CancellationToken.None);
 
+            // A job's deliverable is a change to the code. A run that ends with the working
+            // tree untouched has not done the work, however articulate its answer was, and
+            // recording it as success hides that. Questions and guidance belong to
+            // Inference, which does not pretend to have edited anything.
+            if (!wasCancelled && finalResult.Success &&
+                await ProducedNoCodeChangesAsync(workingDirectory, executionContext.GitCommitBefore, CancellationToken.None))
+            {
+                finalResult.Success = false;
+                finalResult.ErrorMessage =
+                    "The run finished without changing any code. A job has to end in code changes — " +
+                    "use Inference for questions, reviews or guidance.";
+
+                _logger.LogWarning("Job {JobId} finished without changing any code and was recorded as failed", job.Id);
+            }
+
             if (wasCancelled)
             {
                 await UpdateProviderAttemptOutcomeAsync(job.Id, job.ActiveExecutionIndex, false, finalResult.ModelUsed ?? job.ModelUsed, dbContext, CancellationToken.None);
@@ -1336,6 +1321,14 @@ public partial class JobProcessingService
                 }
                 else
                 {
+                    // Before calling it a failure, see whether another provider in the plan
+                    // can take it. A provider that is out of quota or briefly broken should
+                    // cost the job a detour, not the run.
+                    if (await TryFailOverAsync(job, finalResult, dbContext))
+                    {
+                        return;
+                    }
+
                     await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
                         finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                         executionContext, workingDirectory, dbContext, CancellationToken.None,
@@ -1560,6 +1553,86 @@ public partial class JobProcessingService
             // Never fail a job because a skill can't be written to disk — the agent still
             // receives name + description via the system prompt, just without an absolute path.
             _logger.LogWarning(ex, "Failed to materialize skill {SkillId} ({SkillName}); continuing without storage path", skill.Id, skill.Name);
+        }
+    }
+
+    /// <summary>
+    /// Whether the run left the working tree exactly as it found it. Counts committed work,
+    /// uncommitted edits and brand-new untracked files, so an agent that committed its own
+    /// changes still reads as having done something.
+    /// </summary>
+    /// <remarks>
+    /// Answers false whenever it cannot tell — a working directory that is not a git
+    /// repository, or a run with no recorded base commit — because failing a job on a
+    /// guess is worse than missing one.
+    /// </remarks>
+    private async Task<bool> ProducedNoCodeChangesAsync(
+        string? workingDirectory,
+        string? baseCommit,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(workingDirectory) || !Directory.Exists(workingDirectory) ||
+            string.IsNullOrEmpty(baseCommit))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (!await _versionControlService.IsGitRepositoryAsync(workingDirectory, cancellationToken))
+            {
+                return false;
+            }
+
+            // Git can still be holding locks from the agent's own process.
+            await Task.Delay(750, cancellationToken);
+
+            var changedFiles = await _versionControlService.GetChangedFilesAsync(workingDirectory, baseCommit, cancellationToken);
+            return changedFiles.Count == 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not tell whether the working tree changed; treating the run as productive");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Hands a failed run to the next provider in the job's execution plan, if there is one
+    /// left that is enabled and still has quota. Records the switch so the job's history
+    /// shows why it moved.
+    /// </summary>
+    private async Task<bool> TryFailOverAsync(Job job, ExecutionResult finalResult, VibeSwarmDbContext dbContext)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var jobService = scope.ServiceProvider.GetRequiredService<IJobService>();
+
+            if (!await jobService.TryFailOverToNextExecutionTargetAsync(job.Id, finalResult.ErrorMessage, CancellationToken.None))
+            {
+                return false;
+            }
+
+            _logger.LogWarning(
+                "Job {JobId} failed on provider {ProviderId} and was handed to the next provider in its plan: {Error}",
+                job.Id,
+                job.ProviderId,
+                finalResult.ErrorMessage);
+
+            // The provider that just failed still owes the circuit breaker an answer.
+            if (finalResult.IsSystemError && _healthTracker != null)
+            {
+                _healthTracker.RecordSystemFailure(job.ProviderId, finalResult.ErrorMessage);
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Failover is an improvement on failing, never a reason to lose the job.
+            _logger.LogWarning(ex, "Failover check failed for job {JobId}; recording the failure instead", job.Id);
+            return false;
         }
     }
 }

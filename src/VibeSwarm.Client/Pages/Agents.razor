@@ -3,9 +3,9 @@
 @inject IAgentService AgentService
 @inject NotificationService NotificationService
 
-<PageHeader Title="Agents">
+<PageHeader Title="Agents" Subtitle="Reusable presets that pair a purpose with a provider and model.">
 	<Actions>
-		<ActionButton Icon="plus" Text="Add Agent" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
+		<TitleAction Icon="plus-lg" Label="Add an agent" Primary="true" OnClick="ShowAddModal" />
 	</Actions>
 </PageHeader>
 
@@ -15,87 +15,18 @@
 }
 else if (!_agents.Any())
 {
-	<EmptyState Icon="cpu" Title="No agents yet"
-				Message="Create reusable agent presets like Security Reviewer, Front End Designer, or Deployment Engineer to run consistent work across projects." />
+	<EmptyState Icon="robot" Title="No agents yet"
+				Message="Agents are reusable presets — Security Reviewer, Front End Designer, Deployment Engineer — that keep work consistent across projects.">
+		<ActionButton Icon="plus-lg" Text="New agent" Style="ActionButton.ButtonStyle.Primary"
+					  Size="ActionButton.ButtonSize.Small" OnClick="ShowAddModal" />
+	</EmptyState>
 }
 else
 {
-	<div class="list-group">
+	<div class="list-group rounded-4">
 		@foreach (var agent in _agents)
 		{
-			<div class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3 p-3 hover-bg-tertiary">
-				<div class="flex-grow-1 min-width-0">
-					<div class="d-flex align-items-center gap-2 flex-wrap">
-						<span class="fw-semibold">@agent.Name</span>
-						<StatusBadge Status="@(agent.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
-						@if (agent.SkillLinks.Any(link => link.Skill != null))
-						{
-							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-								<i class="bi bi-lightbulb opacity-75"></i>@agent.SkillLinks.Count linked skill@(agent.SkillLinks.Count == 1 ? string.Empty : "s")
-							</span>
-						}
-					</div>
-						@if (agent.DefaultProvider != null || !string.IsNullOrWhiteSpace(agent.DefaultModelId) || !string.IsNullOrWhiteSpace(agent.DefaultReasoningEffort) || agent.DefaultCycleMode != CycleMode.SingleCycle)
-						{
-							<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-							@if (agent.DefaultProvider != null)
-							{
-								<span class="d-flex align-items-center gap-1">
-									<i class="bi bi-cpu opacity-75"></i>
-									Default provider: @agent.DefaultProvider.Name
-								</span>
-							}
-							@if (!string.IsNullOrWhiteSpace(agent.DefaultModelId))
-							{
-								<span class="d-flex align-items-center gap-1">
-									<i class="bi bi-diagram-3 opacity-75"></i>
-									Default model: @agent.DefaultModelId
-								</span>
-							}
-							@if (!string.IsNullOrWhiteSpace(agent.DefaultReasoningEffort))
-							{
-								<span class="d-flex align-items-center gap-1">
-									<i class="bi bi-lightning-charge opacity-75"></i>
-									Default reasoning: @agent.DefaultReasoningEffort
-								</span>
-							}
-							@if (agent.DefaultCycleMode != CycleMode.SingleCycle)
-							{
-								<span class="d-flex align-items-center gap-1">
-									<i class="bi bi-arrow-repeat opacity-75"></i>
-									@DescribeExecutionProfile(agent)
-								</span>
-							}
-						</div>
-					}
-					@if (!string.IsNullOrWhiteSpace(agent.Description))
-					{
-						<div class="small text-body-secondary mt-1">@agent.Description</div>
-					}
-					@if (!string.IsNullOrWhiteSpace(agent.Responsibilities))
-					{
-						<div class="small mt-2 white-space-pre-wrap">@TruncateText(agent.Responsibilities, 240)</div>
-					}
-					@if (agent.SkillLinks.Any(link => link.Skill != null))
-					{
-						<div class="d-flex flex-wrap gap-1 mt-2">
-							@foreach (var skillLink in agent.SkillLinks.Where(link => link.Skill != null))
-							{
-								<span class="badge bg-primary-subtle text-primary-emphasis">@skillLink.Skill!.Name</span>
-							}
-						</div>
-					}
-				</div>
-				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-					<ToggleSwitch Value="@agent.IsEnabled" Title="@(agent.IsEnabled ? "Disable" : "Enable")"
-								  Class="me-1" OnChange="() => ToggleEnabled(agent)" />
-					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
-								  OnClick="@(() => EditAgent(agent))" />
-					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
-								  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
-								  OnClick="@(() => ShowDeleteConfirmation(agent))" />
-				</div>
-			</div>
+			<AgentRow @key="agent.Id" Agent="agent" OnToggleEnabled="ToggleEnabled" OnEdit="EditAgent" OnDelete="ShowDeleteConfirmation" />
 		}
 	</div>
 }
@@ -137,35 +68,6 @@ else
 		{
 			_isLoading = false;
 		}
-	}
-
-	private static string TruncateText(string text, int maxLength)
-	{
-		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-		{
-			return text;
-		}
-
-		return text[..maxLength] + "...";
-	}
-
-	private static string DescribeExecutionProfile(Agent agent)
-	{
-		var cycleMode = agent.DefaultCycleMode switch
-		{
-			CycleMode.FixedCount => $"Default run: {agent.DefaultMaxCycles} fixed cycles",
-			CycleMode.Autonomous => $"Default run: autonomous up to {agent.DefaultMaxCycles} cycles",
-			_ => "Default run: single cycle"
-		};
-		if (agent.DefaultCycleMode == CycleMode.SingleCycle)
-		{
-			return cycleMode;
-		}
-
-		var sessionMode = agent.DefaultCycleSessionMode == CycleSessionMode.ContinueSession
-			? "resume session"
-			: "fresh session";
-		return $"{cycleMode}, {sessionMode}";
 	}
 
 	private void ShowAddModal()

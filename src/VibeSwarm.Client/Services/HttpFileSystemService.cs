@@ -22,4 +22,10 @@ public class HttpFileSystemService : IFileSystemService
 
     public async Task<List<DriveEntry>> GetDrivesAsync()
         => await _http.GetJsonAsync("/api/filesystem/drives", new List<DriveEntry>());
+
+    public async Task<WorkspaceInspection> InspectWorkspaceAsync(string path)
+        => await _http.GetJsonAsync($"/api/filesystem/inspect?path={Uri.EscapeDataString(path)}", new WorkspaceInspection { Path = path });
+
+    public async Task<List<WorkspaceInspection>> ScanWorkspacesAsync(string rootPath)
+        => await _http.GetJsonAsync($"/api/filesystem/scan?path={Uri.EscapeDataString(rootPath)}", new List<WorkspaceInspection>());
 }

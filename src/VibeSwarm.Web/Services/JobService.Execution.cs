@@ -47,6 +47,142 @@ public partial class JobService
             .ToListAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Moves a failed job onto the next provider in its execution plan and queues it again.
+    /// This is what makes a provider running out of quota a detour rather than a dead end:
+    /// the plan was always ordered, but nothing used to advance through it.
+    /// </summary>
+    /// <returns>True when the job was handed to another provider; false when the plan is spent.</returns>
+    public async Task<bool> TryFailOverToNextExecutionTargetAsync(
+        Guid id,
+        string? reason,
+        CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .Include(j => j.Statistics)
+            .Include(j => j.PlanningStatistics)
+            .Include(j => j.ExecutionStatistics)
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        // A job the user stopped is not looking for another provider to try.
+        if (job == null || job.CancellationRequested || string.IsNullOrWhiteSpace(job.ExecutionPlan))
+        {
+            return false;
+        }
+
+        List<JobExecutionTarget>? plan;
+        try
+        {
+            plan = JsonSerializer.Deserialize<List<JobExecutionTarget>>(job.ExecutionPlan);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        if (plan == null || plan.Count == 0)
+        {
+            return false;
+        }
+
+        var next = await FindNextUsableTargetAsync(job, plan, cancellationToken);
+        if (next == null)
+        {
+            return false;
+        }
+
+        var (nextIndex, target) = next.Value;
+        var previousProviderName = plan[Math.Clamp(job.ActiveExecutionIndex, 0, plan.Count - 1)].ProviderName;
+        var savedPlan = job.ExecutionPlan;
+
+        if (!await ResetJobWithOptionsInternalAsync(job, target.ProviderId, target.ModelId, target.ReasoningEffort, cancellationToken))
+        {
+            return false;
+        }
+
+        // The reset clears the plan so a manual retry starts fresh; a failover has to keep
+        // it and step forward, otherwise the job would start again on the provider that
+        // just failed.
+        job.ExecutionPlan = savedPlan;
+        job.ActiveExecutionIndex = nextIndex;
+        job.LastSwitchAt = DateTime.UtcNow;
+        job.LastSwitchReason = BuildSwitchReason(previousProviderName, target.ProviderName, reason);
+        job.CurrentActivity = $"Switched to {target.ProviderName}";
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+                await _jobUpdateService.NotifyJobListChanged();
+            }
+            catch { }
+        }
+
+        _jobProcessingService?.TriggerProcessing();
+
+        return true;
+    }
+
+    /// <summary>
+    /// Walks forward through the plan for a provider that could actually take the job:
+    /// enabled, and not already out of quota. Never walks backwards, so failover always
+    /// terminates.
+    /// </summary>
+    private async Task<(int Index, JobExecutionTarget Target)?> FindNextUsableTargetAsync(
+        Job job,
+        List<JobExecutionTarget> plan,
+        CancellationToken cancellationToken)
+    {
+        var usageService = _serviceProvider.GetService(typeof(IProviderUsageService)) as IProviderUsageService;
+
+        for (var index = job.ActiveExecutionIndex + 1; index < plan.Count; index++)
+        {
+            var candidate = plan[index];
+
+            var provider = await _dbContext.Providers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == candidate.ProviderId && p.IsEnabled, cancellationToken);
+
+            if (provider == null)
+            {
+                continue;
+            }
+
+            if (usageService != null)
+            {
+                try
+                {
+                    var exhaustion = await usageService.CheckExhaustionAsync(candidate.ProviderId, cancellationToken: cancellationToken);
+                    if (exhaustion?.IsExhausted == true)
+                    {
+                        continue;
+                    }
+                }
+                catch
+                {
+                    // Usage tracking is advisory; a failure to read it must not block failover.
+                }
+            }
+
+            return (index, candidate);
+        }
+
+        return null;
+    }
+
+    private static string BuildSwitchReason(string? from, string? to, string? reason)
+    {
+        var summary = ProviderFailureClassifier.Summarize(reason);
+        var text = string.IsNullOrWhiteSpace(summary)
+            ? $"{from} failed; trying {to}"
+            : $"{from} failed ({summary}); trying {to}";
+
+        return text.Length <= 200 ? text : text[..199] + "\u2026";
+    }
+
     private async Task InitializeExecutionPlanAsync(Job job, CancellationToken cancellationToken)
     {
         var targets = await BuildExecutionPlanAsync(job, cancellationToken);

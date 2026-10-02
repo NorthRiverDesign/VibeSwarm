@@ -30,7 +30,6 @@ public partial class JobProcessingService : BackgroundService
     private readonly IJobUpdateService? _jobUpdateService;
     private readonly IJobCoordinatorService? _jobCoordinator;
     private readonly IProviderHealthTracker? _healthTracker;
-    private readonly ProcessSupervisor? _processSupervisor;
     private readonly IVersionControlService _versionControlService;
     private readonly IInteractionResponseService? _interactionResponseService;
     private readonly IProjectEnvironmentCredentialService _projectEnvironmentCredentialService;
@@ -62,7 +61,6 @@ public partial class JobProcessingService : BackgroundService
         IJobUpdateService? jobUpdateService = null,
         IJobCoordinatorService? jobCoordinator = null,
         IProviderHealthTracker? healthTracker = null,
-        ProcessSupervisor? processSupervisor = null,
         IInteractionResponseService? interactionResponseService = null,
         IProjectEnvironmentCredentialService? projectEnvironmentCredentialService = null)
     {
@@ -72,7 +70,6 @@ public partial class JobProcessingService : BackgroundService
         _jobUpdateService = jobUpdateService;
         _jobCoordinator = jobCoordinator;
         _healthTracker = healthTracker;
-        _processSupervisor = processSupervisor;
         _interactionResponseService = interactionResponseService;
         _projectEnvironmentCredentialService = projectEnvironmentCredentialService ?? throw new ArgumentNullException(nameof(projectEnvironmentCredentialService));
     }
@@ -86,6 +83,7 @@ public partial class JobProcessingService : BackgroundService
         public CancellationTokenSource? CancellationTokenSource { get; set; }
         public int? ProcessId { get; set; }
         public Guid ProviderId { get; set; }
+        public Guid ProjectId { get; set; }
 
         /// <summary>
         /// The provider instance used for this job execution.
@@ -376,6 +374,29 @@ public partial class JobProcessingService : BackgroundService
         _wakeSignal.Writer.TryWrite(0);
     }
 
+    /// <summary>Set once while paused so a stopped queue does not fill the log.</summary>
+    private bool _queuePauseLogged;
+
+    private static async Task<bool> IsQueuePausedAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var dbContext = services.GetRequiredService<VibeSwarmDbContext>();
+            var settings = await dbContext.AppSettings
+                .AsNoTracking()
+                .Select(appSettings => new { appSettings.JobQueuePaused })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return settings?.JobQueuePaused ?? false;
+        }
+        catch
+        {
+            // A queue that cannot read its own stop switch keeps working rather than
+            // stalling on a transient database hiccup.
+            return false;
+        }
+    }
+
     private async Task ProcessPendingJobsAsync(CancellationToken stoppingToken)
     {
         await _jobsLock.WaitAsync(stoppingToken);
@@ -388,8 +409,23 @@ public partial class JobProcessingService : BackgroundService
                 return; // All slots are filled
             }
 
-            // Get pending jobs
             using var scope = _scopeFactory.CreateScope();
+
+            // The stop switch. Checked on every dispatch rather than cached, so pausing
+            // from a phone takes effect on the next poll instead of the next restart.
+            if (await IsQueuePausedAsync(scope.ServiceProvider, stoppingToken))
+            {
+                if (!_queuePauseLogged)
+                {
+                    _queuePauseLogged = true;
+                    _logger.LogWarning("Job queue is paused — no further jobs will be started");
+                }
+
+                return;
+            }
+
+            _queuePauseLogged = false;
+
             var jobService = scope.ServiceProvider.GetRequiredService<IJobService>();
             var pendingJobs = (await jobService.GetPendingJobsAsync(stoppingToken)).ToList();
 
@@ -401,16 +437,17 @@ public partial class JobProcessingService : BackgroundService
             _logger.LogInformation("Found {PendingCount} pending jobs, {AvailableSlots} slots available, {RunningCount} jobs running",
                 pendingJobs.Count, availableSlots, _runningJobs.Count);
 
-            // Start new jobs up to the available slots
-            var jobsToStart = pendingJobs.Take(availableSlots);
+            var busyProjectIds = _runningJobs.Values
+                .Where(running => !running.Task.IsCompleted)
+                .Select(running => running.ProjectId);
+            var jobsToStart = SelectJobsToStart(pendingJobs, busyProjectIds, availableSlots);
             foreach (var job in jobsToStart)
             {
                 if (stoppingToken.IsCancellationRequested)
                     break;
 
-                // Create a linked cancellation token for this job
                 var jobCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                var context = new JobExecutionContext { CancellationTokenSource = jobCts };
+                var context = new JobExecutionContext { CancellationTokenSource = jobCts, ProjectId = job.ProjectId };
 
                 // Start job processing in background
                 context.Task = Task.Run(async () =>
@@ -435,6 +472,21 @@ public partial class JobProcessingService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Picks which pending jobs to launch, at most one per project, skipping projects this
+    /// worker still has a job task running for. The database lags the task at both ends: a
+    /// dispatched job only shows as running once its task claims it, and a cancel can mark it
+    /// finished while the task is still in the checkout. The live tasks are the authority.
+    /// </summary>
+    internal static List<Job> SelectJobsToStart(IEnumerable<Job> pendingJobs, IEnumerable<Guid> busyProjectIds, int availableSlots)
+    {
+        var claimedProjectIds = busyProjectIds.ToHashSet();
+        return pendingJobs
+            .Where(job => claimedProjectIds.Add(job.ProjectId))
+            .Take(availableSlots)
+            .ToList();
+    }
+
     private async Task CleanupCompletedJobsAsync()
     {
         await _jobsLock.WaitAsync();
@@ -447,7 +499,6 @@ public partial class JobProcessingService : BackgroundService
                 kvp.Value.CancellationTokenSource?.Dispose();
                 _logger.LogDebug("Removed completed job {JobId} from running jobs tracking", kvp.Key);
 
-                // Check for exceptions
                 if (kvp.Value.Task.IsFaulted && kvp.Value.Task.Exception != null)
                 {
                     _logger.LogError(kvp.Value.Task.Exception, "Job {JobId} faulted during execution", kvp.Key);

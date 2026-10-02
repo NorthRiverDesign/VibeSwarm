@@ -86,7 +86,6 @@ public class IdeasProcessingService : BackgroundService
 		using var scope = _scopeFactory.CreateScope();
 		var ideaService = scope.ServiceProvider.GetRequiredService<IIdeaService>();
 
-		// Get all projects with active Ideas processing
 		var activeProjectIds = await ideaService.GetActiveProcessingProjectsAsync(cancellationToken);
 
 		foreach (var projectId in activeProjectIds)

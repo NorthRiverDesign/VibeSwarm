@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Utilities;
@@ -12,8 +13,13 @@ namespace VibeSwarm.Shared.Services;
 /// </summary>
 public static partial class JobSummaryGenerator
 {
-	private const int MaxCommitLogEntries = 10;
 	private const int MaxCommitSubjectLength = 96;
+
+	/// <summary>
+	/// The placeholder the prompt templates put between the commit-summary tags. It reaches job
+	/// output whenever an agent reads those templates, and is never a real subject.
+	/// </summary>
+	private const string CommitSummaryPlaceholder = "concise one-line description of what was implemented";
 	private static readonly string[] NarrativePrefixes = ["i ", "we ", "i'm ", "we're ", "i’ve ", "we’ve ", "i'd ", "we'd "];
 	private static readonly string[] DanglingEndingWords =
 	[
@@ -21,25 +27,9 @@ public static partial class JobSummaryGenerator
 		"in", "into", "of", "on", "or", "that", "the", "this", "to", "with"
 	];
 
-	private static readonly string[] ActionKeywords =
-	[
-		"add", "added", "create", "created", "implement", "implemented",
-		"fix", "fixed", "resolve", "resolved",
-		"update", "updated", "modify", "modified", "change", "changed",
-		"remove", "removed", "delete", "deleted",
-		"refactor", "refactored", "restructure", "restructured",
-		"improve", "improved", "enhance", "enhanced", "optimize", "optimized",
-		"move", "moved", "rename", "renamed",
-		"configure", "configured", "setup", "set up",
-		"test", "tested",
-		"review", "reviewed", "audit", "audited", "check", "checked",
-		"secure", "secured", "harden", "hardened"
-	];
-
 	/// <summary>
 	/// Generates a commit message summary from job data.
 	/// </summary>
-	/// <param name="job">The completed job</param>
 	/// <returns>A concise summary suitable for a commit message, or null if insufficient data</returns>
 	public static string? GenerateSummary(Job job)
 	{
@@ -62,7 +52,6 @@ public static partial class JobSummaryGenerator
 	/// <summary>
 	/// Generates a commit message summary from job data with an explicit commit log.
 	/// </summary>
-	/// <param name="job">The completed job</param>
 	/// <param name="commitLog">List of commit messages made during job execution</param>
 	/// <returns>A concise summary suitable for a commit message, or null if insufficient data</returns>
 	public static string? GenerateSummary(Job job, IReadOnlyList<string>? commitLog)
@@ -113,7 +102,6 @@ public static partial class JobSummaryGenerator
 		// Extract action context from goal prompt
 		var actionContext = ExtractActionContext(goalPrompt);
 
-		// Build the summary
 		return BuildSummary(diffInfo, actionContext, goalPrompt, title, commitLog);
 	}
 
@@ -216,31 +204,163 @@ public static partial class JobSummaryGenerator
 		if (string.IsNullOrWhiteSpace(consoleOutput))
 			return null;
 
-		var match = CommitSummaryTagRegex().Match(consoleOutput);
-		if (match.Success)
+		// The agent is told to end with the tag, so the last one it wrote is its answer. Earlier
+		// tags are usually not the agent's at all: a job that reads VibeSwarm's own prompt
+		// templates gets the tag and its placeholder back in tool output.
+		var agentTexts = GetAgentAuthoredText(consoleOutput);
+		for (var textIndex = agentTexts.Count - 1; textIndex >= 0; textIndex--)
 		{
-			var raw = match.Groups[1].Value;
-			// Normalize literal escape sequences that may appear when output is stored as escaped text
-			var normalized = raw
-				.Replace("\\n", "\n")
-				.Replace("\\r", "\r")
-				.Replace("\\t", " ");
-
-			// Take only the first non-empty line as the commit subject
-			var subject = normalized
-				.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-				.Select(l => l.Trim())
-				.FirstOrDefault(l => l.Length > 0);
-
-			if (string.IsNullOrWhiteSpace(subject))
-				return null;
-
-			var normalizedSubject = NormalizeCommitSubject(subject);
-			return IsLowQualitySummaryCandidate(normalizedSubject) ? null : normalizedSubject;
+			var matches = CommitSummaryTagRegex().Matches(agentTexts[textIndex]);
+			for (var matchIndex = matches.Count - 1; matchIndex >= 0; matchIndex--)
+			{
+				var subject = ParseCommitSummaryTag(matches[matchIndex].Groups[1].Value);
+				if (subject != null)
+				{
+					return subject;
+				}
+			}
 		}
 
 		return null;
 	}
+
+	private static string? ParseCommitSummaryTag(string raw)
+	{
+		// Normalize literal escape sequences that may appear when output is stored as escaped text
+		var normalized = raw
+			.Replace("\\n", "\n")
+			.Replace("\\r", "\r")
+			.Replace("\\t", " ");
+
+		// Take only the first non-empty line as the commit subject
+		var subject = normalized
+			.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+			.Select(l => l.Trim())
+			.FirstOrDefault(l => l.Length > 0);
+
+		if (string.IsNullOrWhiteSpace(subject))
+			return null;
+
+		var normalizedSubject = NormalizeCommitSubject(subject);
+		return IsLowQualitySummaryCandidate(normalizedSubject) ? null : normalizedSubject;
+	}
+
+	/// <summary>
+	/// Returns the text the agent itself wrote, in order. CLI providers stream one JSON event per
+	/// line, and only their message events are the agent's words: tool calls and tool results
+	/// carry file contents and command output. Lines that are not JSON events are kept as text.
+	/// </summary>
+	private static List<string> GetAgentAuthoredText(string output)
+	{
+		var texts = new List<string>();
+		var plainText = new StringBuilder();
+
+		void FlushPlainText()
+		{
+			if (plainText.Length > 0)
+			{
+				texts.Add(plainText.ToString());
+				plainText.Clear();
+			}
+		}
+
+		foreach (var line in output.Split('\n'))
+		{
+			var trimmed = line.Trim();
+			if (!trimmed.StartsWith('{'))
+			{
+				plainText.Append(line).Append('\n');
+				continue;
+			}
+
+			// Skip parsing the many events that cannot hold a tag.
+			if (!trimmed.Contains("commit-summary", StringComparison.OrdinalIgnoreCase))
+			{
+				FlushPlainText();
+				continue;
+			}
+
+			JsonDocument document;
+			try
+			{
+				document = JsonDocument.Parse(trimmed);
+			}
+			catch (JsonException)
+			{
+				plainText.Append(line).Append('\n');
+				continue;
+			}
+
+			FlushPlainText();
+			using (document)
+			{
+				var text = GetAgentMessageText(document.RootElement);
+				if (!string.IsNullOrWhiteSpace(text))
+				{
+					texts.Add(text);
+				}
+			}
+		}
+
+		FlushPlainText();
+		return texts;
+	}
+
+	private static string? GetAgentMessageText(JsonElement root)
+	{
+		if (root.ValueKind != JsonValueKind.Object
+			|| !root.TryGetProperty("type", out var type)
+			|| type.ValueKind != JsonValueKind.String)
+		{
+			return null;
+		}
+
+		switch (type.GetString())
+		{
+			// Claude Code's final answer
+			case "result":
+				return GetStringProperty(root, "result");
+
+			// Claude Code turns carry content blocks; only text blocks are prose, tool_use input is not.
+			// OpenCode message events carry the text directly.
+			case "assistant":
+			case "message":
+				if (root.TryGetProperty("message", out var message)
+					&& message.ValueKind == JsonValueKind.Object
+					&& message.TryGetProperty("content", out var blocks)
+					&& blocks.ValueKind == JsonValueKind.Array)
+				{
+					var text = new StringBuilder();
+					foreach (var block in blocks.EnumerateArray())
+					{
+						if (block.ValueKind == JsonValueKind.Object
+							&& GetStringProperty(block, "type") == "text"
+							&& GetStringProperty(block, "text") is { } blockText)
+						{
+							text.Append(blockText).Append('\n');
+						}
+					}
+
+					return text.ToString();
+				}
+
+				return GetStringProperty(root, "content");
+
+			// Copilot session events
+			case "assistant.message":
+				return root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object
+					? GetStringProperty(data, "content")
+					: null;
+
+			default:
+				return null;
+		}
+	}
+
+	private static string? GetStringProperty(JsonElement element, string name)
+		=> element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+			? value.GetString()
+			: null;
 
 	/// <summary>
 	/// Truncates a string at a word boundary up to the specified max length.
@@ -350,58 +470,10 @@ public static partial class JobSummaryGenerator
 		if (string.IsNullOrWhiteSpace(goalPrompt))
 			return context;
 
-		var lowerPrompt = goalPrompt.ToLowerInvariant();
-
-		// Find the primary action keyword
-		foreach (var keyword in ActionKeywords)
-		{
-			var index = lowerPrompt.IndexOf(keyword, StringComparison.Ordinal);
-			if (index >= 0)
-			{
-				context.ActionVerb = NormalizeActionVerb(keyword);
-				context.FoundAt = index;
-				break;
-			}
-		}
-
-		// If no action found, default based on common patterns
-		if (string.IsNullOrEmpty(context.ActionVerb))
-		{
-			if (lowerPrompt.Contains("bug") || lowerPrompt.Contains("error") || lowerPrompt.Contains("issue"))
-				context.ActionVerb = "Fix";
-			else if (lowerPrompt.Contains("new") || lowerPrompt.Contains("feature"))
-				context.ActionVerb = "Add";
-			else
-				context.ActionVerb = "Update";
-		}
-
 		// Extract a brief subject from the prompt (first meaningful clause)
 		context.Subject = ExtractSubject(goalPrompt);
 
 		return context;
-	}
-
-	/// <summary>
-	/// Normalizes action verbs to their present tense, capitalized form.
-	/// </summary>
-	private static string NormalizeActionVerb(string verb)
-	{
-		return verb.ToLowerInvariant() switch
-		{
-			"add" or "added" or "create" or "created" => "Add",
-			"implement" or "implemented" => "Implement",
-			"fix" or "fixed" or "resolve" or "resolved" => "Fix",
-			"update" or "updated" or "modify" or "modified" or "change" or "changed" => "Update",
-			"remove" or "removed" or "delete" or "deleted" => "Remove",
-			"refactor" or "refactored" or "restructure" or "restructured" => "Refactor",
-			"improve" or "improved" or "enhance" or "enhanced" or "optimize" or "optimized" => "Improve",
-			"move" or "moved" or "rename" or "renamed" => "Rename",
-			"configure" or "configured" or "setup" or "set up" => "Configure",
-			"test" or "tested" => "Add tests for",
-			"review" or "reviewed" or "audit" or "audited" or "check" or "checked" => "Review",
-			"secure" or "secured" or "harden" or "hardened" => "Secure",
-			_ => char.ToUpper(verb[0]) + verb[1..].ToLower()
-		};
 	}
 
 	/// <summary>
@@ -511,7 +583,9 @@ public static partial class JobSummaryGenerator
 		normalized = StripInlineCommitArtifacts(normalized);
 		normalized = normalized.Trim(' ', '.', ',', ';', ':', '-', '–', '—');
 
-		if (normalized.Length == 0 || IsCommitArtifactLine(normalized))
+		if (normalized.Length == 0
+			|| IsCommitArtifactLine(normalized)
+			|| normalized.Contains(CommitSummaryPlaceholder, StringComparison.OrdinalIgnoreCase))
 		{
 			return null;
 		}
@@ -550,25 +624,14 @@ public static partial class JobSummaryGenerator
 			}
 		}
 
-		var actionVerb = string.IsNullOrWhiteSpace(actionContext.ActionVerb)
-			? "Update"
-			: actionContext.ActionVerb;
-
+		// Use the prompt's own words. A verb guessed from elsewhere in the prompt reads as nonsense
+		// in front of a subject that already has one ("Update make sure ...").
 		if (!string.IsNullOrEmpty(actionContext.Subject))
 		{
-			var subjectLower = actionContext.Subject.ToLowerInvariant();
-			var startsWithVerb = ActionKeywords.Any(k => subjectLower.StartsWith(k));
-
-			if (startsWithVerb)
-			{
-				return NormalizeCommitSubject(actionContext.Subject) ?? "Update code";
-			}
-
-			return NormalizeCommitSubject($"{actionVerb} {char.ToLower(actionContext.Subject[0])}{actionContext.Subject[1..]}")
-				?? "Update code";
+			return NormalizeCommitSubject(actionContext.Subject) ?? "Update code";
 		}
 
-		return NormalizeCommitSubject($"{actionVerb} code") ?? "Update code";
+		return "Update code";
 	}
 
 	/// <summary>
@@ -614,69 +677,6 @@ public static partial class JobSummaryGenerator
 
 		var lastWord = words[^1].TrimEnd('.', ',', ';', ':', '!', '?');
 		return DanglingEndingWords.Any(word => string.Equals(word, lastWord, StringComparison.Ordinal));
-	}
-
-	/// <summary>
-	/// Groups changed files into meaningful patterns for display.
-	/// </summary>
-	private static List<string> GetFilePatterns(List<string> changedFiles)
-	{
-		var patterns = new List<string>();
-
-		if (changedFiles.Count == 0)
-			return patterns;
-
-		// If 3 or fewer files, just list them
-		if (changedFiles.Count <= 3)
-		{
-			return changedFiles.Select(f => Path.GetFileName(f)).ToList();
-		}
-
-		// Group by directory
-		var byDirectory = changedFiles
-			.GroupBy(f => Path.GetDirectoryName(f) ?? "")
-			.OrderByDescending(g => g.Count())
-			.ToList();
-
-		foreach (var group in byDirectory.Take(3))
-		{
-			var dir = group.Key;
-			var count = group.Count();
-
-			if (string.IsNullOrEmpty(dir))
-			{
-				if (count == 1)
-					patterns.Add(Path.GetFileName(group.First()));
-				else
-					patterns.Add($"{count} root files");
-			}
-			else
-			{
-				// Simplify the directory path
-				var simplifiedDir = dir.Replace('\\', '/');
-				if (simplifiedDir.Length > 30)
-				{
-					var parts = simplifiedDir.Split('/');
-					simplifiedDir = parts.Length > 2
-						? $"{parts[0]}/.../{parts[^1]}"
-						: simplifiedDir[..27] + "...";
-				}
-
-				if (count == 1)
-					patterns.Add($"{simplifiedDir}/{Path.GetFileName(group.First())}");
-				else
-					patterns.Add($"{simplifiedDir}/* ({count})");
-			}
-		}
-
-		// If there are more directories
-		var remaining = changedFiles.Count - byDirectory.Take(3).Sum(g => g.Count());
-		if (remaining > 0)
-		{
-			patterns.Add($"+{remaining} more");
-		}
-
-		return patterns;
 	}
 
 	/// <summary>
@@ -738,8 +738,6 @@ public static partial class JobSummaryGenerator
 	/// </summary>
 	private class ActionContext
 	{
-		public string ActionVerb { get; set; } = "Update";
 		public string Subject { get; set; } = "";
-		public int FoundAt { get; set; } = -1;
 	}
 }

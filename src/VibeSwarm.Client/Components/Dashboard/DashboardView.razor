@@ -8,181 +8,142 @@
 @implements IAsyncDisposable
 @using System.Threading
 
-<PageHeader Title="Dashboard" />
+<PageHeader Title="Dashboard" Subtitle="What is running right now, and where your projects stand." />
 
-<div class="row g-3">
+<div class="d-flex flex-column gap-4">
     @if (RunningDashboardJobs.Any())
     {
-        <div class="col-12">
-            <DashboardRunningJobsSection Items="@RunningDashboardJobs" />
-        </div>
+        <DashboardRunningJobsSection Items="@RunningDashboardJobs" />
     }
 
     @if (IdeasStatus is not null &&
         (IdeasStatus.TotalQueueIdeas > 0 || IdeasStatus.ProjectsCurrentlyProcessing > 0))
     {
-        <div class="col-12">
-            <section>
-                <SectionHeader Title="Ideas Processing" Icon="lightbulb">
-                    <Actions>
-                        @if (IdeasStatus.ProjectsCurrentlyProcessing > 0)
-                        {
-                            <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2">
-                                <span class="badge bg-success-subtle text-success-emphasis d-inline-flex align-items-center justify-content-center justify-content-sm-start gap-1 text-wrap align-self-start align-self-sm-auto">
-                                    <span class="spinner-border spinner-border-sm flex-shrink-0" style="width: 0.65rem; height: 0.65rem;" role="status"></span>
-                                    @IdeasStatus.ProjectsCurrentlyProcessing project@(IdeasStatus.ProjectsCurrentlyProcessing != 1 ? "s" : "") processing
-                                </span>
-                                <ActionButton Text="@(IsStoppingAll ? "Stopping..." : "Stop")" Icon="stop-fill"
-                                              Size="ActionButton.ButtonSize.Small" Style="ActionButton.ButtonStyle.Danger"
-                                              IsLoading="IsStoppingAll" Disabled="IsStoppingAll" OnClick="OnStopAllProcessing" />
-                             </div>
-                         }
-                         else if (IdeasStatus.TotalUnprocessedIdeas > 0 && !IsStartingAll)
-                         {
-                             <ActionButton Text="Start All Ideas" Icon="play-fill"
-                                          Size="ActionButton.ButtonSize.Small" Style="ActionButton.ButtonStyle.Success"
-                                          OnClick="() => ShowStartAllModal = true">
-                             </ActionButton>
-                        }
-                    </Actions>
-                </SectionHeader>
-
-                @if (StartAllError is not null)
-                {
-                    <Alert Type="Alert.AlertType.Danger" Dismissible="true" OnDismiss="() => StartAllError = null">
-                        @StartAllError
-                    </Alert>
-                }
-
-                <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-2 g-lg-3">
-                    @foreach (var project in IdeasStatus.Projects.Where(p => p.TotalQueueIdeas > 0 || p.IsProcessing))
+        <section class="d-flex flex-column gap-2" aria-label="Ideas">
+            <SectionHeader Title="Ideas">
+                <Actions>
+                    @if (IdeasStatus.ProjectsCurrentlyProcessing > 0)
                     {
-                        <div class="col">
-                            <div class="card border h-100">
-                                <div class="card-body p-3 d-flex flex-column gap-3 h-100">
-                                    <div class="d-flex align-items-start justify-content-between gap-2">
-                                        <div class="flex-grow-1 min-width-0">
-                                            <div class="fw-medium text-truncate">@project.ProjectName</div>
-                                            <small class="text-body-secondary">
-                                                @project.TotalQueueIdeas idea@(project.TotalQueueIdeas != 1 ? "s" : "") remaining
-                                            </small>
-                                        </div>
-                                        @if (project.HasRunningJob)
-                                        {
-                                            <span class="badge bg-success-subtle text-success-emphasis flex-shrink-0">
-                                                <span class="spinner-border spinner-border-sm" style="width: 0.5rem; height: 0.5rem;" role="status"></span>
-                                                Running
-                                            </span>
-                                        }
-                                        else if (project.IsProcessing || project.QueuedIdeas > 0)
-                                        {
-                                            <span class="badge text-bg-info flex-shrink-0">Queued</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge bg-body-secondary text-body-secondary flex-shrink-0">Pending</span>
-                                        }
-                                    </div>
-                                    <div class="d-flex justify-content-end mt-auto">
-                                        <NavLink href="@($"/projects/{project.ProjectId}")" class="btn btn-secondary btn-sm">
-                                            <i class="bi bi-folder2-open me-1"></i>View Project
-                                        </NavLink>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <button type="button" class="btn btn-sm btn-link text-danger text-decoration-none px-0"
+                                disabled="@IsStoppingAll" @onclick="OnStopAllProcessing">
+                            <i class="bi bi-stop-fill me-1"></i>@(IsStoppingAll ? "Stopping..." : "Stop all")
+                        </button>
                     }
-                </div>
-            </section>
-        </div>
+                    else if (IdeasStatus.TotalUnprocessedIdeas > 0 && !IsStartingAll)
+                    {
+                        <button type="button" class="btn btn-sm btn-link text-decoration-none px-0" @onclick="() => ShowStartAllModal = true">
+                            <i class="bi bi-play-fill me-1"></i>Start all
+                        </button>
+                    }
+                </Actions>
+            </SectionHeader>
+
+            @if (StartAllError is not null)
+            {
+                <Alert Type="Alert.AlertType.Danger" Dismissible="true" OnDismiss="() => StartAllError = null">
+                    @StartAllError
+                </Alert>
+            }
+
+            <div class="list-group rounded-4">
+                @foreach (var project in IdeasStatus.Projects.Where(p => p.TotalQueueIdeas > 0 || p.IsProcessing))
+                {
+                    <ListRow @key="project.ProjectId" Icon="lightbulb" Title="@project.ProjectName"
+                             Subtitle="@($"{project.TotalQueueIdeas} idea{(project.TotalQueueIdeas != 1 ? "s" : "")} left")"
+                             Href="@($"/projects/{project.ProjectId}")">
+                        <Trailing>
+                            @if (project.HasRunningJob)
+                            {
+                                <span class="small text-success flex-shrink-0 d-inline-flex align-items-center gap-1"><span class="live-dot"></span>Running</span>
+                            }
+                            else if (project.IsProcessing || project.QueuedIdeas > 0)
+                            {
+                                <span class="small text-body-secondary flex-shrink-0">Queued</span>
+                            }
+                            else
+                            {
+                                <span class="small text-body-tertiary flex-shrink-0">Waiting</span>
+                            }
+                        </Trailing>
+                    </ListRow>
+                }
+            </div>
+        </section>
     }
 
-    <div class="col-12">
-        <DashboardJobAnalyticsSection />
-    </div>
+    <DashboardJobAnalyticsSection />
 
-    <div class="col-12">
-        <section>
-            <SectionHeader Title="Active Projects" Icon="folder">
-                <Actions>
-                    <label for="dashboardProjectSort" class="text-meta text-body-secondary mb-0">Sort by</label>
-                    <InputSelect id="dashboardProjectSort" @bind-Value="SelectedProjectSort"
-                                 class="form-select form-select-sm w-100" style="min-width: 9rem;">
-                        <option value="@DashboardProjectSortOption.LastRan">Last ran</option>
-                        <option value="@DashboardProjectSortOption.Name">Name</option>
-                    </InputSelect>
-                    <ActionButton Text="View All" Size="ActionButton.ButtonSize.Small"
-                                  OnClick="@(() => NavigationManager.NavigateTo("/projects"))" />
-                </Actions>
-            </SectionHeader>
+    <section class="d-flex flex-column gap-2" aria-label="Active projects">
+        <SectionHeader Title="Active projects">
+            <Actions>
+                <InputSelect id="dashboardProjectSort" @bind-Value="SelectedProjectSort" aria-label="Sort by"
+                             class="form-select form-select-sm">
+                    <option value="@DashboardProjectSortOption.LastRan">Last ran</option>
+                    <option value="@DashboardProjectSortOption.Name">Name</option>
+                </InputSelect>
+                <a href="/projects" class="btn btn-sm btn-link text-decoration-none px-0 flex-shrink-0">All</a>
+            </Actions>
+        </SectionHeader>
 
-            @if (IsLoading)
-            {
-                <LoadingSpinner />
-            }
-            else if (!SortedDashboardProjects.Any())
-            {
-                <EmptyState Icon="folder" Title="No projects yet"
-                            Message="Create your first project to start running AI agent jobs.">
-                    <ActionButton Icon="plus-lg" Text="Create Project" Size="ActionButton.ButtonSize.Small"
-                                  Style="ActionButton.ButtonStyle.Primary"
-                                  OnClick="@(() => NavigationManager.NavigateTo("/projects"))" />
-                </EmptyState>
-            }
-            else
-            {
-                <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-2 g-lg-3">
-                    @foreach (var item in SortedDashboardProjects)
-                    {
-                        <div class="col">
-                            <ProjectCard ProjectId="@item.Project.Id" Name="@item.Project.Name"
-                                         Description="@item.Project.Description" WorkingPath="@item.Project.WorkingPath"
-                                         GitHubRepository="@item.Project.GitHubRepository" CurrentBranch="@item.CurrentBranch"
-                                         LatestJob="@item.LatestJob" CreatedAt="@item.Project.CreatedAt" />
-                        </div>
-                    }
-                </div>
-            }
-        </section>
-    </div>
+        @if (IsLoading)
+        {
+            <LoadingSpinner />
+        }
+        else if (!SortedDashboardProjects.Any())
+        {
+            <EmptyState Icon="folder" Title="No projects yet"
+                        Message="Create your first project to start running AI agent jobs.">
+                <ActionButton Icon="plus-lg" Text="Create Project" Size="ActionButton.ButtonSize.Small"
+                              Style="ActionButton.ButtonStyle.Primary"
+                              OnClick="@(() => NavigationManager.NavigateTo("/projects"))" />
+            </EmptyState>
+        }
+        else
+        {
+            <div class="list-group rounded-4">
+                @foreach (var item in SortedDashboardProjects)
+                {
+                    <ListRow @key="item.Project.Id" Icon="folder" Title="@item.Project.Name"
+                             Subtitle="@GetProjectSummary(item)"
+                             AttentionLine="@(item.LatestJob?.Status == JobStatus.Failed ? GetProjectSummary(item) : null)"
+                             Href="@($"/projects/{item.Project.Id}")" />
+                }
+            </div>
+        }
+    </section>
 
-    <div class="col-12">
-        <section>
-            <SectionHeader Title="Providers" Icon="cpu">
-                <Actions>
-                    <ActionButton Text="Manage" Size="ActionButton.ButtonSize.Small"
-                                  OnClick="@(() => NavigationManager.NavigateTo("/providers"))" />
-                </Actions>
-            </SectionHeader>
+    <section class="d-flex flex-column gap-2" aria-label="Providers">
+        <SectionHeader Title="Providers">
+            <Actions>
+                <a href="/providers" class="btn btn-sm btn-link text-decoration-none px-0">Manage</a>
+            </Actions>
+        </SectionHeader>
 
-            @if (IsLoading)
-            {
-                <LoadingSpinner />
-            }
-            else if (!VisibleProviders.Any())
-            {
-                <EmptyState Icon="cpu" Title="@(HasConfiguredProviders ? "No active providers" : "No providers configured")"
-                            Message="@(HasConfiguredProviders ? "Enable a provider to show it on the dashboard." : "Connect to AI coding agents like Claude Code CLI.")">
-                    <ActionButton Icon="plus-lg" Text="@(HasConfiguredProviders ? "Manage Providers" : "Add Provider")"
-                                  Size="ActionButton.ButtonSize.Small" Style="ActionButton.ButtonStyle.Primary"
-                                  OnClick="@(() => NavigationManager.NavigateTo("/providers"))" />
-                </EmptyState>
-            }
-            else
-            {
-                <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-2 g-lg-3">
-                    @foreach (var provider in VisibleProviders)
-                    {
-                        <div class="col">
-                            <ProviderCard Name="@provider.Name" ProviderType="@provider.Type.ToString()"
+        @if (IsLoading)
+        {
+            <LoadingSpinner />
+        }
+        else if (!VisibleProviders.Any())
+        {
+            <EmptyState Icon="cpu" Title="@(HasConfiguredProviders ? "No active providers" : "No providers configured")"
+                        Message="@(HasConfiguredProviders ? "Enable a provider to show it on the dashboard." : "Connect to AI coding agents like Claude Code CLI.")">
+                <ActionButton Icon="plus-lg" Text="@(HasConfiguredProviders ? "Manage Providers" : "Add Provider")"
+                              Size="ActionButton.ButtonSize.Small" Style="ActionButton.ButtonStyle.Primary"
+                              OnClick="@(() => NavigationManager.NavigateTo("/providers"))" />
+            </EmptyState>
+        }
+        else
+        {
+            <div class="list-group rounded-4">
+                @foreach (var provider in VisibleProviders)
+                {
+                    <DashboardProviderRow @key="provider.Id" Name="@provider.Name" ProviderType="@provider.Type.ToString()"
                                           ConnectionMode="@provider.ConnectionMode.ToString()" IsEnabled="@provider.IsEnabled"
                                           CliVersion="@GetCliVersion(provider)" UsageSummary="@GetUsageSummary(provider.Id)" />
-                        </div>
-                    }
-                </div>
-            }
-        </section>
-    </div>
+                }
+            </div>
+        }
+    </section>
 </div>
 
 <ModalDialog @bind-IsVisible="ShowStartAllModal" Title="Start All Ideas" Icon="play-circle"
@@ -208,6 +169,18 @@
 </ModalDialog>
 
 @code {
+    /// <summary>The project's last job and when it ran, or that nothing has run yet.</summary>
+    private static string GetProjectSummary(DashboardProjectInfo item)
+    {
+        if (item.LatestJob is not { } job)
+        {
+            return string.IsNullOrWhiteSpace(item.CurrentBranch) ? "No jobs yet" : $"On {item.CurrentBranch} · no jobs yet";
+        }
+
+        var when = (job.CompletedAt ?? job.StartedAt ?? job.CreatedAt).FormatRelativeToNow();
+        return $"Last job {job.Status.ToString().ToLowerInvariant()} {when}";
+    }
+
     private List<Provider> AllProviders { get; set; } = new();
     private List<DashboardProjectInfo> DashboardProjects { get; set; } = new();
     private List<DashboardRunningJobInfo> RunningDashboardJobs { get; set; } = new();

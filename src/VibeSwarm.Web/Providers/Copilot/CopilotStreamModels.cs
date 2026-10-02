@@ -6,8 +6,8 @@ namespace VibeSwarm.Shared.Providers.Copilot;
 
 /// <summary>
 /// Represents a streaming event from the GitHub Copilot CLI.
-/// Supports both native Copilot format and Claude Code format (used when
-/// Copilot CLI operates with Claude models under the hood).
+/// Current CLIs emit session events (dotted types with a <see cref="Data"/> payload); the flat
+/// and Claude Code shapes are still read for older CLIs.
 /// </summary>
 public class CopilotStreamEvent
 {
@@ -54,6 +54,21 @@ public class CopilotStreamEvent
 	// Session tracking (v0.0.372+)
 	[JsonPropertyName("session_id")]
 	public string? SessionId { get; set; }
+
+	/// <summary>
+	/// Session id on the closing <c>result</c> event of <c>--output-format json</c>, which
+	/// spells it in camelCase (verified on 1.0.91).
+	/// </summary>
+	[JsonPropertyName("sessionId")]
+	public string? CliSessionId { get; set; }
+
+	/// <summary>
+	/// Payload of a session event. <c>--output-format json</c> emits the same event stream the
+	/// SDK exposes — dotted types such as <c>assistant.message</c> and
+	/// <c>tool.execution_start</c> — with every field nested here rather than at the root.
+	/// </summary>
+	[JsonPropertyName("data")]
+	public JsonElement? Data { get; set; }
 
 	// Token usage fields
 	[JsonPropertyName("input_tokens")]
@@ -164,9 +179,6 @@ public class CopilotStreamEvent
 	}
 }
 
-/// <summary>
-/// Token usage information from Copilot.
-/// </summary>
 public class CopilotUsageInfo
 {
 	[JsonPropertyName("input_tokens")]

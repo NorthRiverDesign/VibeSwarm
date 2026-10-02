@@ -9,15 +9,7 @@ namespace VibeSwarm.Shared.Data;
 public class ProviderModel
 {
 	public Guid Id { get; set; } = Guid.NewGuid();
-
-	/// <summary>
-	/// The provider this model belongs to
-	/// </summary>
 	public Guid ProviderId { get; set; }
-
-	/// <summary>
-	/// Navigation property to the parent provider
-	/// </summary>
 	public Providers.Provider? Provider { get; set; }
 
 	/// <summary>
@@ -33,20 +25,9 @@ public class ProviderModel
 	[StringLength(200)]
 	public string? DisplayName { get; set; }
 
-	/// <summary>
-	/// Optional description of the model's capabilities
-	/// </summary>
 	[StringLength(500)]
 	public string? Description { get; set; }
-
-	/// <summary>
-	/// Whether this is the default model for the provider
-	/// </summary>
 	public bool IsDefault { get; set; }
-
-	/// <summary>
-	/// Whether the model is currently available/enabled
-	/// </summary>
 	public bool IsAvailable { get; set; } = true;
 
 	/// <summary>
@@ -54,9 +35,6 @@ public class ProviderModel
 	/// </summary>
 	public decimal? PriceMultiplier { get; set; }
 
-	/// <summary>
-	/// Maximum context window size in tokens (if known)
-	/// </summary>
 	public int? MaxContextTokens { get; set; }
 
 	/// <summary>
@@ -64,9 +42,6 @@ public class ProviderModel
 	/// </summary>
 	public int? MaxOutputTokens { get; set; }
 
-	/// <summary>
-	/// When this model record was last updated
-	/// </summary>
 	public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
 	/// <summary>

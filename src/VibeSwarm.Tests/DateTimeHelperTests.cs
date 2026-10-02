@@ -148,4 +148,24 @@ public class DateTimeHelperTests : IDisposable
 
 		Assert.Equal("just now", result);
 	}
+
+	[Theory]
+	[InlineData(-20, "just now")]
+	[InlineData(-42 * 60, "42m")]
+	[InlineData(-3 * 3600, "3h")]
+	[InlineData(-5 * 86400, "5d")]
+	public void FormatShortAge_DropsAgoForRecentTimes(int offsetSeconds, string expected)
+	{
+		var reference = new DateTime(2026, 3, 5, 14, 30, 0, DateTimeKind.Utc);
+
+		Assert.Equal(expected, reference.AddSeconds(offsetSeconds).FormatShortAge(reference));
+	}
+
+	[Fact]
+	public void FormatShortAge_ShowsTheDateOnceOverAWeekOld()
+	{
+		var reference = new DateTime(2026, 3, 5, 14, 30, 0, DateTimeKind.Utc);
+
+		Assert.Equal("Feb 23", reference.AddDays(-10).FormatShortAge(reference));
+	}
 }

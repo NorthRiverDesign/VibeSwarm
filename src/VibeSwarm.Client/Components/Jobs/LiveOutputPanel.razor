@@ -27,9 +27,9 @@
 					{
 						@if (!line.IsCollapsed)
 						{
-							<div class="output-line d-flex gap-2 py-0 output-thinking">
+							<div class="output-line d-flex gap-2 py-0">
 								<span class="output-time flex-shrink-0 small d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
-								<span class="output-icon flex-shrink-0" title="Thinking">&#128161;</span>
+								<span class="flex-shrink-0" title="Thinking">&#128161;</span>
 								<span class="output-text text-break fst-italic text-body-secondary">@line.Content</span>
 							</div>
 						}

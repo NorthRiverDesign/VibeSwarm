@@ -56,27 +56,27 @@ public sealed class AgentsControllerTests
 		return JsonSerializer.Serialize(value);
 	}
 
-	private sealed class ThrowingAgentService(Exception exception) : IAgentService
+	private sealed class ThrowingAgentService(Exception exception) : FakeAgentServiceBase
 	{
-		public Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default)
+		public override Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default)
 			=> throw new NotSupportedException();
 
-		public Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default)
+		public override Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default)
 			=> throw new NotSupportedException();
 
-		public Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+		public override Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
 			=> throw new NotSupportedException();
 
-		public Task<Agent> CreateAsync(Agent agent, CancellationToken cancellationToken = default)
+		public override Task<Agent> CreateAsync(Agent agent, CancellationToken cancellationToken = default)
 			=> Task.FromException<Agent>(exception);
 
-		public Task<Agent> UpdateAsync(Agent agent, CancellationToken cancellationToken = default)
+		public override Task<Agent> UpdateAsync(Agent agent, CancellationToken cancellationToken = default)
 			=> Task.FromException<Agent>(exception);
 
-		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+		public override Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
 			=> throw new NotSupportedException();
 
-		public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default)
+		public override Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default)
 			=> throw new NotSupportedException();
 	}
 }

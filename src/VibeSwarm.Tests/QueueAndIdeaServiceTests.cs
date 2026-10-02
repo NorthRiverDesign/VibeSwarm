@@ -161,6 +161,107 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task GetPendingJobsAsync_HoldsSwarmMembersBack_WhileAnotherMemberRunsInTheProject()
+	{
+		await using var dbContext = CreateDbContext();
+		var (project, firstProvider, secondProvider) = await SeedSwarmProjectAsync(dbContext);
+		var swarmId = Guid.NewGuid();
+		dbContext.Jobs.AddRange(
+			CreateSwarmJob(project.Id, firstProvider.Id, swarmId, "Running swarm member", JobStatus.Processing, DateTime.UtcNow.AddMinutes(-2)),
+			CreateSwarmJob(project.Id, secondProvider.Id, swarmId, "Queued swarm member", JobStatus.New, DateTime.UtcNow.AddMinutes(-1)));
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+
+		var pendingJobs = (await jobService.GetPendingJobsAsync()).ToList();
+
+		Assert.Empty(pendingJobs);
+	}
+
+	[Fact]
+	public async Task GetPendingJobsAsync_ReturnsOneSwarmMemberPerProject()
+	{
+		await using var dbContext = CreateDbContext();
+		var (project, firstProvider, secondProvider) = await SeedSwarmProjectAsync(dbContext);
+		var swarmId = Guid.NewGuid();
+		dbContext.Jobs.AddRange(
+			CreateSwarmJob(project.Id, firstProvider.Id, swarmId, "First swarm member", JobStatus.New, DateTime.UtcNow.AddMinutes(-2)),
+			CreateSwarmJob(project.Id, secondProvider.Id, swarmId, "Second swarm member", JobStatus.New, DateTime.UtcNow.AddMinutes(-1)));
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+
+		var pendingJobs = (await jobService.GetPendingJobsAsync()).ToList();
+
+		var pendingJob = Assert.Single(pendingJobs);
+		Assert.Equal("First swarm member", pendingJob.Title);
+	}
+
+	[Fact]
+	public async Task JobQueueManager_GetPendingJobsAsync_RunsSwarmMembersOneAtATime()
+	{
+		var swarmId = Guid.NewGuid();
+		Guid runningJobId;
+		await using (var dbContext = CreateDbContext())
+		{
+			var (project, firstProvider, secondProvider) = await SeedSwarmProjectAsync(dbContext);
+			var runningJob = CreateSwarmJob(project.Id, firstProvider.Id, swarmId, "Running swarm member", JobStatus.Processing, DateTime.UtcNow.AddMinutes(-2));
+			runningJobId = runningJob.Id;
+			dbContext.Jobs.AddRange(
+				runningJob,
+				CreateSwarmJob(project.Id, secondProvider.Id, swarmId, "Queued swarm member", JobStatus.New, DateTime.UtcNow.AddMinutes(-1)));
+			await dbContext.SaveChangesAsync();
+		}
+
+		using var serviceProvider = CreateScopedServiceProvider();
+		var queueManager = new JobQueueManager(
+			serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobQueueManager>.Instance);
+
+		Assert.Empty(await queueManager.GetPendingJobsAsync(10));
+
+		await using (var dbContext = CreateDbContext())
+		{
+			var runningJob = await dbContext.Jobs.SingleAsync(job => job.Id == runningJobId);
+			runningJob.Status = JobStatus.Completed;
+			await dbContext.SaveChangesAsync();
+		}
+
+		var pendingJob = Assert.Single(await queueManager.GetPendingJobsAsync(10));
+		Assert.Equal("Queued swarm member", pendingJob.Title);
+	}
+
+	[Fact]
+	public void SelectJobsToStart_SkipsProjectsTheWorkerIsAlreadyRunning()
+	{
+		var busyProjectId = Guid.NewGuid();
+		var idleProjectId = Guid.NewGuid();
+		var pendingJobs = new[]
+		{
+			new Job { Id = Guid.NewGuid(), ProjectId = busyProjectId, GoalPrompt = "Busy project job" },
+			new Job { Id = Guid.NewGuid(), ProjectId = idleProjectId, GoalPrompt = "Idle project first job" },
+			new Job { Id = Guid.NewGuid(), ProjectId = idleProjectId, GoalPrompt = "Idle project second job" }
+		};
+
+		var jobsToStart = JobProcessingService.SelectJobsToStart(pendingJobs, [busyProjectId], availableSlots: 5);
+
+		var jobToStart = Assert.Single(jobsToStart);
+		Assert.Equal("Idle project first job", jobToStart.GoalPrompt);
+	}
+
+	[Fact]
+	public void SelectJobsToStart_StopsAtAvailableSlots()
+	{
+		var pendingJobs = Enumerable.Range(0, 3)
+			.Select(index => new Job { Id = Guid.NewGuid(), ProjectId = Guid.NewGuid(), GoalPrompt = $"Job {index}" })
+			.ToList();
+
+		var jobsToStart = JobProcessingService.SelectJobsToStart(pendingJobs, [], availableSlots: 2);
+
+		Assert.Equal(["Job 0", "Job 1"], jobsToStart.Select(job => job.GoalPrompt));
+	}
+
+	[Fact]
 	public async Task GetPendingJobsAsync_SkipsJobsWithFutureNotBeforeUtc_AndIncompleteDependencies()
 	{
 		await using var dbContext = CreateDbContext();
@@ -3112,6 +3213,120 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task HandleJobCompletionAsync_UnrecoverableFailure_StopsIdeasProcessing()
+	{
+		// A CLI that cannot start fails the same way on every retry, so the idea loop has
+		// to stop instead of re-queueing the same job every few seconds.
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Broken Host Project",
+			WorkingPath = "/tmp/broken-host-project",
+			IdeasProcessingActive = true
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude Code",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Implement the idea",
+			Status = JobStatus.Failed,
+			ErrorMessage = "error: bubblewrap is required for subprocess env scrubbing and isolation."
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Queued idea",
+			JobId = job.Id,
+			IsProcessing = true,
+			SortOrder = 0
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		dbContext.Ideas.Add(idea);
+		await dbContext.SaveChangesAsync();
+
+		var jobUpdateService = new FakeJobUpdateService();
+		var ideaService = CreateIdeaService(dbContext, provider, jobUpdateService: jobUpdateService);
+		var handled = await ideaService.HandleJobCompletionAsync(job.Id, success: false);
+
+		Assert.True(handled);
+		var refreshedProject = await dbContext.Projects.SingleAsync(item => item.Id == project.Id);
+		Assert.False(refreshedProject.IdeasProcessingActive);
+		Assert.Contains(jobUpdateService.IdeasProcessingStateChanges, change => change.ProjectId == project.Id && !change.IsActive);
+
+		// The idea itself stays queued so it runs once the host is fixed.
+		var refreshedIdea = await dbContext.Ideas.SingleAsync(item => item.Id == idea.Id);
+		Assert.False(refreshedIdea.IsProcessing);
+		Assert.Null(refreshedIdea.JobId);
+	}
+
+	[Fact]
+	public async Task HandleJobCompletionAsync_RetryableFailure_KeepsIdeasProcessing()
+	{
+		// A provider-issued error may not repeat, so automation keeps going.
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Transient Failure Project",
+			WorkingPath = "/tmp/transient-failure-project",
+			IdeasProcessingActive = true
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude Code",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Implement the idea",
+			Status = JobStatus.Failed,
+			ErrorMessage = "API Error: 529 upstream service temporarily unavailable"
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Queued idea",
+			JobId = job.Id,
+			IsProcessing = true,
+			SortOrder = 0
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		dbContext.Ideas.Add(idea);
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		var handled = await ideaService.HandleJobCompletionAsync(job.Id, success: false);
+
+		Assert.True(handled);
+		var refreshedProject = await dbContext.Projects.SingleAsync(item => item.Id == project.Id);
+		Assert.True(refreshedProject.IdeasProcessingActive);
+	}
+
+	[Fact]
 	public async Task HandleJobCompletionAsync_Success_StopsIdeasProcessingWhenLastIdeaCompletes()
 	{
 		await using var dbContext = CreateDbContext();
@@ -3600,6 +3815,47 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal(1, result.ProjectCounts.Single(summary => summary.ProjectId == firstProject.Id).ActiveCount);
 	}
 
+	[Theory]
+	[InlineData("current", new[] { "Queued job", "Waiting job", "Running job" })]
+	[InlineData("finished", new[] { "Cancelled job", "Completed job" })]
+	public async Task GetPagedAsync_SplitsCurrentFromFinishedJobs(string statusFilter, string[] expectedTitles)
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Project", WorkingPath = "/tmp/project" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true, IsDefault = true };
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		var statuses = new (string Title, JobStatus Status)[]
+		{
+			("Running job", JobStatus.Processing),
+			("Waiting job", JobStatus.Paused),
+			("Queued job", JobStatus.New),
+			("Completed job", JobStatus.Completed),
+			("Cancelled job", JobStatus.Cancelled)
+		};
+		for (var index = 0; index < statuses.Length; index++)
+		{
+			dbContext.Jobs.Add(new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = statuses[index].Title,
+				Title = statuses[index].Title,
+				Status = statuses[index].Status,
+				Priority = index,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-10 + index)
+			});
+		}
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+		var result = await jobService.GetPagedAsync(statusFilter: statusFilter, page: 1, pageSize: 10);
+
+		Assert.Equal(expectedTitles, result.Items.Select(job => job.Title).ToArray());
+		Assert.All(result.Items, job => Assert.Equal(Array.FindIndex(statuses, seeded => seeded.Title == job.Title), job.Priority));
+	}
+
 	[Fact]
 	public async Task CreateAsync_TruncatesDerivedTitleToEntityLimit()
 	{
@@ -3996,6 +4252,52 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.DoesNotContain("This specification was reviewed and approved", job.GoalPrompt);
 	}
 
+	private static async Task<(Project Project, Provider FirstProvider, Provider SecondProvider)> SeedSwarmProjectAsync(VibeSwarmDbContext dbContext)
+	{
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Swarm Project",
+			WorkingPath = "/tmp/swarm-project",
+			EnableTeamSwarm = true
+		};
+		var firstProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var secondProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.AddRange(firstProvider, secondProvider);
+		await dbContext.SaveChangesAsync();
+		return (project, firstProvider, secondProvider);
+	}
+
+	private static Job CreateSwarmJob(Guid projectId, Guid providerId, Guid swarmId, string title, JobStatus status, DateTime createdAt)
+	{
+		return new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = projectId,
+			ProviderId = providerId,
+			SwarmId = swarmId,
+			Title = title,
+			GoalPrompt = title,
+			Status = status,
+			CreatedAt = createdAt
+		};
+	}
+
 	private VibeSwarmDbContext CreateDbContext()
 	{
 		return new VibeSwarmDbContext(_dbOptions);
@@ -4083,6 +4385,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<UsageRefreshResult> RefreshUsageAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
 	private sealed class FakeProviderInstance : IProvider
@@ -4124,46 +4427,12 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task<SessionSummary> GetSessionSummaryAsync(string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<PromptResponse> GetPromptResponseAsync(string prompt, string? workingDirectory = null, CancellationToken cancellationToken = default) => Task.FromResult(PromptResponse);
 		public Task<CliUpdateResult> UpdateCliAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<UsageLimits?> RefreshUsageLimitsAsync(CancellationToken cancellationToken = default) => Task.FromResult<UsageLimits?>(null);
 	}
 
-	private sealed class FakeVersionControlService : IVersionControlService
+	private sealed class FakeVersionControlService : FakeVersionControlServiceBase
 	{
-		public Task<bool> IsGitAvailableAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(false);
-		public Task<string?> GetCurrentCommitHashAsync(string workingDirectory, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<string?> GetCurrentBranchAsync(string workingDirectory, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<string?> GetRemoteUrlAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<bool> HasUncommittedChangesAsync(string workingDirectory, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<IReadOnlyList<string>> GetChangedFilesAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<string?> GetWorkingDirectoryDiffAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<string?> GetCommitRangeDiffAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitDiffSummary?> GetDiffSummaryAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken cancellationToken = default, GitCommitOptions? commitOptions = null) => throw new NotSupportedException();
-		public Task<GitOperationResult> PushAsync(string workingDirectory, string remoteName = "origin", string? branchName = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> CommitAndPushAsync(string workingDirectory, string commitMessage, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> CreatePullRequestAsync(string workingDirectory, string sourceBranch, string targetBranch, string title, string? body = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> PreviewMergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true, IReadOnlyList<MergeConflictResolution>? conflictResolutions = null) => throw new NotSupportedException();
-		public Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync(string workingDirectory, bool includeRemote = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> HardCheckoutBranchAsync(string workingDirectory, string branchName, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> SyncWithOriginAsync(string workingDirectory, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> CloneRepositoryAsync(string repositoryUrl, string targetDirectory, string? branch = null, Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public string GetGitHubCloneUrl(string ownerAndRepo, bool useSsh = true) => throw new NotSupportedException();
-		public string? ExtractGitHubRepository(string? remoteUrl) => throw new NotSupportedException();
-		public Task<GitWorkingTreeStatus> GetWorkingTreeStatusAsync(string workingDirectory, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> PreserveChangesAsync(string workingDirectory, string message, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> CreateBranchAsync(string workingDirectory, string branchName, bool switchToBranch = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> DiscardAllChangesAsync(string workingDirectory, bool includeUntracked = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<IReadOnlyList<string>> GetCommitLogAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> InitializeRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<bool> IsGitHubCliAvailableAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<bool> IsGitHubCliAuthenticatedAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> CreateGitHubRepositoryAsync(string workingDirectory, string repositoryName, string? description = null, bool isPrivate = false, Action<string>? progressCallback = null, CancellationToken cancellationToken = default, string? gitignoreTemplate = null, string? licenseTemplate = null, bool initializeReadme = false) => throw new NotSupportedException();
-		public Task<GitOperationResult> AddRemoteAsync(string workingDirectory, string remoteName, string remoteUrl, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<IReadOnlyDictionary<string, string>> GetRemotesAsync(string workingDirectory, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> CloneWithGitHubCliAsync(string ownerRepo, string targetDirectory, Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> PruneRemoteBranchesAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public override Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(false);
 	}
 
 	private sealed class NoOpProjectEnvironmentCredentialService : IProjectEnvironmentCredentialService
@@ -4186,6 +4455,9 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public InferenceHealthResult Health { get; set; } = new() { IsAvailable = true };
 		public InferenceResponse Response { get; set; } = new() { Success = true };
 		public InferenceRequest? LastRequest { get; private set; }
+
+		public Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default)
+			=> CheckHealthAsync(request.Endpoint, request.ProviderType, ct);
 
 		public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 		{
@@ -4240,6 +4512,14 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task NotifyJobInteractionRequired(Guid jobId, string prompt, string interactionType, List<string>? choices = null, string? defaultResponse = null) => Task.CompletedTask;
 		public Task NotifyJobResumed(Guid jobId) => Task.CompletedTask;
 		public Task NotifyJobCycleProgress(Guid jobId, int currentCycle, int maxCycles) => Task.CompletedTask;
+		public bool? LastQueuePausedState { get; private set; }
+
+		public Task NotifyJobQueuePausedChanged(bool isPaused)
+		{
+			LastQueuePausedState = isPaused;
+			return Task.CompletedTask;
+		}
+
 		public Task NotifyIdeasProcessingStateChanged(Guid projectId, bool isActive)
 		{
 			IdeasProcessingStateChanges.Add((projectId, isActive));

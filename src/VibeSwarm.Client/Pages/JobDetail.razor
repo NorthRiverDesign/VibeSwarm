@@ -45,6 +45,7 @@ else
 					   OnRetryWithOptions="ShowRetryModal" OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
 					   OnRefresh="RefreshBranches" OnPruneBranches="PruneRemoteBranches"
 					   OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
+					   CanEdit="@CanEditJob" OnEdit="ShowEditJobModal"
 					   CanForceReset="@CanForceReset" IsForceResetting="@IsForceResetting" OnForceReset="ForceResetJob"
 					   CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" CurrentCycle="@Job.CurrentCycle"
 					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" AgentName="@Job.Agent?.Name"
@@ -174,7 +175,7 @@ else
                               GoalPrompt="@Job.GoalPrompt" GoalPromptIdeaText="@GetGoalPromptIdeaText()"
                               AttachedIdeaFiles="@(_linkedIdea?.Attachments ?? Array.Empty<IdeaAttachment>())"
                               GoalPromptTimestamp="@Job.CreatedAt" OnCopyGoalPrompt="CopyPromptToClipboard"
-                              OnGoalPromptChanged="UpdateJobPrompt"
+                              OnGoalPromptChanged="UpdateJobPrompt" OnEditQueuedJob="ShowEditJobModal"
                               ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
                              PlanningCommandUsed="@Job.PlanningCommandUsed" ExecutionCommandUsed="@Job.ExecutionCommandUsed"
                              SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()"
@@ -189,6 +190,9 @@ else
 
 	@* Retry Job Modal *@
 	<RetryJobModal @bind-IsVisible="_showRetryModal" Job="Job" OnRetry="HandleRetryWithOptions" />
+
+	<EditJobModal @bind-IsVisible="_showEditJobModal" Job="Job" IsStopping="@IsCancelling"
+				  OnSaved="HandleJobPromptSaved" OnStop="CancelJob" />
 }
 
 @code {
@@ -236,6 +240,8 @@ else
         Job.Status == JobStatus.Planning ||
         Job.Status == JobStatus.Processing) &&
         !Job.CancellationRequested;
+
+    private bool CanEditJob => Job != null && Job.Status == JobStatus.New && !Job.CancellationRequested;
 
     private bool CanForceCancel => Job != null &&
         (Job.Status == JobStatus.Started || Job.Status == JobStatus.Planning || Job.Status == JobStatus.Processing) &&
@@ -505,6 +511,23 @@ else
         {
             NotificationService.ShowError($"Failed to update prompt: {ex.Message}", "Update Failed");
         }
+    }
+
+    private bool _showEditJobModal;
+
+    private void ShowEditJobModal() => _showEditJobModal = true;
+
+    private void HandleJobPromptSaved(string newPrompt)
+    {
+        if (Job == null) return;
+
+        if (JobTitleHelper.ShouldSyncTitleWithGoalPrompt(Job.Title, Job.GoalPrompt))
+        {
+            Job.Title = JobTitleHelper.BuildSafeJobTitle(null, newPrompt);
+        }
+
+        Job.GoalPrompt = newPrompt;
+        NotificationService.ShowSuccess("Prompt updated successfully!", "Saved");
     }
 
     private string? GetGoalPromptIdeaText()

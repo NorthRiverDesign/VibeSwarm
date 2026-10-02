@@ -16,13 +16,42 @@ VibeSwarm is an agentic CI/CD system for turning ideas into application code. It
 
 ## Supported Agents
 
-| Agent          | CLI Command | Install                                           |
-| -------------- | ----------- | ------------------------------------------------- |
-| Claude Code    | `claude`    | [claude.ai/code](https://claude.ai/code)          |
-| OpenCode       | `opencode`  | [opencode.ai](https://opencode.ai)                |
-| GitHub Copilot | `copilot`   | [copilot CLI](https://docs.github.com/en/copilot) |
+| Agent          | CLI Command | Verified against | Minimum | Install                                           |
+| -------------- | ----------- | ---------------- | ------- | ------------------------------------------------- |
+| Claude Code    | `claude`    | 2.1.276          | 2.0.0   | [claude.ai/code](https://claude.ai/code)          |
+| OpenCode       | `opencode`  | 1.18.31          | 1.0.0   | [opencode.ai](https://opencode.ai)                |
+| GitHub Copilot | `copilot`   | 1.0.86           | 1.0.0   | [copilot CLI](https://docs.github.com/en/copilot) |
 
 Agents are **auto-detected** at startup. If a supported CLI tool is on your PATH, VibeSwarm registers it as a provider automatically.
+
+### CLI version reference
+
+These CLIs change fast. `ProviderVersionReference` (in `src/VibeSwarm.Shared/Providers/`) is the
+single source of truth for the release each integration was built and verified against — last
+reviewed **2026-09-18**. Newer CLI features are version-gated, so an older CLI keeps working
+with those features switched off rather than failing.
+
+At startup VibeSwarm compares each detected CLI against this reference and logs the result:
+a warning when the CLI is below the supported minimum, and an informational line when it is
+older or newer than the verified release. When re-verifying against a new CLI, update that
+file so the gap between "what we tested" and "what is installed" stays visible.
+
+### Usage limits
+
+Claude Code and GitHub Copilot meter usage against a subscription; VibeSwarm tracks both and
+pauses work when a window is exhausted.
+
+- **Claude Code** reports limits as structured `rate_limit_event` messages during a normal
+  headless run. VibeSwarm reads the rolling **5-hour** (shown as Session) and **7-day**
+  (shown as Weekly) windows, plus whichever limit is currently binding. Warnings printed to
+  stderr are parsed as a fallback.
+- **GitHub Copilot** meters premium requests and, increasingly, **GitHub AI Credits**.
+  VibeSwarm reads the structured usage report written by `--usage-output-file` where the CLI
+  supports it, and otherwise falls back to parsing the session summary on stderr.
+- **OpenCode** has no quota of its own — metering belongs to whichever model provider you
+  configure. Self-hosted open-source models (Ollama, LM Studio, llama.cpp, vLLM and similar)
+  are reported as **Unmetered**: no meter is drawn, and they are never paused for exhaustion,
+  since there is no window to wait for.
 
 ---
 
@@ -99,7 +128,7 @@ The `.env` file is the **only** configuration you need. Place it in the repo roo
 | `ASPNETCORE_URLS`            | `https://localhost:5001;http://localhost:5000` | Bind addresses. Use `0.0.0.0` for remote access.         |
 | `DEFAULT_ADMIN_USER`         | `admin` when only a password is provided       | Optional admin username for automated setup.             |
 | `DEFAULT_ADMIN_PASS`         | _(empty — setup wizard)_                       | Admin password. Min 8 chars, upper + lower + digit.      |
-| `DATABASE_PROVIDER`          | `sqlite`                                       | Database engine: `sqlite`, `mysql`, `postgresql`, or `sqlserver`. |
+| `DATABASE_PROVIDER`          | `sqlite`                                       | Database engine: `sqlite` or `mysql`.                    |
 | `ConnectionStrings__Default` | `Data Source=vibeswarm.db`                     | Connection string for the chosen provider.               |
 
 You can also set these as system environment variables instead of using `.env`.
@@ -110,6 +139,9 @@ You can also set these as system environment variables instead of using `.env`.
 
 **SQLite (default)** — zero configuration. The file `vibeswarm.db` is created next to the app.
 
+Migrations run automatically on startup and build the schema from empty, so a new install
+works on either provider with no manual setup.
+
 **MySQL:**
 
 ```bash
@@ -117,21 +149,7 @@ DATABASE_PROVIDER=mysql
 ConnectionStrings__Default=Server=localhost;Database=vibeswarm;User=vibeswarm;Password=secret
 ```
 
-**PostgreSQL:**
-
-```bash
-DATABASE_PROVIDER=postgresql
-ConnectionStrings__Default=Host=localhost;Database=vibeswarm;Username=vibeswarm;Password=secret
-```
-
-**SQL Server:**
-
-```bash
-DATABASE_PROVIDER=sqlserver
-ConnectionStrings__Default=Server=localhost;Database=vibeswarm;Trusted_Connection=true;TrustServerCertificate=true
-```
-
-Provider aliases are supported: `mariadb` / `mysql`, `postgres` / `postgresql`, `mssql` / `sqlserver`.
+Provider aliases are supported: `mariadb` / `mysql`.
 
 You can also switch databases from **Settings → Database**. That flow copies your current VibeSwarm
 data into an empty target database, writes the new provider and connection string to a runtime
@@ -142,6 +160,39 @@ config file outside the repo, and takes effect after restart.
 ```bash
 cp vibeswarm.db vibeswarm.db.backup
 ```
+
+### Migrations
+
+EF Core bakes provider-specific SQL into a migration when it is generated — SQLite emits
+`TEXT` columns where MySQL needs `char(36)` — so one migration set cannot serve both
+providers. VibeSwarm therefore keeps a set per provider:
+
+```
+src/VibeSwarm.Web/Data/Migrations/
+├── Sqlite/     # owned by SqliteVibeSwarmDbContext
+└── MySql/      # owned by MySqlVibeSwarmDbContext
+```
+
+`VibeSwarmDbContext` itself owns no migrations. Everything that applies them goes through
+`DataServiceExtensions.CreateMigrationContext`, which picks the set matching the configured
+provider.
+
+**Every schema change must be generated for both providers:**
+
+```bash
+dotnet ef migrations add <Name> --project src/VibeSwarm.Web \
+  --context SqliteVibeSwarmDbContext --output-dir Data/Migrations/Sqlite
+dotnet ef migrations add <Name> --project src/VibeSwarm.Web \
+  --context MySqlVibeSwarmDbContext  --output-dir Data/Migrations/MySql
+```
+
+`MigrationSetsStayInStepTests` fails the build if one set drifts from the other, so a
+forgotten provider is caught by `dotnet test` rather than by a failed deployment.
+
+On MySQL, string columns with a `MaxLength` of 1000 or more are mapped to `LONGTEXT`.
+InnoDB caps a row at 65,535 bytes and utf8mb4 costs 4 bytes per character, so without this
+the `AppSettings`, `Jobs` and `CriticalErrorLogs` tables exceed the limit and cannot be
+created. `MaxLength` is still enforced by EF validation.
 
 ---
 
@@ -216,7 +267,8 @@ Change the port in `.env` via `ASPNETCORE_URLS`.
 ### Agent Not Detected
 
 - Verify the CLI tool is on your PATH: `claude --version`, `opencode --version`, `copilot --version`
-- Check the application logs for detection results.
+- Check the application logs for detection results, including how each CLI's version compares
+  to the release VibeSwarm was verified against.
 - You can always add agents manually through the web UI under Providers.
 
 ---
@@ -272,7 +324,8 @@ VibeSwarm/
 - **.NET 10.0** - Web framework
 - **Blazor WebAssembly** - UI
 - **SignalR** - Real-time communication
-- **Entity Framework Core** - ORM (SQLite, PostgreSQL, SQL Server)
+- **Entity Framework Core** - ORM (SQLite, MySQL)
+- **Provider CLIs** - Claude Code 2.1.276, OpenCode 1.18.31, GitHub Copilot 1.0.86
 - **ASP.NET Core Identity** - Authentication
 
 ---

@@ -3,16 +3,26 @@
 @inject ISkillService SkillService
 @inject NotificationService NotificationService
 
-<PageHeader Title="Skills">
+<PageHeader Title="Skills" Subtitle="Instructions agents can load on demand during a job.">
 	<Actions>
-		<ActionButton Icon="shop" Text="Marketplace" HideTextOnMobile="true" OnClick="ShowMarketplaceModal" />
-		<ActionButton Icon="folder2-open" Text="From folder" HideTextOnMobile="true" OnClick="ShowLocalPathModal" />
-		<label class="btn btn-secondary mb-0 cursor-pointer mobile-icon-button d-inline-flex align-items-center gap-1" title="Import">
-			<i class="bi bi-box-arrow-in-down"></i>
-			<span class="d-none d-md-inline">Import</span>
-			<InputFile OnChange="HandleImportFileSelected" accept=".skill" class="d-none" />
-		</label>
-		<ActionButton Icon="plus" Text="Add" HideTextOnMobile="true" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
+		@* Every way to add a skill sits behind the one + button. *@
+		<div class="dropdown">
+			<button type="button" class="btn btn-primary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
+					data-bs-toggle="dropdown" aria-expanded="false" title="Add a skill" aria-label="Add a skill">
+				<i class="bi bi-plus-lg"></i>
+			</button>
+			<ul class="dropdown-menu dropdown-menu-end">
+				<li><button type="button" class="dropdown-item" @onclick="ShowAddModal"><i class="bi bi-pencil me-2"></i>Write a new skill</button></li>
+				<li><button type="button" class="dropdown-item" @onclick="ShowMarketplaceModal"><i class="bi bi-shop me-2"></i>From the marketplace</button></li>
+				<li><button type="button" class="dropdown-item" @onclick="ShowLocalPathModal"><i class="bi bi-folder2-open me-2"></i>From a folder on this host</button></li>
+				<li>
+					<label class="dropdown-item cursor-pointer mb-0">
+						<i class="bi bi-box-arrow-in-down me-2"></i>Import a .skill file
+						<InputFile OnChange="HandleImportFileSelected" accept=".skill" class="d-none" />
+					</label>
+				</li>
+			</ul>
+		</div>
 	</Actions>
 </PageHeader>
 
@@ -94,52 +104,62 @@
 else if (!_skillsList.Any())
 {
 	<EmptyState Icon="lightbulb" Title="No skills yet"
-				Message="Create skills to define capabilities that AI agents can use during job execution." />
+				Message="Skills define capabilities agents can use during a job. Browse the marketplace or write your own.">
+		<ActionButton Icon="shop" Text="Browse marketplace" Style="ActionButton.ButtonStyle.Primary"
+					  Size="ActionButton.ButtonSize.Small" OnClick="ShowMarketplaceModal" />
+		<ActionButton Icon="plus-lg" Text="New skill" Size="ActionButton.ButtonSize.Small" OnClick="ShowAddModal" />
+	</EmptyState>
 }
 else
 {
-	<div class="list-group">
+	<div class="list-group rounded-4">
 		@foreach (var skill in _skillsList)
 		{
-			<div
-				class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3 p-3 hover-bg-tertiary">
-				<div class="flex-grow-1 min-width-0">
-					<div class="d-flex align-items-center gap-2 flex-wrap">
-						<span class="fw-semibold font-monospace">@skill.Name</span>
-						<StatusBadge Status="@(skill.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
-					</div>
-					@if (!string.IsNullOrEmpty(skill.Description))
+			<ListRow @key="skill.Id" Icon="lightbulb"
+					 IconClass="@(skill.IsEnabled ? "text-primary" : "text-body-tertiary")"
+					 Title="@skill.Name" TitleClass="@(skill.IsEnabled ? "font-monospace" : "font-monospace text-body-secondary")"
+					 Subtitle="@skill.Description">
+				<Trailing>
+					@if (!skill.IsEnabled)
 					{
-						<div class="small text-body-secondary mt-1">@TruncateText(skill.Description, 120)</div>
+						<span class="small text-body-tertiary flex-shrink-0">Off</span>
 					}
-					<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-						<span class="d-flex align-items-center gap-1">
-							<i class="bi bi-file-text opacity-75"></i>
-							@skill.Content.Length chars
-						</span>
-						<span class="d-flex align-items-center gap-1">
-							<i class="bi bi-calendar-plus opacity-75"></i>
-							@skill.CreatedAt.FormatDateTimeShort()
-						</span>
-						@if (skill.UpdatedAt.HasValue)
+				</Trailing>
+				<ChildContent>
+					@if (!string.IsNullOrWhiteSpace(skill.Description))
+					{
+						<div class="small text-body-secondary">@skill.Description</div>
+					}
+					<dl class="d-flex flex-column gap-2 small mb-0">
+						<div class="d-flex justify-content-between gap-3">
+							<dt class="fw-normal text-body-secondary">Size</dt>
+							<dd class="mb-0">@skill.Content.Length.ToString("N0") characters</dd>
+						</div>
+						<div class="d-flex justify-content-between gap-3">
+							<dt class="fw-normal text-body-secondary">Added</dt>
+							<dd class="mb-0">@skill.CreatedAt.FormatDateTimeShort()</dd>
+						</div>
+						@if (skill.UpdatedAt is { } updatedAt)
 						{
-							<span class="d-flex align-items-center gap-1">
-								<i class="bi bi-pencil opacity-75"></i>
-								@skill.UpdatedAt.Value.FormatDateTimeShort()
-							</span>
+							<div class="d-flex justify-content-between gap-3">
+								<dt class="fw-normal text-body-secondary">Changed</dt>
+								<dd class="mb-0">@updatedAt.FormatDateTimeShort()</dd>
+							</div>
 						}
+					</dl>
+					<div class="form-check form-switch mb-0">
+						<input class="form-check-input" type="checkbox" role="switch" id="@($"skill-enabled-{skill.Id:N}")"
+							   checked="@skill.IsEnabled" @onchange="() => ToggleEnabled(skill)" />
+						<label class="form-check-label" for="@($"skill-enabled-{skill.Id:N}")">Agents can load this skill</label>
 					</div>
-				</div>
-				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-					<ToggleSwitch Value="@skill.IsEnabled" Title="@(skill.IsEnabled ? "Disable" : "Enable")"
-								  Class="me-1" OnChange="() => ToggleEnabled(skill)" />
-					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
-								  OnClick="@(() => EditSkill(skill))" />
-					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
-								  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
-								  OnClick="@(() => ShowDeleteConfirmation(skill))" />
-				</div>
-			</div>
+					<div class="d-flex align-items-center gap-2">
+						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => EditSkill(skill)">Edit</button>
+						<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none px-0 ms-auto" @onclick="() => ShowDeleteConfirmation(skill)">
+							<i class="bi bi-trash me-1"></i>Delete
+						</button>
+					</div>
+				</ChildContent>
+			</ListRow>
 		}
 	</div>
 }
@@ -202,13 +222,6 @@ else
 		{
 			_isLoading = false;
 		}
-	}
-
-	private static string TruncateText(string text, int maxLength)
-	{
-		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-			return text;
-		return text[..maxLength] + "...";
 	}
 
 	private void ShowAddModal()

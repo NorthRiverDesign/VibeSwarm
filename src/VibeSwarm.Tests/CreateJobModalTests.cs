@@ -1,6 +1,7 @@
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
+using VibeSwarm.Client.Components.Common;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
@@ -16,8 +17,8 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_RendersTemplateLibraryControls()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
+		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		context.Services.AddSingleton<IAgentService>(new FakeAgentService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
@@ -56,8 +57,8 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_SelectingAgentPresetAppliesAssignedExecutionDefaults()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
+		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
@@ -118,8 +119,8 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_SelectedAgentWithInstructions_AllowsBlankGoalPromptAndSubmitsFallback()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
+		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
@@ -166,8 +167,8 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_SelectedAgentWithoutInstructions_StillRequiresGoalPrompt()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
+		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
@@ -208,8 +209,8 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_RefreshesAgentAssignmentsFromProjectService_WhenParentProjectIsStale()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
+		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
 
@@ -291,38 +292,30 @@ public sealed class CreateJobModalTests
 			=> Task.FromResult(new JobTemplate { Id = id, Name = "Template", GoalPrompt = "Prompt" });
 	}
 
-	private sealed class FakeProjectService(IReadOnlyList<Project> projects, Project? detailedProject = null) : IProjectService
+	private sealed class FakeProjectService(IReadOnlyList<Project> projects, Project? detailedProject = null) : FakeProjectServiceBase
 	{
-		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default)
+		public override Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default)
 			=> Task.FromResult<IEnumerable<Project>>(projects);
 
-		public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default)
+		public override Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default)
 			=> Task.FromResult<IEnumerable<Project>>([]);
 
-		public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+		public override Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
 			=> Task.FromResult(detailedProject?.Id == id ? detailedProject : projects.FirstOrDefault(project => project.Id == id));
 
-		public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default)
+		public override Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default)
 			=> Task.FromResult<Project?>(null);
 
-		public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<Project> CreateProjectAsync(VibeSwarm.Shared.Models.ProjectCreationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
-		public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
-		public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => Task.FromResult(new DashboardJobMetrics { RangeDays = rangeDays, Buckets = [] });
-		public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
+		public override Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
+		public override Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
+		public override Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => Task.FromResult(new DashboardJobMetrics { RangeDays = rangeDays, Buckets = [] });
+		public override Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
 	}
 
-	private sealed class FakeAgentService(IReadOnlyList<Agent> agents) : IAgentService
+	private sealed class FakeAgentService(IReadOnlyList<Agent> agents) : FakeAgentServiceBase
 	{
-		public Task<IEnumerable<Agent>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>(agents);
-		public Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>(agents.Where(agent => agent.IsEnabled));
-		public Task<Agent?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(agents.FirstOrDefault(agent => agent.Id == id));
-		public Task<Agent> CreateAsync(Agent agent, CancellationToken ct = default) => throw new NotSupportedException();
-		public Task<Agent> UpdateAsync(Agent agent, CancellationToken ct = default) => throw new NotSupportedException();
-		public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
-		public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken ct = default) => throw new NotSupportedException();
+		public override Task<IEnumerable<Agent>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>(agents);
+		public override Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>(agents.Where(agent => agent.IsEnabled));
+		public override Task<Agent?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(agents.FirstOrDefault(agent => agent.Id == id));
 	}
 }

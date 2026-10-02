@@ -2,9 +2,6 @@ using VibeSwarm.Shared.Data;
 
 namespace VibeSwarm.Shared.Services;
 
-/// <summary>
-/// Criteria for determining when a job is complete
-/// </summary>
 public class JobCompletionCriteria
 {
 	public static readonly TimeSpan DefaultStallTimeoutValue = TimeSpan.FromMinutes(15);
@@ -39,18 +36,12 @@ public class JobCompletionCriteria
 	/// </summary>
 	public string? FailurePattern { get; set; }
 
-	/// <summary>
-	/// Creates default completion criteria
-	/// </summary>
 	public static JobCompletionCriteria Default => new()
 	{
 		MaxExecutionTime = TimeSpan.FromHours(1),
 		StallTimeout = DefaultStallTimeoutValue
 	};
 
-	/// <summary>
-	/// Creates completion criteria for long-running jobs
-	/// </summary>
 	public static JobCompletionCriteria LongRunning => new()
 	{
 		MaxExecutionTime = TimeSpan.FromHours(8),
@@ -58,14 +49,8 @@ public class JobCompletionCriteria
 	};
 }
 
-/// <summary>
-/// Summary of work accomplished during a provider session
-/// </summary>
 public class SessionSummary
 {
-	/// <summary>
-	/// Whether the summary was successfully retrieved
-	/// </summary>
 	public bool Success { get; set; }
 
 	/// <summary>
@@ -73,19 +58,8 @@ public class SessionSummary
 	/// </summary>
 	public string? Summary { get; set; }
 
-	/// <summary>
-	/// A more detailed description of changes made
-	/// </summary>
 	public string? DetailedDescription { get; set; }
-
-	/// <summary>
-	/// List of files that were modified (if available)
-	/// </summary>
 	public List<string> ModifiedFiles { get; set; } = new();
-
-	/// <summary>
-	/// Error message if summary retrieval failed
-	/// </summary>
 	public string? ErrorMessage { get; set; }
 
 	/// <summary>
@@ -94,9 +68,6 @@ public class SessionSummary
 	public string? Source { get; set; }
 }
 
-/// <summary>
-/// Result of a state transition attempt
-/// </summary>
 public class StateTransitionResult
 {
 	public bool Success { get; set; }
@@ -107,9 +78,6 @@ public class StateTransitionResult
 	public DateTime TransitionTime { get; set; }
 }
 
-/// <summary>
-/// Result of evaluating completion criteria
-/// </summary>
 public class CompletionEvaluation
 {
 	public Guid JobId { get; set; }

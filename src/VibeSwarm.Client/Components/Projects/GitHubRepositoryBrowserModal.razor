@@ -9,19 +9,34 @@
 				Browse repositories available to the authenticated GitHub CLI account on this host. You can still paste any <code>owner/repo</code> manually.
 			</div>
 
+			@* Filters stay above the list's own scroll area so they remain reachable
+			   however far down a long repository list you are. *@
 			<div class="d-flex flex-column flex-sm-row gap-2">
-				@if (_owners.Count > 1)
+				@if (OwnerCounts.Count > 1)
 				{
-					<select class="form-select flex-shrink-0" style="max-width: 14rem;" @bind="_selectedOwner">
-						<option value="">All Repositories</option>
-						@foreach (var owner in _owners)
+					<select id="githubRepositoryBrowserOwner" class="form-select flex-shrink-0" @bind="_selectedOwner"
+							aria-label="Filter by organization">
+						<option value="">All organizations (@_repositories.Count)</option>
+						@foreach (var owner in OwnerCounts)
 						{
-							<option value="@owner">@(owner == _authenticatedUser ? $"{owner} (me)" : owner)</option>
+							<option value="@owner.Name">
+								@(owner.Name == _authenticatedUser ? $"{owner.Name} (me)" : owner.Name) — @owner.Count
+							</option>
 						}
 					</select>
 				}
-				<input id="githubRepositoryBrowserSearch" @bind="_searchText" @bind:event="oninput"
-					   class="form-control" placeholder="Search by name or description" />
+				<div class="input-group flex-grow-1">
+					<span class="input-group-text"><i class="bi bi-search"></i></span>
+					<input id="githubRepositoryBrowserSearch" @bind="_searchText" @bind:event="oninput"
+						   class="form-control" placeholder="Search repositories" type="search"
+						   autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search" />
+					@if (!string.IsNullOrEmpty(_searchText))
+					{
+						<button type="button" class="btn btn-secondary" @onclick="ClearSearch" aria-label="Clear search">
+							<i class="bi bi-x-lg"></i>
+						</button>
+					}
+				</div>
 			</div>
 
 			@if (_isLoading)
@@ -39,7 +54,15 @@
 			else if (FilteredRepositories.Count == 0)
 			{
 				<Alert Type="Alert.AlertType.Info" Class="mb-0">
-					<span>No repositories matched the current filter.</span>
+					<div class="d-flex flex-column align-items-start gap-2">
+						<span>No repositories matched the current filter.</span>
+						@if (HasActiveFilter)
+						{
+							<button type="button" class="btn btn-sm btn-secondary" @onclick="ClearFilters">
+								<i class="bi bi-x-circle me-1"></i>Clear filters
+							</button>
+						}
+					</div>
 				</Alert>
 			}
 			else
@@ -48,36 +71,37 @@
 					Showing @FilteredRepositories.Count of @_repositories.Count repositories from GitHub.
 				</div>
 
-				<div class="list-group overflow-auto" style="max-height: 24rem;">
+				@* flex-shrink-0 matters: .list-group is a flex column, and once it hits its
+				   max height the rows would otherwise shrink below their content and overlap. *@
+				<div class="list-group overflow-auto overscroll-contain max-height-50dvh">
 					@foreach (var repository in FilteredRepositories)
 					{
 						var isSelected = string.Equals(_selectedRepository, repository.NameWithOwner, StringComparison.OrdinalIgnoreCase);
 
 						<button type="button"
-								class="list-group-item list-group-item-action text-start @(isSelected ? "active" : string.Empty)"
+								class="list-group-item list-group-item-action flex-shrink-0 text-start d-flex align-items-center gap-2 @(isSelected ? "active" : string.Empty)"
 								@onclick="() => SelectRepository(repository)">
-							<div class="d-flex flex-column flex-md-row gap-2 justify-content-between align-items-md-start">
-								<div class="min-width-0">
-									<div class="fw-semibold text-break">@repository.NameWithOwner</div>
-									@if (!string.IsNullOrWhiteSpace(repository.Description))
+							<span class="d-flex flex-column min-width-0 flex-grow-1">
+								<span class="text-truncate"><span class="@(isSelected ? "text-white-50" : "text-body-secondary")">@OwnerOf(repository)/</span><span class="fw-semibold">@NameOf(repository)</span></span>
+								<span class="small text-truncate @(isSelected ? "text-white-50" : "text-body-secondary")">
+									@if (repository.IsPrivate)
 									{
-										<div class="small text-break @(isSelected ? "text-white-50" : "text-body-secondary")">
-											@repository.Description
-										</div>
+										<i class="bi bi-lock-fill me-1"></i><span class="me-2">Private</span>
 									}
-								</div>
-								<div class="d-flex flex-wrap gap-2 small">
-									<span class="badge @(repository.IsPrivate ? "text-bg-dark" : "text-bg-secondary")">
-										@(repository.IsPrivate ? "Private" : "Public")
-									</span>
 									@if (repository.UpdatedAt.HasValue)
 									{
-										<span class="@(isSelected ? "text-white-50" : "text-body-secondary")">
-											Updated @repository.UpdatedAt.Value.UtcDateTime.FormatDate()
-										</span>
+										<span>Updated @repository.UpdatedAt.Value.UtcDateTime.FormatDate()</span>
 									}
-								</div>
-							</div>
+									@if (!string.IsNullOrWhiteSpace(repository.Description))
+									{
+										<span class="d-none d-sm-inline"> · @repository.Description</span>
+									}
+								</span>
+							</span>
+							@if (isSelected)
+							{
+								<i class="bi bi-check-lg fs-5 flex-shrink-0"></i>
+							}
 						</button>
 					}
 				</div>
@@ -112,19 +136,47 @@
 	private string _selectedOwner = string.Empty;
 	private string? _authenticatedUser;
 	private string? _selectedRepository;
-	private List<string> _owners = [];
 	private List<GitHubRepositoryBrowserItem> _repositories = [];
 
 	private List<GitHubRepositoryBrowserItem> FilteredRepositories =>
 		_repositories
 			.Where(repository =>
 				string.IsNullOrWhiteSpace(_selectedOwner) ||
-				(repository.NameWithOwner?.StartsWith(_selectedOwner + "/", StringComparison.OrdinalIgnoreCase) ?? false))
+				string.Equals(OwnerOf(repository), _selectedOwner, StringComparison.OrdinalIgnoreCase))
 			.Where(repository =>
 				string.IsNullOrWhiteSpace(_searchText) ||
 				(repository.NameWithOwner?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
 				(repository.Description?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false))
 			.ToList();
+
+	/// <summary>Owners that actually have repositories, own account first, with their counts.</summary>
+	private List<OwnerFilter> OwnerCounts =>
+		_repositories
+			.GroupBy(repository => OwnerOf(repository), StringComparer.OrdinalIgnoreCase)
+			.Where(group => !string.IsNullOrWhiteSpace(group.Key))
+			.Select(group => new OwnerFilter(group.Key, group.Count()))
+			.OrderByDescending(owner => string.Equals(owner.Name, _authenticatedUser, StringComparison.OrdinalIgnoreCase))
+			.ThenBy(owner => owner.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+
+	private bool HasActiveFilter =>
+		!string.IsNullOrWhiteSpace(_selectedOwner) || !string.IsNullOrWhiteSpace(_searchText);
+
+	private static string OwnerOf(GitHubRepositoryBrowserItem repository)
+	{
+		var nameWithOwner = repository.NameWithOwner ?? string.Empty;
+		var separator = nameWithOwner.IndexOf('/');
+		return separator > 0 ? nameWithOwner[..separator] : string.Empty;
+	}
+
+	private static string NameOf(GitHubRepositoryBrowserItem repository)
+	{
+		var nameWithOwner = repository.NameWithOwner ?? string.Empty;
+		var separator = nameWithOwner.IndexOf('/');
+		return separator >= 0 ? nameWithOwner[(separator + 1)..] : nameWithOwner;
+	}
+
+	private sealed record OwnerFilter(string Name, int Count);
 
 	protected override async Task OnParametersSetAsync()
 	{
@@ -155,7 +207,6 @@
 			var result = await ProjectService.BrowseGitHubRepositoriesAsync();
 			_errorMessage = result.ErrorMessage;
 			_authenticatedUser = result.AuthenticatedUser;
-			_owners = result.Owners ?? [];
 			_repositories = result.Repositories ?? [];
 		}
 		catch (Exception ex)
@@ -178,6 +229,17 @@
 	{
 		_selectedRepository = SelectedRepository;
 		await HandleVisibilityChanged(false);
+	}
+
+	private void ClearSearch()
+	{
+		_searchText = string.Empty;
+	}
+
+	private void ClearFilters()
+	{
+		_searchText = string.Empty;
+		_selectedOwner = string.Empty;
 	}
 
 	private void SelectRepository(GitHubRepositoryBrowserItem repository)

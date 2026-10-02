@@ -1,16 +1,13 @@
 @inject IProjectService ProjectService
 
-<section>
-	<div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
-		<h5 class="mb-0 fw-semibold text-truncate">
-			<i class="bi bi-graph-up-arrow me-2 opacity-75"></i>Job Analytics
-		</h5>
-
-		<div class="d-flex flex-wrap gap-1 gap-sm-2">
-			@foreach (var rangeDays in RangeOptions)
-			{
-				<button type="button" class="btn btn-sm @(SelectedRangeDays == rangeDays ? "btn-primary" : "btn-secondary")"
-						disabled="@IsRefreshing" aria-pressed="@(SelectedRangeDays == rangeDays)"
+<section class="d-flex flex-column gap-2" aria-label="Job analytics">
+	<SectionHeader Title="Job analytics" />
+	<ul class="nav nav-pills nav-pills-quiet gap-1 small flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain" aria-label="Time range">
+		@foreach (var rangeDays in RangeOptions)
+		{
+			<li class="nav-item">
+				<button type="button" class="nav-link rounded-pill px-3 @(SelectedRangeDays == rangeDays ? "active" : "")"
+						disabled="@IsRefreshing" aria-pressed="@(SelectedRangeDays == rangeDays ? "true" : "false")"
 						@onclick="() => ChangeRangeAsync(rangeDays)">
 					@if (SelectedRangeDays == rangeDays && IsRefreshing)
 					{
@@ -18,9 +15,9 @@
 					}
 					@FormatRangeOption(rangeDays)
 				</button>
-			}
-		</div>
-	</div>
+			</li>
+		}
+	</ul>
 
 	@if (IsLoading)
 	{
@@ -34,11 +31,24 @@
 			</button>
 		</EmptyState>
 	}
+	else if (Metrics.TotalCompletedJobs == 0)
+	{
+		@* Four empty charts would fill the screen to say one thing. *@
+		<div class="list-group rounded-4">
+			<div class="list-group-item d-flex align-items-center gap-3">
+				<i class="bi bi-graph-up text-body-tertiary flex-shrink-0"></i>
+				<span class="flex-grow-1 min-width-0">
+					<span class="d-block">No jobs finished @GetEmptyRangeText()</span>
+					<span class="d-block small text-body-secondary">Charts of completed jobs, duration and tokens appear once they do.</span>
+				</span>
+			</div>
+		</div>
+	}
 	else
 	{
 		<div class="row g-3">
 			<div class="col-12 col-lg-6">
-				<DashboardMetricChart Title="Completed Jobs" Subtitle="@GetChartSubtitle()" Icon="check2-circle"
+				<DashboardMetricChart Title="Completed jobs" Subtitle="@GetChartSubtitle()" Icon="check2-circle"
 									  Summary="@GetCompletedSummary()" EmptyIcon="check2-circle" EmptyTitle="No completed jobs yet"
 									  EmptyMessage="Completed jobs from the selected time range will show up here."
 									  Points="@GetCompletedChartPoints()" BarColor="var(--bs-success)"  UseIntegerYAxisTicks="true"
@@ -46,7 +56,7 @@
 			</div>
 
 			<div class="col-12 col-lg-6">
-				<DashboardMetricChart Title="Average Job Duration" Subtitle="@GetChartSubtitle()" Icon="stopwatch"
+				<DashboardMetricChart Title="Average job duration" Subtitle="@GetChartSubtitle()" Icon="stopwatch"
 									  Summary="@GetDurationSummary()" EmptyIcon="stopwatch" EmptyTitle="No duration data yet"
 									  EmptyMessage="Average duration appears after jobs complete with timing information."
 									  Points="@GetDurationChartPoints()" BarColor="var(--bs-info)"
@@ -54,7 +64,7 @@
 			</div>
 
 			<div class="col-12 col-lg-6">
-				<DashboardMetricChart Title="Input Tokens" Subtitle="@GetChartSubtitle()" Icon="arrow-down-circle"
+				<DashboardMetricChart Title="Input tokens" Subtitle="@GetChartSubtitle()" Icon="arrow-down-circle"
 									  Summary="@GetInputTokensSummary()" EmptyIcon="arrow-down-circle" EmptyTitle="No token data yet"
 									  EmptyMessage="Input token usage will appear once jobs with token tracking complete."
 									  Points="@GetInputTokensChartPoints()" BarColor="var(--bs-warning)"
@@ -62,7 +72,7 @@
 			</div>
 
 			<div class="col-12 col-lg-6">
-				<DashboardMetricChart Title="Output Tokens" Subtitle="@GetChartSubtitle()" Icon="arrow-up-circle"
+				<DashboardMetricChart Title="Output tokens" Subtitle="@GetChartSubtitle()" Icon="arrow-up-circle"
 									  Summary="@GetOutputTokensSummary()" EmptyIcon="arrow-up-circle" EmptyTitle="No token data yet"
 									  EmptyMessage="Output token usage will appear once jobs with token tracking complete."
 									  Points="@GetOutputTokensChartPoints()" BarColor="var(--bs-purple)"
@@ -126,6 +136,12 @@
 			IsRefreshing = false;
 		}
 	}
+
+	private string GetEmptyRangeText() => Metrics.RangeDays switch
+	{
+		1 => "in the last 24 hours",
+		_ => $"in the last {Metrics.RangeDays} days"
+	};
 
 	private string GetChartSubtitle() => Metrics.RangeDays switch
 	{

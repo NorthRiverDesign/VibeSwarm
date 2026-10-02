@@ -1,35 +1,24 @@
+<section class="d-flex flex-column gap-2" aria-label="Running now">
+	<SectionHeader Title="Running now">
+		<Actions>
+			<a href="/jobs" class="btn btn-sm btn-link text-decoration-none px-0">All jobs</a>
+		</Actions>
+	</SectionHeader>
 
-<section>
-	<div class="d-flex justify-content-between align-items-center gap-2 mb-3">
-		<h5 class="mb-0 fw-semibold text-truncate">
-			<i class="bi bi-play-circle me-2 opacity-75"></i>Running Jobs
-		</h5>
-		<a href="/jobs" class="btn btn-sm btn-secondary flex-shrink-0">View All Jobs</a>
-	</div>
-
-	<div class="list-group">
+	<div class="list-group rounded-4">
 		@foreach (var item in Items)
 		{
-			<a href="/jobs/view/@item.Job.Id" class="list-group-item list-group-item-action py-2 py-sm-3">
-				<div class="d-flex align-items-start gap-3">
-					<div class="flex-grow-1 min-width-0">
-						<p class="mb-1 fw-semibold text-body">@item.Project.Name</p>
-
-						<p class="mb-1 text-body text-break">@item.Job.DisplayTitle</p>
-
-						<div class="d-flex flex-wrap align-items-center gap-2 mb-1">
-							<StatusBadge Status="@item.Job.Status.ToString()" />
-							<span class="small text-body-tertiary">@GetStartedDisplay(item.Job)</span>
-						</div>
-
-						@if (!string.IsNullOrWhiteSpace(item.Job.CurrentActivity))
-						{
-							<p class="mb-0 small text-info fst-italic text-break">@item.Job.CurrentActivity</p>
-						}
-					</div>
-
-					<i class="bi bi-chevron-right text-body-tertiary flex-shrink-0 pt-1"></i>
-				</div>
+			<a href="/jobs/view/@item.Job.Id" class="list-group-item list-group-item-action d-flex align-items-center gap-3">
+				<span class="live-dot flex-shrink-0"></span>
+				<span class="flex-grow-1 min-width-0">
+					<span class="d-block fw-medium text-truncate">@item.Job.DisplayTitle</span>
+					<span class="d-block small text-body-secondary text-truncate">@item.Project.Name · @GetStartedDisplay(item.Job)</span>
+					@if (!string.IsNullOrWhiteSpace(item.Job.CurrentActivity))
+					{
+						<span class="d-block small text-body-tertiary text-truncate">@item.Job.CurrentActivity</span>
+					}
+				</span>
+				<i class="bi bi-chevron-right text-body-tertiary flex-shrink-0"></i>
 			</a>
 		}
 	</div>
@@ -43,6 +32,6 @@
 	{
 		var startedAt = job.StartedAt ?? job.CreatedAt;
 		var elapsed = DateTime.UtcNow - startedAt;
-		return $"Running for {TokenHelper.FormatDuration(elapsed)}";
+		return $"running for {TokenHelper.FormatDuration(elapsed)}";
 	}
 }

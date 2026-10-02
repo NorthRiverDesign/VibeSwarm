@@ -4,9 +4,12 @@ public static class UsageLimitWindowHelper
 {
 	public static List<UsageLimitWindow> NormalizeWindows(IEnumerable<UsageLimitWindow>? windows)
 	{
+		// Label is part of the identity, not decoration: a provider can report two windows
+		// over the same horizon that differ only by name, such as weekly with and without
+		// overage. Grouping on scope alone silently merged them into one meter.
 		return (windows ?? [])
 			.Where(window => window != null)
-			.GroupBy(window => new { window.Scope, window.LimitType })
+			.GroupBy(window => new { window.Scope, window.LimitType, window.Label })
 			.Select(group =>
 			{
 				var windowsInGroup = group.ToList();
@@ -18,6 +21,7 @@ public static class UsageLimitWindowHelper
 				{
 					Scope = group.Key.Scope,
 					LimitType = group.Key.LimitType,
+					Label = group.Key.Label,
 					IsLimitReached = windowsInGroup.Any(window => window.IsLimitReached),
 					CurrentUsage = mostComplete.CurrentUsage,
 					MaxUsage = mostComplete.MaxUsage,

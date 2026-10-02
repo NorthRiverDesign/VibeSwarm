@@ -149,7 +149,6 @@ public partial class JobProcessingService
         {
             _logger.LogInformation("Running build verification for job {JobId} in {WorkingDirectory}", job.Id, workingDirectory);
 
-            // Run build command
             var buildResult = await RunShellCommandAsync(project.BuildCommand.Trim(), workingDirectory, cancellationToken);
             outputBuilder.AppendLine($"=== Build Command: {project.BuildCommand.Trim()} ===");
             outputBuilder.AppendLine($"Exit Code: {buildResult.ExitCode}");
@@ -274,20 +273,25 @@ public partial class JobProcessingService
         _logger.LogInformation("Created pull request for job {JobId}: {PullRequestUrl}", job.Id, job.PullRequestUrl);
     }
 
-    private static async Task<(int ExitCode, string Output, string Error)> RunShellCommandAsync(
+    internal static async Task<(int ExitCode, string Output, string Error)> RunShellCommandAsync(
         string command, string workingDirectory, CancellationToken cancellationToken)
     {
         using var process = new System.Diagnostics.Process();
         process.StartInfo = new System.Diagnostics.ProcessStartInfo
         {
             FileName = "/bin/bash",
-            Arguments = $"-c {EscapeShellArgument(command)}",
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        // The command must reach bash as a single argument. Arguments is split by .NET's own
+        // rules, which ignore single quotes, so "-c 'dotnet build'" arrived as "'dotnet" and
+        // every multi-word command failed with a quoting error before it ran.
+        process.StartInfo.ArgumentList.Add("-c");
+        process.StartInfo.ArgumentList.Add(command);
+        RemoveVibeSwarmDatabaseSettings(process.StartInfo.Environment);
 
         process.Start();
 
@@ -312,10 +316,22 @@ public partial class JobProcessingService
         return (process.ExitCode, await outputTask, await errorTask);
     }
 
-    private static string EscapeShellArgument(string argument)
+    /// <summary>
+    /// VibeSwarm loads its own database settings into its process environment, and every child
+    /// inherits them. A project's tests would then read VibeSwarm's provider and connection
+    /// string instead of their own, so verification runs without them.
+    /// </summary>
+    internal static void RemoveVibeSwarmDatabaseSettings(IDictionary<string, string?> environment)
     {
-        // Wrap in single quotes, escaping any embedded single quotes
-        return "'" + argument.Replace("'", "'\\''") + "'";
+        var inherited = environment.Keys
+            .Where(name => string.Equals(name, "DATABASE_PROVIDER", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("ConnectionStrings__", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var name in inherited)
+        {
+            environment.Remove(name);
+        }
     }
 
     private static string TruncateBuildOutput(string output)

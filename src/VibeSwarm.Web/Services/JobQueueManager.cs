@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -48,7 +49,8 @@ public class JobQueueManager
 			using var scope = _scopeFactory.CreateScope();
 			var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
 
-			// Get projects that already have an in-flight job, with swarm awareness.
+			// Get projects that already have an in-flight job. Swarm members get no exception:
+			// they share the project's checkout, so they take turns like any other job.
 			var runningJobInfo = await dbContext.Jobs
 				.Where(j => j.Status == JobStatus.Pending
 					|| j.Status == JobStatus.Started
@@ -56,7 +58,7 @@ public class JobQueueManager
 					|| j.Status == JobStatus.Processing
 					|| j.Status == JobStatus.Paused
 					|| j.Status == JobStatus.Stalled)
-				.Select(j => new { j.ProjectId, j.SwarmId, j.ProviderId })
+				.Select(j => new { j.ProjectId, j.ProviderId })
 				.ToListAsync(cancellationToken);
 
 			var projectsWithRunningJobs = runningJobInfo.Select(j => j.ProjectId).Distinct().ToList();
@@ -64,16 +66,6 @@ public class JobQueueManager
 				.Select(j => j.ProviderId)
 				.Where(id => id != Guid.Empty)
 				.Distinct()
-				.ToList();
-
-			// If all running jobs for a project share the same SwarmId, pending jobs from
-			// that same swarm are still eligible to be dispatched.
-			// Using a List<Guid> so EF Core can translate Contains() to SQL IN (...).
-			var activeSwarmIds = runningJobInfo
-				.GroupBy(j => j.ProjectId)
-				.Where(g => g.All(j => j.SwarmId.HasValue)
-					&& g.Select(j => j.SwarmId).Distinct().Count() == 1)
-				.Select(g => g.First().SwarmId!.Value)
 				.ToList();
 
 			// Get all pending jobs that aren't blocked
@@ -91,17 +83,18 @@ public class JobQueueManager
 								.ThenInclude(link => link.Skill)
 				.Include(j => j.Provider)
 				.Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
-				.Where(j => !projectsWithRunningJobs.Contains(j.ProjectId)
-					|| (j.SwarmId != null && activeSwarmIds.Contains(j.SwarmId.Value)))
+				.Where(j => !projectsWithRunningJobs.Contains(j.ProjectId))
 				.Where(j => j.ProviderId == Guid.Empty || !providersWithRunningJobs.Contains(j.ProviderId))
 				.Where(j => j.NotBeforeUtc == null || j.NotBeforeUtc <= now)
 				.OrderByDescending(j => j.Priority)
 				.ThenBy(j => j.CreatedAt)
 				.ToListAsync(cancellationToken);
 
-			// Filter out recently dequeued jobs
+			// Filter out recently dequeued jobs and projects held while a queued job is edited
+			var projectHolds = scope.ServiceProvider.GetService<ProjectQueueHolds>();
 			var eligibleJobs = pendingJobs
 				.Where(j => !_recentlyDequeued.ContainsKey(j.Id))
+				.Where(j => projectHolds?.IsHeld(j.ProjectId) != true)
 				.ToList();
 
 			// Filter out jobs with unsatisfied dependencies
@@ -144,9 +137,6 @@ public class JobQueueManager
 		_recentlyDequeued.TryRemove(jobId, out _);
 	}
 
-	/// <summary>
-	/// Gets the count of pending jobs
-	/// </summary>
 	public async Task<int> GetPendingCountAsync(CancellationToken cancellationToken = default)
 	{
 		using var scope = _scopeFactory.CreateScope();
@@ -157,9 +147,6 @@ public class JobQueueManager
 			.CountAsync(cancellationToken);
 	}
 
-	/// <summary>
-	/// Gets queue statistics
-	/// </summary>
 	public async Task<QueueStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default)
 	{
 		using var scope = _scopeFactory.CreateScope();
@@ -210,9 +197,6 @@ public class JobQueueManager
 		return stats;
 	}
 
-	/// <summary>
-	/// Filters jobs based on their dependencies
-	/// </summary>
 	private List<Job> FilterByDependencies(List<Job> jobs, VibeSwarmDbContext dbContext)
 	{
 		var result = new List<Job>();
@@ -244,8 +228,6 @@ public class JobQueueManager
 
 	/// <summary>
 	/// Applies fair distribution to prevent a single project from hogging resources.
-	/// Swarm member jobs bypass the per-project cap because they are pre-authorized by
-	/// the swarm-aware pending jobs query.
 	/// </summary>
 	private List<Job> ApplyFairDistribution(List<Job> jobs, int maxJobs)
 	{
@@ -260,14 +242,6 @@ public class JobQueueManager
 
 			if (job.ProviderId != Guid.Empty && !providerIds.Add(job.ProviderId))
 			{
-				continue;
-			}
-
-			// Swarm members are always eligible — they were already filtered by the
-			// swarm-aware GetPendingJobsAsync query.
-			if (job.SwarmId.HasValue)
-			{
-				result.Add(job);
 				continue;
 			}
 
@@ -306,9 +280,6 @@ public class JobQueueManager
 	}
 }
 
-/// <summary>
-/// Statistics about the job queue
-/// </summary>
 public class QueueStatistics
 {
 	public int TotalJobs { get; set; }

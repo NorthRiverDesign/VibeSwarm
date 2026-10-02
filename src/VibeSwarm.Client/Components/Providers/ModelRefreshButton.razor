@@ -1,0 +1,92 @@
+@* Refresh button that sits beside a model select and re-syncs that provider's model list *@
+@inject IServiceProvider Services
+
+<button type="button" class="btn btn-secondary @(Small ? "btn-sm" : string.Empty)"
+		@onclick="RefreshAsync"
+		disabled="@(_isRefreshing || Disabled || !HasProvider)"
+		title="@(HasProvider ? "Refresh models from provider" : "Select a provider first")"
+		aria-label="Refresh models">
+	@if (_isRefreshing)
+	{
+		<span class="spinner-border spinner-border-sm" role="status"></span>
+	}
+	else
+	{
+		<i class="bi bi-arrow-clockwise"></i>
+	}
+</button>
+
+@code {
+	[Parameter]
+	public Guid? ProviderId { get; set; }
+
+	/// <summary>
+	/// True when <see cref="ProviderId"/> is an inference provider rather than a CLI provider.
+	/// </summary>
+	[Parameter]
+	public bool IsInference { get; set; }
+
+	[Parameter]
+	public string? ProviderName { get; set; }
+
+	[Parameter]
+	public bool Disabled { get; set; }
+
+	[Parameter]
+	public bool Small { get; set; }
+
+	[Parameter]
+	public EventCallback<List<ProviderModel>> OnRefreshed { get; set; }
+
+	[Parameter]
+	public EventCallback<List<InferenceModel>> OnInferenceRefreshed { get; set; }
+
+	private bool _isRefreshing;
+
+	private bool HasProvider => ProviderId.HasValue && ProviderId.Value != Guid.Empty;
+
+	private async Task RefreshAsync()
+	{
+		if (!HasProvider || _isRefreshing)
+		{
+			return;
+		}
+
+		var notifications = Services.GetRequiredService<NotificationService>();
+		var title = string.IsNullOrWhiteSpace(ProviderName) ? null : ProviderName;
+		_isRefreshing = true;
+		try
+		{
+			int availableCount;
+			if (IsInference)
+			{
+				var models = (await Services.GetRequiredService<IInferenceProviderService>().RefreshModelsAsync(ProviderId!.Value)).ToList();
+				availableCount = models.Count(model => model.IsAvailable);
+				await OnInferenceRefreshed.InvokeAsync(models);
+			}
+			else
+			{
+				var models = (await Services.GetRequiredService<IProviderService>().RefreshModelsAsync(ProviderId!.Value)).ToList();
+				availableCount = models.Count(model => model.IsAvailable);
+				await OnRefreshed.InvokeAsync(models);
+			}
+
+			if (availableCount == 0)
+			{
+				notifications.ShowWarning("No models found. Check the provider's configuration.", title);
+			}
+			else
+			{
+				notifications.ShowSuccess($"Found {availableCount} model(s).", title);
+			}
+		}
+		catch (Exception ex)
+		{
+			notifications.ShowError($"Failed to refresh models: {ex.Message}", title);
+		}
+		finally
+		{
+			_isRefreshing = false;
+		}
+	}
+}

@@ -70,3 +70,11 @@ msbuild.wrn
 node_modules/
 package-lock.json
 package.json
+
+# Browser-automation / diagnostic artifacts (these belong in a scratchpad, never the repo)
+*.png.tmp
+screenshots/
+shots/
+test-results/
+playwright-report/
+.playwright/

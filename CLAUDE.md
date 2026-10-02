@@ -46,3 +46,31 @@ When Bootstrap doesn't have a utility, add a single-property class to Section 2 
 4. **Dropdown direction**: use `dropup`, `dropstart`, or `dropend` when near a clipped container edge
 5. **Mobile overflow**: test on iPhone SE (375px). No horizontal scroll on modals/forms/pages
 6. **No hardcoded widths** in flex children unless paired with `flex-shrink` / `min-width: 0`
+
+## Design Tokens
+
+Every page draws on one set of tokens, defined in section 1 of `site.css`. Don't add a
+`font-family`, a `font-size` value, or a spacing value outside them.
+
+### Fonts
+- One system stack for all text, headings included: `--bs-font-sans-serif`. Code and logs use `--bs-font-monospace`.
+- Never set `font-family` anywhere else. Reference the variable instead.
+
+### Type scale (five sizes)
+| Token | Size | How markup gets it |
+|---|---|---|
+| `--vs-text-title` | 28px | `<h1>` (page titles), `.text-title` for a headline number |
+| `--vs-text-heading` | 17px | `<h2>`–`<h5>`, modal and card titles |
+| `--vs-text-body` | 16px | default text, list rows, `<h6>` |
+| `--vs-text-small` | 14px | `.small`: second lines, meta, subtitles |
+| `--vs-text-caption` | 12px | `.text-eyebrow` section labels, `.text-caption`, badges |
+
+- Pick a size with the element or class above. `fs-*` is only for icon glyphs.
+- Pick the heading level that fits the outline; its size is already set, so don't add size classes.
+
+### Spacing and layout
+Use Bootstrap's spacer scale only (`1` = 4px, `2` = 8px, `3` = 16px, `4` = 24px). Pages share one rhythm:
+- **Page:** a `d-flex flex-column gap-4` stack, or `<PageHeader>`, which leaves the same `mb-4` below the title.
+- **Title row:** `d-flex align-items-center gap-2` holding `<h1 class="mb-0 me-auto">` and `<TitleAction>` round buttons, with the primary action last. When there are more than two actions, put them behind one `+` menu (Skills does this).
+- **Section:** `d-flex flex-column gap-2` holding a `<SectionHeader>` (an eyebrow label with quiet `btn-link` actions on the right) above a `list-group rounded-4`. Separate groups (Active, then Paused) instead of filter tabs.
+- **Rows:** `<ListRow>` with an icon, a title and one quiet second line. It opens in place (`ChildContent`), links (`Href`) or acts as a button (`OnClick`). `AttentionLine` replaces the second line in amber while something needs doing, and `Trailing` holds short status text such as Off or Running. Open panels show a short fact list, then switches, then actions: secondary buttons first, with Delete last as a quiet `text-danger` link that confirms.

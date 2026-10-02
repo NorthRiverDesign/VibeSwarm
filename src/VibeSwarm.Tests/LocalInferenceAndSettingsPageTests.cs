@@ -39,10 +39,10 @@ public async Task RenderedLocalInferencePage_ShowsSetupAction_WhenNoProviderConf
 
 	Assert.Contains("Inference", html);
 	Assert.Contains("Add", html);
+	Assert.Contains("No inference connections yet", html);
 	Assert.Contains("Ollama", html);
-	Assert.Contains("Grok", html);
-	Assert.Contains("No Ollama connections", html);
-	Assert.Contains("d-flex align-items-center justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
+	Assert.DoesNotContain("nav-tabs", html);
+	Assert.Contains("justify-content-between gap-2 mb-4", html);
 	Assert.DoesNotContain("App Settings", html);
 }
 
@@ -71,15 +71,15 @@ var output = await renderer.RenderComponentAsync<Settings>();
 return output.ToHtmlString();
 });
 
-	Assert.Contains("App Settings", html);
+	Assert.Contains(">General<", html);
 	Assert.Contains("Timezone", html);
 	Assert.Contains("Enable provider commit attribution", html);
 	Assert.Contains("Idea Prompt Templates", html);
 	Assert.Contains("Idea expansion template", html);
 	Assert.Contains("Direct idea implementation template", html);
-	Assert.Contains("Critical Error Logs", html);
+	Assert.Contains("Critical error logs", html);
 	Assert.Contains("Database", html);
-	Assert.Contains("Developer Mode", html);
+	Assert.Contains("Developer mode", html);
 	Assert.Contains("Rebuild And Restart", html);
 	Assert.DoesNotContain("Add Provider", html);
 	Assert.DoesNotContain("inference provider", html);
@@ -265,7 +265,7 @@ public void LocalInferencePage_DefaultsToLastUsedProviderFromSessionStorage()
 }
 
 [Fact]
-public void InferenceProvidersSection_ShowsEditDeleteAndRefreshModelsInDropdown()
+public void InferenceProvidersSection_OpenRowShowsEditDeleteAndRefreshModels()
 {
 	var provider = CreateInferenceProvider();
 
@@ -274,11 +274,10 @@ public void InferenceProvidersSection_ShowsEditDeleteAndRefreshModelsInDropdown(
 
 	var cut = context.Render<InferenceProvidersSection>(parameters => parameters
 		.Add(component => component.Providers, [provider])
-		.Add(component => component.ActiveProviderType, provider.ProviderType));
+		.Add(component => component.InitiallyOpenProviderId, provider.Id));
 
-	Assert.Contains("Inference provider actions", cut.Markup);
-	Assert.Contains("dropdown-menu", cut.Markup);
-	Assert.Contains("Refresh Models", cut.Markup);
+	Assert.Contains("aria-expanded=\"true\"", cut.Markup);
+	Assert.Contains("Refresh models", cut.Markup);
 	Assert.Contains("Edit", cut.Markup);
 	Assert.Contains("Delete", cut.Markup);
 	Assert.DoesNotContain("btn-danger", cut.Markup);
@@ -294,18 +293,18 @@ public void InferenceProvidersSection_DisablesRefreshModelsActionForRefreshingPr
 
 	var cut = context.Render<InferenceProvidersSection>(parameters => parameters
 		.Add(component => component.Providers, [provider])
-		.Add(component => component.ActiveProviderType, provider.ProviderType)
+		.Add(component => component.InitiallyOpenProviderId, provider.Id)
 		.Add(component => component.RefreshingModelsProviderId, provider.Id));
 
 	var refreshButton = cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Refresh Models", StringComparison.Ordinal));
+		.Single(button => button.TextContent.Contains("Refresh models", StringComparison.Ordinal));
 
 	Assert.True(refreshButton.HasAttribute("disabled"));
 	Assert.Contains("spin", refreshButton.InnerHtml);
 }
 
 [Fact]
-public void InferenceProvidersSection_DropdownActionsInvokeProviderCallbacks()
+public void InferenceProvidersSection_RowActionsInvokeProviderCallbacks()
 {
 	var provider = CreateInferenceProvider();
 	InferenceProvider? refreshedProvider = null;
@@ -317,19 +316,19 @@ public void InferenceProvidersSection_DropdownActionsInvokeProviderCallbacks()
 
 	var cut = context.Render<InferenceProvidersSection>(parameters => parameters
 		.Add(component => component.Providers, [provider])
-		.Add(component => component.ActiveProviderType, provider.ProviderType)
+		.Add(component => component.InitiallyOpenProviderId, provider.Id)
 		.Add(component => component.OnRefreshModels, EventCallback.Factory.Create<InferenceProvider>(this, clickedProvider => refreshedProvider = clickedProvider))
 		.Add(component => component.OnEditProvider, EventCallback.Factory.Create<InferenceProvider>(this, clickedProvider => editedProvider = clickedProvider))
 		.Add(component => component.OnDeleteProvider, EventCallback.Factory.Create<InferenceProvider>(this, clickedProvider => deletedProvider = clickedProvider)));
 
 	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Refresh Models", StringComparison.Ordinal))
+		.Single(button => button.TextContent.Contains("Refresh models", StringComparison.Ordinal))
 		.Click();
 	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Edit", StringComparison.Ordinal))
+		.Single(button => button.TextContent.Trim() == "Edit")
 		.Click();
 	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Delete", StringComparison.Ordinal))
+		.Single(button => button.TextContent.Trim() == "Delete")
 		.Click();
 
 	Assert.Same(provider, refreshedProvider);
@@ -385,7 +384,7 @@ public void LocalInferencePage_RefreshModelsDropdownActionRefreshesModelList()
 	cut.WaitForAssertion(() => Assert.Contains("Qwen 3 (Default)", cut.Markup));
 
 	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Refresh Models", StringComparison.Ordinal))
+		.Single(button => button.TextContent.Contains("Refresh models", StringComparison.Ordinal))
 		.Click();
 
 	cut.WaitForAssertion(() =>
@@ -399,7 +398,7 @@ public void LocalInferencePage_RefreshModelsDropdownActionRefreshesModelList()
 }
 
 [Fact]
-public void LocalInferencePage_RefreshModelsDropdownActionShowsErrorWhenRefreshFails()
+public void LocalInferencePage_RefreshModelsShowsErrorWhenRefreshFails()
 {
 	var provider = CreateInferenceProvider();
 	var providerService = new FakeInferenceProviderService([provider])
@@ -417,10 +416,10 @@ public void LocalInferencePage_RefreshModelsDropdownActionShowsErrorWhenRefreshF
 
 	var cut = context.Render<LocalInference>();
 
-	cut.WaitForAssertion(() => Assert.Contains("Refresh Models", cut.Markup));
+	cut.WaitForAssertion(() => Assert.Contains("Refresh models", cut.Markup));
 
 	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Refresh Models", StringComparison.Ordinal))
+		.Single(button => button.TextContent.Contains("Refresh models", StringComparison.Ordinal))
 		.Click();
 
 	cut.WaitForAssertion(() =>
@@ -430,7 +429,7 @@ public void LocalInferencePage_RefreshModelsDropdownActionShowsErrorWhenRefreshF
 	});
 }
 
-	private sealed class FakeInferenceProviderService : IInferenceProviderService
+	private sealed class FakeInferenceProviderService : FakeInferenceProviderServiceBase
 	{
 		private readonly IReadOnlyList<InferenceProvider> _providers;
 		private readonly Dictionary<Guid, IReadOnlyList<InferenceModel>> _modelsByProvider;
@@ -448,15 +447,12 @@ public void LocalInferencePage_RefreshModelsDropdownActionShowsErrorWhenRefreshF
 		public int RefreshModelsCallCount { get; private set; }
 		public Guid? LastRefreshedProviderId { get; private set; }
 
-	public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers);
-	public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(_providers.FirstOrDefault(provider => provider.Id == id));
-	public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers.Where(provider => provider.IsEnabled).ToList());
-	public Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
-	public Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
-	public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
-	public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
+	public override Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers);
+	public override Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(_providers.FirstOrDefault(provider => provider.Id == id));
+	public override Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers.Where(provider => provider.IsEnabled).ToList());
+	public override Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
 		=> Task.FromResult<IEnumerable<InferenceModel>>(_modelsByProvider.TryGetValue(providerId, out var models) ? models : []);
-	public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default)
+	public override Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default)
 	{
 		RefreshModelsCallCount++;
 		LastRefreshedProviderId = providerId;
@@ -474,8 +470,7 @@ public void LocalInferencePage_RefreshModelsDropdownActionShowsErrorWhenRefreshF
 
 		return Task.FromResult<IEnumerable<InferenceModel>>(_modelsByProvider.TryGetValue(providerId, out var models) ? models : []);
 	}
-	public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
-	public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
+	public override Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
 	}
 
 	private static InferenceProvider CreateInferenceProvider(Guid? id = null)
@@ -507,6 +502,7 @@ private sealed class FakeInferenceService : IInferenceService
 {
 public InferenceRequest? LastRequest { get; private set; }
 public InferenceResponse GenerateResponse { get; set; } = new() { Success = true, Response = "OK" };
+public Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default) => Task.FromResult(new InferenceHealthResult());
 public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => Task.FromResult(new InferenceHealthResult());
 public Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => Task.FromResult(new List<DiscoveredModel>());
 public Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default)
@@ -561,29 +557,30 @@ public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancella
 		=> Task.FromResult(new DirectoryListResult());
 
 	public Task<bool> DirectoryExistsAsync(string path) => Task.FromResult(false);
-
 	public Task<List<DriveEntry>> GetDrivesAsync() => Task.FromResult(new List<DriveEntry>());
+
+	public Task<WorkspaceInspection> InspectWorkspaceAsync(string path)
+		=> Task.FromResult(new WorkspaceInspection { Path = path });
+
+	public Task<List<WorkspaceInspection>> ScanWorkspacesAsync(string rootPath)
+		=> Task.FromResult(new List<WorkspaceInspection>());
 	}
 
-	private sealed class FakeProjectService : IProjectService
+	private sealed class FakeProjectService : FakeProjectServiceBase
 	{
-		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
-		public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
-		public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
-		public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
-		public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
-		public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
-		public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default)
+		public override Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
+		public override Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
+		public override Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
+		public override Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
+		public override Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
+		public override Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
+		public override Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default)
 			=> Task.FromResult(new DashboardJobMetrics
 			{
 				RangeDays = rangeDays,
 				Buckets = []
 			});
-		public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
+		public override Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
 	}
 
 	private sealed class FakeDatabaseService : IDatabaseService

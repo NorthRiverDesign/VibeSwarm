@@ -67,7 +67,7 @@ public sealed class QueueDropdownPanelTests
 		Assert.Contains("Add queue controls to navbar", cut.Markup);
 		Assert.Contains("Queued", cut.Markup);
 		Assert.Contains("Pending", cut.Markup);
-		Assert.Contains("All Jobs", cut.Markup);
+		Assert.Contains("All jobs", cut.Markup);
 	}
 
 	[Fact]
@@ -250,10 +250,23 @@ public sealed class QueueDropdownPanelTests
 		using var context = CreateContext(ideaService);
 		var cut = context.Render<QueueDropdownPanel>();
 
-		cut.FindAll("button").Single(button => button.TextContent.Contains("Start Queue")).Click();
+		cut.FindAll("button").Single(button => button.TextContent.Contains("Start queued ideas")).Click();
 
 		Assert.Equal(1, ideaService.StartAllProcessingCalls);
-		Assert.Contains("Stop Queue", cut.Markup);
+		Assert.Contains("Stop queue", cut.Markup);
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_PausedQueue_StartsAgainFromOneButton()
+	{
+		var queueControl = new FakeQueueControl(isPaused: true);
+		using var context = CreateContext(new FakeIdeaService(), queueControl: queueControl);
+		var cut = context.Render<QueueDropdownPanel>();
+
+		Assert.Contains("Stopped", cut.Markup);
+		cut.FindAll("button").Single(button => button.TextContent.Contains("Start queue")).Click();
+
+		Assert.Equal(1, queueControl.ResumeCalls);
 	}
 
 	[Fact]
@@ -284,13 +297,29 @@ public sealed class QueueDropdownPanelTests
 				ProjectsCurrentlyProcessing = 0
 			});
 
-		using var context = CreateContext(ideaService);
+		var queueControl = new FakeQueueControl(runningJobs: 1);
+		using var context = CreateContext(ideaService, queueControl: queueControl);
 		var cut = context.Render<QueueDropdownPanel>();
 
-		cut.FindAll("button").Single(button => button.TextContent.Contains("Stop Queue")).Click();
+		cut.FindAll("button").Single(button => button.TextContent.Contains("Stop queue")).Click();
 
+		// Stopping means both: no new jobs start, and ideas stop feeding the queue.
+		Assert.Equal(1, queueControl.PauseCalls);
+		Assert.False(queueControl.LastPauseCancelledRunningJobs);
 		Assert.Equal(1, ideaService.StopAllProcessingCalls);
-		Assert.Contains("Start Queue", cut.Markup);
+		Assert.Contains("Start queue", cut.Markup);
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_WhenPaused_OffersToStopTheJobsStillRunning()
+	{
+		var queueControl = new FakeQueueControl(isPaused: true, runningJobs: 2);
+		using var context = CreateContext(new FakeIdeaService(), queueControl: queueControl);
+		var cut = context.Render<QueueDropdownPanel>();
+
+		cut.FindAll("button").Single(button => button.TextContent.Contains("Also stop 2 jobs")).Click();
+
+		Assert.True(queueControl.LastPauseCancelledRunningJobs);
 	}
 
 	[Fact]
@@ -339,56 +368,101 @@ public sealed class QueueDropdownPanelTests
 		cut.WaitForAssertion(() =>
 		{
 			Assert.Equal("1 queue item", cut.Find(".notification-bell-badge").GetAttribute("aria-label"));
-			Assert.Contains("Start Queue", cut.Markup);
+			Assert.Contains("Start queued ideas", cut.Markup);
 		});
 	}
 
-	private static BunitContext CreateContext(FakeIdeaService ideaService, QueuePanelStateService? queuePanelStateService = null)
+	private static BunitContext CreateContext(
+		FakeIdeaService ideaService,
+		QueuePanelStateService? queuePanelStateService = null,
+		FakeQueueControl? queueControl = null)
 	{
 		var context = new BunitContext();
 		context.Services.AddLogging();
 		context.Services.AddSingleton<IIdeaService>(ideaService);
+		context.Services.AddSingleton<IJobQueueControlService>(queueControl ?? new FakeQueueControl());
 		context.Services.AddSingleton<NotificationService>();
 		context.Services.AddSingleton(queuePanelStateService ?? new QueuePanelStateService());
 		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 		return context;
 	}
 
-	private sealed class FakeIdeaService(params GlobalQueueSnapshot[] snapshots) : IIdeaService
+	/// <summary>Records what the panel asked the queue to do.</summary>
+	private sealed class FakeQueueControl : IJobQueueControlService
+	{
+		public FakeQueueControl(bool isPaused = false, int runningJobs = 0)
+		{
+			State = new JobQueueState { IsPaused = isPaused, RunningJobs = runningJobs };
+		}
+
+		public JobQueueState State { get; private set; }
+		public int PauseCalls { get; private set; }
+		public int ResumeCalls { get; private set; }
+		public bool LastPauseCancelledRunningJobs { get; private set; }
+
+		public Task<JobQueueState> GetStateAsync(CancellationToken cancellationToken = default)
+			=> Task.FromResult(State);
+
+		public Task<JobQueueState> PauseAsync(string? reason = null, bool cancelRunningJobs = false, CancellationToken cancellationToken = default)
+		{
+			PauseCalls++;
+			LastPauseCancelledRunningJobs = cancelRunningJobs;
+			State = new JobQueueState { IsPaused = true, PausedReason = reason, RunningJobs = State.RunningJobs };
+			return Task.FromResult(State);
+		}
+
+		public Task<JobQueueState> ResumeAsync(CancellationToken cancellationToken = default)
+		{
+			ResumeCalls++;
+			State = new JobQueueState { IsPaused = false, RunningJobs = State.RunningJobs };
+			return Task.FromResult(State);
+		}
+
+		public Task<ProjectQueueState> GetProjectStateAsync(Guid projectId, CancellationToken cancellationToken = default)
+			=> Task.FromResult(new ProjectQueueState { ProjectId = projectId });
+
+		public Task<ProjectQueueState> PauseProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
+			=> Task.FromResult(new ProjectQueueState { ProjectId = projectId, IsProjectPaused = true });
+
+		public Task<ProjectQueueState> ResumeProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
+			=> Task.FromResult(new ProjectQueueState { ProjectId = projectId });
+	}
+
+	private sealed class FakeIdeaService(params GlobalQueueSnapshot[] snapshots) : FakeIdeaServiceBase
 	{
 		private readonly Queue<GlobalQueueSnapshot> _snapshots = new(snapshots.Length == 0 ? [new GlobalQueueSnapshot()] : snapshots);
 
 		public int StartAllProcessingCalls { get; private set; }
 		public int StopAllProcessingCalls { get; private set; }
 
-		public Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Idea>>([]);
-		public Task<ProjectIdeasListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default) => Task.FromResult(new ProjectIdeasListResult());
-		public Task<Idea?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task<Idea> CreateAsync(Idea idea, CancellationToken cancellationToken = default) => Task.FromResult(idea);
-		public Task<Idea> CreateAsync(CreateIdeaRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new Idea());
-		public Task<Idea> UpdateAsync(Idea idea, CancellationToken cancellationToken = default) => Task.FromResult(idea);
-		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
-		public Task<Idea?> GetNextUnprocessedAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.FromResult<Job?>(null);
-		public Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult(false);
-		public Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default) => Task.FromResult(false);
-		public Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task<IdeaAttachment?> GetAttachmentAsync(Guid attachmentId, CancellationToken cancellationToken = default) => Task.FromResult<IdeaAttachment?>(null);
-		public Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
-		public Task StopProcessingAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.CompletedTask;
-		public Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
-		public Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
-		public Task<IEnumerable<Guid>> GetActiveProcessingProjectsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Guid>>([]);
-		public Task RecoverStuckIdeasAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-		public Task ReorderIdeasAsync(Guid projectId, IEnumerable<Guid> ideaIdsInOrder, CancellationToken cancellationToken = default) => Task.CompletedTask;
-		public Task<Idea> CopyToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => Task.FromResult(new Idea());
-		public Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => Task.FromResult(new Idea());
-		public Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult(new GlobalIdeasProcessingStatus());
-		public Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default)
+		public override Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Idea>>([]);
+		public override Task<ProjectIdeasListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default) => Task.FromResult(new ProjectIdeasListResult());
+		public override Task<Idea?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public override Task<Idea> CreateAsync(Idea idea, CancellationToken cancellationToken = default) => Task.FromResult(idea);
+		public override Task<Idea> CreateAsync(CreateIdeaRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new Idea());
+		public override Task<Idea> UpdateAsync(Idea idea, CancellationToken cancellationToken = default) => Task.FromResult(idea);
+		public override Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public override Task<Idea?> GetNextUnprocessedAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public override Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.FromResult<Job?>(null);
+		public override Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public override Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public override Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public override Task<IdeaAttachment?> GetAttachmentAsync(Guid attachmentId, CancellationToken cancellationToken = default) => Task.FromResult<IdeaAttachment?>(null);
+		public override Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public override Task StopProcessingAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public override Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public override Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public override Task<IEnumerable<Guid>> GetActiveProcessingProjectsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Guid>>([]);
+		public override Task RecoverStuckIdeasAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public override Task ReorderIdeasAsync(Guid projectId, IEnumerable<Guid> ideaIdsInOrder, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public override Task<Idea> CopyToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => Task.FromResult(new Idea());
+		public override Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => Task.FromResult(new Idea());
+		public override Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public override Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public override Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public override Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public override Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult(new GlobalIdeasProcessingStatus());
+		public override Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default)
 		{
 			if (_snapshots.Count > 1)
 			{
@@ -398,19 +472,19 @@ public sealed class QueueDropdownPanelTests
 			return Task.FromResult(_snapshots.Peek());
 		}
 
-		public Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default)
+		public override Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default)
 		{
 			StartAllProcessingCalls++;
 			return Task.CompletedTask;
 		}
 
-		public Task StopAllProcessingAsync(CancellationToken cancellationToken = default)
+		public override Task StopAllProcessingAsync(CancellationToken cancellationToken = default)
 		{
 			StopAllProcessingCalls++;
 			return Task.CompletedTask;
 		}
 
-		public Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default)
+		public override Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default)
 			=> Task.FromResult(new SuggestIdeasResult());
 	}
 

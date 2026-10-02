@@ -10,30 +10,7 @@
 @using VibeSwarm.Shared.Validation
 @implements IAsyncDisposable
 
-<div class="d-grid gap-3">
-	<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-		<div class="d-flex flex-wrap align-items-center gap-2 small text-body-secondary">
-			@if (IsPageLoading)
-			{
-				<span class="d-inline-flex align-items-center gap-2">
-					<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-					<span>Refreshing ideas</span>
-				</span>
-			}
-			@if (UnprocessedIdeasCount > 0)
-			{
-				<span class="badge bg-body-secondary text-body">@UnprocessedIdeasCount pending</span>
-			}
-			@if (IsProcessingActive)
-			{
-				<span class="badge text-bg-info d-inline-flex align-items-center gap-1" title="@ActiveProcessingMessage">
-					<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-					<span>Auto-running</span>
-				</span>
-			}
-		</div>
-	</div>
-
+<div class="d-flex flex-column gap-4">
 	@if (_suggestResult != null)
 	{
 		<div class="d-flex align-items-start gap-2 rounded-3 border px-3 py-2 @GetSuggestResultContainerClass()">
@@ -47,21 +24,77 @@
 					</div>
 				}
 			</div>
-			<button type="button" class="btn-close btn-close-sm" @onclick="() => _suggestResult = null"
+			<button type="button" class="btn-close" @onclick="() => _suggestResult = null"
 					aria-label="Dismiss suggestion status"></button>
 		</div>
 	}
 
-	<div class="card">
-		<textarea class="form-control border-0 rounded-0" id="@_textareaId" rows="4"
-				  placeholder="Describe a feature, bug, or improvement to turn into a job…"
-				  value="@NewIdeaDescription" @oninput="HandleNewIdeaInput" @onblur="FlushDraftSyncAsync" @onkeypress="HandleKeyPress"
-				  @ref="_newIdeaTextarea"
-				  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"></textarea>
+	<div class="d-flex flex-column gap-2">
+		<div class="card rounded-4">
+			<div class="d-flex align-items-end gap-2 p-2">
+				<div class="dropdown flex-shrink-0">
+					<button type="button" class="btn btn-link text-body-secondary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
+							data-bs-toggle="dropdown" aria-expanded="false" title="Attach, suggest or create a job" aria-label="More ways to add work">
+						@if (IsSuggestingIdeas)
+						{
+							<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+						}
+						else
+						{
+							<i class="bi bi-plus-circle fs-5"></i>
+						}
+					</button>
+					<ul class="dropdown-menu">
+						<li>
+							<label class="dropdown-item m-0 cursor-pointer @(_attachmentInteropAvailable ? "" : "disabled")"
+								   for="@_fileInputId" title="@GetAttachmentButtonTooltip()">
+								<i class="bi bi-paperclip me-2"></i>Attach files
+							</label>
+						</li>
+						@if (CanSuggestIdeas)
+						{
+							<li>
+								<button type="button" class="dropdown-item" @onclick="OpenSuggestIdeasModal"
+										disabled="@(IsSuggestingIdeas || IsProcessingActive)" title="Suggest ideas from the codebase">
+									<i class="bi bi-stars me-2"></i>Suggest ideas
+								</button>
+							</li>
+						}
+						@if (OnCreateJob.HasDelegate)
+						{
+							<li><hr class="dropdown-divider"></li>
+							<li>
+								<button type="button" class="dropdown-item" @onclick="OnCreateJob"
+										title="@(HasActiveJobs ? "Create a job with its own provider, model and branch. It will be queued behind the current run." : "Create a job with its own provider, model and branch")">
+									<i class="bi bi-sliders me-2"></i>New job with options…
+								</button>
+							</li>
+						}
+					</ul>
+				</div>
+				<input id="@_fileInputId" class="d-none" type="file" multiple @onchange="HandleFileSelection"
+					   disabled="@(!_attachmentInteropAvailable)" />
+				<textarea class="form-control border-0 shadow-none bg-transparent px-1" id="@_textareaId" rows="2"
+						  placeholder="Add an idea…" aria-label="New idea"
+						  value="@NewIdeaDescription" @oninput="HandleNewIdeaInput" @onblur="FlushDraftSyncAsync" @onkeypress="HandleKeyPress"
+						  @ref="_newIdeaTextarea"
+						  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"></textarea>
+				<button type="button" class="btn btn-primary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center flex-shrink-0"
+						@onclick="AddIdea" disabled="@(!CanAddIdea)" title="Add idea" aria-label="Add idea">
+					@if (IsAddingIdea)
+					{
+						<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+					}
+					else
+					{
+						<i class="bi bi-arrow-up"></i>
+					}
+				</button>
+			</div>
 
 		@if (_pendingAttachments.Any())
 		{
-			<div class="d-flex flex-wrap gap-2 px-3 pb-2">
+			<div class="d-flex flex-wrap gap-2 px-3 pb-3">
 				@foreach (var attachment in _pendingAttachments.Select((item, index) => (item, index)))
 				{
 					var attachmentIndex = attachment.index;
@@ -75,67 +108,37 @@
 							<i class="bi bi-paperclip"></i>
 						}
 						<span class="text-truncate mw-100">@attachment.item.FileName</span>
-						<button type="button" class="btn-close btn-close-white btn-close-sm" @onclick="() => RemovePendingAttachment(attachmentIndex)" aria-label="Remove"></button>
+						<button type="button" class="btn-close btn-close-white" @onclick="() => RemovePendingAttachment(attachmentIndex)" aria-label="Remove"></button>
 					</span>
 				}
 			</div>
 		}
 
-		<div class="card-footer d-flex align-items-center flex-wrap gap-2">
-			<label class="btn btn-sm btn-secondary m-0 @(_attachmentInteropAvailable ? "" : "disabled")"
-				   for="@_fileInputId" title="@GetAttachmentButtonTooltip()">
-				<i class="bi bi-paperclip"></i> Attach
-			</label>
-			<input id="@_fileInputId" class="d-none" type="file" multiple @onchange="HandleFileSelection"
-				   disabled="@(!_attachmentInteropAvailable)" />
-			@if (CanSuggestIdeas)
-			{
-				<button type="button" class="btn btn-sm btn-secondary" @onclick="OpenSuggestIdeasModal"
-						disabled="@(IsSuggestingIdeas || IsProcessingActive)">
-					@if (IsSuggestingIdeas)
-					{
-						<span class="spinner-border spinner-border-sm"></span>
-					}
-					else
-					{
-						<i class="bi bi-stars"></i>
-					}
-					Suggest ideas
-				</button>
-			}
-			<span class="ms-auto font-monospace small @(IsOverLength ? "text-warning" : "text-muted")">@GetIdeaLengthSummary(NewIdeaDescription)</span>
-			<button type="button" class="btn btn-sm btn-primary" @onclick="AddIdea" disabled="@(!CanAddIdea)">
-				@if (IsAddingIdea)
-				{
-					<span class="spinner-border spinner-border-sm"></span>
-				}
-				else
-				{
-					<i class="bi bi-plus-lg"></i>
-				}
-				Add
-			</button>
 		</div>
+
+		@if (IsNearLengthLimit || !string.IsNullOrWhiteSpace(AddIdeaValidationMessage))
+		{
+			<div class="d-flex flex-wrap align-items-center gap-2 px-2 small">
+				@if (!string.IsNullOrWhiteSpace(AddIdeaValidationMessage))
+				{
+					<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>@AddIdeaValidationMessage</span>
+				}
+				@if (IsNearLengthLimit)
+				{
+					<span class="ms-auto font-monospace @(IsOverLength ? "text-warning" : "text-body-secondary")">@GetIdeaLengthSummary(NewIdeaDescription)</span>
+				}
+			</div>
+		}
+
+		@if (!HasDefaultProvider)
+		{
+			<a class="btn btn-sm btn-warning" href="/providers">
+				<i class="bi bi-plug me-1"></i>Set default provider
+			</a>
+		}
 	</div>
 
-	<div class="small text-muted">
-		@if (_attachmentInteropAvailable)
-		{
-			<span>Paste images directly · </span>
-		}
-		<kbd>Ctrl</kbd>+<kbd>Enter</kbd> to add
-		@if (!string.IsNullOrWhiteSpace(AddIdeaValidationMessage))
-		{
-			<span class="text-danger ms-2"><i class="bi bi-exclamation-circle me-1"></i>@AddIdeaValidationMessage</span>
-		}
-	</div>
-
-	@if (!HasDefaultProvider)
-	{
-		<a class="btn btn-sm btn-warning align-self-start" href="/providers">
-			<i class="bi bi-plug me-1"></i>Set default provider
-		</a>
-	}
+	@RunningContent
 
 	@if (!Ideas.Any())
 	{
@@ -146,19 +149,21 @@
 	}
 	else
 	{
-		<div class="d-flex align-items-center flex-wrap gap-2">
-			<h2 class="h6 mb-0 d-flex align-items-center gap-2"><i class="bi bi-lightbulb"></i>Ideas</h2>
-			@if (UnprocessedIdeasCount > 0)
-			{
-				<span class="badge rounded-pill text-bg-secondary">@UnprocessedIdeasCount pending</span>
-			}
-			<div class="ms-auto">
+		<section class="d-flex flex-column gap-2" aria-label="Up next">
+			<div class="d-flex align-items-center gap-3 px-1">
+				<h2 class="text-eyebrow mb-0 me-auto">@UpNextTitle</h2>
+				@if (IsPageLoading)
+				{
+					<span class="spinner-border spinner-border-sm text-body-secondary" role="status" aria-label="Refreshing ideas"></span>
+				}
 				@if (IsProcessingActive)
 				{
-					<button type="button" class="btn btn-sm btn-danger" @onclick="OnStopProcessing" disabled="@IsTogglingProcessing">
+					<span class="small text-body-secondary" title="@ActiveProcessingMessage">Running automatically</span>
+					<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none fw-medium px-0"
+							@onclick="OnStopProcessing" disabled="@IsTogglingProcessing" title="Stop running ideas automatically">
 						@if (IsTogglingProcessing)
 						{
-							<span class="spinner-border spinner-border-sm"></span>
+							<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
 						}
 						else
 						{
@@ -167,26 +172,25 @@
 						Stop
 					</button>
 				}
-				else if (TotalIdeasCount >= 1)
+				else
 				{
-					<button type="button" class="btn btn-sm btn-success" @onclick="OpenStartAllModal"
+					<button type="button" class="btn btn-sm btn-link text-success text-decoration-none fw-medium px-0"
+							@onclick="OpenStartAllModal"
 							disabled="@(IsTogglingProcessing || !HasDefaultProvider || UnprocessedIdeasCount == 0)"
 							title="@GetStartAllTooltip()">
 						@if (IsTogglingProcessing)
 						{
-							<span class="spinner-border spinner-border-sm"></span>
+							<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
 						}
 						else
 						{
 							<i class="bi bi-play-fill"></i>
 						}
-						Start queue
+						Run all
 					</button>
 				}
 			</div>
-		</div>
-		<div class="card">
-			<ul class="list-group list-group-flush">
+			<ul class="list-group rounded-4">
 				@foreach (var idea in Ideas)
 				{
 					<IdeaListItem @key="idea.Id" Idea="idea" IsProcessing="@IsIdeaProcessing(idea.Id)"
@@ -199,13 +203,9 @@
 							  OnStopJob="@(() => HandleStopJob(idea))" />
 				}
 			</ul>
-		</div>
-	}
-
-	@if (ShowEmptyState || TotalIdeasCount > 0)
-	{
-		<PaginationControls PageNumber="@CurrentPage" PageSize="@PageSize" TotalCount="@TotalIdeasCount"
-							IsLoading="@IsPageLoading" OnPreviousPage="OnPreviousPage" OnNextPage="OnNextPage" />
+			<PaginationControls PageNumber="@CurrentPage" PageSize="@PageSize" TotalCount="@TotalIdeasCount"
+								IsLoading="@IsPageLoading" OnPreviousPage="OnPreviousPage" OnNextPage="OnNextPage" />
+		</section>
 	}
 </div>
 	@* Copy Idea Modal *@
@@ -265,14 +265,17 @@
 						Model
 						<span class="text-body-secondary fw-normal">(optional)</span>
 					</label>
-					<select id="startAllModel" class="form-select" @bind="SelectedStartAllModelIdValue"
-							disabled="@(!SelectedStartAllProviderId.HasValue || !SelectedStartAllProviderModels.Any())">
-						<option value="">Use project/provider default model</option>
-						@foreach (var model in SelectedStartAllProviderModels)
-						{
-							<option value="@model.ModelId">@GetStartAllModelDisplayName(model)</option>
-						}
-					</select>
+					<div class="input-group">
+						<select id="startAllModel" class="form-select" @bind="SelectedStartAllModelIdValue"
+								disabled="@(!SelectedStartAllProviderId.HasValue || !SelectedStartAllProviderModels.Any())">
+							<option value="">Use project/provider default model</option>
+							@foreach (var model in SelectedStartAllProviderModels)
+							{
+								<option value="@model.ModelId">@GetStartAllModelDisplayName(model)</option>
+							}
+						</select>
+						<ModelRefreshButton ProviderId="@SelectedStartAllProviderId" OnRefreshed="HandleStartAllModelsRefreshed" />
+					</div>
 					<div class="form-text">
 						Leave blank to keep the project's default model for the selected provider.
 					</div>
@@ -315,6 +318,14 @@
 
 	[Parameter]
 	public bool ShowEmptyState { get; set; } = true;
+
+	/// <summary>Shown between the idea box and the idea list, e.g. the job running now.</summary>
+	[Parameter]
+	public RenderFragment? RunningContent { get; set; }
+
+	/// <summary>Opens the full job form, for work that needs its own provider, model or branch.</summary>
+	[Parameter]
+	public EventCallback OnCreateJob { get; set; }
 
 	[Parameter]
 	public int CurrentPage { get; set; } = 1;
@@ -872,6 +883,16 @@
 	}
 
 	private bool IsOverLength => (NewIdeaDescription?.Length ?? 0) > ValidationLimits.IdeaDescriptionMaxLength;
+
+	// The counter only appears once the idea is long enough for the limit to matter.
+	private bool IsNearLengthLimit => (NewIdeaDescription?.Length ?? 0) > ValidationLimits.IdeaDescriptionMaxLength * 0.8;
+
+	private string UpNextTitle => UnprocessedIdeasCount switch
+	{
+		<= 0 => "Up next",
+		1 => "Up next · 1 idea",
+		_ => $"Up next · {UnprocessedIdeasCount} ideas"
+	};
 
 	private static string? ValidateIdeaDescription(string? value)
 	{
@@ -1468,6 +1489,17 @@
 			.OrderBy(provider => provider.Name)
 			.Select(provider => (Guid?)provider.Id)
 			.FirstOrDefault();
+	}
+
+	private void HandleStartAllModelsRefreshed(List<ProviderModel> models)
+	{
+		var provider = StartAllProviders.FirstOrDefault(provider => provider.Id == SelectedStartAllProviderId);
+		if (provider != null)
+		{
+			provider.AvailableModels = models;
+		}
+
+		ResetStartAllModelIfUnavailable();
 	}
 
 	private void ResetStartAllModelIfUnavailable()

@@ -306,14 +306,28 @@ public partial class JobService
             return false;
         }
 
-        // Only allow updating prompt for jobs that haven't started yet or are in terminal states
-        if (job.Status != JobStatus.New && job.Status != JobStatus.Failed && job.Status != JobStatus.Cancelled)
+        var goalPrompt = newPrompt?.Trim() ?? string.Empty;
+        var shouldSyncTitle = JobTitleHelper.ShouldSyncTitleWithGoalPrompt(job.Title, job.GoalPrompt);
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        // Only allow updating prompt for jobs that haven't started yet or are in terminal states.
+        // Checked by an update against the database row, with the same condition the worker
+        // claims a job with: the row stays locked until commit, so a save racing the job's start
+        // either lands before the agent reads the prompt or fails.
+        var editableRows = await _dbContext.Jobs
+            .Where(j => j.Id == id)
+            .Where(j => (j.Status == JobStatus.New && j.WorkerInstanceId == null)
+                || j.Status == JobStatus.Failed
+                || j.Status == JobStatus.Cancelled)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(j => j.GoalPrompt, goalPrompt), cancellationToken);
+
+        if (editableRows == 0)
         {
             return false;
         }
 
-        var shouldSyncTitle = JobTitleHelper.ShouldSyncTitleWithGoalPrompt(job.Title, job.GoalPrompt);
-        job.GoalPrompt = newPrompt?.Trim() ?? string.Empty;
+        job.GoalPrompt = goalPrompt;
         job.Title = shouldSyncTitle
             ? JobTitleHelper.BuildSafeJobTitle(null, job.GoalPrompt)
             : JobTitleHelper.BuildSafeJobTitle(job.Title, job.GoalPrompt);
@@ -334,6 +348,7 @@ public partial class JobService
         JobRecoveryHelper.ClearRecoveryState(job);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return true;
     }

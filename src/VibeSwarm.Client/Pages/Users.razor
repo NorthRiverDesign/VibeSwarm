@@ -3,20 +3,11 @@
 @inject IUserService UserService
 @inject NotificationService NotificationService
 
-<PageHeader Title="Users">
+<PageHeader Title="Users" Subtitle="Who can sign in to this VibeSwarm instance.">
 	<Actions>
-		<ActionButton Icon="plus" Text="Add User" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddUserModal" />
+		<TitleAction Icon="plus-lg" Label="Add a user" Primary="true" OnClick="ShowAddUserModal" />
 	</Actions>
 </PageHeader>
-
-<PageFiltersBar Class="mb-0">
-	<Tabs>
-		<UserFilterTabs ActiveFilter="_activeFilter"
-						ActiveCount="GetActiveCount()"
-						InactiveCount="GetInactiveCount()"
-						OnFilterChanged="SetFilter" />
-	</Tabs>
-</PageFiltersBar>
 
 @if (_isLoading)
 {
@@ -25,7 +16,6 @@
 else
 {
 	<UserListSection Users="_users"
-					 ActiveFilter="_activeFilter"
 					 CurrentUserId="_currentUserId"
 					 OnResetPassword="ShowResetPasswordModal"
 					 OnEditRole="ShowEditUserModal"
@@ -35,27 +25,27 @@ else
 
 <AddUserModal @bind-IsVisible="_showAddUserModal"
 			  Model="_addUserModel"
-			  ErrorMessage="_addUserError"
+			  ErrorMessage="@_addUserError"
 			  IsSubmitting="_isAddingUser"
 			  OnSubmit="HandleAddUser"
 			  OnCancel="CloseAddUserModal" />
 
 <ResetPasswordModal @bind-IsVisible="_showResetPasswordModal"
 					UserName="@_selectedUser?.UserName"
-					NewPassword="_newPassword"
+					NewPassword="@_newPassword"
 					NewPasswordChanged="@((string value) => _newPassword = value)"
-					ConfirmPassword="_confirmNewPassword"
+					ConfirmPassword="@_confirmNewPassword"
 					ConfirmPasswordChanged="@((string value) => _confirmNewPassword = value)"
-					ErrorMessage="_resetPasswordError"
+					ErrorMessage="@_resetPasswordError"
 					IsSubmitting="_isResettingPassword"
 					OnSubmit="HandleResetPassword"
 					OnCancel="CloseResetPasswordModal" />
 
 <EditUserModal @bind-IsVisible="_showEditUserModal"
 			   UserName="@_selectedUser?.UserName"
-			   SelectedRole="_editRole"
+			   SelectedRole="@_editRole"
 			   SelectedRoleChanged="@((string value) => _editRole = value)"
-			   ErrorMessage="_editUserError"
+			   ErrorMessage="@_editUserError"
 			   IsSubmitting="_isEditingUser"
 			   OnSubmit="HandleEditUser"
 			   OnCancel="CloseEditUserModal" />
@@ -72,7 +62,6 @@ else
 	private List<UserDto> _users = [];
 	private bool _isLoading = true;
 	private Guid _currentUserId;
-	private string _activeFilter = "active";
 
 	// Add User Modal
 	private bool _showAddUserModal;
@@ -339,14 +328,4 @@ else
 			NotificationService.ShowError(result.Error ?? "Failed to toggle user status.");
 		}
 	}
-
-	// Filter helpers
-	private Task SetFilter(string filter)
-	{
-		_activeFilter = filter;
-		return Task.CompletedTask;
-	}
-
-	private int GetActiveCount() => _users.Count(u => u.IsActive);
-	private int GetInactiveCount() => _users.Count(u => !u.IsActive);
 }

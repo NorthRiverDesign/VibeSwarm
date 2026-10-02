@@ -13,6 +13,12 @@ namespace VibeSwarm.Shared.Providers;
 public class ClaudeProvider : CliProviderBase
 {
     private const string DefaultExecutable = "claude";
+
+    /// <summary>
+    /// What the CLI prints when it declines the permission mode it was asked for. It stays
+    /// on stderr and the run still exits 0, so nothing else would notice.
+    /// </summary>
+    private const string PermissionModeDowngradedMarker = "Permission mode forced to default";
     private static readonly Version AgentVersion = new(2, 1, 64);
     private static readonly Version BareModeVersion = new(2, 1, 81);
     private static readonly Version DisallowedToolsVersion = new(2, 1, 0);
@@ -36,6 +42,14 @@ public class ClaudeProvider : CliProviderBase
     private static readonly Version IncludeHookEventsVersion = new(2, 1, 0);
     private static readonly Version AppendSystemPromptFileVersion = new(2, 1, 0);
     private UsageLimits? _lastObservedUsageLimits;
+
+    /// <summary>Whether runs can authenticate with an API key, which <c>--bare</c> requires.</summary>
+    private readonly bool _hasApiKey;
+
+    /// <summary>Shortest prompt that still produces a completed turn, so the probe costs as little as possible.</summary>
+    private const string UsageProbePrompt = "hi";
+
+    private static readonly TimeSpan UsageProbeTimeout = TimeSpan.FromSeconds(120);
     private Version? _cachedCliVersion;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -52,15 +66,30 @@ public class ClaudeProvider : CliProviderBase
         var baseEnv = new Dictionary<string, string>
         {
             // Block in-flight CLI self-updates during unattended jobs (Claude v2.1.118+).
-            ["DISABLE_UPDATES"] = "1",
-            // Strip cloud credentials from any subprocess Claude spawns (v2.1.83/2.1.114).
-            ["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] = "1"
+            ["DISABLE_UPDATES"] = "1"
         };
+
+        // Subprocess env scrubbing (v2.1.83/2.1.114) is switched off deliberately, and set
+        // to "0" rather than left unset so a value inherited from the service environment
+        // cannot switch it back on without anyone noticing.
+        //
+        // Two measured reasons, both fatal to an unattended orchestrator:
+        //  1. The CLI answers the flag by forcing the permission mode back to "default"
+        //     ("Permission mode forced to default — CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is
+        //     set"), which strips the bypassPermissions every job runs with. The agent
+        //     then reads the code, writes a description of the edits it would make, and
+        //     changes nothing — a job that reports success having done no work.
+        //  2. Its sandbox materialises empty .env, .npmrc and lockfiles in the working
+        //     tree, so it edits the repository it was asked to leave alone.
+        baseEnv["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] = "0";
 
         if (!string.IsNullOrWhiteSpace(config.ApiKey))
         {
             baseEnv["ANTHROPIC_API_KEY"] = config.ApiKey;
         }
+
+        _hasApiKey = !string.IsNullOrWhiteSpace(config.ApiKey)
+            || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY"));
 
         // Mirror the queue's stall threshold into Claude's own streaming watchdog
         // so the CLI bails on the same boundary as JobWatchdogService (v2.1.85+).
@@ -74,7 +103,6 @@ public class ClaudeProvider : CliProviderBase
     }
 
     private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);
-
     protected override string? GetUpdateCommand() => GetExecutablePath();
     protected override string GetUpdateArguments() => "update";
     protected override string? GetDefaultExecutablePath() => GetExecutablePath();
@@ -210,7 +238,6 @@ public class ClaudeProvider : CliProviderBase
         result.CommandUsed = fullCommand;
         ReportProcessStarted(process.Id, progress, fullCommand);
 
-        // Start initialization monitor
         using var initMonitorCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var initializationMonitorTask = CreateInitializationMonitorAsync(
             () => outputBuilder.Count > 0,
@@ -316,19 +343,37 @@ public class ClaudeProvider : CliProviderBase
         }
 
         var error = errorBuilder.ToString();
+
+        // The CLI can quietly downgrade the permission mode and still exit 0. A job that
+        // cannot write is useless to an orchestrator whose whole output is code changes,
+        // and reporting it as success is worse than failing: it looks like the work was
+        // done. Fail it here, with the reason, so it is visible and stops the idea loop.
+        if (error.Contains(PermissionModeDowngradedMarker, StringComparison.OrdinalIgnoreCase))
+        {
+            result.Success = false;
+            result.ErrorMessage =
+                "Claude refused to run with bypassPermissions and fell back to manual approval, " +
+                "so no file could be written. " + ProviderFailureClassifier.Summarize(error);
+        }
         if (!result.Success && !string.IsNullOrEmpty(error))
         {
-            result.ErrorMessage = error;
+            // A CLI crash prints its own bundled stack trace; show the line that says what
+            // went wrong rather than a screenful of minified JavaScript.
+            result.ErrorMessage = ProviderFailureClassifier.Summarize(error) ?? error;
         }
 
-        // Parse usage limit signals from stderr
+        // Fall back to scraping stderr for limit warnings. Structured "rate_limit_event"
+        // messages are authoritative, so anything found here is merged in behind them
+        // rather than replacing them.
         if (!string.IsNullOrEmpty(error))
         {
             var usageLimits = ClaudeUsageParser.ParseLimitSignals(error);
             if (usageLimits != null)
             {
-                result.DetectedUsageLimits = usageLimits;
-                _lastObservedUsageLimits = usageLimits;
+                result.DetectedUsageLimits = result.DetectedUsageLimits == null
+                    ? usageLimits
+                    : UsageLimitWindowHelper.Merge(result.DetectedUsageLimits, usageLimits);
+                _lastObservedUsageLimits = result.DetectedUsageLimits;
             }
         }
 
@@ -403,15 +448,21 @@ public class ClaudeProvider : CliProviderBase
             args.Add(CurrentFallbackModel);
         }
 
-        // Display name for the session (enables `claude --resume <name>` for debugging).
-        if (!string.IsNullOrEmpty(CurrentSessionName) && SupportsCliVersion(SessionNameVersion))
+        // Display name for the session (enables `claude --resume <name>` for debugging). Only a
+        // new session is named, so later cycles that resume it keep the name it started with.
+        if (!string.IsNullOrEmpty(CurrentSessionName)
+            && string.IsNullOrEmpty(sessionId)
+            && !CurrentContinueLastSession
+            && SupportsCliVersion(SessionNameVersion))
         {
             args.Add("--name");
             args.Add(CurrentSessionName);
         }
 
         // Bare mode reduces Claude Code startup overhead and disables implicit local context loading.
-        if (SupportsCliVersion(BareModeVersion) && CurrentUseBareMode)
+        // It also stops the CLI reading the OAuth login, so without an API key every run answers
+        // "Not logged in" — only honour the request when there is a key to authenticate with.
+        if (SupportsCliVersion(BareModeVersion) && CurrentUseBareMode && _hasApiKey)
         {
             args.Add("--bare");
         }
@@ -519,14 +570,16 @@ public class ClaudeProvider : CliProviderBase
             args.Add($"--{CurrentInitMode}");
         }
 
-        // Reasoning effort level (v2.1.63+). Claude v2.1.72+ renamed "medium" to "standard"
-        // and added "xhigh"; "max" is Opus 4.7 only (other models silently downgrade to "high").
+        // Reasoning effort level (v2.1.63+). The CLI accepts low/medium/high/xhigh/max. It does
+        // not reject anything else: 2.1.287 prints "Unknown --effort value 'standard' — ignoring
+        // it" and runs at the default effort, so a wrong value fails silently. "standard" was
+        // stored by older VibeSwarm builds and is translated rather than passed through.
         var rawEffort = CurrentReasoningEffort?.Trim().ToLowerInvariant();
-        if (string.Equals(rawEffort, "medium", StringComparison.Ordinal))
+        if (string.Equals(rawEffort, "standard", StringComparison.Ordinal))
         {
-            rawEffort = "standard";
+            rawEffort = "medium";
         }
-        var reasoningEffort = NormalizeReasoningEffort(rawEffort, "low", "standard", "high", "xhigh", "max");
+        var reasoningEffort = NormalizeReasoningEffort(rawEffort, "low", "medium", "high", "xhigh", "max");
         if (SupportsCliVersion(ReasoningEffortVersion) && !string.IsNullOrEmpty(reasoningEffort))
         {
             args.Add("--effort");
@@ -651,6 +704,28 @@ public class ClaudeProvider : CliProviderBase
                     CurrentMessage = "Initializing...",
                     IsStreaming = false
                 });
+                break;
+
+            case "rate_limit_event":
+                // Structured usage limits, emitted mid-run. Merged rather than replaced so a
+                // later event reporting only one window doesn't discard the others.
+                var streamedLimits = ClaudeUsageParser.ParseRateLimitEvent(evt.RateLimitInfo);
+                if (streamedLimits != null)
+                {
+                    result.DetectedUsageLimits = result.DetectedUsageLimits == null
+                        ? streamedLimits
+                        : UsageLimitWindowHelper.Merge(result.DetectedUsageLimits, streamedLimits);
+                    _lastObservedUsageLimits = result.DetectedUsageLimits;
+
+                    if (streamedLimits.IsLimitReached)
+                    {
+                        progress?.Report(new ExecutionProgress
+                        {
+                            CurrentMessage = "Provider usage limit reached",
+                            IsStreaming = false
+                        });
+                    }
+                }
                 break;
 
             case "assistant":
@@ -965,6 +1040,124 @@ public class ClaudeProvider : CliProviderBase
         return info;
     }
 
+    /// <summary>
+    /// Asks the CLI for current usage by making the smallest possible request and reading the
+    /// "rate_limit_event" it emits along the way.
+    /// </summary>
+    /// <remarks>
+    /// There is no read-only way to do this: Claude Code has no usage subcommand, the
+    /// documented statusline "rate_limits" contract does not fire in -p mode, and session
+    /// transcripts do not persist the figures. So this deliberately spends one trivial turn.
+    /// Tools are disabled and turns capped at one to keep that as small as it can be.
+    /// </remarks>
+    public override async Task<UsageLimits?> RefreshUsageLimitsAsync(CancellationToken cancellationToken = default)
+    {
+        if (ConnectionMode != ProviderConnectionMode.CLI)
+        {
+            return null;
+        }
+
+        var execPath = GetExecutablePath();
+        if (string.IsNullOrEmpty(execPath))
+        {
+            return null;
+        }
+
+        // "--tools ''" is what removes the tool definitions; "--allowed-tools ''" only changes
+        // which tools skip the permission prompt, so all ~40 still went out with the request.
+        // --strict-mcp-config with no --mcp-config drops every MCP server, including the
+        // account's claude.ai connectors, and the probe is not worth keeping as a session.
+        var args = new List<string>
+        {
+            "-p", UsageProbePrompt,
+            "--output-format", "stream-json",
+            "--verbose",
+            "--max-turns", "1",
+            "--tools", string.Empty,
+            "--strict-mcp-config",
+            "--no-session-persistence"
+        };
+
+        // Windows are reported per model — a Fable run reports an overage window a Haiku run
+        // does not — so probe with whatever this provider actually runs.
+        var probeModel = CurrentModel ?? LastExecutedModel;
+        if (!string.IsNullOrWhiteSpace(probeModel))
+        {
+            args.Add("--model");
+            args.Add(probeModel);
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = execPath,
+            WorkingDirectory = WorkingDirectory ?? Path.GetTempPath()
+        };
+
+        foreach (var arg in args)
+        {
+            startInfo.ArgumentList.Add(arg);
+        }
+
+        PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+        using var process = new Process { StartInfo = startInfo };
+        using var timeoutCts = new CancellationTokenSource(UsageProbeTimeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+        UsageLimits? limits = null;
+
+        try
+        {
+            process.Start();
+            process.StandardInput.Close();
+
+            while (await process.StandardOutput.ReadLineAsync(linkedCts.Token) is { } line)
+            {
+                if (string.IsNullOrWhiteSpace(line) || !line.Contains("rate_limit", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                ClaudeStreamEvent? streamEvent;
+                try
+                {
+                    streamEvent = JsonSerializer.Deserialize<ClaudeStreamEvent>(line, JsonOptions);
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+
+                var parsed = ClaudeUsageParser.ParseRateLimitEvent(streamEvent?.RateLimitInfo);
+                if (parsed != null)
+                {
+                    limits = limits == null ? parsed : UsageLimitWindowHelper.Merge(limits, parsed);
+                }
+            }
+
+            await process.WaitForExitAsync(linkedCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try { PlatformHelper.TryKillProcessTree(process.Id); } catch { }
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (limits != null)
+        {
+            _lastObservedUsageLimits = limits;
+        }
+
+        return limits;
+    }
+
     public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
     {
         if (_lastObservedUsageLimits != null)
@@ -982,80 +1175,12 @@ public class ClaudeProvider : CliProviderBase
         return Task.FromResult(limits);
     }
 
-    public override async Task<SessionSummary> GetSessionSummaryAsync(
-        string? sessionId,
-        string? workingDirectory = null,
-        string? fallbackOutput = null,
-        CancellationToken cancellationToken = default)
-    {
-        var summary = new SessionSummary();
+    protected internal override string? BuildSessionSummaryArgs(string sessionId)
+        // --no-session-persistence keeps the summary turn out of the job's own transcript;
+        // without it the summary request is appended to the session a follow-up would resume.
+        => $"--resume {sessionId} -p \"{EscapeCliArgument(SessionSummaryPrompt)}\" --max-turns 1 --no-session-persistence";
 
-        if (!string.IsNullOrEmpty(sessionId) && ConnectionMode == ProviderConnectionMode.CLI)
-        {
-            try
-            {
-                var execPath = GetExecutablePath();
-                var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
-
-                var summarizePrompt = "Please provide a concise summary (1-2 sentences) of what was accomplished in this session, suitable for a git commit message. Focus on the key changes made.";
-                var args = $"--resume {sessionId} -p \"{EscapeCliArgument(summarizePrompt)}\" --max-turns 1";
-
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = execPath,
-                    Arguments = args,
-                    WorkingDirectory = effectiveWorkingDir
-                };
-
-                PlatformHelper.ConfigureForCrossPlatform(startInfo);
-
-                using var process = new Process { StartInfo = startInfo };
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-                try
-                {
-                    process.Start();
-                    process.StandardInput.Close();
-
-                    var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
-                    await process.WaitForExitAsync(linkedCts.Token);
-
-                    if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
-                    {
-                        var cleanedOutput = CleanSummaryOutput(output);
-                        if (!string.IsNullOrWhiteSpace(cleanedOutput))
-                        {
-                            summary.Success = true;
-                            summary.Summary = cleanedOutput;
-                            summary.Source = "session";
-                            return summary;
-                        }
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    try { PlatformHelper.TryKillProcessTree(process.Id); } catch { }
-                }
-            }
-            catch
-            {
-                // Fall through to fallback
-            }
-        }
-
-        if (!string.IsNullOrEmpty(fallbackOutput))
-        {
-            summary.Summary = GenerateSummaryFromOutput(fallbackOutput);
-            summary.Success = !string.IsNullOrEmpty(summary.Summary);
-            summary.Source = "output";
-            return summary;
-        }
-
-        summary.Success = false;
-        summary.ErrorMessage = "No session ID or output available to generate summary";
-        return summary;
-    }
+    protected internal override string? ExtractSessionSummary(string output) => CleanSummaryOutput(output);
 
     private static string CleanSummaryOutput(string output)
     {

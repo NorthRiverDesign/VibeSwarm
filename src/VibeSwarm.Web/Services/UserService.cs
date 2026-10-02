@@ -8,16 +8,13 @@ namespace VibeSwarm.Shared.Services;
 public class UserService : IUserService
 {
 	private readonly UserManager<ApplicationUser> _userManager;
-	private readonly RoleManager<IdentityRole<Guid>> _roleManager;
 	private readonly ILogger<UserService> _logger;
 
 	public UserService(
 		UserManager<ApplicationUser> userManager,
-		RoleManager<IdentityRole<Guid>> roleManager,
 		ILogger<UserService> logger)
 	{
 		_userManager = userManager;
-		_roleManager = roleManager;
 		_logger = logger;
 	}
 
@@ -131,7 +128,6 @@ public class UserService : IUserService
 				var currentRoles = await _userManager.GetRolesAsync(user);
 				await _userManager.RemoveFromRolesAsync(user, currentRoles);
 
-				// Add new role
 				var newRole = model.Role == DatabaseSeeder.AdminRole ? DatabaseSeeder.AdminRole : DatabaseSeeder.UserRole;
 				await _userManager.AddToRoleAsync(user, newRole);
 

@@ -51,7 +51,6 @@ public interface IIdeaService
 	/// The idea is expanded into a feature spec using a generic prompt.
 	/// </summary>
 	/// <param name="ideaId">The idea to convert</param>
-	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>The created job, or null if the idea doesn't exist</returns>
 	Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default);
 
@@ -66,7 +65,6 @@ public interface IIdeaService
 	/// </summary>
 	/// <param name="jobId">The job that completed</param>
 	/// <param name="success">Whether the job completed successfully</param>
-	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>True if an idea was found and handled</returns>
 	Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default);
 
@@ -85,7 +83,6 @@ public interface IIdeaService
 	/// </summary>
 	/// <param name="projectId">The project to start processing</param>
 	/// <param name="autoCommit">Whether to auto-commit changes when jobs complete</param>
-	/// <param name="cancellationToken">Cancellation token</param>
 	Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default);
 
 	/// <summary>
@@ -103,7 +100,6 @@ public interface IIdeaService
 	/// This is called by the background worker service.
 	/// </summary>
 	/// <param name="projectId">The project to process</param>
-	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>True if an idea was processed, false otherwise</returns>
 	Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken cancellationToken = default);
 
@@ -130,8 +126,6 @@ public interface IIdeaService
 	/// </summary>
 	/// <param name="ideaId">The idea to copy</param>
 	/// <param name="targetProjectId">The target project to copy the idea to</param>
-	/// <param name="cancellationToken">Cancellation token</param>
-	/// <returns>The new copied idea</returns>
 	Task<Idea> CopyToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default);
 
 	/// <summary>
@@ -139,8 +133,6 @@ public interface IIdeaService
 	/// </summary>
 	/// <param name="ideaId">The idea to move</param>
 	/// <param name="targetProjectId">The target project to move the idea to</param>
-	/// <param name="cancellationToken">Cancellation token</param>
-	/// <returns>The moved idea</returns>
 	Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default);
 
 	/// <summary>
@@ -150,8 +142,6 @@ public interface IIdeaService
 	/// </summary>
 	/// <param name="ideaId">The idea to expand</param>
 	/// <param name="request">Optional expansion options (inference, model selection)</param>
-	/// <param name="cancellationToken">Cancellation token</param>
-	/// <returns>The updated idea with expansion status</returns>
 	Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken cancellationToken = default);
 
 	/// <summary>
@@ -159,7 +149,6 @@ public interface IIdeaService
 	/// Used when the expansion times out, errors, or the user explicitly cancels.
 	/// </summary>
 	/// <param name="ideaId">The idea to cancel expansion for</param>
-	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>The reset idea, or null if not found</returns>
 	Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default);
 
@@ -168,7 +157,6 @@ public interface IIdeaService
 	/// </summary>
 	/// <param name="ideaId">The idea to approve</param>
 	/// <param name="editedDescription">Optional edited description to use instead of the AI-generated one</param>
-	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>The approved idea</returns>
 	Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default);
 
@@ -176,8 +164,6 @@ public interface IIdeaService
 	/// Rejects an expanded idea specification and resets it for re-expansion or manual editing.
 	/// </summary>
 	/// <param name="ideaId">The idea to reject</param>
-	/// <param name="cancellationToken">Cancellation token</param>
-	/// <returns>The reset idea</returns>
 	Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default);
 
 	/// <summary>
@@ -209,6 +195,5 @@ public interface IIdeaService
 	/// </summary>
 	/// <param name="projectId">The project to analyze</param>
 	/// <param name="request">Optional provider/count overrides for the suggestion request</param>
-	/// <param name="cancellationToken">Cancellation token</param>
 	Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default);
 }

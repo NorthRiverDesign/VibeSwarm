@@ -1,5 +1,5 @@
 using System.Text;
-using GitHub.Copilot.SDK;
+using GitHub.Copilot;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
 
@@ -41,7 +41,6 @@ public class CopilotSdkProvider : SdkProviderBase
 	};
 
 	public override ProviderType Type => ProviderType.Copilot;
-
 	internal static TimeSpan DefaultPromptTimeout => JobCompletionCriteria.DefaultStallTimeoutValue;
 
 	public CopilotSdkProvider(Provider config) : base(config) { }
@@ -66,31 +65,15 @@ public class CopilotSdkProvider : SdkProviderBase
 		var useCustomProvider = !string.IsNullOrEmpty(ApiEndpoint);
 		var options = new CopilotClientOptions
 		{
-			AutoStart = true,
-			UseStdio = true,
-			LogLevel = "warning",
-			UseLoggedInUser = !useCustomProvider && string.IsNullOrEmpty(ApiKey)
+			LogLevel = CopilotLogLevel.Warning,
+			UseLoggedInUser = !useCustomProvider && string.IsNullOrEmpty(ApiKey),
+			Connection = BuildRuntimeConnection(ExecutablePath, BuildStartupCliArgs())
 		};
-
-		// Resolve and validate CLI path if provided
-		if (!string.IsNullOrEmpty(ExecutablePath))
-		{
-			var resolvedPath = Path.IsPathRooted(ExecutablePath)
-				? ExecutablePath
-				: Path.GetFullPath(ExecutablePath);
-
-			// Only set CliPath if the executable exists
-			if (File.Exists(resolvedPath))
-			{
-				options.CliPath = resolvedPath;
-			}
-			// Otherwise, let the SDK find 'copilot' in PATH automatically
-		}
 
 		var cwd = workingDirectory ?? WorkingDirectory;
 		if (!string.IsNullOrEmpty(cwd))
 		{
-			options.Cwd = cwd;
+			options.WorkingDirectory = cwd;
 		}
 
 		if (!useCustomProvider && !string.IsNullOrEmpty(ApiKey))
@@ -103,12 +86,24 @@ public class CopilotSdkProvider : SdkProviderBase
 			options.Environment = environmentVariables;
 		}
 
-		if (BuildStartupCliArgs() is { Count: > 0 } cliArgs)
-		{
-			options.CliArgs = [.. cliArgs];
-		}
-
 		return options;
+	}
+
+	/// <summary>
+	/// Points the SDK at the host's Copilot CLI. VibeSwarm opts out of the SDK's bundled runtime
+	/// (CopilotSkipCliDownload), so every connection needs an explicit executable.
+	/// </summary>
+	internal static RuntimeConnection BuildRuntimeConnection(string? executablePath, IList<string>? cliArgs = null)
+	{
+		var configuredPath = string.IsNullOrEmpty(executablePath)
+			? null
+			: Path.IsPathRooted(executablePath) ? executablePath : Path.GetFullPath(executablePath);
+		var cliPath = PlatformHelper.ResolveExecutablePath(
+			OperatingSystem.IsWindows() ? "copilot.exe" : "copilot",
+			configuredPath,
+			PlatformHelper.GetEnhancedPath());
+
+		return RuntimeConnection.ForStdio(cliPath, cliArgs is { Count: > 0 } ? cliArgs : null!);
 	}
 
 	internal List<string>? BuildStartupCliArgs()
@@ -168,7 +163,6 @@ public class CopilotSdkProvider : SdkProviderBase
 	/// <summary>
 	/// Progress reporter for connection state changes, set during ExecuteWithSessionAsync.
 	/// </summary>
-	private IProgress<ExecutionProgress>? _connectionStateProgress;
 
 	private async Task<CopilotClient> EnsureClientAsync(
 		string? workingDirectory = null,
@@ -332,7 +326,7 @@ public class CopilotSdkProvider : SdkProviderBase
 			var responseBuilder = new StringBuilder();
 			var done = new TaskCompletionSource();
 
-			using var _ = session.On(evt =>
+			using var _ = session.On<SessionEvent>(evt =>
 			{
 				switch (evt)
 				{
@@ -403,9 +397,6 @@ public class CopilotSdkProvider : SdkProviderBase
 		var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
 		var model = ResolveModel();
 
-		// Wire connection state tracking to progress
-		_connectionStateProgress = progress;
-
 		try
 		{
 			progress?.Report(new ExecutionProgress
@@ -418,7 +409,6 @@ public class CopilotSdkProvider : SdkProviderBase
 
 			result.CommandUsed = $"Copilot SDK ({model})";
 
-			// Build session config
 			var sessionConfig = new SessionConfig
 			{
 				Model = model,
@@ -441,7 +431,6 @@ public class CopilotSdkProvider : SdkProviderBase
 				sessionConfig.SessionId = sessionId;
 			}
 
-			// Apply working directory to session config
 			sessionConfig.WorkingDirectory = effectiveWorkingDir;
 
 			// Create or resume session
@@ -486,7 +475,7 @@ public class CopilotSdkProvider : SdkProviderBase
 				});
 
 				// Subscribe to all session events
-				using var subscription = session.On(evt =>
+				using var subscription = session.On<SessionEvent>(evt =>
 				{
 					try
 					{
@@ -506,7 +495,7 @@ public class CopilotSdkProvider : SdkProviderBase
 				if (CurrentAttachedFiles is { Count: > 0 })
 				{
 					messageOptions.Attachments = CurrentAttachedFiles
-						.Select(f => (UserMessageDataAttachmentsItem)new UserMessageDataAttachmentsItemFile
+						.Select(f => (Attachment)new AttachmentFile
 						{
 							Path = f,
 							DisplayName = System.IO.Path.GetFileName(f)
@@ -746,8 +735,10 @@ public class CopilotSdkProvider : SdkProviderBase
 						result.InputTokens = (result.InputTokens ?? 0) + (int)usage.Data.InputTokens.Value;
 					if (usage.Data.OutputTokens.HasValue)
 						result.OutputTokens = (result.OutputTokens ?? 0) + (int)usage.Data.OutputTokens.Value;
+#pragma warning disable GHCP001 // Cost is marked experimental in the SDK
 					if (usage.Data.Cost.HasValue)
 						result.CostUsd = (result.CostUsd ?? 0) + (decimal)usage.Data.Cost.Value;
+#pragma warning restore GHCP001
 
 					progress?.Report(new ExecutionProgress
 					{
@@ -759,13 +750,18 @@ public class CopilotSdkProvider : SdkProviderBase
 
 			case SessionShutdownEvent shutdown:
 				{
-					if (shutdown.Data.TotalPremiumRequests > 0)
+					// The session-wide total went internal in SDK 1.x; the per-model request cost is the
+					// same premium-request figure the CLI reports.
+#pragma warning disable GHCP001 // Requests.Cost is marked experimental in the SDK
+					var premiumRequests = shutdown.Data.ModelMetrics?.Values.Sum(metric => metric.Requests?.Cost ?? 0) ?? 0;
+#pragma warning restore GHCP001
+					if (premiumRequests > 0)
 					{
-						result.PremiumRequestsConsumed = (int)shutdown.Data.TotalPremiumRequests;
+						result.PremiumRequestsConsumed = (int)Math.Round(premiumRequests);
 						_lastObservedUsageLimits = new UsageLimits
 						{
 							LimitType = UsageLimitType.PremiumRequests,
-							Message = $"Latest session consumed {shutdown.Data.TotalPremiumRequests} premium requests"
+							Message = $"Latest session consumed {premiumRequests:0.##} premium requests"
 						};
 					}
 					break;
@@ -902,7 +898,7 @@ public class CopilotSdkProvider : SdkProviderBase
 				var session = await _client.ResumeSessionAsync(sessionId, config, cancellationToken);
 				await using (session)
 				{
-					var messages = await session.GetMessagesAsync();
+					var messages = await session.GetEventsAsync();
 					if (messages.Count > 0)
 					{
 						var sb = new StringBuilder();
@@ -963,7 +959,7 @@ public class CopilotSdkProvider : SdkProviderBase
 			var responseBuilder = new StringBuilder();
 			var done = new TaskCompletionSource();
 
-			using var subscription = session.On(evt =>
+			using var subscription = session.On<SessionEvent>(evt =>
 			{
 				switch (evt)
 				{

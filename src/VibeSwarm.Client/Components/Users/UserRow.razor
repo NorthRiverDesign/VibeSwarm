@@ -1,0 +1,87 @@
+@* One user as a grouped-list row: name, role and last sign-in, opening in place for the account
+   actions. Nobody can switch off or delete the account they are signed in with. *@
+
+<ListRow Icon="person-circle" IconClass="@(User.IsActive ? "text-primary" : "text-body-tertiary")"
+		 Title="@User.UserName" TitleClass="@(User.IsActive ? null : "text-body-secondary")"
+		 Subtitle="@GetSummary()">
+	<TitleAdornment>
+		@if (IsCurrentUser)
+		{
+			<span class="small text-body-secondary flex-shrink-0">You</span>
+		}
+	</TitleAdornment>
+	<ChildContent>
+		<dl class="d-flex flex-column gap-2 small mb-0">
+			<div class="d-flex justify-content-between gap-3">
+				<dt class="fw-normal text-body-secondary">Role</dt>
+				<dd class="mb-0">@RoleName</dd>
+			</div>
+			<div class="d-flex justify-content-between gap-3">
+				<dt class="fw-normal text-body-secondary">Added</dt>
+				<dd class="mb-0">@User.CreatedAt.FormatDateTimeShort()</dd>
+			</div>
+			<div class="d-flex justify-content-between gap-3">
+				<dt class="fw-normal text-body-secondary">Last signed in</dt>
+				<dd class="mb-0">@(User.LastLoginAt?.FormatDateTimeShort() ?? "Never")</dd>
+			</div>
+		</dl>
+
+		<div class="form-check form-switch mb-0">
+			<input class="form-check-input" type="checkbox" role="switch" id="@_activeSwitchId"
+				   checked="@User.IsActive" disabled="@(IsCurrentUser && User.IsActive)"
+				   @onchange="() => OnToggleActive.InvokeAsync(User)" />
+			<label class="form-check-label" for="@_activeSwitchId">
+				Can sign in
+				@if (IsCurrentUser && User.IsActive)
+				{
+					<span class="d-block small text-body-secondary">You can't switch off your own account.</span>
+				}
+			</label>
+		</div>
+
+		<div class="d-flex flex-wrap align-items-center gap-2">
+			<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnEditRole.InvokeAsync(User)">Change role</button>
+			<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnResetPassword.InvokeAsync(User)">Reset password</button>
+			@if (!IsCurrentUser)
+			{
+				<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDelete.InvokeAsync(User)">
+					<i class="bi bi-trash me-1"></i>Delete
+				</button>
+			}
+		</div>
+	</ChildContent>
+</ListRow>
+
+@code {
+	[Parameter, EditorRequired]
+	public UserDto User { get; set; } = new();
+
+	[Parameter]
+	public Guid CurrentUserId { get; set; }
+
+	[Parameter]
+	public EventCallback<UserDto> OnResetPassword { get; set; }
+
+	[Parameter]
+	public EventCallback<UserDto> OnEditRole { get; set; }
+
+	[Parameter]
+	public EventCallback<UserDto> OnToggleActive { get; set; }
+
+	[Parameter]
+	public EventCallback<UserDto> OnDelete { get; set; }
+
+	private readonly string _activeSwitchId = $"user-active-{Guid.NewGuid():N}";
+
+	private bool IsCurrentUser => User.Id == CurrentUserId;
+
+	private string RoleName => User.Roles.Contains(UserRoles.Admin) ? "Admin" : "User";
+
+	private string GetSummary()
+	{
+		var lastSignIn = User.LastLoginAt.HasValue
+			? $"signed in {User.LastLoginAt.Value.FormatRelativeToNow()}"
+			: "never signed in";
+		return $"{RoleName} · {lastSignIn}";
+	}
+}

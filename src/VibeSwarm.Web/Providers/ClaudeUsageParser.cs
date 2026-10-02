@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using VibeSwarm.Shared.Providers.Claude;
 
 namespace VibeSwarm.Shared.Providers;
 
@@ -48,6 +49,204 @@ public static partial class ClaudeUsageParser
 
 	[GeneratedRegex(@"(session|weekly|daily|monthly)[^\r\n]*?(reached|exceeded)", RegexOptions.IgnoreCase)]
 	private static partial Regex ReverseScopedReachedPattern();
+
+	/// <summary>
+	/// Converts a structured "rate_limit_event" payload into usage limits.
+	/// </summary>
+	/// <remarks>
+	/// Preferred over <see cref="ParseLimitSignals"/>: the CLI emits this during a normal
+	/// headless run with exact figures, whereas the stderr patterns only appear once a
+	/// warning or refusal has already been printed.
+	/// </remarks>
+	public static UsageLimits? ParseRateLimitEvent(ClaudeRateLimitInfo? info)
+	{
+		if (info == null)
+		{
+			return null;
+		}
+
+		// Drawing on the overage balance means the included allowance is gone and every
+		// further request is billed, so it counts as the limit being reached even while
+		// the CLI still reports "allowed". Jobs then fall to the next provider instead of
+		// quietly spending money.
+		var isLimitReached = IsLimitReachedStatus(info.Status)
+			|| info.Utilization >= 1.0d
+			|| info.IsUsingOverage == true;
+
+		var windows = new List<UsageLimitWindow>();
+
+		// Every window the CLI reports is shown. The set varies by model and plan, so
+		// known keys get a friendly label and anything new is passed through rather
+		// than dropped.
+		foreach (var (key, window) in info.UnifiedWindows ?? [])
+		{
+			AddWindow(windows, key, window);
+		}
+
+		// The top-level figures describe whichever limit is currently binding (for example
+		// the overage balance), which is not necessarily one of the rolling windows.
+		if (info.Utilization.HasValue)
+		{
+			windows.Add(new UsageLimitWindow
+			{
+				Scope = UsageLimitWindowScope.Unknown,
+				LimitType = UsageLimitType.RateLimit,
+				CurrentUsage = ToPercent(info.Utilization.Value),
+				MaxUsage = 100,
+				ResetTime = FromUnixSeconds(info.ResetsAt),
+				IsLimitReached = isLimitReached,
+				Message = DescribeBindingLimit(info)
+			});
+		}
+
+		if (windows.Count == 0)
+		{
+			return null;
+		}
+
+		return UsageLimitWindowHelper.CreateUsageLimits(
+			UsageLimitType.RateLimit,
+			DescribeBindingLimit(info),
+			windows,
+			isLimitReached);
+	}
+
+	private static void AddWindow(
+		List<UsageLimitWindow> windows,
+		string key,
+		ClaudeRateLimitWindow? window)
+	{
+		if (window?.Utilization == null)
+		{
+			return;
+		}
+
+		var (scope, label, limitType) = DescribeWindow(key);
+
+		windows.Add(new UsageLimitWindow
+		{
+			Scope = scope,
+			Label = label,
+			LimitType = limitType,
+			CurrentUsage = ToPercent(window.Utilization.Value),
+			MaxUsage = 100,
+			ResetTime = FromUnixSeconds(window.ResetsAt),
+			IsLimitReached = window.Utilization >= 1.0d
+		});
+	}
+
+	/// <summary>
+	/// Maps a CLI window key to how VibeSwarm presents it. Unrecognised keys keep their
+	/// own name, humanised, so a window Anthropic adds still renders with a sensible label.
+	/// </summary>
+	private static (UsageLimitWindowScope Scope, string Label, UsageLimitType LimitType) DescribeWindow(string key)
+	{
+		return key switch
+		{
+			"five_hour" => (UsageLimitWindowScope.Session, "Session (5 hours)", UsageLimitType.SessionLimit),
+			"seven_day" => (UsageLimitWindowScope.Weekly, "Weekly", UsageLimitType.RateLimit),
+			"seven_day_overage_included" => (UsageLimitWindowScope.Weekly, "Weekly (with overage)", UsageLimitType.RateLimit),
+			_ => (InferScopeFromKey(key), HumanizeKey(key), UsageLimitType.RateLimit)
+		};
+	}
+
+	/// <summary>
+	/// Buckets a window key by the horizon its name implies. Keys are spelled out in words
+	/// ("five_hour", "seven_day"), so a day count is resolved and then bucketed rather than
+	/// matched literally — "thirty_day" is a month, not a day.
+	/// </summary>
+	private static UsageLimitWindowScope InferScopeFromKey(string key)
+	{
+		if (key.Contains("hour", StringComparison.OrdinalIgnoreCase))
+		{
+			return UsageLimitWindowScope.Session;
+		}
+
+		if (key.Contains("month", StringComparison.OrdinalIgnoreCase))
+		{
+			return UsageLimitWindowScope.Monthly;
+		}
+
+		if (key.Contains("week", StringComparison.OrdinalIgnoreCase))
+		{
+			return UsageLimitWindowScope.Weekly;
+		}
+
+		if (!key.Contains("day", StringComparison.OrdinalIgnoreCase))
+		{
+			return UsageLimitWindowScope.Unknown;
+		}
+
+		return TryReadLeadingDayCount(key) switch
+		{
+			1 => UsageLimitWindowScope.Daily,
+			<= 7 and > 1 => UsageLimitWindowScope.Weekly,
+			> 7 => UsageLimitWindowScope.Monthly,
+			_ => UsageLimitWindowScope.Daily
+		};
+	}
+
+	private static readonly Dictionary<string, int> NumberWords = new(StringComparer.OrdinalIgnoreCase)
+	{
+		["one"] = 1, ["two"] = 2, ["three"] = 3, ["four"] = 4, ["five"] = 5,
+		["six"] = 6, ["seven"] = 7, ["fourteen"] = 14, ["thirty"] = 30
+	};
+
+	private static int? TryReadLeadingDayCount(string key)
+	{
+		var head = key.Split('_', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+		if (string.IsNullOrWhiteSpace(head))
+		{
+			return null;
+		}
+
+		if (int.TryParse(head, out var numeric))
+		{
+			return numeric;
+		}
+
+		return NumberWords.TryGetValue(head, out var word) ? word : null;
+	}
+
+	private static string HumanizeKey(string key)
+	{
+		var words = key.Replace('_', ' ').Trim();
+		return words.Length == 0
+			? "Usage"
+			: char.ToUpperInvariant(words[0]) + words[1..];
+	}
+
+	/// <summary>
+	/// Any status that does not begin with "allowed" (e.g. a refusal) counts as the
+	/// limit having been reached. "allowed" and "allowed_warning" do not.
+	/// </summary>
+	private static bool IsLimitReachedStatus(string? status)
+		=> !string.IsNullOrWhiteSpace(status)
+			&& !status.StartsWith("allowed", StringComparison.OrdinalIgnoreCase);
+
+	private static string? DescribeBindingLimit(ClaudeRateLimitInfo info)
+	{
+		if (string.IsNullOrWhiteSpace(info.RateLimitType))
+		{
+			return info.IsUsingOverage == true ? "Using overage balance" : null;
+		}
+
+		return info.IsUsingOverage == true
+			? $"Binding limit: {info.RateLimitType} (using overage balance)"
+			: $"Binding limit: {info.RateLimitType}";
+	}
+
+	/// <summary>
+	/// Converts a 0-1 utilization fraction to whole percent, clamped to 0-100 so a value
+	/// past the limit still renders as a full bar.
+	/// </summary>
+	private static int ToPercent(double utilization)
+		=> Math.Clamp((int)Math.Round(utilization * 100, MidpointRounding.AwayFromZero), 0, 100);
+
+	private static DateTime? FromUnixSeconds(long? epochSeconds)
+		=> epochSeconds is > 0
+			? DateTimeOffset.FromUnixTimeSeconds(epochSeconds.Value).UtcDateTime
+			: null;
 
 	public static UsageLimits? ParseLimitSignals(string? stderr)
 	{

@@ -247,6 +247,8 @@ public sealed class DeveloperUpdateServiceTests
 		public Task NotifyJobCycleProgress(Guid jobId, int currentCycle, int maxCycles) => Task.CompletedTask;
 		public Task NotifyIdeaStarted(Guid ideaId, Guid projectId, Guid jobId) => Task.CompletedTask;
 		public Task NotifyIdeasProcessingStateChanged(Guid projectId, bool isActive) => Task.CompletedTask;
+
+		public Task NotifyJobQueuePausedChanged(bool isPaused) => Task.CompletedTask;
 		public Task NotifyIdeaCreated(Guid ideaId, Guid projectId) => Task.CompletedTask;
 		public Task NotifyIdeaDeleted(Guid ideaId, Guid projectId) => Task.CompletedTask;
 		public Task NotifyIdeaUpdated(Guid ideaId, Guid projectId) => Task.CompletedTask;

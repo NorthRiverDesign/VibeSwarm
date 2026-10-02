@@ -22,7 +22,6 @@ public interface ISkillService
 	/// <param name="description">The brief description to expand</param>
 	/// <param name="providerId">The provider to use for expansion</param>
 	/// <param name="modelId">Optional specific model to use</param>
-	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>The expanded skill content, or null if expansion failed</returns>
 	Task<string?> ExpandSkillAsync(string description, Guid providerId, string? modelId = null, CancellationToken cancellationToken = default);
 }

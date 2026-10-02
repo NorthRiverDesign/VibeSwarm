@@ -52,9 +52,7 @@ public class SetupModel : PageModel
 	[Required(ErrorMessage = "Please confirm your password")]
 	[Compare("Password", ErrorMessage = "Passwords do not match")]
 	public string ConfirmPassword { get; set; } = "";
-
 	public string? ErrorMessage { get; set; }
-
 	public List<string>? ValidationErrors { get; set; }
 
 	public IActionResult OnGet()
@@ -105,7 +103,6 @@ public class SetupModel : PageModel
 			// Ensure roles exist
 			await DatabaseSeeder.InitializeRolesAsync(_roleManager, _logger);
 
-			// Create the admin user
 			var adminUser = new ApplicationUser
 			{
 				UserName = Username,

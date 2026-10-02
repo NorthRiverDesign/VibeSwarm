@@ -1,0 +1,112 @@
+@* One job as a list-group row: status icon, title, and a second line only when it adds something
+   (the project, when the list mixes projects, and states worth a glance). The whole row links to the job. *@
+
+@{
+	var detail = GetDetail(Job);
+}
+<a href="@(Href ?? $"/jobs/view/{Job.Id}")" class="list-group-item list-group-item-action d-flex align-items-start gap-3">
+	<span class="flex-shrink-0">
+		@switch (Job.Status)
+		{
+			case JobStatus.Completed:
+				<i class="bi bi-check-circle-fill text-success" title="Completed"></i>
+				break;
+			case JobStatus.Failed:
+				<i class="bi bi-x-circle-fill text-danger" title="Failed"></i>
+				break;
+			case JobStatus.Cancelled:
+				<i class="bi bi-slash-circle text-body-secondary" title="Cancelled"></i>
+				break;
+			case JobStatus.Started:
+			case JobStatus.Planning:
+			case JobStatus.Processing:
+				<span class="spinner-border spinner-border-sm text-primary" role="status" title="@Job.Status.ToString()">
+					<span class="visually-hidden">Running</span>
+				</span>
+				break;
+			case JobStatus.New:
+			case JobStatus.Pending:
+				<i class="bi bi-hourglass-split text-warning" title="Queued"></i>
+				break;
+			case JobStatus.Paused:
+				<i class="bi bi-chat-dots-fill text-warning" title="Waiting for your reply"></i>
+				break;
+			case JobStatus.Stalled:
+				<i class="bi bi-exclamation-triangle-fill text-warning" title="Stalled"></i>
+				break;
+			default:
+				<i class="bi bi-circle text-secondary" title="@Job.Status.ToString()"></i>
+				break;
+		}
+	</span>
+	<span class="flex-grow-1 min-width-0">
+		<span class="d-block text-truncate" title="@Job.DisplayTitle">@Job.DisplayTitle</span>
+		@if (ShowProjectName || detail != null)
+		{
+			<span class="d-block small text-truncate">
+				@if (ShowProjectName)
+				{
+					<span class="text-body-secondary">@(Job.ProjectName ?? "Unknown project")</span>
+				}
+				@if (ShowProjectName && detail != null)
+				{
+					<span class="text-body-tertiary"> · </span>
+				}
+				@if (detail != null)
+				{
+					<span class="@detail.Value.CssClass" title="@detail.Value.Text">@detail.Value.Text</span>
+				}
+			</span>
+		}
+	</span>
+	<span class="small text-body-secondary flex-shrink-0" title="@Job.CreatedAt.FormatDateTimeShort()">@(TrailingText ?? GetTimeLabel(Job))</span>
+</a>
+
+@code {
+	[Parameter, EditorRequired]
+	public JobSummary Job { get; set; } = null!;
+
+	/// <summary>Where the row links; defaults to the job page.</summary>
+	[Parameter]
+	public string? Href { get; set; }
+
+	/// <summary>Leads the second line with the project name, for lists that mix projects.</summary>
+	[Parameter]
+	public bool ShowProjectName { get; set; }
+
+	/// <summary>Replaces the status-based time label on the right.</summary>
+	[Parameter]
+	public string? TrailingText { get; set; }
+
+	/// <summary>
+	/// The second line of a row. Only states worth a glance get one: running, waiting, failed, or
+	/// finished with changes that never landed. Everything else lives on the job page.
+	/// </summary>
+	public static (string Text, string CssClass)? GetDetail(JobSummary job)
+	{
+		var hasDetectedChanges = JobOutcomeDisplayHelper.HasDetectedChanges(job.ChangedFilesCount, job.PullRequestUrl, job.GitCommitHash, job.MergedAt);
+		var hasDeliveredChanges = JobOutcomeDisplayHelper.HasDeliveredChanges(job.PullRequestUrl, job.GitCommitHash, job.MergedAt);
+
+		return job.Status switch
+		{
+			JobStatus.Started or JobStatus.Planning or JobStatus.Processing when !string.IsNullOrWhiteSpace(job.CurrentActivity)
+				=> (job.CurrentActivity, "text-info"),
+			JobStatus.Paused => ("Waiting for your reply", "text-warning"),
+			JobStatus.Failed or JobStatus.Stalled when !string.IsNullOrWhiteSpace(job.ErrorMessage)
+				=> (job.ErrorMessage, "text-danger"),
+			JobStatus.Failed => ("Failed", "text-danger"),
+			JobStatus.Stalled => ("Stalled", "text-warning"),
+			JobStatus.Completed when job.BuildVerified == false => ("Checks failed", "text-danger"),
+			JobStatus.Completed when hasDetectedChanges && !hasDeliveredChanges => ("Changes not committed yet", "text-warning"),
+			JobStatus.Completed when job.ChangedFilesCount == 0 => ("No changes", "text-body-secondary"),
+			_ => null
+		};
+	}
+
+	private static string GetTimeLabel(JobSummary job) => job.Status switch
+	{
+		JobStatus.New or JobStatus.Pending => "Queued",
+		JobStatus.Started or JobStatus.Planning or JobStatus.Processing => "Running",
+		_ => (job.CompletedAt ?? job.CreatedAt).FormatShortAge()
+	};
+}

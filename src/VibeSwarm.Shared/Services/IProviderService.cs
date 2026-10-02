@@ -21,9 +21,6 @@ public interface IProviderService
     Task SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default);
     Task SetDefaultAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets the session summary for a completed job.
-    /// </summary>
     Task<SessionSummary> GetSessionSummaryAsync(
         Guid providerId,
         string? sessionId,
@@ -46,14 +43,41 @@ public interface IProviderService
     /// </summary>
     Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Updates the CLI for a provider by running its update command.
-    /// </summary>
     Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Asks the provider for its current usage and stores the result.
+    /// </summary>
+    /// <remarks>
+    /// For CLI providers this costs a real request against the limits being reported, so it
+    /// is only triggered by an explicit user action.
+    /// </remarks>
+    Task<UsageRefreshResult> RefreshUsageAsync(Guid id, CancellationToken cancellationToken = default);
 }
 
 public class ConnectionTestResult
 {
     public bool IsConnected { get; set; }
     public string? ErrorMessage { get; set; }
+}
+
+/// <summary>
+/// Outcome of an on-demand usage refresh.
+/// </summary>
+public class UsageRefreshResult
+{
+    public bool Success { get; set; }
+
+    /// <summary>
+    /// True when the provider has no way to report usage on demand, so the UI can say so
+    /// rather than showing a failure.
+    /// </summary>
+    public bool IsSupported { get; set; } = true;
+
+    public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// The refreshed summary, when the refresh succeeded.
+    /// </summary>
+    public ProviderUsageSummary? Summary { get; set; }
 }

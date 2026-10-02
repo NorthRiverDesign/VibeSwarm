@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
-using GitHub.Copilot.SDK;
+using GitHub.Copilot;
 using VibeSwarm.Shared.Providers.Claude;
 using VibeSwarm.Shared.Providers.Copilot;
 using VibeSwarm.Shared.Services;
@@ -22,7 +22,20 @@ public class CopilotProvider : CliProviderBase
     // All of the Tier 1/2 Copilot flags below are present in current v1.0.x; guard with a conservative gate.
     private static readonly Version ModernFlagsVersion = new(1, 0, 0);
     private static readonly Version SessionIdleTimeoutVersion = new(1, 0, 35);
+
+    // Release numbers from the CLI's own changelog.json, not inferred.
+    private static readonly Version SessionNameVersion = new(1, 0, 35);
+    private static readonly Version SessionIdVersion = new(1, 0, 51);
+
+    // Flags first confirmed present on the verified release (see ProviderVersionReference).
+    // Gated conservatively: Copilot rejects unknown flags outright, which would fail the job.
+    private static readonly Version UsageOutputFileVersion = new(1, 0, 86);
+    private static readonly Version ExtendedReasoningEffortVersion = new(1, 0, 86);
+    private static readonly Version ContextTierVersion = new(1, 0, 86);
     private UsageLimits? _lastObservedUsageLimits;
+
+    // Path Copilot writes its end-of-session usage JSON to for the current run.
+    private string? _usageOutputFilePath;
 
     // Cached CLI version for feature gating (populated on TestConnectionAsync)
     private Version? _cachedCliVersion;
@@ -80,7 +93,6 @@ public class CopilotProvider : CliProviderBase
     }
 
     private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);
-
     protected override string? GetUpdateCommand() => GetExecutablePath();
     protected override string GetUpdateArguments() => "update";
     protected override string? GetDefaultExecutablePath() => GetExecutablePath();
@@ -211,7 +223,6 @@ public class CopilotProvider : CliProviderBase
         result.CommandUsed = fullCommand;
         ReportProcessStarted(process.Id, progress, fullCommand);
 
-        // Start initialization monitor
         using var initMonitorCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var initializationMonitorTask = CreateInitializationMonitorAsync(
             () => outputBuilder.Count > 0,
@@ -253,7 +264,7 @@ public class CopilotProvider : CliProviderBase
 
             try
             {
-                var jsonEvent = JsonSerializer.Deserialize<CopilotStreamEvent>(e.Data, JsonOptions);
+                var jsonEvent = ParseStreamEvent(e.Data);
                 if (jsonEvent != null)
                 {
                     ProcessStreamEvent(jsonEvent, result, currentAssistantMessage, progress, _toolNamesById);
@@ -347,6 +358,9 @@ public class CopilotProvider : CliProviderBase
             ParseCopilotUsageFromStderr(error, result);
         }
 
+        // Structured usage overrides anything scraped from stderr.
+        ApplyUsageOutputFile(result);
+
         // Final fallback: if no result event provided tokens, use accumulated from assistant messages
         if (!result.InputTokens.HasValue && _hasAccumulatedTokens && _accumulatedInputTokens > 0)
         {
@@ -426,6 +440,28 @@ public class CopilotProvider : CliProviderBase
         {
             args.Add("--continue");
         }
+        else
+        {
+            // Fresh session with a UUID pre-assigned by VibeSwarm (v1.0.51+), so the job knows
+            // its session before the first event and an interrupted run can still be resumed.
+            if (!string.IsNullOrEmpty(CurrentPreassignedSessionId)
+                && _cachedCliVersion != null
+                && _cachedCliVersion >= SessionIdVersion)
+            {
+                args.Add("--session-id");
+                args.Add(CurrentPreassignedSessionId);
+            }
+
+            // Name for `copilot --resume=<name>` (v1.0.35+). New sessions only: since 1.0.71
+            // the CLI rejects --name alongside an existing session.
+            if (!string.IsNullOrWhiteSpace(CurrentSessionName)
+                && _cachedCliVersion != null
+                && _cachedCliVersion >= SessionNameVersion)
+            {
+                args.Add("--name");
+                args.Add(CurrentSessionName.Trim());
+            }
+        }
 
         // Model selection (v0.0.329+)
         if (!string.IsNullOrEmpty(CurrentModel))
@@ -460,15 +496,42 @@ public class CopilotProvider : CliProviderBase
             args.Add(CurrentMaxTurns.Value.ToString());
         }
 
-        // Reasoning effort level (v1.0.4+)
-        // Current Copilot CLI supports low/medium/high/xhigh; skip on older CLIs to prevent startup errors.
-        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high", "xhigh");
+        // Reasoning effort level (v1.0.4+). The value set widened to add none/minimal/max;
+        // older CLIs only accept low/medium/high/xhigh and reject the rest, so the extra
+        // values are gated separately.
+        var supportsExtendedEffort = _cachedCliVersion != null && _cachedCliVersion >= ExtendedReasoningEffortVersion;
+        var allowedEfforts = supportsExtendedEffort
+            ? new[] { "none", "minimal", "low", "medium", "high", "xhigh", "max" }
+            : ["low", "medium", "high", "xhigh"];
+
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, allowedEfforts);
         if (!string.IsNullOrEmpty(reasoningEffort)
             && _cachedCliVersion != null
             && _cachedCliVersion >= ReasoningEffortVersion)
         {
             args.Add("--reasoning-effort");
             args.Add(reasoningEffort);
+        }
+
+        // Context window tier (v1.0.86+). Only pin the tier when the caller explicitly asked
+        // to avoid large context; otherwise leave the user's persisted setting alone.
+        if (CurrentDisableLargeContext
+            && _cachedCliVersion != null
+            && _cachedCliVersion >= ContextTierVersion)
+        {
+            args.Add("--context");
+            args.Add("default");
+        }
+
+        // Structured end-of-session usage (v1.0.86+). Far more reliable than scraping the
+        // "Est. N Premium requests" line off stderr, which only appears in some output modes.
+        if (_cachedCliVersion != null && _cachedCliVersion >= UsageOutputFileVersion)
+        {
+            _usageOutputFilePath = Path.Combine(
+                Path.GetTempPath(),
+                $"vibeswarm-copilot-usage-{Guid.NewGuid():N}.json");
+            args.Add("--usage-output-file");
+            args.Add(_usageOutputFilePath);
         }
 
         // Alt-screen buffer mode existed from v0.0.407 through v1.0.7 and was removed in v1.0.8
@@ -779,7 +842,76 @@ public class CopilotProvider : CliProviderBase
         _lastObservedUsageLimits = result.DetectedUsageLimits ?? _lastObservedUsageLimits;
     }
 
-    private void ProcessStreamEvent(
+    /// <summary>
+    /// Runs after every execution, including failed ones, so an unread usage report is
+    /// never left behind in the temp directory.
+    /// </summary>
+    protected override void ClearExecutionContext()
+    {
+        DeleteUsageOutputFile();
+        base.ClearExecutionContext();
+    }
+
+    private void DeleteUsageOutputFile()
+    {
+        var path = _usageOutputFilePath;
+        _usageOutputFilePath = null;
+
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+            // A leftover temp file is harmless.
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Applies the structured usage report Copilot wrote for this run, then removes it.
+    /// Silently does nothing when the CLI is too old to write one or the schema is
+    /// unrecognised, leaving the stderr-derived values in place.
+    /// </summary>
+    private void ApplyUsageOutputFile(ExecutionResult result)
+    {
+        var path = _usageOutputFilePath;
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        try
+        {
+            if (CopilotUsageFileReader.TryApply(path, result))
+            {
+                _lastObservedUsageLimits = result.DetectedUsageLimits ?? _lastObservedUsageLimits;
+            }
+        }
+        finally
+        {
+            DeleteUsageOutputFile();
+        }
+    }
+
+    /// <summary>
+    /// Deserializes one stdout line. Throws on non-JSON, which the caller treats as plain text.
+    /// Internal for unit testing.
+    /// </summary>
+    internal static CopilotStreamEvent? ParseStreamEvent(string line)
+        => JsonSerializer.Deserialize<CopilotStreamEvent>(line, JsonOptions);
+
+    /// <summary>
+    /// Applies one stream event to the run's result. Internal for unit testing.
+    /// </summary>
+    internal void ProcessStreamEvent(
         CopilotStreamEvent evt,
         ExecutionResult result,
         System.Text.StringBuilder currentMessage,
@@ -787,14 +919,21 @@ public class CopilotProvider : CliProviderBase
         Dictionary<string, string> toolNamesById)
     {
         // Capture session ID from any event that includes it (v0.0.372+)
-        if (!string.IsNullOrEmpty(evt.SessionId) && string.IsNullOrEmpty(result.SessionId))
+        var eventSessionId = evt.SessionId ?? evt.CliSessionId;
+        if (!string.IsNullOrEmpty(eventSessionId) && string.IsNullOrEmpty(result.SessionId))
         {
-            result.SessionId = evt.SessionId;
+            result.SessionId = eventSessionId;
             progress?.Report(new ExecutionProgress
             {
-                SessionId = evt.SessionId,
+                SessionId = eventSessionId,
                 IsStreaming = false
             });
+        }
+
+        if (evt.Data is { ValueKind: JsonValueKind.Object } data
+            && ProcessSessionEvent(evt.Type, data, result, progress, toolNamesById))
+        {
+            return;
         }
 
         // Track premium request usage
@@ -1128,6 +1267,156 @@ public class CopilotProvider : CliProviderBase
         }
     }
 
+    /// <summary>
+    /// Handles the session events <c>--output-format json</c> emits on current CLIs: dotted
+    /// types (<c>assistant.message</c>, <c>tool.execution_start</c>, ...) with their fields in
+    /// <c>data</c>. Shapes verified against a captured 1.0.91 run; they match the SDK's typed
+    /// events, so this reports a job the same way <c>CopilotSdkProvider</c> does.
+    /// </summary>
+    /// <returns>True when the event was a session event, handled or deliberately ignored.</returns>
+    private bool ProcessSessionEvent(
+        string? type,
+        JsonElement data,
+        ExecutionResult result,
+        IProgress<ExecutionProgress>? progress,
+        Dictionary<string, string> toolNamesById)
+    {
+        if (string.IsNullOrEmpty(type) || !type.Contains('.'))
+        {
+            return false;
+        }
+
+        // Deltas (assistant.message_delta, assistant.tool_call_delta) are not handled: they are
+        // token-sized and the closing assistant.message / tool.execution_start repeat them whole.
+        switch (type)
+        {
+            case "assistant.message":
+                var model = ReadString(data, "model");
+                if (!string.IsNullOrEmpty(model))
+                {
+                    result.ModelUsed = model;
+                }
+
+                // The full text of the turn; the deltas before it were only progress.
+                var content = ReadString(data, "content");
+                if (!string.IsNullOrWhiteSpace(content))
+                {
+                    result.Messages.Add(new ExecutionMessage
+                    {
+                        Role = "assistant",
+                        Content = content,
+                        Timestamp = DateTime.UtcNow
+                    });
+                    progress?.Report(new ExecutionProgress
+                    {
+                        CurrentMessage = content.Length > 100 ? content[..100] + "..." : content,
+                        IsStreaming = false
+                    });
+                }
+                break;
+
+            case "assistant.reasoning":
+                ReportStructuredEvent(ReadString(data, "content"), "reasoning", result, progress, true);
+                break;
+
+            case "tool.execution_start":
+                var toolName = ReadString(data, "toolName") ?? "unknown";
+                var toolCallId = ReadString(data, "toolCallId");
+                if (!string.IsNullOrEmpty(toolCallId))
+                {
+                    toolNamesById[toolCallId] = toolName;
+                }
+
+                result.Messages.Add(new ExecutionMessage
+                {
+                    Role = "tool_use",
+                    Content = toolName,
+                    ToolName = toolName,
+                    ToolInput = data.TryGetProperty("arguments", out var arguments)
+                        && arguments.ValueKind != JsonValueKind.Null
+                            ? arguments.GetRawText()
+                            : null,
+                    Timestamp = DateTime.UtcNow
+                });
+                progress?.Report(new ExecutionProgress
+                {
+                    ToolName = toolName,
+                    IsStreaming = false
+                });
+                break;
+
+            case "tool.execution_complete":
+                var completedId = ReadString(data, "toolCallId");
+                var completedName = !string.IsNullOrEmpty(completedId)
+                    && toolNamesById.TryGetValue(completedId, out var knownName)
+                        ? knownName
+                        : completedId;
+                var succeeded = !data.TryGetProperty("success", out var success)
+                    || success.ValueKind != JsonValueKind.False;
+                var output = data.TryGetProperty("result", out var toolResult)
+                    && toolResult.ValueKind == JsonValueKind.Object
+                        ? ReadString(toolResult, "content")
+                        : null;
+                if (output == null
+                    && data.TryGetProperty("error", out var toolError)
+                    && toolError.ValueKind == JsonValueKind.Object)
+                {
+                    output = ReadString(toolError, "message");
+                }
+
+                result.Messages.Add(new ExecutionMessage
+                {
+                    Role = succeeded ? "tool_result" : "tool_error",
+                    Content = output ?? "",
+                    ToolName = completedName,
+                    ToolOutput = output,
+                    Timestamp = DateTime.UtcNow
+                });
+                break;
+
+            case "session.usage_checkpoint":
+                // Running total, so a killed run still reports what it spent. The usage file
+                // written at exit supersedes it.
+                if (data.TryGetProperty("totalPremiumRequests", out var premium)
+                    && premium.TryGetDouble(out var premiumRequests))
+                {
+                    result.PremiumRequestsConsumed = (int)Math.Ceiling(premiumRequests);
+                }
+                break;
+
+            case "session.error":
+                var errorMessage = ReadString(data, "message")
+                    ?? ReadString(data, "errorType")
+                    ?? "Copilot reported a session error";
+                result.ErrorMessage = errorMessage;
+                if (IsSystemLevelError(errorMessage))
+                {
+                    _systemErrorDetected = true;
+                    _systemErrorMessage = errorMessage;
+                    result.IsSystemError = true;
+                }
+                result.Messages.Add(new ExecutionMessage
+                {
+                    Role = "system",
+                    Content = $"[Error] {errorMessage}",
+                    Timestamp = DateTime.UtcNow
+                });
+                progress?.Report(new ExecutionProgress
+                {
+                    CurrentMessage = $"Error: {errorMessage}",
+                    IsStreaming = false
+                });
+                break;
+        }
+
+        return true;
+    }
+
+    private static string? ReadString(JsonElement element, string propertyName)
+        => element.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
     private static void ReportStructuredEvent(
         string? content,
         string role,
@@ -1179,27 +1468,14 @@ public class CopilotProvider : CliProviderBase
     {
         var options = new CopilotClientOptions
         {
-            AutoStart = true,
-            UseStdio = true,
-            LogLevel = "warning"
+            LogLevel = CopilotLogLevel.Warning,
+            Connection = CopilotSdkProvider.BuildRuntimeConnection(ExecutablePath)
         };
 
         var cwd = WorkingDirectory ?? Environment.CurrentDirectory;
         if (!string.IsNullOrWhiteSpace(cwd))
         {
-            options.Cwd = cwd;
-        }
-
-        if (!string.IsNullOrEmpty(ExecutablePath))
-        {
-            var resolvedPath = Path.IsPathRooted(ExecutablePath)
-                ? ExecutablePath
-                : Path.GetFullPath(ExecutablePath);
-
-            if (File.Exists(resolvedPath))
-            {
-                options.CliPath = resolvedPath;
-            }
+            options.WorkingDirectory = cwd;
         }
 
         return options;
@@ -1484,82 +1760,9 @@ public class CopilotProvider : CliProviderBase
         return Task.FromResult(limits);
     }
 
-    public override async Task<SessionSummary> GetSessionSummaryAsync(
-        string? sessionId,
-        string? workingDirectory = null,
-        string? fallbackOutput = null,
-        CancellationToken cancellationToken = default)
-    {
-        var summary = new SessionSummary();
-
-        // GitHub Copilot CLI supports sessions since v0.0.372 (--resume) and v0.0.333 (--continue).
-        // Attempt to resume the session and ask for a summary.
-        if (!string.IsNullOrEmpty(sessionId) && ConnectionMode == ProviderConnectionMode.CLI)
-        {
-            try
-            {
-                var execPath = GetExecutablePath();
-                var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
-
-                var summarizePrompt = "Please provide a concise summary (1-2 sentences) of what was accomplished in this session, suitable for a git commit message. Focus on the key changes made.";
-                var args = $"--resume {sessionId} -p \"{EscapeCliArgument(summarizePrompt)}\" --yolo --silent";
-
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = execPath,
-                    Arguments = args,
-                    WorkingDirectory = effectiveWorkingDir
-                };
-
-                PlatformHelper.ConfigureForCrossPlatform(startInfo);
-
-                using var process = new Process { StartInfo = startInfo };
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-                try
-                {
-                    process.Start();
-                    process.StandardInput.Close();
-
-                    var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
-                    await process.WaitForExitAsync(linkedCts.Token);
-
-                    if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
-                    {
-                        var cleanedOutput = output.Trim();
-                        if (!string.IsNullOrWhiteSpace(cleanedOutput))
-                        {
-                            summary.Success = true;
-                            summary.Summary = cleanedOutput;
-                            summary.Source = "session";
-                            return summary;
-                        }
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    try { PlatformHelper.TryKillProcessTree(process.Id); } catch { }
-                }
-            }
-            catch
-            {
-                // Fall through to fallback
-            }
-        }
-
-        if (!string.IsNullOrEmpty(fallbackOutput))
-        {
-            summary.Summary = GenerateSummaryFromOutput(fallbackOutput);
-            summary.Success = !string.IsNullOrEmpty(summary.Summary);
-            summary.Source = "output";
-            return summary;
-        }
-
-        summary.Success = false;
-        summary.ErrorMessage = "No session ID or output available to generate summary.";
-        return summary;
-    }
+    // Copilot CLI has supported sessions since v0.0.372 (--resume) and v0.0.333 (--continue).
+    protected internal override string? BuildSessionSummaryArgs(string sessionId)
+        => $"--resume {sessionId} -p \"{EscapeCliArgument(SessionSummaryPrompt)}\" --yolo --silent";
 
     public override async Task<PromptResponse> GetPromptResponseAsync(
         string prompt,

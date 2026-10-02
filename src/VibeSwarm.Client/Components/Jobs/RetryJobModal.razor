@@ -4,7 +4,7 @@
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Retry Job" Icon="arrow-repeat"
 	Size="ModalDialog.ModalSize.Default">
 	<ChildContent>
-		<div class="retry-job-form">
+		<div>
 			@if (IsLoading)
 			{
 				<div class="text-center py-4">
@@ -60,9 +60,12 @@
 					}
 					else if (AvailableModels.Count == 0)
 					{
-						<select id="retryModel" class="form-select" disabled>
-							<option value="">Default (provider decides)</option>
-						</select>
+						<div class="input-group">
+							<select id="retryModel" class="form-select" disabled>
+								<option value="">Default (provider decides)</option>
+							</select>
+							<ModelRefreshButton ProviderId="@SelectedProviderId" OnRefreshed="HandleModelsRefreshed" />
+						</div>
 						<div class="form-text text-warning">
 							<i class="bi bi-exclamation-triangle me-1"></i>
 							No models loaded for this provider. The provider's default model will be used.
@@ -70,27 +73,30 @@
 					}
 					else
 					{
-						<select id="retryModel" class="form-select" @bind="SelectedModelId">
-							<option value="">Default (provider decides)</option>
-							@foreach (var model in AvailableModels.Where(m => m.IsAvailable))
-							{
-								<option value="@model.ModelId">
-									@(model.DisplayName ?? model.ModelId)
-									@if (model.IsDefault)
-									{
-										<text> ★</text>
-									}
-									@if (model.ModelId == Job?.ModelUsed)
-									{
-										<text> (last used)</text>
-									}
-									@if (model.RetiresOn.HasValue)
-									{
-										<text> — retires @model.RetiresOn.Value.ToString("yyyy-MM-dd")</text>
-									}
-								</option>
-							}
-						</select>
+						<div class="input-group">
+							<select id="retryModel" class="form-select" @bind="SelectedModelId">
+								<option value="">Default (provider decides)</option>
+								@foreach (var model in AvailableModels.Where(m => m.IsAvailable))
+								{
+									<option value="@model.ModelId">
+										@(model.DisplayName ?? model.ModelId)
+										@if (model.IsDefault)
+										{
+											<text> ★</text>
+										}
+										@if (model.ModelId == Job?.ModelUsed)
+										{
+											<text> (last used)</text>
+										}
+										@if (model.RetiresOn.HasValue)
+										{
+											<text> — retires @model.RetiresOn.Value.ToString("yyyy-MM-dd")</text>
+										}
+									</option>
+								}
+							</select>
+							<ModelRefreshButton ProviderId="@SelectedProviderId" OnRefreshed="HandleModelsRefreshed" />
+						</div>
 						<div class="form-text">Choose a specific model or use the provider's default.</div>
 					}
 				</div>
@@ -213,6 +219,15 @@
 		finally
 		{
 			IsLoading = false;
+		}
+	}
+
+	private void HandleModelsRefreshed(List<ProviderModel> models)
+	{
+		AvailableModels = models;
+		if (SelectedModelId != null && !AvailableModels.Any(m => m.IsAvailable && m.ModelId == SelectedModelId))
+		{
+			SelectedModelId = null;
 		}
 	}
 

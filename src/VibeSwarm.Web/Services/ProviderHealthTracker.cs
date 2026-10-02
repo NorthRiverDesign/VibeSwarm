@@ -11,7 +11,6 @@ public class ProviderHealthTracker : IProviderHealthTracker
 {
 	private readonly ConcurrentDictionary<Guid, ProviderHealthState> _healthStates = new();
 	private readonly ILogger<ProviderHealthTracker>? _logger;
-	private readonly object _statsLock = new();
 
 	/// <summary>
 	/// Number of failures before opening the circuit breaker
@@ -96,9 +95,6 @@ public class ProviderHealthTracker : IProviderHealthTracker
 		}
 	}
 
-	/// <summary>
-	/// Records a successful operation
-	/// </summary>
 	public void RecordSuccess(Guid providerId, TimeSpan? responseTime = null)
 	{
 		var state = _healthStates.GetOrAdd(providerId, _ => new ProviderHealthState());
@@ -138,9 +134,6 @@ public class ProviderHealthTracker : IProviderHealthTracker
 		}
 	}
 
-	/// <summary>
-	/// Records a failed operation
-	/// </summary>
 	public void RecordFailure(Guid providerId, string? errorMessage = null, TimeSpan? responseTime = null)
 	{
 		var state = _healthStates.GetOrAdd(providerId, _ => new ProviderHealthState());
@@ -252,18 +245,12 @@ public class ProviderHealthTracker : IProviderHealthTracker
 		}
 	}
 
-	/// <summary>
-	/// Increments the current load for a provider
-	/// </summary>
 	public void IncrementProviderLoad(Guid providerId)
 	{
 		var state = _healthStates.GetOrAdd(providerId, _ => new ProviderHealthState());
 		Interlocked.Increment(ref state.CurrentLoad);
 	}
 
-	/// <summary>
-	/// Decrements the current load for a provider
-	/// </summary>
 	public void DecrementProviderLoad(Guid providerId)
 	{
 		if (_healthStates.TryGetValue(providerId, out var state))
@@ -276,18 +263,12 @@ public class ProviderHealthTracker : IProviderHealthTracker
 		}
 	}
 
-	/// <summary>
-	/// Resets health tracking for a provider
-	/// </summary>
 	public void ResetProvider(Guid providerId)
 	{
 		_healthStates.TryRemove(providerId, out _);
 		_logger?.LogInformation("Reset health tracking for provider {ProviderId}", providerId);
 	}
 
-	/// <summary>
-	/// Forces a circuit breaker state
-	/// </summary>
 	public void ForceCircuitState(Guid providerId, CircuitState state)
 	{
 		var healthState = _healthStates.GetOrAdd(providerId, _ => new ProviderHealthState());
@@ -308,9 +289,6 @@ public class ProviderHealthTracker : IProviderHealthTracker
 		_logger?.LogInformation("Forced circuit state to {State} for provider {ProviderId}", state, providerId);
 	}
 
-	/// <summary>
-	/// Gets summary of all provider health states
-	/// </summary>
 	public IReadOnlyDictionary<Guid, ProviderHealth> GetAllProviderHealth()
 	{
 		return _healthStates.Keys.ToDictionary(id => id, id => GetProviderHealth(id));
@@ -376,9 +354,6 @@ public class ProviderHealthTracker : IProviderHealthTracker
 		return TimeSpan.FromMilliseconds(avgMs);
 	}
 
-	/// <summary>
-	/// Internal state for tracking provider health
-	/// </summary>
 	private class ProviderHealthState
 	{
 		public readonly object Lock = new();
@@ -408,9 +383,6 @@ public class ProviderHealthTracker : IProviderHealthTracker
 	}
 }
 
-/// <summary>
-/// Health information for a provider
-/// </summary>
 public class ProviderHealth
 {
 	public Guid ProviderId { get; set; }
@@ -428,9 +400,6 @@ public class ProviderHealth
 	public DateTime? RateLimitResetTime { get; set; }
 }
 
-/// <summary>
-/// Circuit breaker states
-/// </summary>
 public enum CircuitState
 {
 	/// <summary>
@@ -449,9 +418,6 @@ public enum CircuitState
 	HalfOpen
 }
 
-/// <summary>
-/// Interface for provider health tracking
-/// </summary>
 public interface IProviderHealthTracker
 {
 	int FailureThreshold { get; set; }

@@ -35,10 +35,30 @@ public class GrokInferenceService : IInferenceService
 	}
 
 	public async Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
+		=> await ProbeCoreAsync(endpoint, await ResolveApiKeyAsync(ct), ct);
+
+	public async Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default)
+	{
+		// A key typed into the form wins; otherwise fall back to the stored provider's key so that
+		// probing a saved provider without re-entering credentials still works.
+		var apiKey = string.IsNullOrWhiteSpace(request.ApiKey)
+			? await ResolveApiKeyAsync(ct)
+			: request.ApiKey;
+
+		return await ProbeCoreAsync(request.Endpoint, apiKey, ct);
+	}
+
+	private async Task<InferenceHealthResult> ProbeCoreAsync(string? endpoint, string? apiKey, CancellationToken ct)
 	{
 		var result = new InferenceHealthResult();
 		endpoint = NormalizeEndpoint(endpoint ?? await ResolveEndpointAsync(ct));
-		var apiKey = await ResolveApiKeyAsync(ct);
+
+		if (string.IsNullOrWhiteSpace(apiKey))
+		{
+			result.IsAvailable = false;
+			result.Error = "An X.AI API key is required to reach Grok.";
+			return result;
+		}
 
 		try
 		{
