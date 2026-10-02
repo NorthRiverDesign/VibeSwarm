@@ -48,7 +48,8 @@ public class JobQueueManager
 			using var scope = _scopeFactory.CreateScope();
 			var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
 
-			// Get projects that already have an in-flight job, with swarm awareness.
+			// Get projects that already have an in-flight job. Swarm members get no exception:
+			// they share the project's checkout, so they take turns like any other job.
 			var runningJobInfo = await dbContext.Jobs
 				.Where(j => j.Status == JobStatus.Pending
 					|| j.Status == JobStatus.Started
@@ -56,7 +57,7 @@ public class JobQueueManager
 					|| j.Status == JobStatus.Processing
 					|| j.Status == JobStatus.Paused
 					|| j.Status == JobStatus.Stalled)
-				.Select(j => new { j.ProjectId, j.SwarmId, j.ProviderId })
+				.Select(j => new { j.ProjectId, j.ProviderId })
 				.ToListAsync(cancellationToken);
 
 			var projectsWithRunningJobs = runningJobInfo.Select(j => j.ProjectId).Distinct().ToList();
@@ -64,16 +65,6 @@ public class JobQueueManager
 				.Select(j => j.ProviderId)
 				.Where(id => id != Guid.Empty)
 				.Distinct()
-				.ToList();
-
-			// If all running jobs for a project share the same SwarmId, pending jobs from
-			// that same swarm are still eligible to be dispatched.
-			// Using a List<Guid> so EF Core can translate Contains() to SQL IN (...).
-			var activeSwarmIds = runningJobInfo
-				.GroupBy(j => j.ProjectId)
-				.Where(g => g.All(j => j.SwarmId.HasValue)
-					&& g.Select(j => j.SwarmId).Distinct().Count() == 1)
-				.Select(g => g.First().SwarmId!.Value)
 				.ToList();
 
 			// Get all pending jobs that aren't blocked
@@ -91,8 +82,7 @@ public class JobQueueManager
 								.ThenInclude(link => link.Skill)
 				.Include(j => j.Provider)
 				.Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
-				.Where(j => !projectsWithRunningJobs.Contains(j.ProjectId)
-					|| (j.SwarmId != null && activeSwarmIds.Contains(j.SwarmId.Value)))
+				.Where(j => !projectsWithRunningJobs.Contains(j.ProjectId))
 				.Where(j => j.ProviderId == Guid.Empty || !providersWithRunningJobs.Contains(j.ProviderId))
 				.Where(j => j.NotBeforeUtc == null || j.NotBeforeUtc <= now)
 				.OrderByDescending(j => j.Priority)
@@ -251,14 +241,6 @@ public class JobQueueManager
 
 			if (job.ProviderId != Guid.Empty && !providerIds.Add(job.ProviderId))
 			{
-				continue;
-			}
-
-			// Swarm members are always eligible — they were already filtered by the
-			// swarm-aware GetPendingJobsAsync query.
-			if (job.SwarmId.HasValue)
-			{
-				result.Add(job);
 				continue;
 			}
 
