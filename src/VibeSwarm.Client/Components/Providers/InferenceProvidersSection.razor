@@ -2,99 +2,68 @@
 {
 	<LoadingSpinner />
 }
+else if (Providers.Count == 0)
+{
+	<EmptyState Icon="hdd-network" Title="No inference connections yet"
+				Message="Add an Ollama server or a Grok key to write ideas, plans and commit messages without spending coding-agent usage." />
+}
 else
 {
-	<div class="overflow-x-auto overflow-y-hidden pb-1 mb-3">
-		<TabStrip Class="flex-nowrap overscroll-contain min-width-0">
-			@foreach (var providerType in ProviderTypes)
-			{
-				<TabItem Text="@providerType.ToString()"
-						 Icon="@GetProviderTabIcon(providerType)"
-						 Class="text-nowrap"
-						 IsActive="@(ActiveProviderType == providerType)"
-						 BadgeCount="@GetProviderCount(providerType)"
-						 BadgeClass="bg-body-secondary text-body-secondary-emphasis"
-						 OnClick="@(() => ActiveProviderTypeChanged.InvokeAsync(providerType))" />
-			}
-		</TabStrip>
-	</div>
+	<div class="list-group rounded-4">
+		@foreach (var provider in Providers)
+		{
+			<ListRow @key="provider.Id"
+					 Icon="@GetProviderIcon(provider.ProviderType)"
+					 IconClass="@(provider.IsEnabled ? "text-primary" : "text-body-tertiary")"
+					 Title="@provider.Name" TitleClass="@(provider.IsEnabled ? null : "text-body-secondary")"
+					 Subtitle="@($"{provider.ProviderType} · {provider.Endpoint}")"
+					 InitiallyExpanded="@(provider.Id == InitiallyOpenProviderId)">
+				<Trailing>
+					@if (!provider.IsEnabled)
+					{
+						<span class="small text-body-tertiary flex-shrink-0">Off</span>
+					}
+					else if (HealthChecked.Contains(provider.Id))
+					{
+						@if (HealthStatus.GetValueOrDefault(provider.Id))
+						{
+							<span class="small text-success flex-shrink-0">Connected</span>
+						}
+						else
+						{
+							<span class="small text-danger-emphasis flex-shrink-0">Can't connect</span>
+						}
+					}
+				</Trailing>
+				<ChildContent>
+					<InferenceTestSection Provider="provider" ModelRefreshVersion="@ModelRefreshVersions.GetValueOrDefault(provider.Id)" />
 
-	@if (ActiveProviders.Count == 0)
-	{
-		<EmptyState Icon="@GetProviderTabIcon(ActiveProviderType)"
-					Title="@($"No {ActiveProviderType} connections")"
-					Message="@($"Add a {ActiveProviderType} connection to start testing inference.")" />
-	}
-	else
-	{
-		<div class="list-group mb-4">
-			@foreach (var provider in ActiveProviders)
-			{
-				var isHealthy = HealthStatus.GetValueOrDefault(provider.Id);
-				var healthChecked = HealthChecked.Contains(provider.Id);
-
-				<div class="list-group-item p-3 hover-bg-tertiary">
-					<div class="d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3">
-						<div class="flex-grow-1 min-width-0">
-							<div class="d-flex align-items-center gap-2 flex-wrap">
-								<span class="fw-semibold">
-									<i class="bi @GetProviderBadgeIcon(provider.ProviderType) me-1"></i>@provider.Name
-								</span>
-								<span class="badge bg-body-tertiary text-body-secondary">@provider.ProviderType</span>
-								@if (isHealthy)
-								{
-									<span class="badge bg-success-subtle text-success-emphasis">
-										<i class="bi bi-check-circle me-1"></i>Connected
-									</span>
-								}
-								else if (healthChecked)
-								{
-									<span class="badge bg-danger-subtle text-danger-emphasis">
-										<i class="bi bi-x-circle me-1"></i>Disconnected
-									</span>
-								}
-								@if (!provider.IsEnabled)
-								{
-									<span class="badge bg-warning-subtle text-warning-emphasis">Disabled</span>
-								}
-							</div>
-							<div class="small text-body-secondary mt-1 font-monospace text-truncate">@provider.Endpoint</div>
-						</div>
-						<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-							<RowActionsDropdown AriaLabel="Inference provider actions" Label="More" HideLabelOnMobile="true">
-								<RowActionsItem Icon="arrow-repeat"
-												IconSpin="@(RefreshingModelsProviderId == provider.Id)"
-												Text="Refresh Models"
-												OnClick="@(() => OnRefreshModels.InvokeAsync(provider))"
-												Disabled="@RefreshingModelsProviderId.HasValue" />
-								<RowActionsItem Icon="pencil" Text="Edit" OnClick="@(() => OnEditProvider.InvokeAsync(provider))" />
-								<RowActionsDivider />
-								<RowActionsItem Icon="trash" Text="Delete" Danger="true"
-												OnClick="@(() => OnDeleteProvider.InvokeAsync(provider))" />
-							</RowActionsDropdown>
-						</div>
+					<div class="d-flex align-items-center gap-2">
+						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnRefreshModels.InvokeAsync(provider)"
+								disabled="@RefreshingModelsProviderId.HasValue">
+							<i class="bi bi-arrow-repeat me-1 @(RefreshingModelsProviderId == provider.Id ? "spin" : "")"></i>Refresh models
+						</button>
+						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnEditProvider.InvokeAsync(provider)">Edit</button>
+						<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDeleteProvider.InvokeAsync(provider)">
+							<i class="bi bi-trash me-1"></i>Delete
+						</button>
 					</div>
-					<InferenceTestSection @key="provider.Id" Provider="provider" ModelRefreshVersion="@GetModelRefreshVersion(provider.Id)" />
-				</div>
-			}
-		</div>
-	}
+				</ChildContent>
+			</ListRow>
+		}
+	</div>
 }
 
 @code {
-	private static readonly IReadOnlyList<InferenceProviderType> ProviderTypes = Enum.GetValues<InferenceProviderType>();
-
 	[Parameter]
 	public bool IsLoading { get; set; }
 
 	[Parameter, EditorRequired]
 	public IReadOnlyList<InferenceProvider> Providers { get; set; } = [];
 
+	/// <summary>The connection that opens on arrival: the one tested last, or the first.</summary>
 	[Parameter]
-	public InferenceProviderType ActiveProviderType { get; set; }
-
-	[Parameter]
-	public EventCallback<InferenceProviderType> ActiveProviderTypeChanged { get; set; }
+	public Guid? InitiallyOpenProviderId { get; set; }
 
 	[Parameter]
 	public IReadOnlyDictionary<Guid, bool> HealthStatus { get; set; } = new Dictionary<Guid, bool>();
@@ -117,27 +86,7 @@ else
 	[Parameter]
 	public IReadOnlyDictionary<Guid, int> ModelRefreshVersions { get; set; } = new Dictionary<Guid, int>();
 
-	private IReadOnlyList<InferenceProvider> ActiveProviders => Providers
-		.Where(provider => provider.ProviderType == ActiveProviderType)
-		.ToList();
-
-	private int GetProviderCount(InferenceProviderType type)
-	{
-		return Providers.Count(provider => provider.ProviderType == type);
-	}
-
-	private int GetModelRefreshVersion(Guid providerId)
-	{
-		return ModelRefreshVersions.GetValueOrDefault(providerId);
-	}
-
-	private static string GetProviderBadgeIcon(InferenceProviderType type) => type switch
-	{
-		InferenceProviderType.Grok => "bi-cloud",
-		_ => "bi-hdd-network"
-	};
-
-	private static string GetProviderTabIcon(InferenceProviderType type) => type switch
+	private static string GetProviderIcon(InferenceProviderType type) => type switch
 	{
 		InferenceProviderType.Grok => "cloud",
 		_ => "hdd-network"

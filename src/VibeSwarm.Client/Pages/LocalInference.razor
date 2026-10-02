@@ -13,8 +13,7 @@
 
 <InferenceProvidersSection IsLoading="@_isLoading"
 						   Providers="_providers"
-						   ActiveProviderType="_activeProviderType"
-						   ActiveProviderTypeChanged="SetActiveProviderTypeAsync"
+						   InitiallyOpenProviderId="_initiallyOpenProviderId"
 						   HealthStatus="_healthStatus"
 						   HealthChecked="_healthChecked"
 						   OnEditProvider="EditProvider"
@@ -39,7 +38,7 @@
 	private HashSet<Guid> _healthChecked = new();
 	private Dictionary<Guid, int> _modelRefreshVersions = new();
 	private bool _isLoading = true;
-	private InferenceProviderType _activeProviderType = Enum.GetValues<InferenceProviderType>().First();
+	private Guid? _initiallyOpenProviderId;
 	private Guid? _refreshingModelsProviderId;
 
 	// Modal state
@@ -63,7 +62,7 @@
 		try
 		{
 			_providers = (await InferenceProviderService.GetAllAsync()).ToList();
-			SelectActiveProviderType(preferredProviderId);
+			SelectInitiallyOpenProvider(preferredProviderId);
 
 			if (clearMissingPreferredProvider
 				&& preferredProviderId.HasValue
@@ -87,25 +86,21 @@
 		}
 	}
 
-	private void SelectActiveProviderType(Guid? preferredProviderId = null)
+	/// <summary>Opens the connection tested last in this session, or else the first one.</summary>
+	private void SelectInitiallyOpenProvider(Guid? preferredProviderId = null)
 	{
-		if (preferredProviderId.HasValue)
+		if (preferredProviderId.HasValue && _providers.Any(provider => provider.Id == preferredProviderId.Value))
 		{
-			var preferredProvider = _providers.FirstOrDefault(provider => provider.Id == preferredProviderId.Value);
-			if (preferredProvider != null)
-			{
-				_activeProviderType = preferredProvider.ProviderType;
-				return;
-			}
+			_initiallyOpenProviderId = preferredProviderId;
+			return;
 		}
 
-		if (_providers.Any(provider => provider.ProviderType == _activeProviderType))
+		if (_initiallyOpenProviderId.HasValue && _providers.Any(provider => provider.Id == _initiallyOpenProviderId.Value))
 		{
 			return;
 		}
 
-		_activeProviderType = Enum.GetValues<InferenceProviderType>()
-			.FirstOrDefault(type => _providers.Any(provider => provider.ProviderType == type));
+		_initiallyOpenProviderId = _providers.FirstOrDefault()?.Id;
 	}
 
 	private async Task CheckHealth(InferenceProvider provider)
@@ -186,7 +181,7 @@
 			_healthStatus.Remove(_providerToDelete.Id);
 			_healthChecked.Remove(_providerToDelete.Id);
 			_modelRefreshVersions.Remove(_providerToDelete.Id);
-			SelectActiveProviderType();
+			SelectInitiallyOpenProvider();
 
 			NotificationService.ShowSuccess($"Provider \"{_providerToDelete.Name}\" removed.");
 			_showDeleteModal = false;
@@ -294,11 +289,4 @@
 	{
 		Console.Error.WriteLine($"[LocalInference] Unable to {action}: {exception.Message}");
 	}
-
-	private Task SetActiveProviderTypeAsync(InferenceProviderType providerType)
-	{
-		_activeProviderType = providerType;
-		return Task.CompletedTask;
-	}
-
 }

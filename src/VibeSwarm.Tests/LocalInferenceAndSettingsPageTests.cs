@@ -39,9 +39,9 @@ public async Task RenderedLocalInferencePage_ShowsSetupAction_WhenNoProviderConf
 
 	Assert.Contains("Inference", html);
 	Assert.Contains("Add", html);
+	Assert.Contains("No inference connections yet", html);
 	Assert.Contains("Ollama", html);
-	Assert.Contains("Grok", html);
-	Assert.Contains("No Ollama connections", html);
+	Assert.DoesNotContain("nav-tabs", html);
 	Assert.Contains("justify-content-between gap-2 mb-4", html);
 	Assert.DoesNotContain("App Settings", html);
 }
@@ -265,7 +265,7 @@ public void LocalInferencePage_DefaultsToLastUsedProviderFromSessionStorage()
 }
 
 [Fact]
-public void InferenceProvidersSection_ShowsEditDeleteAndRefreshModelsInDropdown()
+public void InferenceProvidersSection_OpenRowShowsEditDeleteAndRefreshModels()
 {
 	var provider = CreateInferenceProvider();
 
@@ -274,11 +274,10 @@ public void InferenceProvidersSection_ShowsEditDeleteAndRefreshModelsInDropdown(
 
 	var cut = context.Render<InferenceProvidersSection>(parameters => parameters
 		.Add(component => component.Providers, [provider])
-		.Add(component => component.ActiveProviderType, provider.ProviderType));
+		.Add(component => component.InitiallyOpenProviderId, provider.Id));
 
-	Assert.Contains("Inference provider actions", cut.Markup);
-	Assert.Contains("dropdown-menu", cut.Markup);
-	Assert.Contains("Refresh Models", cut.Markup);
+	Assert.Contains("aria-expanded=\"true\"", cut.Markup);
+	Assert.Contains("Refresh models", cut.Markup);
 	Assert.Contains("Edit", cut.Markup);
 	Assert.Contains("Delete", cut.Markup);
 	Assert.DoesNotContain("btn-danger", cut.Markup);
@@ -294,18 +293,18 @@ public void InferenceProvidersSection_DisablesRefreshModelsActionForRefreshingPr
 
 	var cut = context.Render<InferenceProvidersSection>(parameters => parameters
 		.Add(component => component.Providers, [provider])
-		.Add(component => component.ActiveProviderType, provider.ProviderType)
+		.Add(component => component.InitiallyOpenProviderId, provider.Id)
 		.Add(component => component.RefreshingModelsProviderId, provider.Id));
 
 	var refreshButton = cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Refresh Models", StringComparison.Ordinal));
+		.Single(button => button.TextContent.Contains("Refresh models", StringComparison.Ordinal));
 
 	Assert.True(refreshButton.HasAttribute("disabled"));
 	Assert.Contains("spin", refreshButton.InnerHtml);
 }
 
 [Fact]
-public void InferenceProvidersSection_DropdownActionsInvokeProviderCallbacks()
+public void InferenceProvidersSection_RowActionsInvokeProviderCallbacks()
 {
 	var provider = CreateInferenceProvider();
 	InferenceProvider? refreshedProvider = null;
@@ -317,19 +316,19 @@ public void InferenceProvidersSection_DropdownActionsInvokeProviderCallbacks()
 
 	var cut = context.Render<InferenceProvidersSection>(parameters => parameters
 		.Add(component => component.Providers, [provider])
-		.Add(component => component.ActiveProviderType, provider.ProviderType)
+		.Add(component => component.InitiallyOpenProviderId, provider.Id)
 		.Add(component => component.OnRefreshModels, EventCallback.Factory.Create<InferenceProvider>(this, clickedProvider => refreshedProvider = clickedProvider))
 		.Add(component => component.OnEditProvider, EventCallback.Factory.Create<InferenceProvider>(this, clickedProvider => editedProvider = clickedProvider))
 		.Add(component => component.OnDeleteProvider, EventCallback.Factory.Create<InferenceProvider>(this, clickedProvider => deletedProvider = clickedProvider)));
 
 	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Refresh Models", StringComparison.Ordinal))
+		.Single(button => button.TextContent.Contains("Refresh models", StringComparison.Ordinal))
 		.Click();
 	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Edit", StringComparison.Ordinal))
+		.Single(button => button.TextContent.Trim() == "Edit")
 		.Click();
 	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Delete", StringComparison.Ordinal))
+		.Single(button => button.TextContent.Trim() == "Delete")
 		.Click();
 
 	Assert.Same(provider, refreshedProvider);
@@ -385,7 +384,7 @@ public void LocalInferencePage_RefreshModelsDropdownActionRefreshesModelList()
 	cut.WaitForAssertion(() => Assert.Contains("Qwen 3 (Default)", cut.Markup));
 
 	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Refresh Models", StringComparison.Ordinal))
+		.Single(button => button.TextContent.Contains("Refresh models", StringComparison.Ordinal))
 		.Click();
 
 	cut.WaitForAssertion(() =>
@@ -399,7 +398,7 @@ public void LocalInferencePage_RefreshModelsDropdownActionRefreshesModelList()
 }
 
 [Fact]
-public void LocalInferencePage_RefreshModelsDropdownActionShowsErrorWhenRefreshFails()
+public void LocalInferencePage_RefreshModelsShowsErrorWhenRefreshFails()
 {
 	var provider = CreateInferenceProvider();
 	var providerService = new FakeInferenceProviderService([provider])
@@ -417,10 +416,10 @@ public void LocalInferencePage_RefreshModelsDropdownActionShowsErrorWhenRefreshF
 
 	var cut = context.Render<LocalInference>();
 
-	cut.WaitForAssertion(() => Assert.Contains("Refresh Models", cut.Markup));
+	cut.WaitForAssertion(() => Assert.Contains("Refresh models", cut.Markup));
 
 	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Refresh Models", StringComparison.Ordinal))
+		.Single(button => button.TextContent.Contains("Refresh models", StringComparison.Ordinal))
 		.Click();
 
 	cut.WaitForAssertion(() =>
