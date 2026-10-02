@@ -267,8 +267,8 @@ else
     <ModalDialog @bind-IsVisible="_showDeleteProjectModal" Title="Delete project" Icon="exclamation-triangle"
                  Size="ModalDialog.ModalSize.Small">
         <ChildContent>
-            <p>Delete <strong>@Project.Name</strong> and all of its jobs and ideas from VibeSwarm?</p>
-            <p class="text-body-secondary small mb-0">The folder <code class="text-break">@Project.WorkingPath</code> stays on disk.</p>
+            <p>Delete <strong>@Project?.Name</strong> and all of its jobs and ideas from VibeSwarm?</p>
+            <p class="text-body-secondary small mb-0">The folder <code class="text-break">@Project?.WorkingPath</code> stays on disk.</p>
         </ChildContent>
         <FooterContent>
             <ActionButton Text="Cancel" OnClick="@(() => _showDeleteProjectModal = false)" />
