@@ -108,6 +108,17 @@ public static class DateTimeHelper
 		return isFuture ? $"in {days}d" : $"{days}d ago";
 	}
 
+	/// <summary>
+	/// A compact age for list rows: "just now", "42m", "3h", "5d", then the date once it is over a week old.
+	/// </summary>
+	public static string FormatShortAge(this DateTime dateTime, DateTime? referenceTimeUtc = null)
+	{
+		var reference = NormalizeUtc(referenceTimeUtc ?? DateTime.UtcNow);
+		return reference - NormalizeUtc(dateTime) > TimeSpan.FromDays(7)
+			? dateTime.FormatDateShort()
+			: dateTime.FormatRelativeToNow(reference).Replace(" ago", string.Empty, StringComparison.Ordinal);
+	}
+
 	public static string FormatDateTime(this DateTime dateTime)
 	{
 		return dateTime.ToConfiguredTime().ToString("M/d/yyyy h:mm:ss tt", USCulture);

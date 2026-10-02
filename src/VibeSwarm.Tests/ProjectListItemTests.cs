@@ -12,7 +12,7 @@ namespace VibeSwarm.Tests;
 public sealed class ProjectListItemTests
 {
 	[Fact]
-	public async Task RenderedProjectListItem_ShowsLatestJobSummaryWithoutOutcomeGuidance()
+	public async Task RenderedProjectListItem_ShowsLatestJobOnOneLineWithoutOutcomeGuidance()
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
@@ -48,9 +48,8 @@ public sealed class ProjectListItemTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("Work summary:", html);
-		Assert.Contains("Polished the delivery summary for the latest project run.", html);
-		Assert.DoesNotContain("Hidden detail.", html);
+		Assert.Contains("Ship the release", html);
+		Assert.DoesNotContain("Polished the delivery summary", html);
 		Assert.DoesNotContain("PR #42 ready.", html);
 		Assert.DoesNotContain("Review it and merge when the changes are approved.", html);
 	}

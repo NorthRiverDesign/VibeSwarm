@@ -448,9 +448,6 @@
 				return "Running";
 		}
 
-		var timestamp = job.CompletedAt ?? job.CreatedAt;
-		return DateTime.UtcNow - timestamp > TimeSpan.FromDays(7)
-			? timestamp.FormatDateShort()
-			: timestamp.FormatRelativeToNow().Replace(" ago", string.Empty, StringComparison.Ordinal);
+		return (job.CompletedAt ?? job.CreatedAt).FormatShortAge();
 	}
 }

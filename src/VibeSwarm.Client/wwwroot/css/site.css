@@ -1472,6 +1472,17 @@ body.vs-modal-open .app-main {
 	--bs-btn-disabled-border-color: var(--line-strong);
 }
 
+/* Checked checkboxes, radios and switches take the app accent too; Bootstrap compiles
+   #0d6efd into these as well. */
+.form-check-input:checked {
+	background-color: var(--bs-primary);
+	border-color: var(--bs-primary);
+}
+.form-check-input:focus {
+	border-color: rgba(var(--bs-primary-rgb), 0.5);
+	box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
+}
+
 /* ── Brand / project marks (gradients — no Bootstrap equivalent) ── */
 
 .app-brand-mark {

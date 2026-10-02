@@ -38,7 +38,7 @@ else
                                 OnEdit="ShowEditProjectModal" OnPruneBranches="PruneRemoteBranches"
                                 ShowMergeBranchAction="@HasMergeBranchTargets" IsMerging="@_isMergingBranch"
                                 OnMergeBranch="ShowMergeBranchModal" IsActive="@(Project?.IsActive ?? true)"
-                                OnToggleActive="ToggleProjectActive" />
+                                OnToggleActive="ToggleProjectActive" OnDelete="ShowDeleteProjectModal" />
 
     @* Tabs are Bootstrap pills; horizontally scrollable on narrow screens *@
     <ul class="nav nav-pills project-detail-tabs gap-1 small flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain" role="tablist">
@@ -179,16 +179,16 @@ else
                 {
                     <Alert Type="Alert.AlertType.Danger" Message="@_environmentError" Class="mb-0" />
                 }
-                <EditForm Model="@Project" OnValidSubmit="SaveEnvironments">
+                <EditForm Model="@Project" OnValidSubmit="SaveEnvironments" class="d-flex flex-column gap-3">
                     <ProjectEnvironmentsEditor Project="@Project" />
-                    <div class="d-flex justify-content-end gap-2 mt-3">
-                        <button type="submit" class="btn btn-primary btn-sm" disabled="@_isSavingEnvironments"
+                    <div class="d-grid d-sm-flex justify-content-sm-end">
+                        <button type="submit" class="btn btn-primary" disabled="@_isSavingEnvironments"
                                 title="@(_isSavingEnvironments ? "Saving environments" : "Save environment changes")">
                             @if (_isSavingEnvironments)
                             {
                                 <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                             }
-                            <i class="bi bi-check-lg me-1"></i>Save environments
+                            Save
                         </button>
                     </div>
                 </EditForm>
@@ -262,6 +262,20 @@ else
                     ErrorMessage="@ErrorMessage" @bind-SelectedModelId="@SelectedModelId" ProviderHint="@GetProviderHint()" OnProviderChanged="OnProviderChanged"
                     OnModelsRefreshed="@(models => AvailableModels = models)"
                     TemplateLibrary="@JobTemplates" OnTemplateLibraryChanged="LoadJobTemplates" OnSubmit="HandleCreateJob" />
+
+    @* Delete Project Modal *@
+    <ModalDialog @bind-IsVisible="_showDeleteProjectModal" Title="Delete project" Icon="exclamation-triangle"
+                 Size="ModalDialog.ModalSize.Small">
+        <ChildContent>
+            <p>Delete <strong>@Project.Name</strong> and all of its jobs and ideas from VibeSwarm?</p>
+            <p class="text-body-secondary small mb-0">The folder <code class="text-break">@Project.WorkingPath</code> stays on disk.</p>
+        </ChildContent>
+        <FooterContent>
+            <ActionButton Text="Cancel" OnClick="@(() => _showDeleteProjectModal = false)" />
+            <ActionButton Text="Delete project" Style="ActionButton.ButtonStyle.Danger" OnClick="DeleteProject"
+                          IsLoading="_isDeletingProject" Disabled="_isDeletingProject" />
+        </FooterContent>
+    </ModalDialog>
 
     @* Edit Project Modal *@
     <ProjectModal @bind-IsVisible="_showEditProjectModal" EditProject="@Project" OnSaved="HandleProjectSaved"
@@ -406,6 +420,8 @@ else
 
     private bool CanSuggestIdeas => _hasInference || Providers.Any(p => p.IsEnabled);
 
+    private bool _showDeleteProjectModal;
+    private bool _isDeletingProject;
     private bool _isStoppingActiveJob;
     private bool _isStoppingAutoPilot;
 

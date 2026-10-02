@@ -17,7 +17,8 @@
 								IsPruning="@(_currentGitOperation == "prune")" IsMerging="@IsMerging"
 								OnCreateBranch="OnCreateBranch" OnMergeBranch="OnMergeBranch" OnSync="OnSync"
 								OnRefresh="OnRefresh" OnPruneBranches="OnPruneBranches"
-								GitHubRepository="@GitHubRepository" />
+								GitHubRepository="@GitHubRepository"
+								ShowDeleteAction="@OnDelete.HasDelegate" DeleteLabel="Delete project…" OnDelete="OnDelete" />
 	</div>
 
 	@if (IsGitRepository)
@@ -124,6 +125,9 @@
 
 	[Parameter]
 	public EventCallback OnToggleActive { get; set; }
+
+	[Parameter]
+	public EventCallback OnDelete { get; set; }
 
 	private string UncommittedChangesLabel => UncommittedFilesCount switch
 	{

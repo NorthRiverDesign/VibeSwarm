@@ -940,6 +940,30 @@ public partial class ProjectDetail
         _showEditProjectModal = true;
     }
 
+    private void ShowDeleteProjectModal() => _showDeleteProjectModal = true;
+
+    private async Task DeleteProject()
+    {
+        if (Project == null) return;
+
+        _isDeletingProject = true;
+        try
+        {
+            await ProjectService.DeleteAsync(Project.Id);
+            NotificationService.ShowSuccess($"Deleted {Project.Name}.");
+            NavigationManager.NavigateTo("/projects");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowProjectError(Project.Name, $"Error deleting project: {ex.Message}");
+        }
+        finally
+        {
+            _isDeletingProject = false;
+            _showDeleteProjectModal = false;
+        }
+    }
+
     private async Task ToggleProjectActive()
     {
         if (Project == null) return;
