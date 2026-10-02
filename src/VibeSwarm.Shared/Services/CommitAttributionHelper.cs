@@ -12,40 +12,6 @@ public static class CommitAttributionHelper
 	public const string OpenCodeName = "OpenCode";
 	public const string OpenCodeEmail = "noreply@opencode.ai";
 
-	public static IReadOnlyList<string> BuildPromptRules(ProviderType? providerType, bool enableCommitAttribution)
-	{
-		if (providerType == null)
-		{
-			return Array.Empty<string>();
-		}
-
-		if (!enableCommitAttribution)
-		{
-			return
-			[
-				"If you create git commits yourself, do not add provider attribution or provider-specific trailers.",
-				"Use the repository's existing git identity instead of a provider-specific author."
-			];
-		}
-
-		return providerType.Value switch
-		{
-			ProviderType.Copilot =>
-			[
-				$"If you create git commits yourself, add the trailer `{BuildCoAuthorTrailer(CopilotName, CopilotEmail)}`."
-			],
-			ProviderType.Claude =>
-			[
-				$"If you create git commits yourself, use the author `{ClaudeName} <{ClaudeEmail}>`."
-			],
-			ProviderType.OpenCode =>
-			[
-				$"If you create git commits yourself, use the author `{OpenCodeName} <{OpenCodeEmail}>`."
-			],
-			_ => Array.Empty<string>()
-		};
-	}
-
 	public static GitCommitOptions? BuildGitCommitOptions(ProviderType? providerType, bool enableCommitAttribution)
 	{
 		if (!enableCommitAttribution || providerType == null)

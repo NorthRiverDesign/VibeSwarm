@@ -626,28 +626,11 @@ public partial class JobProcessingService
             }
 
             var enableStructuring = appSettings?.EnablePromptStructuring ?? true;
-            var enableCommitAttribution = appSettings?.EnableCommitAttribution ?? true;
 
             // Build system prompt rules for agent efficiency
             var injectEfficiencyRules = appSettings?.InjectEfficiencyRules ?? true;
             var injectRepoMap = appSettings?.InjectRepoMap ?? true;
-            var isIdeaJob = await dbContext.Ideas
-                .AsNoTracking()
-                .AnyAsync(idea => idea.JobId == job.Id, cancellationToken);
-
-            string? BuildExecutionSystemPromptRules(ProviderType providerType)
-            {
-                return isIdeaJob
-                    ? PromptBuilder.BuildIdeaSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap)
-                    : PromptBuilder.BuildSystemPromptRules(
-                        job.Project,
-                        injectEfficiencyRules,
-                        injectRepoMap,
-                        providerType,
-                        enableCommitAttribution);
-            }
-
-            var systemPromptRules = BuildExecutionSystemPromptRules(provider.Type);
+            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap);
             projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
             var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
             if (!string.IsNullOrWhiteSpace(projectMemoryRules))
@@ -731,18 +714,6 @@ public partial class JobProcessingService
                         forceFreshSession: true);
                 }
 
-                var planningSystemPromptRules = systemPromptRules;
-                if (provider.Type != planningProviderConfig.Type)
-                {
-                    planningSystemPromptRules = BuildExecutionSystemPromptRules(planningProviderConfig.Type);
-                    if (!string.IsNullOrWhiteSpace(projectMemoryRules))
-                    {
-                        planningSystemPromptRules = string.IsNullOrWhiteSpace(planningSystemPromptRules)
-                            ? projectMemoryRules
-                            : $"{planningSystemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
-                    }
-                }
-
                 ExecutionResult? planningResult = null;
                 while (!cancellationToken.IsCancellationRequested)
                 {
@@ -769,7 +740,7 @@ public partial class JobProcessingService
                                 Model = job.Project.PlanningModelId,
                                 ReasoningEffort = job.Project.PlanningReasoningEffort,
                                 Title = job.Title,
-                                AppendSystemPrompt = planningSystemPromptRules,
+                                AppendSystemPrompt = systemPromptRules,
                                 EnvironmentVariables = jobEnvironmentVariables,
                                 DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools
                             },

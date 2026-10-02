@@ -1,5 +1,4 @@
 using VibeSwarm.Shared.Data;
-using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Tests;
@@ -82,21 +81,71 @@ public sealed class BuildVerificationPromptTests
 	}
 
 	[Fact]
-	public void BuildSystemPromptRules_IncludesProviderCommitAttributionGuidance_WhenEnabled()
+	public void BuildSystemPromptRules_OmitsProviderCommitAttribution()
 	{
-		var rules = PromptBuilder.BuildSystemPromptRules(
-			new Project
-			{
-				Name = "Test Project",
-				WorkingPath = "/tmp/test",
-				Environments = []
-			},
-			providerType: ProviderType.Copilot,
-			enableCommitAttribution: true);
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		{
+			Name = "Test Project",
+			WorkingPath = "/tmp/test",
+			Environments = []
+		});
 
 		Assert.NotNull(rules);
-		Assert.Contains("COMMIT ATTRIBUTION:", rules);
-		Assert.Contains("Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>", rules);
+		Assert.DoesNotContain("COMMIT ATTRIBUTION:", rules);
+		Assert.DoesNotContain("Co-authored-by", rules);
+		Assert.DoesNotContain(CommitAttributionHelper.ClaudeEmail, rules);
+		Assert.DoesNotContain(CommitAttributionHelper.CopilotEmail, rules);
+		Assert.DoesNotContain(CommitAttributionHelper.OpenCodeEmail, rules);
+	}
+
+	[Fact]
+	public void BuildSystemPromptRules_IncludesUnattendedJobCompletionRules()
+	{
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		{
+			Name = "Test Project",
+			WorkingPath = "/tmp/test",
+			Environments = []
+		});
+
+		Assert.NotNull(rules);
+		Assert.Contains("COMPLETING THE JOB:", rules);
+		Assert.Contains("Do not stop to ask questions", rules);
+		Assert.Contains("do not commit, push, stash, reset, rebase, or switch branches", rules);
+		Assert.Contains("The next queued job starts from it.", rules);
+		Assert.Contains("End with a short summary", rules);
+	}
+
+	[Fact]
+	public void BuildSystemPromptRules_OmitsJobCompletionRules_WhenEfficiencyRulesDisabled()
+	{
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		{
+			Name = "Test Project",
+			WorkingPath = "/tmp/test",
+			Environments = []
+		}, injectEfficiencyRules: false);
+
+		Assert.True(rules == null || !rules.Contains("COMPLETING THE JOB:"));
+	}
+
+	[Fact]
+	public void BuildStructuredPrompt_LeavesPullRequestCreationToVibeSwarm()
+	{
+		var prompt = PromptBuilder.BuildStructuredPrompt(new Job
+		{
+			GoalPrompt = "Implement the feature",
+			GitChangeDeliveryMode = GitChangeDeliveryMode.PullRequest,
+			Project = new Project
+			{
+				Name = "Prompt Project",
+				WorkingPath = "/tmp/test",
+				Environments = []
+			}
+		});
+
+		Assert.Contains("VibeSwarm opens a pull request for your changes after you finish.", prompt);
+		Assert.Contains("Do not open one yourself.", prompt);
 	}
 
 	[Fact]
@@ -150,41 +199,6 @@ public sealed class BuildVerificationPromptTests
 		Assert.Contains("<user_response>", prompt);
 		Assert.Contains("Apply only the pending job-state migration.", prompt);
 		Assert.Contains("continue the job normally", prompt);
-	}
-
-	[Fact]
-	public void BuildSystemPromptRules_IncludesDisableAttributionGuidance_WhenDisabled()
-	{
-		var rules = PromptBuilder.BuildSystemPromptRules(
-			new Project
-			{
-				Name = "Test Project",
-				WorkingPath = "/tmp/test",
-				Environments = []
-			},
-			providerType: ProviderType.Claude,
-			enableCommitAttribution: false);
-
-		Assert.NotNull(rules);
-		Assert.Contains("do not add provider attribution", rules);
-		Assert.Contains("repository's existing git identity", rules);
-	}
-
-	[Fact]
-	public void BuildIdeaSystemPromptRules_OmitsCommitAttributionSection()
-	{
-		var rules = PromptBuilder.BuildIdeaSystemPromptRules(new Project
-		{
-			Name = "Idea Project",
-			WorkingPath = "/tmp/test",
-			Environments = []
-		});
-
-		Assert.NotNull(rules);
-		Assert.Contains("BUILD VERIFICATION (CRITICAL):", rules);
-		Assert.DoesNotContain("COMMIT ATTRIBUTION:", rules);
-		Assert.DoesNotContain("Co-authored-by: Copilot", rules);
-		Assert.DoesNotContain("provider-specific trailers", rules);
 	}
 
 	[Fact]
