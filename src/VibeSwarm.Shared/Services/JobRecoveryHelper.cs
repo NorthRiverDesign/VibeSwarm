@@ -38,9 +38,10 @@ public static class JobRecoveryHelper
 			job.SessionId = sessionId;
 		}
 
-		if (!string.IsNullOrWhiteSpace(consoleOutput))
+		var trimmedConsoleOutput = TrimTailToWholeLines(consoleOutput, MaxRecoveryConsoleOutputLength);
+		if (!string.IsNullOrWhiteSpace(trimmedConsoleOutput))
 		{
-			job.ConsoleOutput = TrimTail(consoleOutput, MaxRecoveryConsoleOutputLength);
+			job.ConsoleOutput = trimmedConsoleOutput;
 		}
 	}
 
@@ -83,5 +84,27 @@ public static class JobRecoveryHelper
 		}
 
 		return value[^maxLength..];
+	}
+
+	/// <summary>
+	/// Like <see cref="TrimTail"/>, but drops the line the cut lands in. The job page rebuilds its
+	/// transcript from stored console output line by line, and half of a stream-json line renders
+	/// as raw JSON. Returns an empty string when the tail holds no complete line.
+	/// </summary>
+	public static string? TrimTailToWholeLines(string? value, int maxLength)
+	{
+		if (string.IsNullOrWhiteSpace(value) || value.Length <= maxLength)
+		{
+			return value;
+		}
+
+		var cutIndex = value.Length - maxLength;
+		if (value[cutIndex - 1] == '\n')
+		{
+			return value[cutIndex..];
+		}
+
+		var nextLineIndex = value.IndexOf('\n', cutIndex);
+		return nextLineIndex < 0 ? string.Empty : value[(nextLineIndex + 1)..];
 	}
 }

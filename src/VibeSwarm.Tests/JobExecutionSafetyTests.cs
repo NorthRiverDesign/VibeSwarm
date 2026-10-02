@@ -240,13 +240,14 @@ public sealed class JobExecutionSafetyTests : IDisposable
 			JobStatus.Processing,
 			"Continue where you left off",
 			job.SessionId,
-			new string('x', JobRecoveryHelper.MaxRecoveryConsoleOutputLength + 100));
+			new string('x', 100) + "\n" + new string('y', JobRecoveryHelper.MaxRecoveryConsoleOutputLength - 1) + "\n");
 
 		Assert.Equal(JobStatus.Processing, job.ResumeFromStatus);
 		Assert.Equal("Continue where you left off", job.RecoveryPrompt);
 		Assert.NotNull(job.RecoveryCheckpointAt);
 		Assert.NotNull(job.ConsoleOutput);
 		Assert.Equal(JobRecoveryHelper.MaxRecoveryConsoleOutputLength, job.ConsoleOutput!.Length);
+		Assert.StartsWith("y", job.ConsoleOutput);
 
 		JobRecoveryHelper.ClearRecoveryState(job);
 
@@ -255,6 +256,28 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.Null(job.RecoveryCheckpointAt);
 		Assert.False(job.ForceFreshSession);
 		Assert.Equal("session-123", job.SessionId);
+	}
+
+	[Fact]
+	public void JobRecoveryHelper_CheckpointNeverStoresHalfAStreamJsonLine()
+	{
+		var olderLine = "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"" + new string('a', 40) + "\"}]}}";
+		var longLine = "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"content\":\"" + new string('b', JobRecoveryHelper.MaxRecoveryConsoleOutputLength) + "\"}]}}";
+		var recentLines = string.Concat(Enumerable.Repeat(olderLine + "\n", 300));
+		var job = new Job { GoalPrompt = "Checkpoint output" };
+
+		JobRecoveryHelper.CaptureRecoveryState(job, JobStatus.Processing, null, null, longLine + "\n" + recentLines);
+
+		Assert.NotNull(job.ConsoleOutput);
+		Assert.True(job.ConsoleOutput!.Length <= JobRecoveryHelper.MaxRecoveryConsoleOutputLength);
+		Assert.All(
+			job.ConsoleOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries),
+			line => Assert.Equal(olderLine, line));
+
+		var previousOutput = job.ConsoleOutput;
+		JobRecoveryHelper.CaptureRecoveryState(job, JobStatus.Processing, null, null, recentLines + longLine + "\n");
+
+		Assert.Equal(previousOutput, job.ConsoleOutput);
 	}
 
 	[Fact]
