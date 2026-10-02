@@ -51,17 +51,21 @@
 		<label for="modal-commitSummaryInferenceModel" class="form-label">
 			Commit message model <span class="text-body-secondary fw-normal">(optional)</span>
 		</label>
-		<InputSelect id="modal-commitSummaryInferenceModel" @bind-Value="Project.CommitSummaryInferenceModelId"
-					 class="form-select" disabled="@(!InferenceModels.Any())">
-			<option value="">Provider default</option>
-			@foreach (var model in InferenceModels)
-			{
-				<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
-			}
-		</InputSelect>
+		<div class="input-group">
+			<InputSelect id="modal-commitSummaryInferenceModel" @bind-Value="Project.CommitSummaryInferenceModelId"
+						 class="form-select" disabled="@(!InferenceModels.Any())">
+				<option value="">Provider default</option>
+				@foreach (var model in InferenceModels)
+				{
+					<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+				}
+			</InputSelect>
+			<ModelRefreshButton ProviderId="@Project.CommitSummaryInferenceProviderId" IsInference="true"
+								OnInferenceRefreshed="() => OnCommitSummaryModelsRefreshed.InvokeAsync()" />
+		</div>
 		@if (!InferenceModels.Any())
 		{
-			<div class="form-text">No models cached yet — refresh models on the Inference page.</div>
+			<div class="form-text">No models cached yet — use the refresh button to load them.</div>
 		}
 	</div>
 }
@@ -88,6 +92,9 @@
 
 	[Parameter]
 	public EventCallback OnCommitSummaryProviderChanged { get; set; }
+
+	[Parameter]
+	public EventCallback OnCommitSummaryModelsRefreshed { get; set; }
 
 	[Parameter]
 	public bool IsEdit { get; set; }

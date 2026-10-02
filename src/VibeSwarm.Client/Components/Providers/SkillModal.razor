@@ -57,14 +57,18 @@
 								</div>
 								<div class="col-12 col-md-4">
 									<label class="form-label small mb-1">Model</label>
-									<select class="form-select form-select-sm" @bind="_selectedModelId"
-											disabled="@(!_models.Any())">
-										<option value="">@(_isLoadingModels ? "Loading..." : "Default")</option>
-										@foreach (var model in _models.Where(m => m.IsAvailable))
-										{
-											<option value="@model.ModelId">@model.DisplayName</option>
-										}
-									</select>
+									<div class="input-group input-group-sm">
+										<select class="form-select form-select-sm" @bind="_selectedModelId"
+												disabled="@(!_models.Any())">
+											<option value="">@(_isLoadingModels ? "Loading..." : "Default")</option>
+											@foreach (var model in _models.Where(m => m.IsAvailable))
+											{
+												<option value="@model.ModelId">@model.DisplayName</option>
+											}
+										</select>
+										<ModelRefreshButton ProviderId="@_selectedProviderId" Small="true" Disabled="@_isLoadingModels"
+															OnRefreshed="HandleModelsRefreshed" />
+									</div>
 								</div>
 								<div class="col-12 col-md-3">
 									<button type="button" class="btn btn-sm btn-primary w-100" @onclick="ExpandWithAI"
@@ -216,6 +220,15 @@
 		catch
 		{
 			_providers = new();
+		}
+	}
+
+	private void HandleModelsRefreshed(List<ProviderModel> models)
+	{
+		_models = models;
+		if (!_models.Any(m => m.IsAvailable && m.ModelId == _selectedModelId))
+		{
+			_selectedModelId = string.Empty;
 		}
 	}
 

@@ -265,14 +265,17 @@
 						Model
 						<span class="text-body-secondary fw-normal">(optional)</span>
 					</label>
-					<select id="startAllModel" class="form-select" @bind="SelectedStartAllModelIdValue"
-							disabled="@(!SelectedStartAllProviderId.HasValue || !SelectedStartAllProviderModels.Any())">
-						<option value="">Use project/provider default model</option>
-						@foreach (var model in SelectedStartAllProviderModels)
-						{
-							<option value="@model.ModelId">@GetStartAllModelDisplayName(model)</option>
-						}
-					</select>
+					<div class="input-group">
+						<select id="startAllModel" class="form-select" @bind="SelectedStartAllModelIdValue"
+								disabled="@(!SelectedStartAllProviderId.HasValue || !SelectedStartAllProviderModels.Any())">
+							<option value="">Use project/provider default model</option>
+							@foreach (var model in SelectedStartAllProviderModels)
+							{
+								<option value="@model.ModelId">@GetStartAllModelDisplayName(model)</option>
+							}
+						</select>
+						<ModelRefreshButton ProviderId="@SelectedStartAllProviderId" OnRefreshed="HandleStartAllModelsRefreshed" />
+					</div>
 					<div class="form-text">
 						Leave blank to keep the project's default model for the selected provider.
 					</div>
@@ -1468,6 +1471,17 @@
 			.OrderBy(provider => provider.Name)
 			.Select(provider => (Guid?)provider.Id)
 			.FirstOrDefault();
+	}
+
+	private void HandleStartAllModelsRefreshed(List<ProviderModel> models)
+	{
+		var provider = StartAllProviders.FirstOrDefault(provider => provider.Id == SelectedStartAllProviderId);
+		if (provider != null)
+		{
+			provider.AvailableModels = models;
+		}
+
+		ResetStartAllModelIfUnavailable();
 	}
 
 	private void ResetStartAllModelIfUnavailable()

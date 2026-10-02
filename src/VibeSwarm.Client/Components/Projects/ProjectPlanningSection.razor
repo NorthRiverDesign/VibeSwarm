@@ -36,14 +36,18 @@
 					<label for="modal-planningModel" class="form-label">
 						Model <span class="text-body-secondary fw-normal">(optional)</span>
 					</label>
-					<InputSelect id="modal-planningModel" @bind-Value="Project.PlanningModelId" class="form-select"
-								 disabled="@(!Project.PlanningProviderId.HasValue || !PlanningModels.Any())">
-						<option value="">Provider default</option>
-						@foreach (var model in PlanningModels)
-						{
-							<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
-						}
-					</InputSelect>
+					<div class="input-group">
+						<InputSelect id="modal-planningModel" @bind-Value="Project.PlanningModelId" class="form-select"
+									 disabled="@(!Project.PlanningProviderId.HasValue || !PlanningModels.Any())">
+							<option value="">Provider default</option>
+							@foreach (var model in PlanningModels)
+							{
+								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
+							}
+						</InputSelect>
+						<ModelRefreshButton ProviderId="@Project.PlanningProviderId"
+											OnRefreshed="() => OnPlanningModelsRefreshed.InvokeAsync()" />
+					</div>
 					@if (Project.PlanningProviderId.HasValue && !PlanningModels.Any())
 					{
 						<div class="form-text">No cached models yet — the provider default is used.</div>
@@ -96,6 +100,9 @@
 
 	[Parameter]
 	public EventCallback OnPlanningProviderChanged { get; set; }
+
+	[Parameter]
+	public EventCallback OnPlanningModelsRefreshed { get; set; }
 
 	private Task HandlePlanningEnabledChanged() => OnPlanningEnabledChanged.InvokeAsync();
 

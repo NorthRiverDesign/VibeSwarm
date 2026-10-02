@@ -161,6 +161,7 @@ Summary="Defaults come from the project and provider"
 Badge="@ModelSummary" @bind-IsOpen="_openModelSection">
 <div class="mb-3">
 <label for="model" class="form-label">Model</label>
+<div class="input-group">
 <InputSelect id="model" @bind-Value="SelectedModelId" class="form-select"
 disabled="@(!FormModel.ProviderId.HasValue || IsLoadingModels)">
 @if (IsLoadingModels)
@@ -180,6 +181,8 @@ else
 }
 }
 </InputSelect>
+<ModelRefreshButton ProviderId="@FormModel.ProviderId" Disabled="@IsLoadingModels" OnRefreshed="HandleModelsRefreshed" />
+</div>
 <div class="form-text">Leave empty to use the project's default model, or the provider default when no project override is set.</div>
 </div>
 
@@ -387,6 +390,9 @@ public EventCallback<string> SelectedModelIdChanged { get; set; }
 public EventCallback<Guid> OnProviderChanged { get; set; }
 
 [Parameter]
+public EventCallback<List<ProviderModel>> OnModelsRefreshed { get; set; }
+
+[Parameter]
 public EventCallback OnSubmit { get; set; }
 
 [Parameter]
@@ -474,6 +480,22 @@ FormModel.AgentId = agentId;
 private async Task HandleProviderChanged()
 {
 await OnProviderChanged.InvokeAsync(FormModel.ProviderId ?? Guid.Empty);
+}
+
+private async Task HandleModelsRefreshed(List<ProviderModel> models)
+{
+	var availableModels = models
+		.Where(model => model.IsAvailable)
+		.OrderByDescending(model => model.IsDefault)
+		.ThenBy(model => model.DisplayName ?? model.ModelId)
+		.ToList();
+	await OnModelsRefreshed.InvokeAsync(availableModels);
+
+	if (!string.IsNullOrEmpty(SelectedModelId) && availableModels.All(model => model.ModelId != SelectedModelId))
+	{
+		SelectedModelId = string.Empty;
+		await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
+	}
 }
 
 private async Task HandleSubmit()

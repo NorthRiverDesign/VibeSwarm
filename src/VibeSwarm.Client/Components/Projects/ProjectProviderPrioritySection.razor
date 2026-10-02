@@ -62,6 +62,7 @@ else
         <label for="@modelInputId" class="form-label small mb-1">
         Default model
         </label>
+        <div class="input-group input-group-sm">
          <InputSelect TValue="string" id="@modelInputId"
                       Value="@(selection.PreferredModelId ?? string.Empty)"
                       ValueChanged="@(async (string? value) => await HandlePreferredSelectionChanged(selection.ProviderId, value, selection.PreferredReasoningEffort))"
@@ -74,6 +75,9 @@ else
         <option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
         }
         </InputSelect>
+        <ModelRefreshButton ProviderId="@selection.ProviderId" ProviderName="@provider?.Name" Small="true"
+                            OnRefreshed="() => OnModelsRefreshed.InvokeAsync(selection.ProviderId)" />
+        </div>
         <div class="form-text">
         @if (!models.Any())
         {
@@ -167,6 +171,9 @@ public EventCallback<Provider> OnAdd { get; set; }
 
 [Parameter]
 public EventCallback<ProjectProviderModelSelectionChange> OnPreferredModelChanged { get; set; }
+
+[Parameter]
+public EventCallback<Guid> OnModelsRefreshed { get; set; }
 
 private Task HandlePreferredSelectionChanged(Guid providerId, string? preferredModelId, string? preferredReasoningEffort)
 {

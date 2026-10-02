@@ -60,18 +60,22 @@
 				</div>
 				<div class="col-12 col-lg-6">
 					<label for="team-role-model" class="form-label">Default Model</label>
-					<InputSelect TValue="string" id="team-role-model"
-								 Value="@(Agent.DefaultModelId ?? string.Empty)"
-								 ValueChanged="HandleDefaultModelChanged"
-								 ValueExpression="@(() => Agent.DefaultModelId)"
-								 class="form-select"
-								 disabled="@(!Agent.DefaultProviderId.HasValue || !CurrentProviderModels.Any())">
-						<option value="">Use provider default model</option>
-						@foreach (var model in CurrentProviderModels)
-						{
-							<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
-						}
-					</InputSelect>
+					<div class="input-group">
+						<InputSelect TValue="string" id="team-role-model"
+									 Value="@(Agent.DefaultModelId ?? string.Empty)"
+									 ValueChanged="HandleDefaultModelChanged"
+									 ValueExpression="@(() => Agent.DefaultModelId)"
+									 class="form-select"
+									 disabled="@(!Agent.DefaultProviderId.HasValue || !CurrentProviderModels.Any())">
+							<option value="">Use provider default model</option>
+							@foreach (var model in CurrentProviderModels)
+							{
+								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
+							}
+						</InputSelect>
+						<ModelRefreshButton ProviderId="@Agent.DefaultProviderId"
+											OnRefreshed="() => LoadProviderModelsAsync(Agent.DefaultProviderId!.Value)" />
+					</div>
 					<div class="form-text">
 						@if (!Agent.DefaultProviderId.HasValue)
 						{

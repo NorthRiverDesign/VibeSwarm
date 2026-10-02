@@ -63,13 +63,17 @@
 					</div>
 					<div class="col-md-6">
 						<label class="form-label small">Inference Model</label>
-						<select class="form-select form-select-sm" @bind="_config.InferenceModelId">
-							<option value="">Provider default</option>
-							@foreach (var model in GetInferenceModelsForSelectedProvider())
-							{
-								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
-							}
-						</select>
+						<div class="input-group input-group-sm">
+							<select class="form-select form-select-sm" @bind="_config.InferenceModelId">
+								<option value="">Provider default</option>
+								@foreach (var model in GetInferenceModelsForSelectedProvider())
+								{
+									<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+								}
+							</select>
+							<ModelRefreshButton ProviderId="@_config.InferenceProviderId" IsInference="true" Small="true"
+												OnInferenceRefreshed="HandleInferenceModelsRefreshed" />
+						</div>
 					</div>
 
 					@* Job Execution *@
@@ -91,13 +95,17 @@
 					</div>
 					<div class="col-md-6">
 						<label class="form-label small">Coding Model</label>
-						<select class="form-select form-select-sm" @bind="_config.ModelId">
-							<option value="">Provider default</option>
-							@foreach (var model in GetCodingModelsForSelectedProvider())
-							{
-								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
-							}
-						</select>
+						<div class="input-group input-group-sm">
+							<select class="form-select form-select-sm" @bind="_config.ModelId">
+								<option value="">Provider default</option>
+								@foreach (var model in GetCodingModelsForSelectedProvider())
+								{
+									<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+								}
+							</select>
+							<ModelRefreshButton ProviderId="@_config.ProviderId" Small="true"
+												OnRefreshed="HandleCodingModelsRefreshed" />
+						</div>
 					</div>
 
 					@* Guardrails *@
@@ -401,6 +409,24 @@
 	{
 		await LoadStatusAsync();
 		StateHasChanged();
+	}
+
+	private void HandleInferenceModelsRefreshed(List<InferenceModel> models)
+	{
+		var provider = AvailableInferenceProviders.FirstOrDefault(p => p.Id == _config.InferenceProviderId);
+		if (provider != null)
+		{
+			provider.Models = models;
+		}
+	}
+
+	private void HandleCodingModelsRefreshed(List<ProviderModel> models)
+	{
+		var provider = AvailableProviders.FirstOrDefault(p => p.Id == _config.ProviderId);
+		if (provider != null)
+		{
+			provider.AvailableModels = models;
+		}
 	}
 
 	private List<InferenceModel> GetInferenceModelsForSelectedProvider()

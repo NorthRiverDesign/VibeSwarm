@@ -222,6 +222,7 @@
 				AvailableModels="@_availableModels" Branches="@_branches" CurrentBranch="@_currentBranch"
 				ShowBranchSelector="@(_branches.Any())" IsLoadingModels="@_isLoadingModels" IsSaving="@_isSaving"
 				ErrorMessage="@_createJobError" @bind-SelectedModelId="@_selectedModelId" OnProviderChanged="OnCreateJobProviderChanged"
+				OnModelsRefreshed="@(models => _availableModels = models)"
 				TemplateLibrary="@_jobTemplates" OnTemplateLibraryChanged="LoadJobTemplates" OnSubmit="HandleCreateJob" />
 
 @code {

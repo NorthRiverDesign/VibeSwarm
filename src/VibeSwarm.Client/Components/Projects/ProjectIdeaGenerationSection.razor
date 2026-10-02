@@ -22,17 +22,21 @@
 			<label for="modal-ideaInferenceModel" class="form-label">
 				Idea model <span class="text-body-secondary fw-normal">(optional)</span>
 			</label>
-			<InputSelect id="modal-ideaInferenceModel" @bind-Value="Project.IdeaInferenceModelId" class="form-select"
-						 disabled="@(!InferenceModels.Any())">
-				<option value="">Provider default</option>
-				@foreach (var model in InferenceModels)
-				{
-					<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
-				}
-			</InputSelect>
+			<div class="input-group">
+				<InputSelect id="modal-ideaInferenceModel" @bind-Value="Project.IdeaInferenceModelId" class="form-select"
+							 disabled="@(!InferenceModels.Any())">
+					<option value="">Provider default</option>
+					@foreach (var model in InferenceModels)
+					{
+						<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+					}
+				</InputSelect>
+				<ModelRefreshButton ProviderId="@Project.IdeaInferenceProviderId" IsInference="true"
+									OnInferenceRefreshed="() => OnModelsRefreshed.InvokeAsync()" />
+			</div>
 			@if (!InferenceModels.Any())
 			{
-				<div class="form-text">No models cached yet — refresh models on the Inference page.</div>
+				<div class="form-text">No models cached yet — use the refresh button to load them.</div>
 			}
 		</div>
 	}
@@ -50,6 +54,9 @@
 
 	[Parameter]
 	public EventCallback OnProviderChanged { get; set; }
+
+	[Parameter]
+	public EventCallback OnModelsRefreshed { get; set; }
 
 	private Task HandleProviderChanged() => OnProviderChanged.InvokeAsync();
 }

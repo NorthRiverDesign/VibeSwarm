@@ -49,14 +49,19 @@
 					Model
 					<span class="text-body-secondary fw-normal">(optional)</span>
 				</label>
-				<select id="suggestIdeasModel" class="form-select" @bind="SelectedModelIdValue"
-						disabled="@(!SelectedProviderId.HasValue || !SelectedProviderModels.Any())">
-					<option value="">Use provider default model</option>
-					@foreach (var model in SelectedProviderModels)
-					{
-						<option value="@model.ModelId">@model.DisplayName</option>
-					}
-				</select>
+				<div class="input-group">
+					<select id="suggestIdeasModel" class="form-select" @bind="SelectedModelIdValue"
+							disabled="@(!SelectedProviderId.HasValue || !SelectedProviderModels.Any())">
+						<option value="">Use provider default model</option>
+						@foreach (var model in SelectedProviderModels)
+						{
+							<option value="@model.ModelId">@model.DisplayName</option>
+						}
+					</select>
+					<ModelRefreshButton ProviderId="@SelectedProviderId" IsInference="@UseInference"
+										OnRefreshed="HandleProviderModelsRefreshed"
+										OnInferenceRefreshed="HandleInferenceModelsRefreshed" />
+				</div>
 				<div class="form-text">@GetModelHelpText()</div>
 			</div>
 
@@ -303,6 +308,28 @@
 			SelectedModelId = null;
 			_ = SelectedModelIdChanged.InvokeAsync(null);
 		}
+	}
+
+	private async Task HandleProviderModelsRefreshed(List<ProviderModel> models)
+	{
+		var provider = AvailableProviders.FirstOrDefault(provider => provider.Id == SelectedProviderId);
+		if (provider != null)
+		{
+			provider.AvailableModels = models;
+		}
+
+		await ResetSelectedModelIfUnavailableAsync();
+	}
+
+	private async Task HandleInferenceModelsRefreshed(List<InferenceModel> models)
+	{
+		var provider = AvailableInferenceProviders.FirstOrDefault(provider => provider.Id == SelectedProviderId);
+		if (provider != null)
+		{
+			provider.Models = models;
+		}
+
+		await ResetSelectedModelIfUnavailableAsync();
 	}
 
 	private async Task ResetSelectedModelIfUnavailableAsync()

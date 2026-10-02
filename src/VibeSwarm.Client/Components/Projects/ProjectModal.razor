@@ -51,7 +51,8 @@ Badge="@AutoCommitSummary" @bind-IsOpen="_openAutomation">
 <ProjectAutomationSection Project="@FormModel" IsEdit="@IsEdit"
 AvailableInferenceProviders="@_availableInferenceProviders"
 InferenceModels="@_commitSummaryInferenceModels"
-OnCommitSummaryProviderChanged="HandleCommitSummaryInferenceProviderChanged" />
+OnCommitSummaryProviderChanged="HandleCommitSummaryInferenceProviderChanged"
+OnCommitSummaryModelsRefreshed="LoadCommitSummaryInferenceModelsAsync" />
 </AccordionSection>
 
 <AccordionSection Title="Providers and agents" Icon="cpu"
@@ -62,7 +63,8 @@ ResolveProvider="ResolveProvider" IsProviderSelected="IsProviderSelected"
 ResolveProviderModels="GetProviderModels"
 OnReorder="ReorderProviderSelection"
 OnRemove="RemoveProviderSelection" OnAdd="AddProviderSelection"
-OnPreferredModelChanged="HandlePreferredModelChanged" />
+OnPreferredModelChanged="HandlePreferredModelChanged"
+OnModelsRefreshed="LoadProviderModelsAsync" />
 
 <hr class="my-4" />
 
@@ -71,7 +73,8 @@ AvailableProviders="@_availableProviders" ResolveAgent="ResolveAgent"
 IsAgentAssigned="IsAgentAssigned" ResolveProviderModels="GetProviderModels"
 OnRemove="RemoveTeamAssignment" OnAdd="AddTeamAssignment"
 OnProviderChanged="HandleTeamAssignmentProviderChanged"
-OnPreferredModelChanged="HandleTeamAssignmentPreferredModelChanged" />
+OnPreferredModelChanged="HandleTeamAssignmentPreferredModelChanged"
+OnModelsRefreshed="LoadProviderModelsAsync" />
 </AccordionSection>
 
 <AccordionSection Title="Ideas and planning" Icon="lightbulb"
@@ -81,14 +84,16 @@ BadgeClass="text-bg-primary" @bind-IsOpen="_openIdeas">
 <ProjectIdeaGenerationSection Project="@FormModel"
 AvailableInferenceProviders="@_availableInferenceProviders"
 InferenceModels="@_ideaInferenceModels"
-OnProviderChanged="HandleIdeaInferenceProviderChanged" />
+OnProviderChanged="HandleIdeaInferenceProviderChanged"
+OnModelsRefreshed="LoadIdeaInferenceModelsAsync" />
 
 <hr class="my-4" />
 
 <ProjectPlanningSection Project="@FormModel" AvailableProviders="@GetPlanningProviders().ToList()"
 PlanningModels="@_planningModels"
 OnPlanningEnabledChanged="HandlePlanningEnabledChanged"
-OnPlanningProviderChanged="HandlePlanningProviderChanged" />
+OnPlanningProviderChanged="HandlePlanningProviderChanged"
+OnPlanningModelsRefreshed="LoadPlanningModelsAsync" />
 </AccordionSection>
 
 <AccordionSection Title="Instructions and memory" Icon="journal-richtext"

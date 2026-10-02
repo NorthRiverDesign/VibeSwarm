@@ -17,23 +17,28 @@
 	<div class="row g-3 mb-3">
 		<div class="col-12 col-lg-4">
 			<label for="@GetModelInputId()" class="form-label">Model</label>
-			<select id="@GetModelInputId()"
-					class="form-select"
-					value="@_selectedModelId"
-					@onchange="HandleModelChanged"
-					disabled="@(!Provider.IsEnabled || _isLoadingModels || _testModels.Count == 0)">
-				<option value="">@(_isLoadingModels ? "Loading..." : "Use provider default model")</option>
-				@foreach (var model in _testModels)
-				{
-					<option value="@model.ModelId">
-						@(model.DisplayName ?? model.ModelId)
-						@if (model.IsDefault)
-						{
-							@(" (Default)")
-						}
-					</option>
-				}
-			</select>
+			<div class="input-group">
+				<select id="@GetModelInputId()"
+						class="form-select"
+						value="@_selectedModelId"
+						@onchange="HandleModelChanged"
+						disabled="@(!Provider.IsEnabled || _isLoadingModels || _testModels.Count == 0)">
+					<option value="">@(_isLoadingModels ? "Loading..." : "Use provider default model")</option>
+					@foreach (var model in _testModels)
+					{
+						<option value="@model.ModelId">
+							@(model.DisplayName ?? model.ModelId)
+							@if (model.IsDefault)
+							{
+								@(" (Default)")
+							}
+						</option>
+					}
+				</select>
+				<ModelRefreshButton ProviderId="@Provider.Id" IsInference="true" ProviderName="@Provider.Name"
+									Disabled="@(!Provider.IsEnabled || _isLoadingModels)"
+									OnInferenceRefreshed="HandleModelsRefreshed" />
+			</div>
 			<div class="form-text">@GetTestModelHelpText()</div>
 		</div>
 		<div class="col-12 col-lg-8">
@@ -160,6 +165,20 @@
 		finally
 		{
 			_isLoadingModels = false;
+		}
+	}
+
+	private void HandleModelsRefreshed(List<InferenceModel> models)
+	{
+		_testModels.Clear();
+		_testModels.AddRange(models
+			.Where(model => model.IsAvailable)
+			.OrderByDescending(model => model.IsDefault)
+			.ThenBy(model => model.DisplayName ?? model.ModelId));
+
+		if (_testModels.All(model => model.ModelId != _selectedModelId))
+		{
+			_selectedModelId = string.Empty;
 		}
 	}
 

@@ -101,6 +101,7 @@ Provider
 <label for="@modelSelectId" class="form-label small mb-1">
 Default model
 </label>
+<div class="input-group input-group-sm">
 <InputSelect TValue="string" id="@modelSelectId"
  Value="@(assignment.PreferredModelId ?? string.Empty)"
  ValueChanged="@(async (string? value) => await HandlePreferredSelectionChanged(assignment.AgentId, value, assignment.PreferredReasoningEffort))"
@@ -113,6 +114,9 @@ Default model
 <option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
 }
 </InputSelect>
+<ModelRefreshButton ProviderId="@assignment.ProviderId" Small="true"
+ OnRefreshed="() => OnModelsRefreshed.InvokeAsync(assignment.ProviderId)" />
+</div>
 <div class="form-text">
 @if (!models.Any())
 {
@@ -242,6 +246,9 @@ public EventCallback<ProjectAgentProviderChange> OnProviderChanged { get; set; }
 
 [Parameter]
 public EventCallback<ProjectAgentModelSelectionChange> OnPreferredModelChanged { get; set; }
+
+[Parameter]
+public EventCallback<Guid> OnModelsRefreshed { get; set; }
 
 private Task HandleProviderChanged(Guid agentId, Guid providerId)
 {
