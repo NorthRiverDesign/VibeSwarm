@@ -1,0 +1,351 @@
+@using System.Globalization
+
+@* One connection as a one-line row that opens in place. The collapsed row says how it connects
+   and which model it uses; it only turns red or amber when something needs attention. *@
+
+<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-3"
+		@onclick="ToggleExpanded" aria-expanded="@(_isExpanded ? "true" : "false")">
+	<i class="bi bi-@GetConnectionModeIcon(Provider.ConnectionMode) flex-shrink-0 @(Provider.IsEnabled ? "text-primary" : "text-body-tertiary")"></i>
+	<span class="flex-grow-1 min-width-0 text-start">
+		<span class="d-flex align-items-center gap-2 min-width-0">
+			<span class="fw-medium text-truncate @(Provider.IsEnabled ? "" : "text-body-secondary")">@Provider.Name</span>
+			@if (Provider.IsDefault)
+			{
+				<i class="bi bi-star-fill text-warning small flex-shrink-0" title="Default connection" aria-label="Default connection"></i>
+			}
+		</span>
+		@if (GetAttentionLine() is { } attention)
+		{
+			<span class="d-block small text-danger-emphasis text-truncate">@attention</span>
+		}
+		else
+		{
+			<span class="d-block small text-body-secondary text-truncate">@GetSummaryLine()</span>
+		}
+	</span>
+	@if (!Provider.IsEnabled)
+	{
+		<span class="small text-body-tertiary flex-shrink-0">Off</span>
+	}
+	<i class="bi @(_isExpanded ? "bi-chevron-up" : "bi-chevron-down") text-body-tertiary flex-shrink-0"></i>
+</button>
+@if (_isExpanded)
+{
+	var availableModels = GetSortedModels();
+	var defaultModel = availableModels.FirstOrDefault(model => model.IsDefault);
+	var unavailableDefaultModel = GetUnavailableDefaultModel();
+
+	<div class="list-group-item d-flex flex-column gap-3 py-3">
+		<div class="d-flex flex-column gap-2">
+			<div class="form-check form-switch mb-0">
+				<input class="form-check-input" type="checkbox" role="switch" id="@_enabledSwitchId"
+					   checked="@Provider.IsEnabled" @onchange="HandleToggleEnabled" />
+				<label class="form-check-label" for="@_enabledSwitchId">Use for jobs</label>
+			</div>
+			@if (Provider.IsDefault)
+			{
+				<div class="small text-body-secondary">
+					<i class="bi bi-star-fill text-warning me-1"></i>New jobs use this connection unless they pick another.
+				</div>
+			}
+			else
+			{
+				<button type="button" class="btn btn-sm btn-link text-decoration-none px-0 align-self-start" @onclick="HandleMakeDefault">
+					<i class="bi bi-star me-1"></i>Make default for new jobs
+				</button>
+			}
+		</div>
+
+		<div class="d-flex flex-column gap-1">
+			<button type="button" class="btn btn-link text-decoration-none text-body p-0 d-flex align-items-center gap-2 text-start"
+					@onclick="HandleShowSelectDefaultModel">
+				<span class="small text-body-secondary flex-shrink-0">Default model</span>
+				<span class="small text-truncate ms-auto">@(defaultModel?.DisplayName ?? defaultModel?.ModelId ?? "Choose")</span>
+				<i class="bi bi-chevron-right small text-body-tertiary flex-shrink-0"></i>
+			</button>
+			@if (unavailableDefaultModel != null)
+			{
+				<div class="small text-warning-emphasis">
+					@(unavailableDefaultModel.DisplayName ?? unavailableDefaultModel.ModelId) is no longer available. Choose another default model.
+				</div>
+			}
+		</div>
+
+		<div class="d-flex flex-column gap-2">
+			<div class="d-flex align-items-center gap-2">
+				<button type="button" class="btn btn-sm btn-link text-decoration-none px-0 d-inline-flex align-items-center gap-1"
+						@onclick="ToggleModels" disabled="@(availableModels.Count == 0)">
+					<i class="bi bi-chevron-@(_showModels ? "down" : "right") small"></i>
+					@availableModels.Count model@(availableModels.Count == 1 ? string.Empty : "s")
+				</button>
+				@if (Provider.LastModelsRefreshAt.HasValue)
+				{
+					<span class="small text-body-tertiary text-truncate">updated @Provider.LastModelsRefreshAt.Value.FormatDateTimeShort()</span>
+				}
+				<button type="button" class="btn btn-sm btn-link text-decoration-none px-0 ms-auto flex-shrink-0"
+						@onclick="HandleRefreshModels" disabled="@IsRefreshingModels">
+					<i class="bi bi-arrow-repeat me-1 @(IsRefreshingModels ? "spin" : "")"></i>Refresh
+				</button>
+			</div>
+			@if (!string.IsNullOrEmpty(RefreshModelsError))
+			{
+				<div class="small text-warning-emphasis">@RefreshModelsError</div>
+			}
+			@if (_showModels && availableModels.Count > 0)
+			{
+				<div class="list-group list-group-flush">
+					@foreach (var model in availableModels)
+					{
+						<div class="list-group-item px-0 py-2 d-flex align-items-start justify-content-between gap-3 small">
+							<span class="min-width-0">
+								<span class="d-flex align-items-center gap-2 flex-wrap">
+									<span class="text-break">@(model.DisplayName ?? model.ModelId)</span>
+									@if (model.IsDefault)
+									{
+										<span class="badge text-bg-primary">Default</span>
+									}
+									@if (model.RetiresOn.HasValue)
+									{
+										<span class="badge bg-warning-subtle text-warning-emphasis">Retires @model.RetiresOn.Value:yyyy-MM-dd</span>
+									}
+								</span>
+								@if (!string.Equals(model.DisplayName, model.ModelId, StringComparison.Ordinal))
+								{
+									<span class="d-block text-body-secondary font-monospace text-break">@model.ModelId</span>
+								}
+							</span>
+							<span class="text-body-secondary flex-shrink-0">@FormatPriceMultiplier(model.PriceMultiplier)</span>
+						</div>
+					}
+				</div>
+			}
+		</div>
+
+		@if (SupportsUsageRefresh || UsageSummary?.LimitWindows.Count > 0 || UsageSummary?.EffectiveMaxUsage > 0)
+		{
+			<div class="d-flex flex-column gap-2">
+				<div class="d-flex align-items-center gap-2">
+					<span class="text-eyebrow me-auto">Usage</span>
+					@if (SupportsUsageRefresh)
+					{
+						<button type="button" class="btn btn-sm btn-link text-decoration-none px-0"
+								title="Runs one tiny request to read your current limits"
+								@onclick="HandleRefreshUsage" disabled="@IsRefreshingUsage">
+							<i class="bi bi-arrow-repeat me-1 @(IsRefreshingUsage ? "spin" : "")"></i>Check usage
+						</button>
+					}
+				</div>
+				@if (UsageSummary?.LimitWindows.Count > 0 || UsageSummary?.EffectiveMaxUsage > 0)
+				{
+					<UsageMeter UsageSummary="UsageSummary" ShowResetTime="true" />
+					@if (UsageSummary?.LastUpdatedAt is { } updatedAt)
+					{
+						<div class="small text-body-tertiary">Checked @updatedAt.FormatDateTimeShort()</div>
+					}
+				}
+				else
+				{
+					<div class="small text-body-secondary">No usage recorded yet. Check usage, or run a job and it fills in on its own.</div>
+				}
+				@if (!string.IsNullOrWhiteSpace(UsageRefreshError))
+				{
+					<div class="small text-warning-emphasis">@UsageRefreshError</div>
+				}
+			</div>
+		}
+
+		@if (TestResult != null)
+		{
+			<div class="small rounded-3 p-2 @(TestResult.IsConnected ? "text-success-emphasis bg-success-subtle" : "text-danger-emphasis bg-danger-subtle")">
+				<i class="bi @(TestResult.IsConnected ? "bi-check-circle" : "bi-x-circle") me-1"></i>@(TestResult.IsConnected ? "Connected" : "Connection failed")
+				@if (!TestResult.IsConnected && !string.IsNullOrEmpty(TestResult.ErrorMessage))
+				{
+					<pre class="mb-0 mt-1 small text-break white-space-pre-wrap">@TestResult.ErrorMessage</pre>
+				}
+			</div>
+		}
+
+		<div class="d-flex align-items-center gap-2">
+			<button type="button" class="btn btn-sm btn-secondary" @onclick="HandleTestConnection" disabled="@IsTesting">
+				@if (IsTesting)
+				{
+					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+				}
+				Test connection
+			</button>
+			<RowActionsDropdown AriaLabel="More connection actions" MenuAlignClass="dropdown-menu-start">
+				<RowActionsItem Icon="pencil" Text="Edit" OnClick="HandleEditProvider" />
+				@if (Provider.ConnectionMode == ProviderConnectionMode.CLI)
+				{
+					<RowActionsItem Icon="download" IconSpin="@IsUpdatingCli" Text="Update CLI"
+									OnClick="HandleUpdateCli" Disabled="@IsUpdatingCli" />
+				}
+			</RowActionsDropdown>
+			<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none px-0 ms-auto" @onclick="HandleDeleteProvider">
+				<i class="bi bi-trash me-1"></i>Delete
+			</button>
+		</div>
+	</div>
+}
+
+@code {
+	[Parameter, EditorRequired]
+	public required Provider Provider { get; set; }
+
+	[Parameter]
+	public IReadOnlyList<ProviderModel> Models { get; set; } = [];
+
+	[Parameter]
+	public ProviderUsageSummary? UsageSummary { get; set; }
+
+	[Parameter]
+	public ConnectionTestResult? TestResult { get; set; }
+
+	[Parameter]
+	public string? RefreshModelsError { get; set; }
+
+	[Parameter]
+	public bool IsTesting { get; set; }
+
+	[Parameter]
+	public bool IsRefreshingModels { get; set; }
+
+	[Parameter]
+	public bool IsUpdatingCli { get; set; }
+
+	[Parameter]
+	public bool IsRefreshingUsage { get; set; }
+
+	/// <summary>Set when the provider can be asked for usage on demand, so the button is not offered otherwise.</summary>
+	[Parameter]
+	public bool SupportsUsageRefresh { get; set; }
+
+	[Parameter]
+	public string? UsageRefreshError { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnRefreshUsage { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnToggleEnabled { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnTestConnection { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnRefreshModels { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnUpdateCli { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnShowSelectDefaultModel { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnMakeDefault { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnEditProvider { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnDeleteProvider { get; set; }
+
+	private readonly string _enabledSwitchId = $"provider-enabled-{Guid.NewGuid():N}";
+	private bool _isExpanded;
+	private bool _showModels;
+	private bool _wasTesting;
+
+	protected override void OnParametersSet()
+	{
+		// A test started elsewhere (such as right after adding the connection) opens the row so
+		// its result is visible.
+		if (IsTesting && !_wasTesting)
+		{
+			_isExpanded = true;
+		}
+
+		_wasTesting = IsTesting;
+	}
+
+	private void ToggleExpanded() => _isExpanded = !_isExpanded;
+
+	private void ToggleModels() => _showModels = !_showModels;
+
+	private Task HandleToggleEnabled(ChangeEventArgs _) => OnToggleEnabled.InvokeAsync(Provider);
+
+	private Task HandleMakeDefault() => OnMakeDefault.InvokeAsync(Provider);
+
+	private Task HandleTestConnection() => OnTestConnection.InvokeAsync(Provider);
+
+	private Task HandleRefreshModels() => OnRefreshModels.InvokeAsync(Provider);
+
+	private Task HandleUpdateCli() => OnUpdateCli.InvokeAsync(Provider);
+
+	private Task HandleShowSelectDefaultModel() => OnShowSelectDefaultModel.InvokeAsync(Provider);
+
+	private Task HandleEditProvider() => OnEditProvider.InvokeAsync(Provider);
+
+	private Task HandleDeleteProvider() => OnDeleteProvider.InvokeAsync(Provider);
+
+	private Task HandleRefreshUsage() => OnRefreshUsage.InvokeAsync(Provider);
+
+	private List<ProviderModel> GetSortedModels()
+	{
+		return Models
+			.Where(model => model.IsAvailable)
+			.OrderByDescending(model => model.IsDefault)
+			.ThenBy(model => model.DisplayName ?? model.ModelId, StringComparer.OrdinalIgnoreCase)
+			.ThenBy(model => model.ModelId, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+	}
+
+	private ProviderModel? GetUnavailableDefaultModel()
+	{
+		return Models.FirstOrDefault(model => model.IsDefault && !model.IsAvailable);
+	}
+
+	/// <summary>Replaces the summary line when the connection needs looking at.</summary>
+	private string? GetAttentionLine()
+	{
+		if (TestResult is { IsConnected: false })
+		{
+			return "Last connection test failed";
+		}
+
+		return GetUnavailableDefaultModel() != null ? "Default model is no longer available" : null;
+	}
+
+	/// <summary>How it connects and which model it uses, as one quiet line.</summary>
+	private string GetSummaryLine()
+	{
+		var parts = new List<string> { Provider.ConnectionMode.ToString() };
+
+		if (ProviderCapabilities.GetConnectionTypeLabel(Provider) is { } connectionType
+			&& !string.IsNullOrWhiteSpace(connectionType))
+		{
+			parts.Add(connectionType);
+		}
+
+		if (Models.FirstOrDefault(model => model.IsDefault && model.IsAvailable) is { } defaultModel)
+		{
+			parts.Add(defaultModel.DisplayName ?? defaultModel.ModelId);
+		}
+
+		return string.Join(" · ", parts);
+	}
+
+	private static string FormatPriceMultiplier(decimal? priceMultiplier)
+	{
+		return priceMultiplier.HasValue
+			? $"{priceMultiplier.Value.ToString("0.##", CultureInfo.InvariantCulture)}x"
+			: "n/a";
+	}
+
+	private static string GetConnectionModeIcon(ProviderConnectionMode mode) => mode switch
+	{
+		ProviderConnectionMode.CLI => "terminal",
+		ProviderConnectionMode.REST => "globe",
+		ProviderConnectionMode.SDK => "box",
+		_ => "plug"
+	};
+}

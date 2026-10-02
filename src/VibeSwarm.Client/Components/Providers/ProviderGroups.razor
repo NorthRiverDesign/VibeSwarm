@@ -1,0 +1,178 @@
+@* One grouped list per provider: its CLI on this host first, then the connections jobs run
+   through. Everything is on one page, so whether a provider is ready shows without tapping. *@
+
+<div class="d-flex flex-column gap-4">
+	@foreach (var status in Statuses)
+	{
+		var connections = GetConnections(status.ProviderType);
+
+		<section class="d-flex flex-column gap-2" aria-label="@status.DisplayName" @key="status.ProviderType">
+			<div class="d-flex align-items-center gap-3 px-1">
+				<h2 class="text-eyebrow mb-0 me-auto">@status.DisplayName</h2>
+				@if (connections.Count > 0)
+				{
+					<button type="button" class="btn btn-sm btn-link text-decoration-none px-0"
+							title="@($"Add a {status.DisplayName} connection")"
+							@onclick="() => OnAddConnection.InvokeAsync(status.ProviderType)">
+						<i class="bi bi-plus-lg me-1"></i>Add
+					</button>
+				}
+			</div>
+
+			<div class="list-group rounded-4">
+				<ProviderHostRow Status="status"
+								 IsInstalling="@(InstallingProviderType == status.ProviderType)"
+								 IsSavingAuthentication="@(SavingAuthenticationProviderType == status.ProviderType)"
+								 OnInstall="OnInstallProvider"
+								 OnSaveAuthentication="OnSaveAuthentication" />
+
+				@foreach (var provider in connections)
+				{
+					<ProviderConnectionRow @key="provider.Id"
+										   Provider="provider"
+										   Models="GetProviderModels(provider.Id)"
+										   UsageSummary="GetUsageSummary(provider.Id)"
+										   TestResult="GetTestResult(provider.Id)"
+										   RefreshModelsError="@GetRefreshModelsError(provider.Id)"
+										   IsTesting="@(TestingId == provider.Id)"
+										   IsRefreshingModels="@(RefreshingModelsId == provider.Id)"
+										   IsUpdatingCli="@(UpdatingCliId == provider.Id)"
+										   IsRefreshingUsage="@(RefreshingUsageId == provider.Id)"
+										   SupportsUsageRefresh="@SupportsUsageRefresh(provider)"
+										   UsageRefreshError="@GetUsageRefreshError(provider.Id)"
+										   OnRefreshUsage="OnRefreshUsage"
+										   OnToggleEnabled="OnToggleEnabled"
+										   OnTestConnection="OnTestConnection"
+										   OnRefreshModels="OnRefreshModels"
+										   OnUpdateCli="OnUpdateCli"
+										   OnShowSelectDefaultModel="OnShowSelectDefaultModel"
+										   OnMakeDefault="OnMakeDefault"
+										   OnEditProvider="OnEditProvider"
+										   OnDeleteProvider="OnDeleteProvider" />
+				}
+
+				@if (connections.Count == 0)
+				{
+					<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-3 text-primary"
+							@onclick="() => OnAddConnection.InvokeAsync(status.ProviderType)">
+						<i class="bi bi-plus-circle flex-shrink-0"></i>
+						<span class="flex-grow-1 min-width-0 text-start">
+							<span class="d-block fw-medium">Add a connection</span>
+							<span class="d-block small text-body-secondary">Jobs can't use @status.DisplayName until it has one.</span>
+						</span>
+					</button>
+				}
+			</div>
+		</section>
+	}
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public IReadOnlyList<CommonProviderSetupStatus> Statuses { get; set; } = [];
+
+	[Parameter, EditorRequired]
+	public IReadOnlyList<Provider> Providers { get; set; } = [];
+
+	[Parameter]
+	public ProviderType? InstallingProviderType { get; set; }
+
+	[Parameter]
+	public ProviderType? SavingAuthenticationProviderType { get; set; }
+
+	[Parameter]
+	public IReadOnlyDictionary<Guid, List<ProviderModel>> ProviderModels { get; set; } = new Dictionary<Guid, List<ProviderModel>>();
+
+	[Parameter]
+	public IReadOnlyDictionary<Guid, ProviderUsageSummary> UsageSummaries { get; set; } = new Dictionary<Guid, ProviderUsageSummary>();
+
+	[Parameter]
+	public IReadOnlyDictionary<Guid, ConnectionTestResult> TestResults { get; set; } = new Dictionary<Guid, ConnectionTestResult>();
+
+	[Parameter]
+	public IReadOnlyDictionary<Guid, string> RefreshModelsErrors { get; set; } = new Dictionary<Guid, string>();
+
+	[Parameter]
+	public IReadOnlyDictionary<Guid, string> UsageRefreshErrors { get; set; } = new Dictionary<Guid, string>();
+
+	[Parameter]
+	public Guid? TestingId { get; set; }
+
+	[Parameter]
+	public Guid? RefreshingModelsId { get; set; }
+
+	[Parameter]
+	public Guid? UpdatingCliId { get; set; }
+
+	[Parameter]
+	public Guid? RefreshingUsageId { get; set; }
+
+	[Parameter]
+	public EventCallback<ProviderType> OnInstallProvider { get; set; }
+
+	[Parameter]
+	public EventCallback<CommonProviderSetupRequest> OnSaveAuthentication { get; set; }
+
+	[Parameter]
+	public EventCallback<ProviderType> OnAddConnection { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnRefreshUsage { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnToggleEnabled { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnTestConnection { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnRefreshModels { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnUpdateCli { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnShowSelectDefaultModel { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnMakeDefault { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnEditProvider { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnDeleteProvider { get; set; }
+
+	private List<Provider> GetConnections(ProviderType providerType)
+	{
+		return Providers
+			.Where(provider => provider.Type == providerType)
+			.OrderByDescending(provider => provider.IsDefault)
+			.ThenByDescending(provider => provider.IsEnabled)
+			.ThenBy(provider => provider.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+	}
+
+	private IReadOnlyList<ProviderModel> GetProviderModels(Guid providerId)
+		=> ProviderModels.TryGetValue(providerId, out var models) ? models : [];
+
+	private ProviderUsageSummary? GetUsageSummary(Guid providerId)
+		=> UsageSummaries.TryGetValue(providerId, out var summary) ? summary : null;
+
+	private ConnectionTestResult? GetTestResult(Guid providerId)
+		=> TestResults.TryGetValue(providerId, out var result) ? result : null;
+
+	private string? GetRefreshModelsError(Guid providerId)
+		=> RefreshModelsErrors.TryGetValue(providerId, out var error) ? error : null;
+
+	private string? GetUsageRefreshError(Guid providerId)
+		=> UsageRefreshErrors.TryGetValue(providerId, out var error) ? error : null;
+
+	/// <summary>
+	/// Only CLI connections can be probed for usage. SDK connections go through the API,
+	/// which does not report subscription windows.
+	/// </summary>
+	private static bool SupportsUsageRefresh(Provider provider)
+		=> provider.ConnectionMode == ProviderConnectionMode.CLI
+			&& provider.Type is ProviderType.Claude;
+}

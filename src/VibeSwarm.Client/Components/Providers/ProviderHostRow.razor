@@ -1,0 +1,209 @@
+@* The provider's CLI on this host as one row: ready, needs sign-in, or not installed. It opens in
+   place for the details and the install, update and API key actions, and opens by itself while
+   something still needs doing. *@
+
+<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-3"
+		@onclick="ToggleExpanded" aria-expanded="@(IsExpanded ? "true" : "false")">
+	<i class="bi bi-@GetProviderTypeIcon(Status.ProviderType) flex-shrink-0 @(IsReady ? "text-primary" : "text-warning")"></i>
+	<span class="flex-grow-1 min-width-0 text-start">
+		<span class="d-block fw-medium text-truncate">On this host</span>
+		@if (!IsExpanded && GetAttentionLine() is { } attention)
+		{
+			<span class="d-block small text-warning-emphasis text-truncate">@attention</span>
+		}
+	</span>
+	<span class="small flex-shrink-0 @(IsReady ? "text-success" : "text-warning-emphasis")">@GetStatusText()</span>
+	<i class="bi @(IsExpanded ? "bi-chevron-up" : "bi-chevron-down") text-body-tertiary flex-shrink-0"></i>
+</button>
+@if (IsExpanded)
+{
+	<div class="list-group-item d-flex flex-column gap-3 py-3">
+		<dl class="d-flex flex-column gap-2 small mb-0">
+			<div class="d-flex justify-content-between gap-3">
+				<dt class="fw-normal text-body-secondary">Installed</dt>
+				<dd class="mb-0 text-end text-break">@(Status.IsInstalled ? Status.InstalledVersion ?? "Yes" : "No")</dd>
+			</div>
+			@if (!string.IsNullOrWhiteSpace(Status.ResolvedExecutablePath))
+			{
+				<div class="d-flex justify-content-between gap-3">
+					<dt class="fw-normal text-body-secondary">Path</dt>
+					<dd class="mb-0 text-end min-width-0 font-monospace text-break">@Status.ResolvedExecutablePath</dd>
+				</div>
+			}
+			<div class="d-flex justify-content-between gap-3">
+				<dt class="fw-normal text-body-secondary">Signed in</dt>
+				<dd class="mb-0 text-end">@GetSignInText()</dd>
+			</div>
+			@if (!string.IsNullOrWhiteSpace(Status.AuthenticationStatus))
+			{
+				<dd class="mb-0 text-body-secondary">@Status.AuthenticationStatus</dd>
+			}
+		</dl>
+
+		@if (Status.HostTools.Count > 0)
+		{
+			<div class="d-flex flex-column gap-2">
+				<div class="text-eyebrow">Helpful tools</div>
+				@foreach (var tool in Status.HostTools)
+				{
+					<div class="d-flex align-items-start gap-2 small">
+						<i class="bi @(tool.IsInstalled ? "bi-check-circle text-success" : "bi-exclamation-circle text-warning") flex-shrink-0"></i>
+						<span class="flex-grow-1 min-width-0">
+							<span class="d-block">@tool.Name <span class="text-body-secondary">(@tool.Command)</span></span>
+							<span class="d-block text-body-secondary">@(tool.IsInstalled ? tool.Purpose : tool.Status ?? tool.Purpose)</span>
+						</span>
+					</div>
+				}
+			</div>
+		}
+
+		@if (_showKeyForm)
+		{
+			<EditForm Model="@_request" OnValidSubmit="HandleSaveAuthentication" class="d-flex flex-column gap-2">
+				<label class="form-label small text-body-secondary mb-0" for="@($"host-key-{Status.ProviderType}")">@Status.ApiKeyLabel</label>
+				<InputText id="@($"host-key-{Status.ProviderType}")" @bind-Value="_request.ApiKey" class="form-control" type="password"
+						   placeholder="@Status.ApiKeyPlaceholder" />
+				@if (!string.IsNullOrWhiteSpace(Status.ApiKeyHelpText))
+				{
+					<div class="form-text mt-0">@Status.ApiKeyHelpText</div>
+				}
+				@if (!string.IsNullOrWhiteSpace(_errorMessage))
+				{
+					<div class="text-danger small"><i class="bi bi-exclamation-circle me-1"></i>@_errorMessage</div>
+				}
+				<div class="d-flex gap-2">
+					<button type="submit" class="btn btn-primary btn-sm" disabled="@IsSavingAuthentication">
+						@if (IsSavingAuthentication)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						}
+						Save key
+					</button>
+					<button type="button" class="btn btn-secondary btn-sm" @onclick="HideKeyForm" disabled="@IsSavingAuthentication">Cancel</button>
+				</div>
+			</EditForm>
+		}
+		else
+		{
+			<div class="d-flex flex-wrap align-items-center gap-2">
+				<button type="button" class="btn btn-sm @(Status.IsInstalled ? "btn-secondary" : "btn-primary")"
+						@onclick="InstallProvider" disabled="@IsInstalling">
+					@if (IsInstalling)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					@(Status.IsInstalled ? "Update" : "Install")
+				</button>
+				<button type="button" class="btn btn-sm @(Status.IsInstalled && !Status.IsAuthenticated ? "btn-primary" : "btn-secondary")"
+						@onclick="ShowKeyForm" disabled="@IsSavingAuthentication">
+					Use an API key
+				</button>
+				<a class="btn btn-sm btn-link text-decoration-none px-0 ms-auto" href="@Status.DocumentationUrl" target="_blank" rel="noopener noreferrer">
+					Setup guide<i class="bi bi-box-arrow-up-right ms-1"></i>
+				</a>
+			</div>
+		}
+	</div>
+}
+
+@code {
+	[Parameter, EditorRequired]
+	public CommonProviderSetupStatus Status { get; set; } = new();
+
+	[Parameter]
+	public bool IsInstalling { get; set; }
+
+	[Parameter]
+	public bool IsSavingAuthentication { get; set; }
+
+	[Parameter]
+	public EventCallback<ProviderType> OnInstall { get; set; }
+
+	[Parameter]
+	public EventCallback<CommonProviderSetupRequest> OnSaveAuthentication { get; set; }
+
+	/// <summary>Set once the user opens or closes the row, overriding the automatic open state.</summary>
+	private bool? _expandedOverride;
+	private bool _showKeyForm;
+	private string? _errorMessage;
+	private CommonProviderSetupRequest _request = new();
+
+	private bool IsReady => Status.IsInstalled && Status.IsAuthenticated;
+
+	private bool IsExpanded => _expandedOverride ?? !IsReady;
+
+	protected override void OnParametersSet()
+	{
+		if (_request.ProviderType != Status.ProviderType)
+		{
+			_request = new CommonProviderSetupRequest { ProviderType = Status.ProviderType };
+		}
+	}
+
+	private void ToggleExpanded() => _expandedOverride = !IsExpanded;
+
+	private string GetStatusText()
+	{
+		if (!Status.IsInstalled)
+		{
+			return "Not installed";
+		}
+
+		return Status.IsAuthenticated ? "Ready" : "Needs sign-in";
+	}
+
+	/// <summary>A second line only when something needs doing, saying what to do.</summary>
+	private string? GetAttentionLine()
+	{
+		if (!Status.IsInstalled)
+		{
+			return $"Install it to run jobs with {Status.DisplayName}.";
+		}
+
+		return Status.IsAuthenticated ? null : Status.AuthenticationStatus;
+	}
+
+	private string GetSignInText()
+	{
+		var state = Status.IsAuthenticated ? "Yes" : "Not yet";
+		return string.IsNullOrWhiteSpace(Status.AuthenticationTypeLabel)
+			? state
+			: $"{state} · {Status.AuthenticationTypeLabel}";
+	}
+
+	private Task InstallProvider() => OnInstall.InvokeAsync(Status.ProviderType);
+
+	private void ShowKeyForm()
+	{
+		_errorMessage = null;
+		_showKeyForm = true;
+	}
+
+	private void HideKeyForm()
+	{
+		_errorMessage = null;
+		_showKeyForm = false;
+		_request = new CommonProviderSetupRequest { ProviderType = Status.ProviderType };
+	}
+
+	private async Task HandleSaveAuthentication()
+	{
+		if (string.IsNullOrWhiteSpace(_request.ApiKey))
+		{
+			_errorMessage = $"{Status.ApiKeyLabel} is required.";
+			return;
+		}
+
+		_errorMessage = null;
+		await OnSaveAuthentication.InvokeAsync(_request);
+		HideKeyForm();
+	}
+
+	private static string GetProviderTypeIcon(ProviderType type) => type switch
+	{
+		ProviderType.OpenCode => "code-slash",
+		ProviderType.Claude => "robot",
+		ProviderType.Copilot => "github",
+		_ => "cpu"
+	};
+}

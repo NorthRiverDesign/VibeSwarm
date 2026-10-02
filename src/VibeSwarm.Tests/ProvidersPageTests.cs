@@ -55,10 +55,11 @@ public sealed class ProvidersPageTests
 
 		var html = await RenderProvidersPageAsync(providers, statuses);
 
-		Assert.DoesNotContain("Configured Providers", html);
-		Assert.Contains("Connections", html);
-		Assert.Contains("Add SDK", html);
-		Assert.Contains("Claude SDK Primary", html);
+		Assert.Contains("aria-label=\"Anthropic Claude\"", html);
+		Assert.Contains("aria-label=\"GitHub Copilot\"", html);
+		Assert.Contains("aria-label=\"OpenCode Agent\"", html);
+		Assert.True(html.IndexOf("Claude SDK Primary", StringComparison.Ordinal) < html.IndexOf("aria-label=\"GitHub Copilot\"", StringComparison.Ordinal));
+		Assert.True(html.IndexOf("aria-label=\"GitHub Copilot\"", StringComparison.Ordinal) < html.IndexOf("Copilot CLI Main", StringComparison.Ordinal));
 		Assert.True(html.IndexOf("Anthropic Claude", StringComparison.Ordinal) < html.IndexOf("Claude SDK Primary", StringComparison.Ordinal));
 	}
 
@@ -74,9 +75,10 @@ public sealed class ProvidersPageTests
 
 		var html = await RenderProvidersPageAsync([], statuses);
 
-		Assert.Contains("No Anthropic Claude connections", html);
-		Assert.Contains("Add CLI", html);
-		Assert.Contains("Add SDK", html);
+		Assert.Contains("Add a connection", html);
+		Assert.Contains("use Anthropic Claude until it has one.", html);
+		Assert.DoesNotContain("Add CLI", html);
+		Assert.DoesNotContain("Add SDK", html);
 	}
 
 	[Fact]
@@ -84,13 +86,14 @@ public sealed class ProvidersPageTests
 	{
 		var html = await RenderProvidersPageAsync([], []);
 
-		Assert.Contains("btn btn-primary", html);
-		Assert.Contains(">Add<", html);
-		Assert.Contains("justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
+		Assert.Contains("<h1 class=\"fs-2 fw-bold mb-0 me-auto\">Providers</h1>", html);
+		Assert.Contains("btn btn-primary rounded-circle", html);
+		Assert.Contains("aria-label=\"Add a connection\"", html);
+		Assert.Contains("aria-label=\"Check this host again\"", html);
 	}
 
 	[Fact]
-	public async Task RenderedProvidersPage_ShowsConnectionTypeBadgeForCopilotByokConnection()
+	public async Task RenderedProvidersPage_ShowsConnectionTypeInSummaryForCopilotByokConnection()
 	{
 		var provider = new Provider
 		{
@@ -110,13 +113,11 @@ public sealed class ProvidersPageTests
 
 		var html = await RenderProvidersPageAsync([provider], statuses);
 
-		Assert.Contains("d-flex align-items-center justify-content-between flex-wrap gap-2", html);
-		Assert.DoesNotContain("d-flex align-items-start justify-content-between flex-wrap gap-2", html);
 		Assert.Contains("Custom Provider", html);
 	}
 
 	[Fact]
-	public async Task RenderedProvidersPage_UsesScrollableTabsAndCompactInstalledIndicator()
+	public async Task RenderedProvidersPage_ShowsEveryProviderOnOnePageWithoutTabs()
 	{
 		var installedProvider = new Provider
 		{
@@ -135,15 +136,15 @@ public sealed class ProvidersPageTests
 
 		var html = await RenderProvidersPageAsync([installedProvider], statuses);
 
-		Assert.Contains("overflow-x-auto overflow-y-hidden pb-1", html);
-		Assert.Contains("nav nav-tabs flex-nowrap mb-3", html);
-		Assert.Contains("bi bi-check2-circle-fill text-success", html);
-		Assert.Contains("aria-label=\"Installed\"", html);
-		Assert.DoesNotContain("badge bg-success ms-2", html);
+		Assert.DoesNotContain("nav-tabs", html);
+		Assert.Contains("aria-label=\"Anthropic Claude\"", html);
+		Assert.Contains("aria-label=\"GitHub Copilot\"", html);
+		Assert.Contains("Not installed", html);
+		Assert.Contains("Ready", html);
 	}
 
 	[Fact]
-	public async Task RenderedProvidersPage_UsesResponsiveGridForConfiguredProviderRows()
+	public async Task RenderedProvidersPage_StartsConnectionRowsCollapsed()
 	{
 		var provider = new Provider
 		{
@@ -161,16 +162,13 @@ public sealed class ProvidersPageTests
 
 		var html = await RenderProvidersPageAsync([provider], statuses);
 
-		Assert.Contains("row g-3 align-items-start", html);
-		Assert.Contains("col-12 col-lg min-width-0", html);
-		Assert.Contains("col-12 col-lg-auto", html);
-		// The enabled control is a plain Bootstrap switch now, not a boxed custom toggle.
-		Assert.Contains("form-check form-switch", html);
-		Assert.DoesNotContain("toggle-slider", html);
+		Assert.Contains("Claude CLI Main", html);
+		Assert.Contains("aria-expanded=\"false\"", html);
+		Assert.DoesNotContain("Test connection", html);
 	}
 
 	[Fact]
-	public async Task RenderedProvidersPage_ShowsConnectionModePillsWhenProviderTypeHasMultipleConfiguredModes()
+	public async Task RenderedProvidersPage_ListsConnectionsOfEveryModeInOneGroup()
 	{
 		var cliProvider = new Provider
 		{
@@ -196,10 +194,11 @@ public sealed class ProvidersPageTests
 
 		var html = await RenderProvidersPageAsync([cliProvider, sdkProvider], statuses);
 
-		Assert.Contains("nav nav-pills", html);
-		Assert.Contains(">All<", html);
-		Assert.Contains(">CLI<", html);
-		Assert.Contains(">SDK<", html);
+		Assert.DoesNotContain("nav-pills", html);
+		Assert.Contains("Claude CLI Main", html);
+		Assert.Contains("Claude SDK Main", html);
+		Assert.Contains("bi bi-terminal", html);
+		Assert.Contains("bi bi-box", html);
 	}
 
 	private static CommonProviderSetupStatus CreateStatus(ProviderType type, string displayName, Provider? provider = null)

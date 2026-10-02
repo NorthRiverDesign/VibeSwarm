@@ -5,46 +5,53 @@
 @inject HttpProviderService HttpProviderService
 @inject NotificationService NotificationService
 
-<PageHeader Title="Providers" Subtitle="CLI coding agents installed on this host that run your jobs.">
-	<Actions>
-		<ActionButton Icon="arrow-repeat" Text="Re-scan host" HideTextOnMobile="true"
-					  Title="Re-detect installed CLIs" OnClick="RefreshCommonProviderStatusesAsync"
-					  IsLoading="IsRefreshingCommonProviders" />
-		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
-	</Actions>
-</PageHeader>
+<div class="d-flex flex-column gap-4">
+	<div class="d-flex align-items-center gap-2">
+		<h1 class="fs-2 fw-bold mb-0 me-auto">Providers</h1>
+		<button type="button" class="btn btn-secondary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
+				@onclick="RefreshCommonProviderStatusesAsync" disabled="@IsRefreshingCommonProviders"
+				title="Check this host again for installed CLIs and sign-ins" aria-label="Check this host again">
+			<i class="bi bi-arrow-repeat @(IsRefreshingCommonProviders ? "spin" : "")"></i>
+		</button>
+		<button type="button" class="btn btn-primary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
+				@onclick="ShowAddModal" title="Add a connection" aria-label="Add a connection">
+			<i class="bi bi-plus-lg"></i>
+		</button>
+	</div>
 
-<ProviderHostSetupSection IsLoading="@IsLoading"
-						  Statuses="CommonProviderStatuses"
-						  Providers="ProvidersList"
-						  ActiveProviderTab="@_activeProviderTab"
-						  ActiveProviderTabChanged="SetActiveProviderTab"
-						  IsRefreshing="@IsRefreshingCommonProviders"
-						  InstallingProviderType="@InstallingProviderType"
-						  SavingAuthenticationProviderType="@SavingAuthenticationProviderType"
-						  ProviderModels="ProviderModels"
-						  UsageSummaries="UsageSummaries"
-						  RefreshingUsageId="@RefreshingUsageId"
-						  UsageRefreshErrors="UsageRefreshErrors"
-						  OnRefreshUsage="RefreshUsageAsync"
-						  TestResults="TestResults"
-						  RefreshModelsErrors="RefreshModelsErrors"
-						  TestingId="@TestingId"
-						  RefreshingModelsId="@RefreshingModelsId"
-						  UpdatingCliId="@UpdatingCliId"
-						  OnRefreshStatuses="RefreshCommonProviderStatusesAsync"
-						  OnInstallProvider="InstallCommonProviderAsync"
-						  OnSaveAuthentication="SaveCommonProviderAuthenticationAsync"
-						  OnAddConnection="HandleAddConnection"
-						  OnToggleEnabled="ToggleEnabled"
-						  OnTestConnection="TestConnection"
-						  OnRefreshModels="RefreshModels"
-						  OnUpdateCli="UpdateCli"
-						  OnShowSelectDefaultModel="ShowSelectDefaultModelModal"
-						  OnMakeDefault="MakeDefault"
-						  OnEditProvider="EditProvider"
-						  OnDeleteProvider="ShowDeleteConfirmation" />
-
+	@if (IsLoading)
+	{
+		<LoadingSpinner Text="Checking providers..." />
+	}
+	else
+	{
+		<ProviderGroups Statuses="CommonProviderStatuses"
+						Providers="ProvidersList"
+						InstallingProviderType="@InstallingProviderType"
+						SavingAuthenticationProviderType="@SavingAuthenticationProviderType"
+						ProviderModels="ProviderModels"
+						UsageSummaries="UsageSummaries"
+						TestResults="TestResults"
+						RefreshModelsErrors="RefreshModelsErrors"
+						UsageRefreshErrors="UsageRefreshErrors"
+						TestingId="@TestingId"
+						RefreshingModelsId="@RefreshingModelsId"
+						UpdatingCliId="@UpdatingCliId"
+						RefreshingUsageId="@RefreshingUsageId"
+						OnInstallProvider="InstallCommonProviderAsync"
+						OnSaveAuthentication="SaveCommonProviderAuthenticationAsync"
+						OnAddConnection="HandleAddConnection"
+						OnRefreshUsage="RefreshUsageAsync"
+						OnToggleEnabled="ToggleEnabled"
+						OnTestConnection="TestConnection"
+						OnRefreshModels="RefreshModels"
+						OnUpdateCli="UpdateCli"
+						OnShowSelectDefaultModel="ShowSelectDefaultModelModal"
+						OnMakeDefault="MakeDefault"
+						OnEditProvider="EditProvider"
+						OnDeleteProvider="ShowDeleteConfirmation" />
+	}
+</div>
 
 @* Provider Modal for Add/Edit *@
 <ProviderModal @bind-IsVisible="ShowProviderModal" EditProvider="@EditingProvider"
@@ -64,7 +71,6 @@
 @code {
 	private List<Provider> ProvidersList { get; set; } = new();
 	private bool IsLoading { get; set; } = true;
-	private string _activeProviderTab = "";
 	private bool ShowProviderModal { get; set; }
 	private Provider? EditingProvider { get; set; }
 	private ProviderType? SuggestedProviderType { get; set; }
@@ -106,20 +112,10 @@
 		try
 		{
 			ProvidersList = (await ProviderService.GetAllAsync()).ToList();
-
-			ProviderModels.Clear();
-			foreach (var provider in ProvidersList)
-			{
-				var models = await ProviderService.GetModelsAsync(provider.Id);
-				ProviderModels[provider.Id] = models.ToList();
-			}
+			await LoadModelsAsync();
 
 			UsageSummaries = await HttpProviderService.GetAllUsageSummariesAsync();
 			CommonProviderStatuses = (await CommonProviderSetupService.GetStatusesAsync()).ToList();
-			if (string.IsNullOrEmpty(_activeProviderTab) && CommonProviderStatuses.Count > 0)
-			{
-				_activeProviderTab = CommonProviderStatuses[0].ProviderType.ToString();
-			}
 		}
 		catch (Exception ex)
 		{
@@ -148,16 +144,17 @@
 		StateHasChanged();
 	}
 
-	private Task HandleAddConnection((ProviderType ProviderType, ProviderConnectionMode ConnectionMode) request)
+	private void HandleAddConnection(ProviderType providerType)
 	{
-		ShowAddModal(request.ProviderType, request.ConnectionMode);
-		return Task.CompletedTask;
+		ShowAddModal(providerType, ProviderCapabilities.GetDefaultMode(providerType));
 	}
 
-	private Task SetActiveProviderTab(string activeProviderTab)
+	/// <summary>Fetches every connection's cached models at once rather than one after another.</summary>
+	private async Task LoadModelsAsync()
 	{
-		_activeProviderTab = activeProviderTab;
-		return Task.CompletedTask;
+		var modelLists = await Task.WhenAll(ProvidersList.Select(async provider =>
+			(provider.Id, Models: (await ProviderService.GetModelsAsync(provider.Id)).ToList())));
+		ProviderModels = modelLists.ToDictionary(entry => entry.Id, entry => entry.Models);
 	}
 
 	private void EditProvider(Provider provider)
@@ -202,13 +199,7 @@
 		{
 			CommonProviderStatuses = (await CommonProviderSetupService.RefreshAsync()).ToList();
 			ProvidersList = (await ProviderService.GetAllAsync()).ToList();
-
-			ProviderModels.Clear();
-			foreach (var provider in ProvidersList)
-			{
-				var models = await ProviderService.GetModelsAsync(provider.Id);
-				ProviderModels[provider.Id] = models.ToList();
-			}
+			await LoadModelsAsync();
 
 			UsageSummaries = await HttpProviderService.GetAllUsageSummariesAsync();
 			NotificationService.ShowSuccess("Provider scan completed.");

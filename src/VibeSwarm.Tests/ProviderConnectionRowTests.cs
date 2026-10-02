@@ -2,28 +2,67 @@ using Bunit;
 using VibeSwarm.Client.Components.Providers;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Tests;
 
-public sealed class ProviderConnectionListItemTests
+public sealed class ProviderConnectionRowTests
 {
 	[Fact]
-	public void ProviderConnectionListItem_ShowsLabeledMoreActionsButton()
+	public void CollapsedRow_ShowsOneSummaryLineAndOpensInPlace()
 	{
 		using var context = new BunitContext();
 
-		var cut = context.Render<ProviderConnectionListItem>(parameters => parameters
+		var cut = context.Render<ProviderConnectionRow>(parameters => parameters
 			.Add(component => component.Provider, CreateProvider()));
 
-		Assert.Contains(">More<", cut.Markup);
+		Assert.Contains("aria-expanded=\"false\"", cut.Markup);
+		Assert.DoesNotContain("Test connection", cut.Markup);
+
+		cut.Find("button[aria-expanded]").Click();
+
+		Assert.Contains("aria-expanded=\"true\"", cut.Markup);
+		Assert.Contains("Test connection", cut.Markup);
+		Assert.Contains("aria-label=\"More connection actions\"", cut.Markup);
+		Assert.Contains("Delete", cut.Markup);
 	}
 
 	[Fact]
-	public void ProviderConnectionListItem_TogglesExpandedModelListWithMultipliers()
+	public void DeleteLink_RaisesTheDeleteCallbackSoThePageCanConfirm()
+	{
+		using var context = new BunitContext();
+		var provider = CreateProvider();
+		Provider? deleted = null;
+
+		var cut = RenderExpanded(context, parameters => parameters
+			.Add(component => component.Provider, provider)
+			.Add(component => component.OnDeleteProvider, p => deleted = p));
+
+		cut.FindAll("button")
+			.Single(button => button.TextContent.Trim() == "Delete")
+			.Click();
+
+		Assert.Same(provider, deleted);
+	}
+
+	[Fact]
+	public void FailedConnectionTest_ReplacesTheSummaryLine()
 	{
 		using var context = new BunitContext();
 
-		var cut = context.Render<ProviderConnectionListItem>(parameters => parameters
+		var cut = context.Render<ProviderConnectionRow>(parameters => parameters
+			.Add(component => component.Provider, CreateProvider())
+			.Add(component => component.TestResult, new ConnectionTestResult { IsConnected = false, ErrorMessage = "copilot: not found" }));
+
+		Assert.Contains("Last connection test failed", cut.Markup);
+	}
+
+	[Fact]
+	public void ModelList_TogglesOpenWithMultipliers()
+	{
+		using var context = new BunitContext();
+
+		var cut = RenderExpanded(context, parameters => parameters
 			.Add(component => component.Provider, CreateProvider())
 			.Add(component => component.Models,
 			[
@@ -59,7 +98,7 @@ public sealed class ProviderConnectionListItemTests
 		Assert.Contains("1.5x", cut.Markup);
 		Assert.DoesNotContain("claude-haiku", cut.Markup);
 		Assert.DoesNotContain("0.5x", cut.Markup);
-		Assert.Contains("Default model unavailable.", cut.Markup);
+		Assert.Contains("Claude Haiku is no longer available.", cut.Markup);
 	}
 
 
@@ -68,7 +107,7 @@ public sealed class ProviderConnectionListItemTests
 	{
 		using var context = new BunitContext();
 
-		var cut = context.Render<ProviderConnectionListItem>(parameters => parameters
+		var cut = RenderExpanded(context, parameters => parameters
 			.Add(component => component.Provider, CreateProvider())
 			.Add(component => component.SupportsUsageRefresh, true));
 
@@ -81,7 +120,7 @@ public sealed class ProviderConnectionListItemTests
 	{
 		using var context = new BunitContext();
 
-		var cut = context.Render<ProviderConnectionListItem>(parameters => parameters
+		var cut = RenderExpanded(context, parameters => parameters
 			.Add(component => component.Provider, CreateProvider())
 			.Add(component => component.SupportsUsageRefresh, false));
 
@@ -93,7 +132,7 @@ public sealed class ProviderConnectionListItemTests
 	{
 		using var context = new BunitContext();
 
-		var cut = context.Render<ProviderConnectionListItem>(parameters => parameters
+		var cut = RenderExpanded(context, parameters => parameters
 			.Add(component => component.Provider, CreateProvider())
 			.Add(component => component.SupportsUsageRefresh, true)
 			.Add(component => component.UsageSummary, new ProviderUsageSummary
@@ -146,7 +185,7 @@ public sealed class ProviderConnectionListItemTests
 		var provider = CreateProvider();
 		Provider? refreshed = null;
 
-		var cut = context.Render<ProviderConnectionListItem>(parameters => parameters
+		var cut = RenderExpanded(context, parameters => parameters
 			.Add(component => component.Provider, provider)
 			.Add(component => component.SupportsUsageRefresh, true)
 			.Add(component => component.OnRefreshUsage, p => refreshed = p));
@@ -163,7 +202,7 @@ public sealed class ProviderConnectionListItemTests
 	{
 		using var context = new BunitContext();
 
-		var cut = context.Render<ProviderConnectionListItem>(parameters => parameters
+		var cut = RenderExpanded(context, parameters => parameters
 			.Add(component => component.Provider, CreateProvider())
 			.Add(component => component.SupportsUsageRefresh, true)
 			.Add(component => component.UsageRefreshError, "Timed out waiting for the provider to report usage."));
@@ -172,11 +211,11 @@ public sealed class ProviderConnectionListItemTests
 	}
 
 	[Fact]
-	public void ProviderConnectionListItem_ShowsWarningWhenDefaultModelIsUnavailable()
+	public void UnavailableDefaultModel_IsFlaggedCollapsedAndExplainedOpen()
 	{
 		using var context = new BunitContext();
 
-		var cut = context.Render<ProviderConnectionListItem>(parameters => parameters
+		var cut = RenderExpanded(context, parameters => parameters
 			.Add(component => component.Provider, CreateProvider())
 			.Add(component => component.Models,
 			[
@@ -199,8 +238,8 @@ public sealed class ProviderConnectionListItemTests
 				}
 			]));
 
-		Assert.Contains("Default model unavailable.", cut.Markup);
 		Assert.Contains("Claude Haiku is no longer available.", cut.Markup);
+		Assert.Contains("Default model is no longer available", cut.Markup);
 	}
 
 	private static Provider CreateProvider()
@@ -213,5 +252,14 @@ public sealed class ProviderConnectionListItemTests
 			ConnectionMode = ProviderConnectionMode.CLI,
 			IsEnabled = true
 		};
+	}
+
+	private static IRenderedComponent<ProviderConnectionRow> RenderExpanded(
+		BunitContext context,
+		Action<ComponentParameterCollectionBuilder<ProviderConnectionRow>> parameters)
+	{
+		var cut = context.Render<ProviderConnectionRow>(parameters);
+		cut.Find("button[aria-expanded]").Click();
+		return cut;
 	}
 }
