@@ -3815,6 +3815,47 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal(1, result.ProjectCounts.Single(summary => summary.ProjectId == firstProject.Id).ActiveCount);
 	}
 
+	[Theory]
+	[InlineData("current", new[] { "Queued job", "Waiting job", "Running job" })]
+	[InlineData("finished", new[] { "Cancelled job", "Completed job" })]
+	public async Task GetPagedAsync_SplitsCurrentFromFinishedJobs(string statusFilter, string[] expectedTitles)
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Project", WorkingPath = "/tmp/project" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true, IsDefault = true };
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		var statuses = new (string Title, JobStatus Status)[]
+		{
+			("Running job", JobStatus.Processing),
+			("Waiting job", JobStatus.Paused),
+			("Queued job", JobStatus.New),
+			("Completed job", JobStatus.Completed),
+			("Cancelled job", JobStatus.Cancelled)
+		};
+		for (var index = 0; index < statuses.Length; index++)
+		{
+			dbContext.Jobs.Add(new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = statuses[index].Title,
+				Title = statuses[index].Title,
+				Status = statuses[index].Status,
+				Priority = index,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-10 + index)
+			});
+		}
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+		var result = await jobService.GetPagedAsync(statusFilter: statusFilter, page: 1, pageSize: 10);
+
+		Assert.Equal(expectedTitles, result.Items.Select(job => job.Title).ToArray());
+		Assert.All(result.Items, job => Assert.Equal(Array.FindIndex(statuses, seeded => seeded.Title == job.Title), job.Priority));
+	}
+
 	[Fact]
 	public async Task CreateAsync_TruncatesDerivedTitleToEntityLimit()
 	{

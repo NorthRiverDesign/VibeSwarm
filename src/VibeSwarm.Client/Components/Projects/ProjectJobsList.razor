@@ -140,7 +140,6 @@
 			<div class="list-group rounded-4">
 				@foreach (var job in VisibleJobs)
 				{
-					var detail = GetJobDetail(job);
 					@if (_isSelecting)
 					{
 						<label class="list-group-item list-group-item-action d-flex align-items-center gap-3 cursor-pointer">
@@ -153,50 +152,7 @@
 					}
 					else
 					{
-						<a href="/jobs/view/@job.Id" class="list-group-item list-group-item-action d-flex align-items-start gap-3">
-							<span class="flex-shrink-0">
-								@switch (job.Status)
-								{
-									case JobStatus.Completed:
-										<i class="bi bi-check-circle-fill text-success" title="Completed"></i>
-										break;
-									case JobStatus.Failed:
-										<i class="bi bi-x-circle-fill text-danger" title="Failed"></i>
-										break;
-									case JobStatus.Cancelled:
-										<i class="bi bi-slash-circle text-body-secondary" title="Cancelled"></i>
-										break;
-									case JobStatus.Started:
-									case JobStatus.Planning:
-									case JobStatus.Processing:
-										<span class="spinner-border spinner-border-sm text-primary" role="status" title="@job.Status.ToString()">
-											<span class="visually-hidden">Running</span>
-										</span>
-										break;
-									case JobStatus.New:
-									case JobStatus.Pending:
-										<i class="bi bi-hourglass-split text-warning" title="Queued"></i>
-										break;
-									case JobStatus.Paused:
-										<i class="bi bi-chat-dots-fill text-warning" title="Waiting for your reply"></i>
-										break;
-									case JobStatus.Stalled:
-										<i class="bi bi-exclamation-triangle-fill text-warning" title="Stalled"></i>
-										break;
-									default:
-										<i class="bi bi-circle text-secondary" title="@job.Status.ToString()"></i>
-										break;
-								}
-							</span>
-							<span class="flex-grow-1 min-width-0">
-								<span class="d-block text-truncate" title="@job.DisplayTitle">@job.DisplayTitle</span>
-								@if (detail != null)
-								{
-									<span class="d-block small text-truncate @detail.Value.CssClass" title="@detail.Value.Text">@detail.Value.Text</span>
-								}
-							</span>
-							<span class="small text-body-secondary flex-shrink-0" title="@job.CreatedAt.FormatDateTimeShort()">@GetJobTimeLabel(job)</span>
-						</a>
+						<JobRow Job="@job" />
 					}
 				}
 			</div>
@@ -411,43 +367,5 @@
 	private static bool IsDeletable(JobStatus status)
 	{
 		return status is not (JobStatus.Started or JobStatus.Planning or JobStatus.Processing);
-	}
-
-	/// <summary>
-	/// The second line of a row. Only states worth a glance get one: running, waiting, failed, or
-	/// finished with changes that never landed. Everything else lives on the job page.
-	/// </summary>
-	private static (string Text, string CssClass)? GetJobDetail(JobSummary job)
-	{
-		var hasDetectedChanges = JobOutcomeDisplayHelper.HasDetectedChanges(job.ChangedFilesCount, job.PullRequestUrl, job.GitCommitHash, job.MergedAt);
-		var hasDeliveredChanges = JobOutcomeDisplayHelper.HasDeliveredChanges(job.PullRequestUrl, job.GitCommitHash, job.MergedAt);
-
-		return job.Status switch
-		{
-			JobStatus.Started or JobStatus.Planning or JobStatus.Processing when !string.IsNullOrWhiteSpace(job.CurrentActivity)
-				=> (job.CurrentActivity, "text-info"),
-			JobStatus.Paused => ("Waiting for your reply", "text-warning"),
-			JobStatus.Failed or JobStatus.Stalled when !string.IsNullOrWhiteSpace(job.ErrorMessage)
-				=> (job.ErrorMessage, "text-danger"),
-			JobStatus.Failed => ("Failed", "text-danger"),
-			JobStatus.Stalled => ("Stalled", "text-warning"),
-			JobStatus.Completed when job.BuildVerified == false => ("Checks failed", "text-danger"),
-			JobStatus.Completed when hasDetectedChanges && !hasDeliveredChanges => ("Changes not committed yet", "text-warning"),
-			JobStatus.Completed when job.ChangedFilesCount == 0 => ("No changes", "text-body-secondary"),
-			_ => null
-		};
-	}
-
-	private static string GetJobTimeLabel(JobSummary job)
-	{
-		switch (job.Status)
-		{
-			case JobStatus.New or JobStatus.Pending:
-				return "Queued";
-			case JobStatus.Started or JobStatus.Planning or JobStatus.Processing:
-				return "Running";
-		}
-
-		return (job.CompletedAt ?? job.CreatedAt).FormatShortAge();
 	}
 }

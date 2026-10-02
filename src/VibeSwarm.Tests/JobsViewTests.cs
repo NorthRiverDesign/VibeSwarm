@@ -15,37 +15,49 @@ namespace VibeSwarm.Tests;
 public sealed class JobsViewTests
 {
 	[Fact]
-	public void RenderedJobsView_UsesJustifiedHeaderAndBootstrapFilterButtons()
+	public void RenderedJobsView_ShowsRunningWaitingQueuedAndRecentInThatOrder()
 	{
 		using var context = new BunitContext();
 		context.JSInterop.Mode = JSRuntimeMode.Loose;
 
 		var project = CreateProject();
-		var jobService = new FakeJobService();
-		var cut = RenderJobsView(context, jobService, project, project.Id);
+		var jobService = new FakeJobService
+		{
+			CurrentJobs =
+			[
+				CreateJob(project, "Queued later", JobStatus.New, priority: 0, minutesAgo: 30),
+				CreateJob(project, "Running job", JobStatus.Processing, minutesAgo: 20),
+				CreateJob(project, "Queued first", JobStatus.New, priority: 5, minutesAgo: 10),
+				CreateJob(project, "Waiting job", JobStatus.Paused, minutesAgo: 40)
+			],
+			FinishedJobs = [CreateJob(project, "Finished job", JobStatus.Completed, minutesAgo: 60)]
+		};
+		var cut = RenderJobsView(context, jobService, project, projectFilter: null);
 
 		cut.WaitForAssertion(() =>
 		{
-			var header = cut.Find("aside .p-3.border-bottom > div");
-			var statusFilter = cut.Find("aside .btn-group[aria-label='Status filter']");
-			var createJobButton = header.QuerySelector("button");
-			Assert.NotNull(createJobButton);
-			Assert.Contains("justify-content-between", header.ClassName);
-			Assert.Empty(header.QuerySelectorAll("h5 button"));
-			Assert.Contains("Create Job", createJobButton!.TextContent);
-			Assert.Contains("btn-primary", createJobButton.ClassName);
-			Assert.Contains("btn-group", statusFilter.ClassName);
-			Assert.Contains("btn-group-sm", statusFilter.ClassName);
+			var sections = cut.FindAll("section[aria-label]").Select(section => section.GetAttribute("aria-label")).ToList();
+			Assert.Equal(["Running", "Needs you", "Up next", "Recent"], sections);
 
-			var buttons = statusFilter.QuerySelectorAll("button");
-			Assert.Equal(["All", "Active", "Done", "Failed"], buttons.Select(button => button.TextContent.Trim()));
-			Assert.All(buttons, button => Assert.Contains("btn", button.ClassName));
-			Assert.Contains("btn-primary", buttons[0].ClassName);
+			var running = cut.Find("section[aria-label='Running']");
+			Assert.Contains("Running job", running.TextContent);
+			Assert.Contains("Stop", running.QuerySelector("button")!.TextContent);
+
+			Assert.Contains("Waiting for your reply", cut.Find("section[aria-label='Needs you']").TextContent);
+
+			var queued = cut.FindAll("section[aria-label='Up next'] .list-group-item").Select(row => row.TextContent).ToList();
+			Assert.Contains("Queued first", queued[0]);
+			Assert.Contains("Queued later", queued[1]);
+			Assert.Contains("Then 2 ideas from VibeSwarm", queued[2]);
+
+			Assert.Contains("Finished job", cut.Find("section[aria-label='Recent']").TextContent);
+			Assert.Contains("All projects", cut.Find("ul[aria-label='Project']").TextContent);
 		});
+		Assert.Equal(["finished", "current"], jobService.StatusRequests.Take(2));
 	}
 
 	[Fact]
-	public void RenderedJobsView_ClickingStatusFilterUpdatesBootstrapActiveButton()
+	public void RenderedJobsView_RecentFilterAsksForFailedJobs()
 	{
 		using var context = new BunitContext();
 		context.JSInterop.Mode = JSRuntimeMode.Loose;
@@ -54,24 +66,25 @@ public sealed class JobsViewTests
 		var jobService = new FakeJobService();
 		var cut = RenderJobsView(context, jobService, project, project.Id);
 
-		cut.WaitForAssertion(() => Assert.Equal(["all"], jobService.StatusRequests));
+		cut.WaitForAssertion(() => Assert.Contains("finished", jobService.StatusRequests));
 
-		cut.FindAll("aside .btn-group[aria-label='Status filter'] button")
-			.Single(button => button.TextContent.Trim() == "Failed")
-			.Click();
+		cut.Find("section[aria-label='Recent'] select").Change("failed");
 
-		cut.WaitForAssertion(() =>
-		{
-			Assert.Equal(["all", "failed"], jobService.StatusRequests);
-
-			var buttons = cut.FindAll("aside .btn-group[aria-label='Status filter'] button");
-			var allButton = buttons.Single(button => button.TextContent.Trim() == "All");
-			var failedButton = buttons.Single(button => button.TextContent.Trim() == "Failed");
-
-			Assert.Contains("btn-secondary", allButton.ClassName);
-			Assert.Contains("btn-primary", failedButton.ClassName);
-		});
+		cut.WaitForAssertion(() => Assert.Contains("failed", jobService.StatusRequests));
+		Assert.NotNull(cut.Find("button[aria-label='New job']"));
 	}
+
+	private static JobSummary CreateJob(Project project, string title, JobStatus status, int priority = 0, int minutesAgo = 0) => new()
+	{
+		Id = Guid.NewGuid(),
+		ProjectId = project.Id,
+		ProjectName = project.Name,
+		Title = title,
+		GoalPrompt = title,
+		Status = status,
+		Priority = priority,
+		CreatedAt = DateTime.UtcNow.AddMinutes(-minutesAgo)
+	};
 
 	private static IRenderedComponent<JobsView> RenderJobsView(BunitContext context, FakeJobService jobService, Project project, Guid? projectFilter)
 	{
@@ -81,6 +94,7 @@ public sealed class JobsViewTests
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService(project));
 
 		return context.Render<JobsView>(parameters => parameters
 			.Add(component => component.ProjectFilter, projectFilter));
@@ -99,27 +113,25 @@ public sealed class JobsViewTests
 		public List<string> StatusRequests { get; } = [];
 		public override Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);
 
+		public List<JobSummary> CurrentJobs { get; init; } = [];
+		public List<JobSummary> FinishedJobs { get; init; } = [];
+
 		public override Task<JobsListResult> GetPagedAsync(Guid? projectId = null, string statusFilter = "all", int page = 1, int pageSize = 25, CancellationToken cancellationToken = default)
 		{
 			StatusRequests.Add(statusFilter);
+			var items = statusFilter == "current" ? CurrentJobs : FinishedJobs;
 
 			return Task.FromResult(new JobsListResult
 			{
 				PageNumber = page,
 				PageSize = pageSize,
-				TotalCount = 3,
-				Items = [],
+				TotalCount = items.Count,
+				Items = items,
 				ProjectCounts =
 				[
 					new JobProjectCountSummary
 					{
-						ProjectId = projectId ?? Guid.Empty,
-						TotalCount = 3,
-						ActiveCount = 1
-					},
-					new JobProjectCountSummary
-					{
-						ProjectId = Guid.Empty,
+						ProjectId = projectId ?? Guid.Parse("11111111-1111-1111-1111-111111111111"),
 						TotalCount = 3,
 						ActiveCount = 1
 					}
@@ -132,6 +144,20 @@ public sealed class JobsViewTests
 		public override Task<IEnumerable<JobSummary>> GetActiveJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<JobSummary>>([]);
 		public override Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
 		public override Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<JobChangeSet>());
+	}
+
+	private sealed class FakeIdeaService(Project project) : FakeIdeaServiceBase
+	{
+		public override Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default)
+			=> Task.FromResult(new GlobalQueueSnapshot
+			{
+				UpcomingIdeas =
+				[
+					new GlobalQueueIdeaSummary { IdeaId = Guid.NewGuid(), ProjectId = project.Id, ProjectName = project.Name, Description = "One", IsProjectProcessing = true },
+					new GlobalQueueIdeaSummary { IdeaId = Guid.NewGuid(), ProjectId = project.Id, ProjectName = project.Name, Description = "Two", IsProjectProcessing = true },
+					new GlobalQueueIdeaSummary { IdeaId = Guid.NewGuid(), ProjectId = project.Id, ProjectName = project.Name, Description = "Already queued", IsProjectProcessing = true, HasQueuedJob = true }
+				]
+			});
 	}
 
 	private sealed class FakeProjectService(IReadOnlyList<Project> projects) : FakeProjectServiceBase

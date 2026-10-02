@@ -58,6 +58,7 @@ public partial class JobService : IJobService
             PlanningModelUsed = j.PlanningModelUsed,
 			CurrentActivity = j.CurrentActivity,
 			ErrorMessage = j.ErrorMessage,
+			Priority = j.Priority,
 			CreatedAt = j.CreatedAt,
 			StartedAt = j.StartedAt,
 			CompletedAt = j.CompletedAt,
@@ -561,6 +562,20 @@ public partial class JobService : IJobService
                 job.Status == JobStatus.Started ||
                 job.Status == JobStatus.Planning ||
                 job.Status == JobStatus.Processing),
+            // Everything not yet finished, including jobs waiting on the user or stuck,
+            // so the jobs page can show what is running and what comes next.
+            "current" => query.Where(job =>
+                job.Status == JobStatus.New ||
+                job.Status == JobStatus.Pending ||
+                job.Status == JobStatus.Started ||
+                job.Status == JobStatus.Planning ||
+                job.Status == JobStatus.Processing ||
+                job.Status == JobStatus.Paused ||
+                job.Status == JobStatus.Stalled),
+            "finished" => query.Where(job =>
+                job.Status == JobStatus.Completed ||
+                job.Status == JobStatus.Failed ||
+                job.Status == JobStatus.Cancelled),
             "completed" => query.Where(job => job.Status == JobStatus.Completed),
             "failed" => query.Where(job =>
                 job.Status == JobStatus.Failed ||
@@ -579,6 +594,8 @@ public partial class JobService : IJobService
         return statusFilter.Trim().ToLowerInvariant() switch
         {
             "active" => "active",
+            "current" => "current",
+            "finished" => "finished",
             "completed" => "completed",
             "failed" => "failed",
             _ => "all"

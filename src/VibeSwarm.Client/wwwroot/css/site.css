@@ -26,7 +26,7 @@
    6. Console/Terminal Output (specialized colors/fonts)
    7. Chat/Message Bubbles (specialized radii/colors)
    8. Toggle Switch (custom form control)
-   9. Jobs Inbox (hover/active states)
+   9. Card Tabs (underline tabs inside cards)
    10. Modal System (z-index, safe areas, pointer-events)
    11. Toast Container (safe area calc)
    12. Notifications Panel
@@ -553,9 +553,9 @@ body:has(.app-layout) {
 	box-shadow: var(--vs-nav-popout-shadow) !important;
 }
 
-/* Project page tabs are quiet pills: the selected tab reads as selected without
-   competing with the page's one primary button. */
-.project-detail-tabs {
+/* Quiet pills (the project page tabs, the jobs page project picker): the selected
+   pill reads as selected without competing with the page's one primary button. */
+.nav-pills-quiet {
 	--bs-nav-pills-link-active-bg: var(--bs-tertiary-bg);
 	--bs-nav-pills-link-active-color: var(--bs-emphasis-color);
 	--bs-nav-link-color: var(--bs-secondary-color);
@@ -765,43 +765,8 @@ details[open] > summary .details-chevron {
 }
 
 /* ============================================
-   9. JOBS INBOX (hover/active states, fixed widths)
-   Markup uses flex-grow-1 d-flex flex-column + Bootstrap utilities.
+   9. CARD TABS (underline tabs inside cards)
 ============================================ */
-.jobs-inbox-layout {
-	min-height: 0;
-}
-.jobs-project-sidebar {
-	width: 280px;
-	min-width: 280px;
-	max-width: 280px;
-}
-
-.project-filter-item {
-	border-left: 3px solid transparent;
-	transition: all var(--vs-transition);
-}
-.project-filter-item:hover {
-	background: var(--bs-tertiary-bg);
-}
-.project-filter-item.active {
-	background: rgba(88, 166, 255, 0.1);
-	border-left-color: var(--bs-primary);
-	color: var(--bs-primary);
-}
-
-.job-list-item {
-	border-left: 3px solid transparent;
-	transition: background-color var(--vs-transition);
-}
-.job-list-item:hover {
-	background: var(--bs-tertiary-bg);
-}
-.job-list-item.job-selected {
-	background: rgba(88, 166, 255, 0.1);
-	border-left-color: var(--bs-primary);
-}
-
 .nav-tabs-card .nav-link {
 	border: none;
 	border-bottom: 2px solid transparent;
@@ -1209,17 +1174,6 @@ body.vs-modal-open .app-main {
 	}
 }
 
-/* Medium screens */
-@media (max-width: 991.98px) {
-	.jobs-inbox-layout {
-		min-height: auto;
-	}
-	.jobs-list-panel {
-		border: 1px solid var(--bs-border-color);
-		border-radius: var(--bs-border-radius);
-	}
-}
-
 /* Desktop (≥ 992px) */
 @media (min-width: 992px) {
 	.vs-modal-container {
@@ -1258,24 +1212,6 @@ body.vs-modal-open .app-main {
 	}
 	.directory-list {
 		max-height: 400px;
-	}
-
-	.main-content:has(.jobs-inbox-layout) {
-		padding: 0;
-		max-width: none;
-	}
-	.jobs-inbox-layout {
-		height: calc(100vh - var(--vs-safe-area-bottom));
-		height: calc(100dvh - var(--vs-safe-area-bottom));
-	}
-	.jobs-project-sidebar,
-	.jobs-list-panel {
-		height: 100%;
-		overflow: hidden;
-	}
-	.jobs-project-sidebar > .flex-grow-1,
-	.jobs-list-panel > .flex-grow-1 {
-		overflow-y: auto;
 	}
 }
 
@@ -1335,20 +1271,11 @@ body.vs-modal-open .app-main {
 	overflow-y: auto;
 }
 
-.jobs-mobile-filters .btn-group .btn {
-	flex: 1;
-}
-
 @media (max-width: 767.98px) {
 	.mobile-icon-button {
 		width: 44px;
 		height: 44px;
 		padding: 0;
-	}
-
-	.jobs-mobile-filters .form-select,
-	.jobs-mobile-filters .btn {
-		min-height: 2.75rem;
 	}
 }
 

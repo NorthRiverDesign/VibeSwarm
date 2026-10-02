@@ -14,6 +14,8 @@ public class JobSummary
 	public string GoalPrompt { get; set; } = string.Empty;
 	public string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? GoalPrompt : Title;
 	public JobStatus Status { get; set; }
+	/// <summary>Higher runs first among queued jobs; ties run oldest first.</summary>
+	public int Priority { get; set; }
 	public Guid ProjectId { get; set; }
 	public string? ProjectName { get; set; }
 	public Guid ProviderId { get; set; }
