@@ -33,11 +33,11 @@ public sealed class UsersPageTests
 		using var context = new BunitContext();
 		var cut = RenderUsersPage(context, [activeUser, inactiveUser]);
 
-		cut.WaitForAssertion(() => Assert.Contains("Add User", cut.Markup));
+		cut.WaitForAssertion(() => Assert.Contains("aria-label=\"Add a user\"", cut.Markup));
 		var html = cut.Markup;
 
 		Assert.Contains(">Users<", html);
-		Assert.Contains("Add User", html);
+		Assert.Contains("aria-label=\"Add a user\"", html);
 		Assert.Contains("btn btn-primary", html);
 	}
 

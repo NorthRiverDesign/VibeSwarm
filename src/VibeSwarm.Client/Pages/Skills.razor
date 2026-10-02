@@ -5,14 +5,24 @@
 
 <PageHeader Title="Skills" Subtitle="Instructions agents can load on demand during a job.">
 	<Actions>
-		<ActionButton Icon="shop" Text="Marketplace" HideTextOnMobile="true" OnClick="ShowMarketplaceModal" />
-		<ActionButton Icon="folder2-open" Text="From folder" HideTextOnMobile="true" OnClick="ShowLocalPathModal" />
-		<label class="btn btn-secondary mb-0 cursor-pointer mobile-icon-button d-inline-flex align-items-center gap-1" title="Import">
-			<i class="bi bi-box-arrow-in-down"></i>
-			<span class="d-none d-md-inline">Import</span>
-			<InputFile OnChange="HandleImportFileSelected" accept=".skill" class="d-none" />
-		</label>
-		<ActionButton Icon="plus" Text="Add" HideTextOnMobile="true" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
+		@* Every way to add a skill sits behind the one + button. *@
+		<div class="dropdown">
+			<button type="button" class="btn btn-primary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
+					data-bs-toggle="dropdown" aria-expanded="false" title="Add a skill" aria-label="Add a skill">
+				<i class="bi bi-plus-lg"></i>
+			</button>
+			<ul class="dropdown-menu dropdown-menu-end">
+				<li><button type="button" class="dropdown-item" @onclick="ShowAddModal"><i class="bi bi-pencil me-2"></i>Write a new skill</button></li>
+				<li><button type="button" class="dropdown-item" @onclick="ShowMarketplaceModal"><i class="bi bi-shop me-2"></i>From the marketplace</button></li>
+				<li><button type="button" class="dropdown-item" @onclick="ShowLocalPathModal"><i class="bi bi-folder2-open me-2"></i>From a folder on this host</button></li>
+				<li>
+					<label class="dropdown-item cursor-pointer mb-0">
+						<i class="bi bi-box-arrow-in-down me-2"></i>Import a .skill file
+						<InputFile OnChange="HandleImportFileSelected" accept=".skill" class="d-none" />
+					</label>
+				</li>
+			</ul>
+		</div>
 	</Actions>
 </PageHeader>
 

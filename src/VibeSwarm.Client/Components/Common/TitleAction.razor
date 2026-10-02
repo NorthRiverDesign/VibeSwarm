@@ -1,0 +1,29 @@
+@* A round icon button for a page's title row, so every page's header actions look the same.
+   The label is read out and shown on hover in place of visible text; put the primary action last. *@
+
+<button type="button"
+		class="btn @(Primary ? "btn-primary" : "btn-secondary") rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center flex-shrink-0"
+		@onclick="OnClick" disabled="@(Disabled || IsLoading)" title="@Label" aria-label="@Label">
+	<i class="bi bi-@Icon @(IsLoading ? "spin" : "")"></i>
+</button>
+
+@code {
+	[Parameter, EditorRequired]
+	public string Icon { get; set; } = "plus-lg";
+
+	[Parameter, EditorRequired]
+	public string Label { get; set; } = string.Empty;
+
+	[Parameter]
+	public bool Primary { get; set; }
+
+	[Parameter]
+	public bool Disabled { get; set; }
+
+	/// <summary>Spins the icon and disables the button while the action runs.</summary>
+	[Parameter]
+	public bool IsLoading { get; set; }
+
+	[Parameter]
+	public EventCallback OnClick { get; set; }
+}

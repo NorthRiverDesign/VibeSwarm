@@ -42,7 +42,7 @@ public async Task RenderedLocalInferencePage_ShowsSetupAction_WhenNoProviderConf
 	Assert.Contains("Ollama", html);
 	Assert.Contains("Grok", html);
 	Assert.Contains("No Ollama connections", html);
-	Assert.Contains("justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
+	Assert.Contains("justify-content-between gap-2 mb-4", html);
 	Assert.DoesNotContain("App Settings", html);
 }
 

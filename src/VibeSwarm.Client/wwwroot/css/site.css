@@ -64,6 +64,15 @@
 		ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
 		monospace;
 
+	/* Type scale — the only five text sizes the app uses. h1–h6 and .small map onto
+	   it (section 15), so markup picks a size with an element or .small/.text-caption,
+	   never with fs-* (fs-* is for icons) or a new font-size. */
+	--vs-text-title: 1.75rem;     /* page titles: h1 */
+	--vs-text-heading: 1.0625rem; /* section, card and modal titles: h2–h5 */
+	--vs-text-body: 1rem;         /* body copy, list rows, h6 */
+	--vs-text-small: 0.875rem;    /* second lines, meta, .small */
+	--vs-text-caption: 0.75rem;   /* eyebrows, badges, timestamps, .text-caption */
+
 	/* Accent colors — shared across themes */
 	--bs-primary: #5b7cfa;
 	--bs-primary-rgb: 91, 124, 250;
@@ -229,50 +238,16 @@
 		width: auto !important;
 	}
 }
-.fs-7 {
-	font-size: 0.7rem;
-}
-.fs-8 {
-	font-size: 0.65rem;
-}
-
-/* Semantic typography scale (mobile-first).
-   Use these on headings/text in place of ad hoc h3/h5/h6 + fs-* + inline
-   font-size so the app keeps one consistent type ramp. */
-.text-page-title {
-	font-size: 1.25rem;
-	font-weight: 600;
-	line-height: 1.2;
-}
-.text-section-title {
-	font-size: 1.0625rem;
-	font-weight: 600;
-	line-height: 1.25;
-}
-.text-card-title {
-	font-size: 1rem;
-	font-weight: 600;
-	line-height: 1.3;
-}
-.text-meta {
-	font-size: 0.8125rem;
+/* Caption-size text where no element or .small fits (kbd hints, chart labels, logs).
+   The other sizes come from h1–h6 and .small; see the type scale in section 1. */
+.text-caption {
+	font-size: var(--vs-text-caption);
 	line-height: 1.35;
 }
-.text-helper {
-	font-size: 0.75rem;
-	line-height: 1.35;
-}
-.text-micro {
-	font-size: 0.6875rem;
-	line-height: 1.3;
-}
-@media (min-width: 768px) {
-	.text-page-title {
-		font-size: 1.5rem;
-	}
-	.text-section-title {
-		font-size: 1.125rem;
-	}
+/* Title-size text that is not the page heading, such as a headline number. */
+.text-title {
+	font-size: var(--vs-text-title);
+	line-height: 1.15;
 }
 .textarea-editable {
 	min-height: 150px;
@@ -354,9 +329,7 @@ html {
 }
 
 body {
-	font-family:
-		-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica,
-		Arial, sans-serif;
+	font-family: var(--bs-font-sans-serif);
 	padding-left: var(--vs-safe-area-left);
 	padding-right: var(--vs-safe-area-right);
 	min-height: 100%;
@@ -405,7 +378,7 @@ body:has(.app-layout) {
 /* Brand — markup uses d-flex align-items-center gap-2 text-decoration-none fw-semibold */
 .app-brand {
 	color: var(--bs-body-color);
-	font-size: 1.125rem;
+	font-size: var(--vs-text-heading);
 	min-width: 0;
 }
 .app-brand:hover {
@@ -602,7 +575,7 @@ details[open] > summary .details-chevron {
 .terminal-output {
 	background: #0d1117;
 	color: #e6edf3;
-	font-family: "SF Mono", "Monaco", "Consolas", monospace;
+	font-family: var(--bs-font-monospace);
 }
 .output-line:hover {
 	background: rgba(255, 255, 255, 0.05);
@@ -621,10 +594,10 @@ details[open] > summary .details-chevron {
 	font-style: italic;
 }
 .diff-file-name {
-	font-family: "SF Mono", monospace;
+	font-family: var(--bs-font-monospace);
 }
 .diff-stats {
-	font-family: "SF Mono", monospace;
+	font-family: var(--bs-font-monospace);
 }
 .diff-line-nums {
 	width: 3.5rem;
@@ -693,7 +666,7 @@ details[open] > summary .details-chevron {
 /* Tool code — markup uses white-space-pre-wrap + Bootstrap utilities */
 .chat-tool-code {
 	background: rgba(0, 0, 0, 0.2);
-	font-family: "SF Mono", monospace;
+	font-family: var(--bs-font-monospace);
 }
 
 /* Typing indicator dots (iMessage style) */
@@ -925,7 +898,7 @@ body.vs-modal-open .app-main {
    not the corner of the 44px touch target, which left it floating in space.
    Two classes, to outrank Bootstrap's `.btn .badge { top: -1px }`. */
 .btn .notification-bell-badge {
-	font-size: 0.625rem;
+	font-size: var(--vs-text-caption);
 	top: calc(50% - 0.875rem);
 	left: calc(50% + 0.25rem);
 	min-width: 1rem;
@@ -1004,7 +977,7 @@ body.vs-modal-open .app-main {
 	}
 	.form-control,
 	.form-select {
-		font-size: 16px;
+		font-size: var(--vs-text-body);
 	}
 
 	/* The 44px icon buttons carry their own inset, so a thin edge puts the outer
@@ -1338,11 +1311,32 @@ body.vs-modal-open .app-main {
    additional custom classes.
 ============================================ */
 
+/* ── Type scale ── Headings and .small take their size from the tokens in section 1,
+   replacing Bootstrap's six heading sizes (and its responsive h1) with three. */
+h1, .h1 {
+	font-size: var(--vs-text-title);
+	font-weight: 700;
+	line-height: 1.15;
+}
+h2, .h2, h3, .h3, h4, .h4, h5, .h5 {
+	font-size: var(--vs-text-heading);
+	font-weight: 600;
+	line-height: 1.25;
+}
+h6, .h6 {
+	font-size: var(--vs-text-body);
+	font-weight: 600;
+	line-height: 1.3;
+}
+small, .small {
+	font-size: var(--vs-text-small);
+}
+
 /* ── Single-property utilities Bootstrap doesn't provide ── */
 
-/* Section eyebrow — 11px uppercase tracking-wide label */
+/* Section eyebrow — caption-size uppercase tracking-wide label */
 .text-eyebrow {
-	font-size: 0.6875rem;
+	font-size: var(--vs-text-caption);
 	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
@@ -1427,7 +1421,8 @@ body.vs-modal-open .app-main {
 	flex: none;
 }
 
-/* Mark sizes — use one of these with .app-brand-mark or .app-project-mark. */
+/* Mark sizes — use one of these with .app-brand-mark or .app-project-mark. The glyph
+   sizes scale with each box; they are part of the mark, not the type scale. */
 .app-mark-xs { width: 20px; height: 20px; border-radius: 5px; font-size: 10px; }
 .app-mark-sm { width: 22px; height: 22px; border-radius: 6px; font-size: 11px; }
 .app-mark-md { width: 32px; height: 32px; border-radius: 8px; font-size: 12.5px; }
@@ -1475,7 +1470,7 @@ body.vs-modal-open .app-main {
 	color: var(--bs-secondary-color);
 	padding: 4px 8px;
 	border-radius: 0.375rem;
-	font-size: 0.75rem;
+	font-size: var(--vs-text-caption);
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
@@ -1499,7 +1494,7 @@ body.vs-modal-open .app-main {
 	padding: 0.5rem 0.75rem;
 	border-radius: 0.5rem;
 	color: var(--fg-2);
-	font-size: 0.9375rem;
+	font-size: var(--vs-text-body);
 	text-decoration: none;
 	border: 0;
 	background: transparent;
@@ -1522,7 +1517,7 @@ body.vs-modal-open .app-main {
 	.vs-side-nav .nav-btn {
 		min-height: 0;
 		padding: 0.4375rem 0.625rem;
-		font-size: 0.8125rem;
+		font-size: var(--vs-text-small);
 	}
 }
 .vs-side-nav a > i,

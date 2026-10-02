@@ -8,15 +8,9 @@
 
 <div class="d-flex flex-column gap-3">
 	<div class="d-flex align-items-center gap-2">
-		<h1 class="fs-2 fw-bold mb-0 me-auto">Projects</h1>
-		<button type="button" class="btn btn-secondary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
-				@onclick="ShowScanModal" title="Import folders already on this host" aria-label="Import projects">
-			<i class="bi bi-folder-symlink"></i>
-		</button>
-		<button type="button" class="btn btn-primary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
-				@onclick="ShowAddModal" title="New project" aria-label="New project">
-			<i class="bi bi-plus-lg"></i>
-		</button>
+		<h1 class="mb-0 me-auto">Projects</h1>
+		<TitleAction Icon="folder-symlink" Label="Import folders already on this host" OnClick="ShowScanModal" />
+		<TitleAction Icon="plus-lg" Label="New project" Primary="true" OnClick="ShowAddModal" />
 	</div>
 
 	@if (ProjectsWithInfo.Any())

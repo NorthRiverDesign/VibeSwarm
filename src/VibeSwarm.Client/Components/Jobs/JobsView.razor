@@ -16,14 +16,11 @@
 <div class="d-flex flex-column gap-4">
 	<div class="d-flex flex-column gap-3">
 		<div class="d-flex align-items-center gap-2">
-			<h1 class="fs-2 fw-bold mb-0 me-auto">Jobs</h1>
+			<h1 class="mb-0 me-auto">Jobs</h1>
 			@if (_selectedProjectId.HasValue)
 			{
-				<button type="button" class="btn btn-primary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
-						@onclick="ShowCreateJobModal" disabled="@_isLoadingProjects"
-						title="@($"New job in {GetSelectedProject()?.Name}")" aria-label="New job">
-					<i class="bi bi-plus-lg"></i>
-				</button>
+				<TitleAction Icon="plus-lg" Label="New job" Primary="true"
+							 Disabled="_isLoadingProjects" OnClick="ShowCreateJobModal" />
 			}
 		</div>
 

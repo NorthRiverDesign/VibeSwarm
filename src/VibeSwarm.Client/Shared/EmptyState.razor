@@ -9,10 +9,10 @@
         </div>
     }
     <div style="max-width: 320px">
-        <h3 class="text-card-title mb-2">@Title</h3>
+        <h3 class="mb-2">@Title</h3>
         @if (!string.IsNullOrEmpty(Message))
         {
-            <p class="text-meta text-secondary mb-3">@Message</p>
+            <p class="small text-secondary mb-3">@Message</p>
         }
         @if (ChildContent != null)
         {

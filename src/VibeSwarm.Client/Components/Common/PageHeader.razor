@@ -1,16 +1,16 @@
 @* Reusable page header component with title, subtitle, and actions *@
 
-<div class="d-flex @ResolvedAlignItemsClass justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4">
+<div class="d-flex @ResolvedAlignItemsClass justify-content-between gap-2 mb-4">
 	<div class="min-width-0">
-		<h1 class="mb-0 text-page-title text-truncate">@Title</h1>
+		<h1 class="mb-0 text-truncate">@Title</h1>
 		@if (!string.IsNullOrWhiteSpace(Subtitle))
 		{
-			<p class="text-meta text-body-secondary mb-0 mt-1 d-none d-sm-block">@Subtitle</p>
+			<p class="small text-body-secondary mb-0 mt-1 d-none d-sm-block">@Subtitle</p>
 		}
 	</div>
 	@if (Actions != null)
 	{
-		<div class="d-flex flex-wrap align-items-stretch justify-content-end gap-2 flex-shrink-0 ms-auto">
+		<div class="d-flex align-items-center gap-2 flex-shrink-0 ms-auto">
 			@Actions
 		</div>
 	}

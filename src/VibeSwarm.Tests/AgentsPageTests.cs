@@ -19,9 +19,9 @@ public sealed class AgentsPageTests
 		var html = await RenderAgentsPageAsync([]);
 
 		Assert.Contains("btn btn-primary", html);
-		Assert.Contains(">Add Agent<", html);
+		Assert.Contains("aria-label=\"Add an agent\"", html);
 		Assert.Contains(">Agents<", html);
-		Assert.Contains("justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
+		Assert.Contains("justify-content-between gap-2 mb-4", html);
 	}
 
 	[Fact]

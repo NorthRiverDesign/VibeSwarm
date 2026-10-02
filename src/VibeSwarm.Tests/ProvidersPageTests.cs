@@ -86,7 +86,7 @@ public sealed class ProvidersPageTests
 	{
 		var html = await RenderProvidersPageAsync([], []);
 
-		Assert.Contains("<h1 class=\"fs-2 fw-bold mb-0 me-auto\">Providers</h1>", html);
+		Assert.Contains("<h1 class=\"mb-0 me-auto\">Providers</h1>", html);
 		Assert.Contains("btn btn-primary rounded-circle", html);
 		Assert.Contains("aria-label=\"Add a connection\"", html);
 		Assert.Contains("aria-label=\"Check this host again\"", html);

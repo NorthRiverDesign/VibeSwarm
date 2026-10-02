@@ -4,10 +4,10 @@
 	<div class="card-body d-flex flex-column p-3">
 		<div class="d-flex justify-content-between align-items-start gap-3 mb-2 mb-sm-3">
 			<div>
-				<h3 class="card-title text-card-title mb-1 d-flex align-items-center gap-2">
+				<h3 class="card-title mb-1 d-flex align-items-center gap-2">
 					<i class="bi bi-@Icon opacity-75"></i>@Title
 				</h3>
-				<p class="text-meta text-body-secondary mb-0">@Subtitle</p>
+				<p class="small text-body-secondary mb-0">@Subtitle</p>
 			</div>
 			@if (!string.IsNullOrWhiteSpace(Summary))
 			{
@@ -50,7 +50,7 @@
 						 style="width:@FormatPixels(YAxisLabelWidth); min-width:@FormatPixels(YAxisLabelWidth); height:@FormatPixels(ChartHeight);">
 						@foreach (var axisTick in YAxisTicks)
 						{
-							<div class="position-absolute end-0 translate-middle-y text-body-secondary text-end text-micro"
+							<div class="position-absolute end-0 translate-middle-y text-body-secondary text-end text-caption"
 								 style="top:@FormatPixels(axisTick.Y);">
 								@axisTick.Label
 							</div>
@@ -115,7 +115,7 @@
 								@for (var index = 0; index < Points.Count; index++)
 								{
 									var point = Points[index];
-									<div class="text-body-secondary text-center px-1 text-micro"
+									<div class="text-body-secondary text-center px-1 text-caption"
 										 style="min-width:0;">
 										@foreach (var segment in GetLabelSegments(point.Label))
 										{

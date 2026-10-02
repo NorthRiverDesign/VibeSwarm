@@ -21,7 +21,7 @@ else if (DatabaseSummary != null)
 <div class="col-12 col-lg-4">
 <div class="border rounded-3 p-3 h-100 bg-body-tertiary">
 <div class="small text-body-secondary text-uppercase fw-semibold mb-1">Current Size</div>
-<div class="fs-3 fw-semibold">@FormatBytes(DatabaseSummary.TotalSizeBytes)</div>
+<div class="text-title fw-semibold">@FormatBytes(DatabaseSummary.TotalSizeBytes)</div>
 <div class="small text-body-secondary">@GetDatabaseProviderLabel()</div>
 @if (!string.IsNullOrWhiteSpace(DatabaseSummary.Location))
 {

@@ -7,16 +7,10 @@
 
 <div class="d-flex flex-column gap-4">
 	<div class="d-flex align-items-center gap-2">
-		<h1 class="fs-2 fw-bold mb-0 me-auto">Providers</h1>
-		<button type="button" class="btn btn-secondary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
-				@onclick="RefreshCommonProviderStatusesAsync" disabled="@IsRefreshingCommonProviders"
-				title="Check this host again for installed CLIs and sign-ins" aria-label="Check this host again">
-			<i class="bi bi-arrow-repeat @(IsRefreshingCommonProviders ? "spin" : "")"></i>
-		</button>
-		<button type="button" class="btn btn-primary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
-				@onclick="ShowAddModal" title="Add a connection" aria-label="Add a connection">
-			<i class="bi bi-plus-lg"></i>
-		</button>
+		<h1 class="mb-0 me-auto">Providers</h1>
+		<TitleAction Icon="arrow-repeat" Label="Check this host again" IsLoading="IsRefreshingCommonProviders"
+					 OnClick="RefreshCommonProviderStatusesAsync" />
+		<TitleAction Icon="plus-lg" Label="Add a connection" Primary="true" OnClick="ShowAddModal" />
 	</div>
 
 	@if (IsLoading)
