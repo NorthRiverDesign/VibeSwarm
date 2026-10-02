@@ -9,15 +9,6 @@
 	</Actions>
 </PageHeader>
 
-<PageFiltersBar Class="mb-0">
-	<Tabs>
-		<UserFilterTabs ActiveFilter="@_activeFilter"
-						ActiveCount="GetActiveCount()"
-						InactiveCount="GetInactiveCount()"
-						OnFilterChanged="SetFilter" />
-	</Tabs>
-</PageFiltersBar>
-
 @if (_isLoading)
 {
 	<LoadingSpinner Text="Loading users..." />
@@ -25,7 +16,6 @@
 else
 {
 	<UserListSection Users="_users"
-					 ActiveFilter="@_activeFilter"
 					 CurrentUserId="_currentUserId"
 					 OnResetPassword="ShowResetPasswordModal"
 					 OnEditRole="ShowEditUserModal"
@@ -72,7 +62,6 @@ else
 	private List<UserDto> _users = [];
 	private bool _isLoading = true;
 	private Guid _currentUserId;
-	private string _activeFilter = "active";
 
 	// Add User Modal
 	private bool _showAddUserModal;
@@ -339,14 +328,4 @@ else
 			NotificationService.ShowError(result.Error ?? "Failed to toggle user status.");
 		}
 	}
-
-	// Filter helpers
-	private Task SetFilter(string filter)
-	{
-		_activeFilter = filter;
-		return Task.CompletedTask;
-	}
-
-	private int GetActiveCount() => _users.Count(u => u.IsActive);
-	private int GetInactiveCount() => _users.Count(u => !u.IsActive);
 }

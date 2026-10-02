@@ -61,13 +61,12 @@ public sealed class AgentsPageTests
 
 		var html = await RenderAgentsPageAsync([agent], [skill]);
 
+		// Rows start collapsed: the name and purpose show, the details wait for a tap.
+		Assert.Contains("list-group rounded-4", html);
 		Assert.Contains("Security Reviewer", html);
 		Assert.Contains("Focuses on threats and auth flaws.", html);
-		Assert.Contains("secure-review", html);
-		Assert.Contains("linked skill", html);
-		Assert.Contains("Default provider: Claude Code", html);
-		Assert.Contains("Default model: claude-sonnet-4.6", html);
-		Assert.Contains("Default run: autonomous up to 4 cycles, resume session", html);
+		Assert.Contains("aria-expanded=\"false\"", html);
+		Assert.DoesNotContain("secure-review", html);
 	}
 
 	private static async Task<string> RenderAgentsPageAsync(
