@@ -737,6 +737,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "tmp"), environment.GetProperty("TMP").GetString());
 			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "tmp"), environment.GetProperty("TEMP").GetString());
 			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "cache"), environment.GetProperty("XDG_CACHE_HOME").GetString());
+			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "output"), environment.GetProperty("PLAYWRIGHT_MCP_OUTPUT_DIR").GetString());
 			Assert.Equal("https://app.example.com", environment.GetProperty("APP_URL").GetString());
 			Assert.Equal("admin@example.com", environment.GetProperty("APP_USERNAME").GetString());
 			Assert.Equal("ProdPassword!", environment.GetProperty("APP_PASSWORD").GetString());

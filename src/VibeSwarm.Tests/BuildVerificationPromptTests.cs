@@ -66,6 +66,23 @@ public sealed class BuildVerificationPromptTests
 	}
 
 	[Fact]
+	public void BuildSystemPromptRules_KeepsSessionArtifactsOutOfTheRepository()
+	{
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		{
+			Name = "Idea Project",
+			WorkingPath = "/tmp/test",
+			Environments = []
+		});
+
+		Assert.NotNull(rules);
+		Assert.Contains("SESSION ARTIFACTS:", rules);
+		Assert.Contains("screenshots, browser traces, test logs and reports", rules);
+		Assert.Contains(".git/info/exclude, not .gitignore", rules);
+		Assert.Contains("Do not add agent instruction, plan or memory files", rules);
+	}
+
+	[Fact]
 	public void BuildSystemPromptRules_OmitsBuildVerificationWhenEfficiencyRulesDisabled()
 	{
 		var rules = PromptBuilder.BuildSystemPromptRules(new Project

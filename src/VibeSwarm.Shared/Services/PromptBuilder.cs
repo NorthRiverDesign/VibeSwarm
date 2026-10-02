@@ -372,8 +372,13 @@ public static class PromptBuilder
 			sb.AppendLine("- This job runs unattended in a queue. Do not stop to ask questions or wait for confirmation; a question pauses the queue until someone answers. Make the reasonable call and keep going.");
 			sb.AppendLine("- The deliverable is a code change. A run that leaves the working tree unchanged is recorded as failed.");
 			sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. VibeSwarm delivers your working-tree changes after you exit.");
-			sb.AppendLine("- Keep throwaway output (logs, screenshots, scratch scripts) outside the repository. Everything left in the working tree is delivered.");
 			sb.AppendLine("- End with a short summary: what changed, how you verified it, any assumptions you made, and anything left undone.");
+			sb.AppendLine();
+			sb.AppendLine("SESSION ARTIFACTS:");
+			sb.AppendLine("- Commits are for project code. Anything you leave in the working tree may be committed with your change.");
+			sb.AppendLine("- Write screenshots, browser traces, test logs and reports, scratch scripts and temp files outside the repository (for example under /tmp) or under .vibeswarm/, which git ignores.");
+			sb.AppendLine("- If a tool can only write inside the repository, delete its output before finishing or list the path in .git/info/exclude, not .gitignore.");
+			sb.AppendLine("- Do not add agent instruction, plan or memory files (such as CLAUDE.md, AGENTS.md or notes) unless the task asks for them. Keep durable notes in the project memory file when one is provided.");
 		}
 
 		var enabledEnvironments = project.Environments

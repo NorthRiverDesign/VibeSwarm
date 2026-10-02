@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Tests;
@@ -111,6 +112,64 @@ public sealed class ProjectMemoryServiceTests : IDisposable
 			.SingleAsync();
 
 		Assert.Null(persistedMemory);
+	}
+
+	[Fact]
+	public async Task EnsureGitExcludeAsync_HidesSessionArtifactsFromGitButNotProjectFiles()
+	{
+		var repository = Path.Combine(Path.GetTempPath(), "vibeswarm-tests", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(repository);
+		var git = new GitCommandExecutor();
+
+		try
+		{
+			Assert.True((await git.ExecuteAsync("init", repository)).Success);
+
+			await using (var dbContext = CreateDbContext())
+			{
+				await CreateService(dbContext).EnsureGitExcludeAsync(repository);
+			}
+
+			string[] artifacts =
+			[
+				".playwright-mcp/page-2026-10-01.png",
+				"test-results/home/trace.zip",
+				"src/Tests/TestResults/run.trx",
+				"screenshot-mobile.png",
+				"dotnet-test.log",
+				"notes.tmp",
+				"tmp/probe.js",
+				"CLAUDE.local.md"
+			];
+			string[] projectFiles =
+			[
+				"src/App.cs",
+				"docs/screenshot-dashboard.png",
+				"wwwroot/screenshot.png"
+			];
+
+			foreach (var path in artifacts.Concat(projectFiles))
+			{
+				var fullPath = Path.Combine(repository, path);
+				Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+				await File.WriteAllTextAsync(fullPath, "content");
+			}
+
+			var status = await git.ExecuteAsync("status --porcelain=v1 --untracked-files=all", repository);
+			Assert.True(status.Success);
+
+			var untracked = status.Output
+				.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+				.Select(line => line[3..])
+				.Order(StringComparer.Ordinal)
+				.ToArray();
+
+			Assert.Equal(projectFiles.Order(StringComparer.Ordinal).ToArray(), untracked);
+		}
+		finally
+		{
+			Directory.Delete(repository, recursive: true);
+		}
 	}
 
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
