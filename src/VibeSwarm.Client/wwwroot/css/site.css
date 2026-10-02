@@ -52,7 +52,7 @@
 		0 0.5rem 1rem rgba(15, 23, 42, 0.12);
 	--vs-transition: 0.2s ease;
 	--vs-safe-area-top: env(safe-area-inset-top, 0px);
-	--vs-safe-area-bottom: 0px;
+	--vs-safe-area-bottom: env(safe-area-inset-bottom, 0px);
 	--vs-safe-area-left: env(safe-area-inset-left, 0px);
 	--vs-safe-area-right: env(safe-area-inset-right, 0px);
 
@@ -431,19 +431,6 @@ body:has(.app-layout) {
 	padding-bottom: var(--vs-safe-area-bottom);
 	padding-left: var(--vs-safe-area-left);
 }
-.app-sidebar::after {
-	content: "";
-	position: absolute;
-	left: 0;
-	right: 0;
-	bottom: calc(-1 * var(--vs-safe-area-bottom));
-	height: var(--vs-safe-area-bottom);
-	background: inherit;
-}
-.app-sidebar::after,
-.sidebar-overlay::after {
-	display: none;
-}
 .app-sidebar.open {
 	transform: translateX(0);
 }
@@ -462,15 +449,6 @@ body:has(.app-layout) {
 	background: rgba(0, 0, 0, 0.5);
 	z-index: 998;
 }
-.sidebar-overlay::after {
-	content: "";
-	position: absolute;
-	left: 0;
-	right: 0;
-	bottom: calc(-1 * var(--vs-safe-area-bottom));
-	height: var(--vs-safe-area-bottom);
-	background: inherit;
-}
 
 /* Main area — markup uses flex-grow-1 */
 .app-main {
@@ -479,10 +457,13 @@ body:has(.app-layout) {
 	overscroll-behavior-y: contain;
 }
 
+/* The scroller runs to the screen's bottom edge; only the end of the content
+   clears the home indicator, and by the larger of the two gaps, not their sum. */
 .main-content {
 	padding: 1rem;
 	padding-left: calc(1rem + var(--vs-safe-area-left));
 	padding-right: calc(1rem + var(--vs-safe-area-right));
+	padding-bottom: max(1rem, var(--vs-safe-area-bottom));
 }
 
 /* Desktop layout */
@@ -580,6 +561,15 @@ body:has(.app-layout) {
 ============================================ */
 .vs-nav-dropdown-menu {
 	box-shadow: var(--vs-nav-popout-shadow) !important;
+}
+
+/* A tab strip that scrolls sideways keeps every tab on one line; without this the
+   tabs squeeze to fit and their labels break into stacked icon/text/badge rows. */
+.nav.flex-nowrap > .nav-item {
+	flex-shrink: 0;
+}
+.nav.flex-nowrap .nav-link {
+	white-space: nowrap;
 }
 
 /* ============================================
@@ -910,14 +900,17 @@ body.vs-modal-open .app-main {
 
 /* Actions pinned to the bottom of a scrolling modal body, clear of the home
    indicator. Long forms stay submittable without scrolling to the end. */
+.vs-modal-body {
+	--vs-modal-end-padding: var(--bs-modal-padding, 1rem);
+}
 .vs-modal-sticky-actions {
 	background: var(--bs-modal-bg, var(--bs-body-bg));
 	/* The bar sticks to the modal body's content edge, which leaves the body's own
 	   bottom padding as a strip the form scrolls through. Offset the bar over that
 	   strip and pad the buttons back up, clear of the home indicator. */
-	bottom: calc(-1 * (var(--bs-modal-padding, 1rem) + var(--vs-safe-area-bottom)));
-	padding-bottom: calc(var(--bs-modal-padding, 1rem) + var(--vs-safe-area-bottom));
-	margin-bottom: calc(-1 * (var(--bs-modal-padding, 1rem) + var(--vs-safe-area-bottom)));
+	bottom: calc(-1 * var(--vs-modal-end-padding));
+	padding-bottom: var(--vs-modal-end-padding);
+	margin-bottom: calc(-1 * var(--vs-modal-end-padding));
 }
 
 .directory-list {
@@ -964,14 +957,17 @@ body.vs-modal-open .app-main {
 /* ============================================
    12. NOTIFICATIONS PANEL
 ============================================ */
-.notification-bell-badge {
-	font-size: 0.55rem;
-	top: -2px;
-	left: 100%;
-	transform: translateX(-50%);
-	min-width: 1.1em;
-	line-height: 1.4;
-	padding: 0.1em 0.3em;
+/* Anchored to the glyph's top-right corner (measured from the button's centre),
+   not the corner of the 44px touch target, which left it floating in space.
+   Two classes, to outrank Bootstrap's `.btn .badge { top: -1px }`. */
+.btn .notification-bell-badge {
+	font-size: 0.625rem;
+	top: calc(50% - 0.875rem);
+	left: calc(50% + 0.25rem);
+	min-width: 1rem;
+	line-height: 1rem;
+	padding: 0 0.25rem;
+	box-shadow: 0 0 0 2px var(--bs-body-bg);
 }
 
 /* Backdrop — subtle overlay so the panel feels modal-like on mobile */
@@ -1047,15 +1043,18 @@ body.vs-modal-open .app-main {
 		font-size: 16px;
 	}
 
+	/* The 44px icon buttons carry their own inset, so a thin edge puts the outer
+	   glyphs in line with the page content and keeps the full name visible at 375px. */
 	.app-header {
-		padding-left: calc(0.75rem + var(--vs-safe-area-left));
-		padding-right: calc(0.75rem + var(--vs-safe-area-right));
+		padding-left: calc(0.25rem + var(--vs-safe-area-left));
+		padding-right: calc(0.25rem + var(--vs-safe-area-right));
 	}
 
 	.main-content {
 		padding: 0.75rem;
 		padding-left: calc(0.75rem + var(--vs-safe-area-left));
 		padding-right: calc(0.75rem + var(--vs-safe-area-right));
+		padding-bottom: max(0.75rem, var(--vs-safe-area-bottom));
 	}
 
 	.app-sidebar .nav-item {
@@ -1108,7 +1107,12 @@ body.vs-modal-open .app-main {
 	}
 	.vs-modal-dialog .modal-body {
 		overflow-y: auto;
-		padding-bottom: calc(1rem + var(--vs-safe-area-bottom));
+	}
+	/* Only the bottom-most band of a full-screen modal clears the home indicator;
+	   a body with a footer under it keeps its normal padding. */
+	.vs-modal-dialog .modal-body:last-child {
+		--vs-modal-end-padding: max(var(--bs-modal-padding, 1rem), var(--vs-safe-area-bottom));
+		padding-bottom: var(--vs-modal-end-padding);
 	}
 	.vs-project-modal-body .input-group {
 		flex-wrap: nowrap;
@@ -1133,7 +1137,7 @@ body.vs-modal-open .app-main {
 		text-overflow: ellipsis;
 	}
 	.vs-modal-dialog .modal-footer {
-		padding-bottom: calc(0.75rem + var(--vs-safe-area-bottom));
+		padding-bottom: max(0.75rem, var(--vs-safe-area-bottom));
 	}
 	.vs-modal-dialog.modal-sm {
 		max-width: 100% !important;
@@ -1377,7 +1381,8 @@ body.vs-modal-open .app-main {
 		left: 0;
 		right: 0;
 		height: var(--vs-safe-area-top);
-		background: var(--bs-secondary-bg);
+		/* Same colour as the header beneath it, so the status bar doesn't read as a separate band. */
+		background: var(--bs-body-bg);
 		z-index: 1001;
 	}
 	body {
@@ -1386,31 +1391,6 @@ body.vs-modal-open .app-main {
 	/* Prevent pull-to-refresh gesture on main content when at top */
 	.app-main {
 		overscroll-behavior-y: contain;
-	}
-}
-
-@supports (-webkit-touch-callout: none) {
-	html,
-	body {
-		min-height: -webkit-fill-available;
-		height: -webkit-fill-available;
-	}
-
-	body:has(.app-layout) {
-		height: -webkit-fill-available;
-	}
-
-	#app:has(.app-layout) {
-		min-height: -webkit-fill-available;
-	}
-
-	.app-layout {
-		min-height: -webkit-fill-available;
-		height: -webkit-fill-available;
-	}
-
-	.login-layout {
-		min-height: -webkit-fill-available;
 	}
 }
 
@@ -1459,6 +1439,40 @@ body.vs-modal-open .app-main {
 	--bs-accordion-btn-focus-box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
 }
 
+/* ── Buttons — Bootstrap compiles button colours as literals (#0d6efd, #6c757d),
+   so the palette above never reaches them. Primary takes the app accent; secondary
+   becomes a quiet neutral, so the one primary action on a surface stands out. ── */
+.btn-primary {
+	--bs-btn-color: #fff;
+	--bs-btn-bg: var(--bs-primary);
+	--bs-btn-border-color: var(--bs-primary);
+	--bs-btn-hover-color: #fff;
+	--bs-btn-hover-bg: color-mix(in srgb, var(--bs-primary) 88%, #000);
+	--bs-btn-hover-border-color: color-mix(in srgb, var(--bs-primary) 88%, #000);
+	--bs-btn-focus-shadow-rgb: var(--bs-primary-rgb);
+	--bs-btn-active-color: #fff;
+	--bs-btn-active-bg: color-mix(in srgb, var(--bs-primary) 80%, #000);
+	--bs-btn-active-border-color: color-mix(in srgb, var(--bs-primary) 80%, #000);
+	--bs-btn-disabled-color: #fff;
+	--bs-btn-disabled-bg: var(--bs-primary);
+	--bs-btn-disabled-border-color: var(--bs-primary);
+}
+.btn-secondary {
+	--bs-btn-color: var(--fg-0);
+	--bs-btn-bg: var(--surface-3);
+	--bs-btn-border-color: var(--line-strong);
+	--bs-btn-hover-color: var(--fg-0);
+	--bs-btn-hover-bg: var(--line-strong);
+	--bs-btn-hover-border-color: var(--line-strong);
+	--bs-btn-focus-shadow-rgb: var(--bs-secondary-color-rgb);
+	--bs-btn-active-color: var(--fg-0);
+	--bs-btn-active-bg: var(--line-strong);
+	--bs-btn-active-border-color: var(--line-strong);
+	--bs-btn-disabled-color: var(--fg-2);
+	--bs-btn-disabled-bg: var(--surface-3);
+	--bs-btn-disabled-border-color: var(--line-strong);
+}
+
 /* ── Brand / project marks (gradients — no Bootstrap equivalent) ── */
 
 .app-brand-mark {
@@ -1481,6 +1495,13 @@ body.vs-modal-open .app-main {
 .app-mark-sm { width: 22px; height: 22px; border-radius: 6px; font-size: 11px; }
 .app-mark-md { width: 32px; height: 32px; border-radius: 8px; font-size: 12.5px; }
 .app-mark-lg { width: 40px; height: 40px; border-radius: 10px; font-size: 14px; }
+
+/* Status disc sizes — a fixed box for one status glyph, used with rounded-circle.
+   Sizing a badge by padding lets the icon font's line box set the height, which
+   turns the circle into an oval (more so on iOS than on desktop). */
+.status-disc-sm { width: 1.25rem; height: 1.25rem; font-size: 0.75rem; }
+.status-disc-md { width: 1.5rem; height: 1.5rem; font-size: 0.875rem; }
+.status-disc-lg { width: 2rem; height: 2rem; font-size: 1.125rem; }
 
 /* Image thumbnail sizes used in attachment chips */
 .attachment-thumb { width: 2.25rem; height: 2.25rem; }

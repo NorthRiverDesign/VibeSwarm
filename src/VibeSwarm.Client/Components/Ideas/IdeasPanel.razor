@@ -83,15 +83,15 @@
 
 		<div class="card-footer d-flex align-items-center flex-wrap gap-2">
 			<label class="btn btn-sm btn-secondary m-0 @(_attachmentInteropAvailable ? "" : "disabled")"
-				   for="@_fileInputId" title="@GetAttachmentButtonTooltip()">
-				<i class="bi bi-paperclip"></i> Attach
+				   for="@_fileInputId" title="@GetAttachmentButtonTooltip()" aria-label="Attach">
+				<i class="bi bi-paperclip"></i><span class="d-none d-sm-inline"> Attach</span>
 			</label>
 			<input id="@_fileInputId" class="d-none" type="file" multiple @onchange="HandleFileSelection"
 				   disabled="@(!_attachmentInteropAvailable)" />
 			@if (CanSuggestIdeas)
 			{
 				<button type="button" class="btn btn-sm btn-secondary" @onclick="OpenSuggestIdeasModal"
-						disabled="@(IsSuggestingIdeas || IsProcessingActive)">
+						disabled="@(IsSuggestingIdeas || IsProcessingActive)" title="Suggest ideas" aria-label="Suggest ideas">
 					@if (IsSuggestingIdeas)
 					{
 						<span class="spinner-border spinner-border-sm"></span>
@@ -100,7 +100,7 @@
 					{
 						<i class="bi bi-stars"></i>
 					}
-					Suggest ideas
+					<span class="d-none d-sm-inline">Suggest ideas</span>
 				</button>
 			}
 			<span class="ms-auto font-monospace small @(IsOverLength ? "text-warning" : "text-muted")">@GetIdeaLengthSummary(NewIdeaDescription)</span>
