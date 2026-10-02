@@ -225,8 +225,6 @@ public class JobQueueManager
 
 	/// <summary>
 	/// Applies fair distribution to prevent a single project from hogging resources.
-	/// Swarm member jobs bypass the per-project cap because they are pre-authorized by
-	/// the swarm-aware pending jobs query.
 	/// </summary>
 	private List<Job> ApplyFairDistribution(List<Job> jobs, int maxJobs)
 	{

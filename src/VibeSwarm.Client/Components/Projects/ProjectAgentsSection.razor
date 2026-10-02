@@ -163,10 +163,10 @@ else
 <div class="form-check form-switch">
 <InputCheckbox id="modal-enableTeamSwarm" @bind-Value="Project.EnableTeamSwarm" class="form-check-input" />
 <label class="form-check-label" for="modal-enableTeamSwarm">
-Run assigned agents in parallel
+Run every assigned agent on each job
 </label>
 </div>
-<div class="form-text">Creating a job fans out into one job per assigned agent, each with its own system prompt.</div>
+<div class="form-text">Creating a job fans out into one job per assigned agent, each with its own system prompt. They take turns, one at a time.</div>
 </div>
 }
 

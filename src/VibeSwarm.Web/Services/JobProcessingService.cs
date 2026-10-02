@@ -83,6 +83,7 @@ public partial class JobProcessingService : BackgroundService
         public CancellationTokenSource? CancellationTokenSource { get; set; }
         public int? ProcessId { get; set; }
         public Guid ProviderId { get; set; }
+        public Guid ProjectId { get; set; }
 
         /// <summary>
         /// The provider instance used for this job execution.
@@ -436,14 +437,17 @@ public partial class JobProcessingService : BackgroundService
             _logger.LogInformation("Found {PendingCount} pending jobs, {AvailableSlots} slots available, {RunningCount} jobs running",
                 pendingJobs.Count, availableSlots, _runningJobs.Count);
 
-            var jobsToStart = pendingJobs.Take(availableSlots);
+            var busyProjectIds = _runningJobs.Values
+                .Where(running => !running.Task.IsCompleted)
+                .Select(running => running.ProjectId);
+            var jobsToStart = SelectJobsToStart(pendingJobs, busyProjectIds, availableSlots);
             foreach (var job in jobsToStart)
             {
                 if (stoppingToken.IsCancellationRequested)
                     break;
 
                 var jobCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                var context = new JobExecutionContext { CancellationTokenSource = jobCts };
+                var context = new JobExecutionContext { CancellationTokenSource = jobCts, ProjectId = job.ProjectId };
 
                 // Start job processing in background
                 context.Task = Task.Run(async () =>
@@ -466,6 +470,21 @@ public partial class JobProcessingService : BackgroundService
         {
             _jobsLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Picks which pending jobs to launch, at most one per project, skipping projects this
+    /// worker still has a job task running for. The database lags the task at both ends: a
+    /// dispatched job only shows as running once its task claims it, and a cancel can mark it
+    /// finished while the task is still in the checkout. The live tasks are the authority.
+    /// </summary>
+    internal static List<Job> SelectJobsToStart(IEnumerable<Job> pendingJobs, IEnumerable<Guid> busyProjectIds, int availableSlots)
+    {
+        var claimedProjectIds = busyProjectIds.ToHashSet();
+        return pendingJobs
+            .Where(job => claimedProjectIds.Add(job.ProjectId))
+            .Take(availableSlots)
+            .ToList();
     }
 
     private async Task CleanupCompletedJobsAsync()

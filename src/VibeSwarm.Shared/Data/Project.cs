@@ -172,8 +172,9 @@ public class Project
 
 	/// <summary>
 	/// When enabled and at least two team roles are configured, creating a job automatically
-	/// fans out into parallel role-based jobs — one per enabled team role assignment.
-	/// Each role job runs its assigned provider with a role-specific system prompt.
+	/// fans out into role-based jobs — one per enabled team role assignment.
+	/// Each role job runs its assigned provider with a role-specific system prompt, one at a
+	/// time, because they share the project's checkout.
 	/// </summary>
 	public bool EnableTeamSwarm { get; set; }
 
