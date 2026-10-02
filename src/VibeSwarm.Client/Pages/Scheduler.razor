@@ -5,7 +5,6 @@
 @inject IJobService JobService
 @inject AppTimeZoneService AppTimeZoneService
 @inject NotificationService NotificationService
-@inject NavigationManager NavigationManager
 
 <PageHeader Title="Scheduler" Subtitle="Recurring jobs and idea generation across your projects.">
 	<Actions>
@@ -27,145 +26,21 @@ else if (!_schedules.Any())
 }
 else
 {
-	<PageFiltersBar Class="mb-2">
-		<Tabs>
-			<div class="d-flex flex-column flex-sm-row flex-wrap align-items-stretch align-items-sm-end gap-2 gap-sm-3 border-bottom">
-				<TabStrip Class="flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain border-bottom-0 mb-0 min-width-0">
-					<TabItem Text="All" IsActive="@(_statusFilter == "all")"
-							 BadgeCount="@_schedules.Count"
-							 OnClick='() => SetStatusFilter("all")' />
-					<TabItem Text="Active" Icon="check-circle" IconClass="me-1" IsActive="@(_statusFilter == "active")"
-							 BadgeCount="@GetStatusCount("active")" BadgeClass="bg-primary-subtle text-primary-emphasis"
-							 OnClick='() => SetStatusFilter("active")' />
-					<TabItem Text="Paused" Icon="pause-circle" IconClass="me-1" IsActive="@(_statusFilter == "paused")"
-							 BadgeCount="@GetStatusCount("paused")" BadgeClass="bg-secondary-subtle text-secondary-emphasis"
-							 OnClick='() => SetStatusFilter("paused")' />
-				</TabStrip>
-				<TabStrip Class="flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain border-bottom-0 mb-0 min-width-0">
-					<TabItem Text="All Types" IsActive="@(_typeFilter == "all")"
-							 BadgeCount="@_schedules.Count"
-							 OnClick='() => SetTypeFilter("all")' />
-					<TabItem Text="Jobs" Icon="play-circle" IconClass="me-1" IsActive="@(_typeFilter == "runjob")"
-							 BadgeCount="@GetTypeCount("runjob")" BadgeClass="bg-info-subtle text-info-emphasis"
-							 OnClick='() => SetTypeFilter("runjob")' />
-					<TabItem Text="Ideas" Icon="stars" IconClass="me-1" IsActive="@(_typeFilter == "ideas")"
-							 BadgeCount="@GetTypeCount("ideas")" BadgeClass="bg-warning-subtle text-warning-emphasis"
-							 OnClick='() => SetTypeFilter("ideas")' />
-				</TabStrip>
-			</div>
-		</Tabs>
-	</PageFiltersBar>
-
-	@if (!GetFilteredSchedules().Any())
-	{
-		<EmptyState Icon="funnel" Title="No schedules match these filters"
-					Message="Try switching back to All or clearing the filter." />
-	}
-	else
-	{
-	<div class="list-group">
-		@foreach (var schedule in GetFilteredSchedules())
+	<div class="d-flex flex-column gap-4">
+		@foreach (var (heading, schedules) in GetGroups())
 		{
-			<div class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-3 p-3 hover-bg-tertiary">
-				<div class="flex-grow-1 min-width-0">
-					<div class="d-flex align-items-center gap-2 flex-wrap">
-						<span class="fw-semibold">@GetScheduleTitle(schedule)</span>
-						<StatusBadge Status="@(schedule.IsEnabled ? "Active" : "Paused")" ShowSpinner="false" />
-						<StatusBadge Status="@(schedule.ScheduleType == JobScheduleType.GenerateIdeas ? "Idea Generation" : "Job Running")" ShowSpinner="false" />
-						<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-							<i class="bi bi-folder opacity-75"></i>
-							@(schedule.Project?.Name ?? "Unknown project")
-						</span>
-						@if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
-						{
-							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-								<i class="bi bi-stars opacity-75"></i>
-								@(schedule.InferenceProvider?.Name ?? "Unknown inference provider")
-							</span>
-						}
-						else if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent)
-						{
-							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-								<i class="bi bi-person-badge opacity-75"></i>
-								@(schedule.Agent?.Name ?? "Unknown agent")
-							</span>
-						}
-						else
-						{
-							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-								<i class="bi bi-cpu opacity-75"></i>
-								@(schedule.Provider?.Name ?? "Unknown provider")
-							</span>
-						}
-						@if (!string.IsNullOrWhiteSpace(schedule.ModelId))
-						{
-							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-								<i class="bi bi-diagram-3 opacity-75"></i>
-								@schedule.ModelId
-							</span>
-						}
-						@if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
-						{
-							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-								<i class="bi bi-list-ol opacity-75"></i>
-								@($"{schedule.IdeaCount} idea{(schedule.IdeaCount == 1 ? string.Empty : "s")}")
-							</span>
-						}
-					</div>
-					<div class="small text-body-secondary mt-1">@DescribeSchedule(schedule)</div>
-					<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-						<span class="d-inline-flex align-items-center gap-1" title="@schedule.NextRunAtUtc.FormatDateTimeShort()">
-							<i class="bi bi-calendar-event opacity-75"></i>
-							@FormatNextRun(schedule.NextRunAtUtc)
-						</span>
-						@if (schedule.LastRunAtUtc.HasValue)
-						{
-							<span class="d-inline-flex align-items-center gap-1" title="@schedule.LastRunAtUtc.Value.FormatDateTimeShort()">
-								<i class="bi bi-clock-history opacity-75"></i>
-								Last @FormatRelativeTime(schedule.LastRunAtUtc.Value)
-							</span>
-						}
-					</div>
-					@if (!string.IsNullOrWhiteSpace(schedule.LastError))
+			<section class="d-flex flex-column gap-2" aria-label="@heading">
+				<h2 class="text-eyebrow mb-0 px-1">@heading</h2>
+				<div class="list-group rounded-4">
+					@foreach (var schedule in schedules)
 					{
-						<div class="small text-danger mt-2">
-							<i class="bi bi-exclamation-triangle me-1"></i>@TruncateText(schedule.LastError, 180)
-						</div>
+						<ScheduleRow @key="schedule.Id" Schedule="schedule" ActiveJob="GetActiveJobForSchedule(schedule.Id)"
+									 OnToggle="ToggleScheduleAsync" OnEdit="EditSchedule" OnDelete="ShowDeleteConfirmation" />
 					}
-				@{
-					var activeJob = GetActiveJobForSchedule(schedule.Id);
-				}
-				@if (activeJob != null)
-				{
-					<div class="d-flex align-items-center gap-2 mt-2 px-2 py-1 bg-info-subtle rounded small cursor-pointer"
-						 @onclick="() => NavigateToJob(activeJob.Id)" @onclick:stopPropagation="true">
-						<div class="spinner-border spinner-border-sm text-info flex-shrink-0" role="status" style="width: 14px; height: 14px; border-width: 2px;">
-							<span class="visually-hidden">Running...</span>
-						</div>
-						<span class="text-info-emphasis fw-medium">Job running</span>
-						@if (!string.IsNullOrEmpty(activeJob.CurrentActivity))
-						{
-							<span class="text-body-secondary fst-italic text-truncate" style="max-width: min(250px, 40vw);">@activeJob.CurrentActivity</span>
-						}
-						<i class="bi bi-arrow-right-short text-info-emphasis ms-auto flex-shrink-0"></i>
-					</div>
-				}
 				</div>
-				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-					<ActionButton Icon="@(schedule.IsEnabled ? "pause-fill" : "play-fill")"
-								  Text="@(schedule.IsEnabled ? "Pause" : "Resume")"
-								  Size="ActionButton.ButtonSize.Small"
-								  OnClick="@(() => ToggleScheduleAsync(schedule))" />
-					<RowActionsDropdown>
-						<RowActionsItem Icon="pencil" Text="Edit" OnClick="@(() => EditSchedule(schedule))" />
-						<RowActionsItem Icon="trash" Text="Delete" Danger="true"
-										OnClick="@(() => ShowDeleteConfirmation(schedule))" />
-					</RowActionsDropdown>
-				</div>
-			</div>
+			</section>
 		}
 	</div>
-	}
 }
 
 <JobScheduleModal @bind-IsVisible="_showScheduleModal" EditSchedule="_editingSchedule" OnSaved="HandleScheduleSaved"
@@ -187,8 +62,6 @@ else
 	private JobSchedule? _scheduleToDelete;
 	private bool _isDeleting;
 	private Timer? _refreshTimer;
-	private string _statusFilter = "all";
-	private string _typeFilter = "all";
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -311,92 +184,21 @@ else
 		}
 	}
 
-	private string DescribeSchedule(JobSchedule schedule)
+	/// <summary>Active schedules soonest first, then paused ones.</summary>
+	private IEnumerable<(string Heading, List<JobSchedule> Schedules)> GetGroups()
 	{
-		var time = $"{schedule.HourUtc:D2}:{schedule.MinuteUtc:D2}";
-		var action = schedule.ScheduleType == JobScheduleType.GenerateIdeas
-			? $"generate {schedule.IdeaCount} idea{(schedule.IdeaCount == 1 ? string.Empty : "s")} with {schedule.InferenceProvider?.Name ?? "Unknown inference provider"}"
-			: schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent
-				? schedule.Agent?.Name ?? "Unknown agent"
-				: schedule.Provider?.Name ?? "Unknown provider";
-		return schedule.Frequency switch
-		{
-			JobScheduleFrequency.Minutes => $"{action} every {schedule.IntervalMinutes} minute{(schedule.IntervalMinutes == 1 ? string.Empty : "s")}",
-			JobScheduleFrequency.Hourly => $"{action} hourly at minute {schedule.MinuteUtc:D2} past the hour",
-			JobScheduleFrequency.Weekly => $"{action} weekly on {schedule.WeeklyDay} at {time}",
-			JobScheduleFrequency.Monthly => $"{action} monthly on day {schedule.DayOfMonth} at {time}",
-			_ => $"{action} daily at {time}"
-		};
-	}
+		var active = _schedules.Where(schedule => schedule.IsEnabled).OrderBy(schedule => schedule.NextRunAtUtc).ToList();
+		var paused = _schedules.Where(schedule => !schedule.IsEnabled).OrderBy(schedule => schedule.Project?.Name).ToList();
 
-	private static string FormatRelativeTime(DateTime value) => value.FormatRelativeToNow();
-
-	private static string FormatNextRun(DateTime nextRunUtc)
-	{
-		var delta = nextRunUtc - DateTime.UtcNow;
-		// Past or near-past: the poller runs every 30s, re-enabled schedules can legitimately
-		// have a NextRun slightly in the past, and "Next 35m ago" is nonsensical.
-		if (delta <= TimeSpan.FromMinutes(1))
+		if (active.Count > 0)
 		{
-			return "Next: due now";
+			yield return ("Active", active);
 		}
 
-		return $"Next: {nextRunUtc.FormatRelativeToNow()}";
-	}
-
-	private void SetStatusFilter(string filter)
-	{
-		_statusFilter = filter;
-	}
-
-	private void SetTypeFilter(string filter)
-	{
-		_typeFilter = filter;
-	}
-
-	private int GetStatusCount(string status) => status switch
-	{
-		"active" => _schedules.Count(s => s.IsEnabled),
-		"paused" => _schedules.Count(s => !s.IsEnabled),
-		_ => _schedules.Count
-	};
-
-	private int GetTypeCount(string type) => type switch
-	{
-		"runjob" => _schedules.Count(s => s.ScheduleType == JobScheduleType.RunJob),
-		"ideas" => _schedules.Count(s => s.ScheduleType == JobScheduleType.GenerateIdeas),
-		_ => _schedules.Count
-	};
-
-	private List<JobSchedule> GetFilteredSchedules()
-	{
-		IEnumerable<JobSchedule> query = _schedules;
-
-		query = _statusFilter switch
+		if (paused.Count > 0)
 		{
-			"active" => query.Where(s => s.IsEnabled),
-			"paused" => query.Where(s => !s.IsEnabled),
-			_ => query
-		};
-
-		query = _typeFilter switch
-		{
-			"runjob" => query.Where(s => s.ScheduleType == JobScheduleType.RunJob),
-			"ideas" => query.Where(s => s.ScheduleType == JobScheduleType.GenerateIdeas),
-			_ => query
-		};
-
-		return query.ToList();
-	}
-
-	private static string GetScheduleTitle(JobSchedule schedule)
-	{
-		if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
-		{
-			return $"Generate {schedule.IdeaCount} idea{(schedule.IdeaCount == 1 ? string.Empty : "s")}";
+			yield return ("Paused", paused);
 		}
-
-		return TruncateText(schedule.Prompt, 110);
 	}
 
 	private string GetDeleteConfirmationMessage()
@@ -406,9 +208,7 @@ else
 			return "Are you sure you want to delete this schedule?";
 		}
 
-		var summary = _scheduleToDelete.ScheduleType == JobScheduleType.GenerateIdeas
-			? GetScheduleTitle(_scheduleToDelete)
-			: TruncateText(_scheduleToDelete.Prompt ?? string.Empty, 90);
+		var summary = ScheduleRow.GetTitle(_scheduleToDelete);
 		return $"Are you sure you want to delete this schedule? {summary}";
 	}
 
@@ -419,19 +219,6 @@ else
 
 	private JobSummary? GetActiveJobForSchedule(Guid scheduleId)
 		=> _activeJobs.FirstOrDefault(j => j.JobScheduleId == scheduleId);
-
-	private void NavigateToJob(Guid jobId)
-		=> NavigationManager.NavigateTo($"/jobs/view/{jobId}");
-
-	private static string TruncateText(string text, int maxLength)
-	{
-		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-		{
-			return text;
-		}
-
-		return text[..maxLength] + "...";
-	}
 
 	public void Dispose()
 	{

@@ -80,7 +80,7 @@
 	private string GetSummary()
 	{
 		var lastSignIn = User.LastLoginAt.HasValue
-			? $"signed in {User.LastLoginAt.Value.FormatDateTimeShort()}"
+			? $"signed in {User.LastLoginAt.Value.FormatRelativeToNow()}"
 			: "never signed in";
 		return $"{RoleName} · {lastSignIn}";
 	}

@@ -48,14 +48,13 @@ public sealed class SchedulerPageTests
 
 			Assert.Contains("Scheduler", html);
 			Assert.Contains("update dependencies, check security issues", html);
-			Assert.Contains("Pause", html);
-			Assert.Contains("Edit", html);
-			Assert.Contains("Delete", html);
 			Assert.Contains("justify-content-between gap-2 mb-4", html);
+			Assert.Contains(">Active<", html);
+			Assert.Contains("list-group rounded-4", html);
 			Assert.Contains("Repo", html);
-			Assert.Contains("Copilot", html);
-			Assert.Contains($"Next: {nextRunAtUtc.FormatRelativeToNow()}", html);
-			Assert.Contains($"Last {lastRunAtUtc.FormatRelativeToNow()}", html);
+			Assert.Contains($"next {nextRunAtUtc.FormatRelativeToNow()}", html);
+			Assert.Contains("aria-expanded=\"false\"", html);
+			Assert.DoesNotContain("nav-tabs", html);
 			Assert.DoesNotContain(timeZoneId, html);
 			Assert.DoesNotContain(nextRunAtUtc.FormatDateTimeWithZone(), html);
 		}
@@ -112,8 +111,7 @@ public sealed class SchedulerPageTests
 				return output.ToHtmlString();
 			});
 
-			Assert.Contains("Security Reviewer", html);
-			Assert.DoesNotContain("Unknown agent", html);
+			Assert.Contains("Repo", html);
 			Assert.Contains("review for security issues", html);
 		}
 		finally
@@ -158,9 +156,8 @@ public sealed class SchedulerPageTests
 				return output.ToHtmlString();
 			});
 
-			Assert.Contains("Idea Generation", html);
 			Assert.Contains("Generate 3 ideas", html);
-			Assert.Contains("Local Ollama", html);
+			Assert.Contains("bi bi-stars", html);
 		}
 		finally
 		{
