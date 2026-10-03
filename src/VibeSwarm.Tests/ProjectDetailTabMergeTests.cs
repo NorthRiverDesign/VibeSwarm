@@ -96,9 +96,13 @@ public sealed class ProjectDetailTabMergeTests
 		cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("ul.nav-pills button.nav-link")));
 		cut.FindAll("ul.nav-pills button.nav-link").Single(button => button.TextContent.Trim() == "Environments").Click();
 
-		var setupRow = cut.FindAll("button.list-group-item").Single(button => button.TextContent.Contains("Set up local environment", StringComparison.Ordinal));
-		Assert.Contains("so it runs on this machine", setupRow.TextContent);
-		setupRow.Click();
+		// Providers load after the tabs appear, and the row shows its subtitle only once they have.
+		cut.WaitForAssertion(() =>
+		{
+			var setupRow = cut.FindAll("button.list-group-item").Single(button => button.TextContent.Contains("Set up local environment", StringComparison.Ordinal));
+			Assert.Contains("so it runs on this machine", setupRow.TextContent);
+		});
+		cut.FindAll("button.list-group-item").Single(button => button.TextContent.Contains("Set up local environment", StringComparison.Ordinal)).Click();
 
 		cut.WaitForAssertion(() =>
 		{
