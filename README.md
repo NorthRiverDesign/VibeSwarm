@@ -53,6 +53,22 @@ pauses work when a window is exhausted.
   are reported as **Unmetered**: no meter is drawn, and they are never paused for exhaustion,
   since there is no window to wait for.
 
+### Project memory and session files
+
+Each agent keeps its own memory in its own place, so VibeSwarm keeps one **project memory**
+that every agent shares. Edit it under **Instructions and memory** in a project's settings
+(up to 20,000 characters). Before each job VibeSwarm writes it to
+`.vibeswarm/project-memory.md` in the working directory, tells the agent to read it and add
+lasting lessons (not progress, plans or todo lists), and saves the agent's edits back to the
+project when the job ends.
+
+Session files never reach your commits. At every job start VibeSwarm lists the agents' own
+folders and files (`.vibeswarm/`, `.claude/`, `.opencode/`, `.copilot/`, `CLAUDE.local.md`,
+`tasks/todo.md`), Playwright and test output, logs and temp files in the repository's
+`.git/info/exclude`. That file is local to your clone, so your `.gitignore` is never changed,
+and a run that only leaves such files behind doesn't count as a code change. Agents are also
+told to keep plans, todo lists and scratch work out of the repository.
+
 ---
 
 ## Quick Start
