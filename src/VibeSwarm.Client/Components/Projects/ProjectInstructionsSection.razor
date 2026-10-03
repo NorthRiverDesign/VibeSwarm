@@ -33,7 +33,7 @@
 				   placeholder="Durable notes that keep fresh agent sessions from repeating past mistakes." />
 	<ValidationMessage For="@(() => Project.Memory)" class="text-danger small" />
 	<div class="form-text d-flex flex-wrap justify-content-between gap-2">
-		<span>Agents read this first and update it when they learn something durable.</span>
+		<span>Every agent reads this first and adds lasting lessons. It stays out of the repository.</span>
 		<span>@GetCharacterCount(Project.Memory, ValidationLimits.ProjectMemoryMaxLength)</span>
 	</div>
 </div>

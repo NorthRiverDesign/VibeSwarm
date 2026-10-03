@@ -79,7 +79,8 @@ public sealed class BuildVerificationPromptTests
 		Assert.Contains("SESSION ARTIFACTS:", rules);
 		Assert.Contains("screenshots, browser traces, test logs and reports", rules);
 		Assert.Contains(".git/info/exclude, not .gitignore", rules);
-		Assert.Contains("Do not add agent instruction, plan or memory files", rules);
+		Assert.Contains("Keep plans, todo lists and session notes out of the repository", rules);
+		Assert.Contains("Do not add or append to agent instruction, plan or memory files", rules);
 	}
 
 	[Fact]

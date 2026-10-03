@@ -48,17 +48,6 @@ public sealed class ProjectMemoryService(
 		"/tmp/",          // Scratch directory at the repository root
 	];
 
-	/// <summary>
-	/// Artifact files and directories that should be actively deleted from the working directory
-	/// after a CLI agent finishes. These are non-code files that agents create for their own
-	/// internal tracking and should not persist in the user's project.
-	/// </summary>
-	internal static readonly string[] ArtifactCleanupPatterns =
-	[
-		"tasks/todo.md",
-		"tasks/lessons.md",
-	];
-
 	public async Task<string?> PrepareMemoryFileAsync(Project? project, CancellationToken cancellationToken = default)
 	{
 		if (project == null || string.IsNullOrWhiteSpace(project.WorkingPath))
@@ -135,8 +124,8 @@ public sealed class ProjectMemoryService(
 
 	private static async Task EnsureGitExcludeEntryAsync(string workingPath, CancellationToken cancellationToken)
 	{
-		var gitDirectory = Path.Combine(workingPath, ".git");
-		if (!Directory.Exists(gitDirectory))
+		var gitDirectory = await ResolveExcludeGitDirectoryAsync(workingPath, cancellationToken);
+		if (gitDirectory == null)
 		{
 			return;
 		}
@@ -175,5 +164,41 @@ public sealed class ProjectMemoryService(
 		}
 
 		await File.WriteAllTextAsync(excludeFilePath, builder.ToString(), Utf8NoBom, cancellationToken);
+	}
+
+	/// <summary>
+	/// Returns the git directory whose info/exclude applies to this checkout. In a linked worktree
+	/// or a submodule, .git is a file pointing at the real git directory, and a worktree reads the
+	/// main repository's exclude file (its commondir).
+	/// </summary>
+	private static async Task<string?> ResolveExcludeGitDirectoryAsync(string workingPath, CancellationToken cancellationToken)
+	{
+		var dotGitPath = Path.Combine(workingPath, ".git");
+		if (Directory.Exists(dotGitPath))
+		{
+			return dotGitPath;
+		}
+
+		if (!File.Exists(dotGitPath))
+		{
+			return null;
+		}
+
+		const string gitDirPrefix = "gitdir:";
+		var pointer = (await File.ReadAllTextAsync(dotGitPath, cancellationToken)).Trim();
+		if (!pointer.StartsWith(gitDirPrefix, StringComparison.Ordinal))
+		{
+			return null;
+		}
+
+		var gitDirectory = Path.GetFullPath(pointer[gitDirPrefix.Length..].Trim(), workingPath);
+		var commonDirFile = Path.Combine(gitDirectory, "commondir");
+		if (File.Exists(commonDirFile))
+		{
+			var commonDir = (await File.ReadAllTextAsync(commonDirFile, cancellationToken)).Trim();
+			gitDirectory = Path.GetFullPath(commonDir, gitDirectory);
+		}
+
+		return Directory.Exists(gitDirectory) ? gitDirectory : null;
 	}
 }

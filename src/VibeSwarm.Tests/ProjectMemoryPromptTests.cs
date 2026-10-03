@@ -25,6 +25,22 @@ public sealed class ProjectMemoryPromptTests
 	}
 
 	[Fact]
+	public void BuildProjectMemoryRules_KeepsSessionNotesOutOfMemoryAndRepository()
+	{
+		var rules = PromptBuilder.BuildProjectMemoryRules(new Project
+		{
+			Name = "Docs App",
+			WorkingPath = "/tmp/docs-app",
+			Memory = "Remember to run migrations before deploys."
+		}, "/tmp/docs-app/.vibeswarm/project-memory.md");
+
+		Assert.NotNull(rules);
+		Assert.Contains("shared by every agent that works on this project", rules);
+		Assert.Contains("rather than files in the repository", rules);
+		Assert.Contains("Leave out session notes: task progress, plans, todo lists", rules);
+	}
+
+	[Fact]
 	public void BuildProjectMemoryRules_IncludesBootstrapGuidanceWhenMemoryIsEmpty()
 	{
 		var rules = PromptBuilder.BuildProjectMemoryRules(new Project

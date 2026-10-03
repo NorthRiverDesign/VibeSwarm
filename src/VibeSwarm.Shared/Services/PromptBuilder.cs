@@ -360,7 +360,7 @@ public static class PromptBuilder
 			sb.AppendLine("SESSION ARTIFACTS:");
 			sb.AppendLine("- Anything left in the working tree may be committed. Write screenshots, browser traces, test logs and reports, scratch scripts and temp files under /tmp or the git-ignored .vibeswarm/ folder.");
 			sb.AppendLine("- If a tool can only write inside the repository, delete its output before finishing or list the path in .git/info/exclude, not .gitignore.");
-			sb.AppendLine("- Do not add agent instruction, plan or memory files (such as CLAUDE.md, AGENTS.md or notes) unless the task asks for them.");
+			sb.AppendLine("- Keep plans, todo lists and session notes out of the repository: use your built-in todo tool or /tmp. Do not add or append to agent instruction, plan or memory files (such as CLAUDE.md, AGENTS.md, todo.md or notes) unless the task asks for them.");
 		}
 
 		var enabledEnvironments = project.Environments
@@ -456,8 +456,9 @@ public static class PromptBuilder
 
 		var sb = new StringBuilder();
 		sb.AppendLine("PROJECT MEMORY:");
-		sb.AppendLine($"- Read {memoryFilePath} before making changes. It holds durable context from earlier runs.");
-		sb.AppendLine($"- Update this file when you learn stable project guidance or workflow gotchas, or after you make and correct a mistake. Keep entries factual, concise and actionable, the file under {ValidationLimits.ProjectMemoryMaxLength} characters, and secrets, credentials and personal data out.");
+		sb.AppendLine($"- Read {memoryFilePath} before making changes. It holds durable context from earlier runs, is shared by every agent that works on this project, and stays out of the repository.");
+		sb.AppendLine($"- Update this file, rather than files in the repository, when you learn stable project guidance or workflow gotchas, or after you make and correct a mistake. Keep entries factual, concise and actionable, the file under {ValidationLimits.ProjectMemoryMaxLength} characters, and secrets, credentials and personal data out.");
+		sb.AppendLine("- Leave out session notes: task progress, plans, todo lists, and facts that only hold for this run.");
 		sb.AppendLine(string.IsNullOrWhiteSpace(project.Memory)
 			? "- If the file is empty, add a first entry once you learn something worth keeping. VibeSwarm will sync changes back to the project after the job."
 			: "- VibeSwarm will sync changes back to the project after the job.");
