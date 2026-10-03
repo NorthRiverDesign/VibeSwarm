@@ -471,6 +471,128 @@
         </script>
 
         <script>
+            // The page scroller (.app-main) outlives every page. A new page starts at the top, like a
+            // pushed screen; going back returns to where that page was left. MainLayout calls
+            // pageChanged once it has rendered a different page.
+            window.vibeSwarmPageScroll = (function () {
+                var positions = {};
+                var currentPath = window.location.pathname;
+                var poppedPath = null;
+                var restoreRun = 0;
+
+                window.addEventListener('popstate', function () {
+                    poppedPath = window.location.pathname;
+                });
+
+                document.addEventListener('scroll', function (e) {
+                    var target = e.target;
+                    // Until pageChanged catches up with a new address, a scroll is the old page being
+                    // clamped as it is replaced, not a position worth keeping.
+                    if (target && target.classList && target.classList.contains('app-main')
+                        && window.location.pathname === currentPath) {
+                        positions[currentPath] = target.scrollTop;
+                    }
+                }, { capture: true, passive: true });
+
+                // A finger or wheel on the page wins over a restore still waiting for the page to load.
+                var stopRestoring = function () { restoreRun++; };
+                document.addEventListener('touchstart', stopRestoring, { capture: true, passive: true });
+                document.addEventListener('wheel', stopRestoring, { capture: true, passive: true });
+
+                return {
+                    pageChanged: function () {
+                        var path = window.location.pathname;
+                        var target = poppedPath === path ? (positions[path] || 0) : 0;
+                        poppedPath = null;
+                        currentPath = path;
+
+                        var scroller = document.querySelector('.app-main');
+                        if (!scroller) {
+                            return;
+                        }
+
+                        var run = ++restoreRun;
+                        var deadline = Date.now() + 2000;
+                        var apply = function () {
+                            if (run !== restoreRun) {
+                                return;
+                            }
+
+                            scroller.scrollTop = target;
+                            // A page's data usually arrives after its first render, so wait for it to grow tall enough.
+                            if (Math.abs(scroller.scrollTop - target) > 1 && Date.now() < deadline) {
+                                window.requestAnimationFrame(apply);
+                            }
+                        };
+                        apply();
+                    }
+                };
+            })();
+
+            // Tapping the tab you are already on scrolls its page back to the top, as in an iOS app.
+            // Captured first, so Blazor sees the click handled and doesn't navigate to the same page.
+            document.addEventListener('click', function (e) {
+                var tab = e.target && e.target.closest ? e.target.closest('.app-tab-bar a[href]') : null;
+                if (!tab || tab.pathname !== window.location.pathname) {
+                    return;
+                }
+
+                e.preventDefault();
+                var scroller = document.querySelector('.app-main');
+                if (scroller) {
+                    scroller.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            }, true);
+
+            // Home Screen apps get no browser back gesture, so swiping in from the left edge goes back,
+            // as in a native app. Safari in a tab has its own gesture, so this only runs standalone.
+            // Its touchstart listener is also what lets iOS show :active pressed states.
+            (function () {
+                var isStandalone = window.navigator.standalone === true
+                    || window.matchMedia('(display-mode: standalone)').matches;
+                var start = null;
+
+                var isInsideHorizontalScroll = function (element) {
+                    for (var el = element; el && el !== document.body; el = el.parentElement) {
+                        if (el.scrollLeft > 0) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+
+                document.addEventListener('touchstart', function (e) {
+                    var touch = e.touches[0];
+                    start = isStandalone
+                        && e.touches.length === 1
+                        && touch.clientX <= 24
+                        && !document.body.classList.contains('vs-modal-open')
+                        && !isInsideHorizontalScroll(e.target)
+                        ? { x: touch.clientX, y: touch.clientY }
+                        : null;
+                }, { passive: true });
+
+                document.addEventListener('touchend', function (e) {
+                    if (!start) {
+                        return;
+                    }
+
+                    var touch = e.changedTouches[0];
+                    var dx = touch.clientX - start.x;
+                    var dy = Math.abs(touch.clientY - start.y);
+                    start = null;
+                    if (dx > 80 && dy < dx / 2 && window.history.length > 1) {
+                        window.history.back();
+                    }
+                }, { passive: true });
+
+                document.addEventListener('touchcancel', function () {
+                    start = null;
+                }, { passive: true });
+            })();
+        </script>
+
+        <script>
             // Start Blazor manually with error handling
             Blazor.start().then(function () {
                 clearTimeout(loadTimeout);

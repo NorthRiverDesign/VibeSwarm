@@ -47,6 +47,7 @@
 	/* Layout dimensions */
 	--vs-sidebar-width: 212px;
 	--vs-header-height: 56px;
+	--vs-tab-bar-height: 50px;
 	--vs-nav-popout-shadow:
 		0 1.25rem 2.5rem rgba(15, 23, 42, 0.18),
 		0 0.5rem 1rem rgba(15, 23, 42, 0.12);
@@ -322,6 +323,8 @@ html {
 	font-size: 16px;
 	-webkit-text-size-adjust: 100%;
 	-webkit-tap-highlight-color: transparent;
+	/* No double-tap zoom, so a tap acts at once as in a native app; pinch zoom still works. */
+	touch-action: manipulation;
 	height: 100%;
 	height: 100dvh;
 	overflow-x: clip;
@@ -364,17 +367,6 @@ body:has(.app-layout) {
 	z-index: 1000;
 }
 
-/* Touch target — markup uses d-flex align-items-center justify-content-center p-0 bg-transparent border-0 rounded */
-.nav-toggle {
-	width: 44px;
-	height: 44px;
-	color: var(--bs-body-color);
-}
-.nav-toggle:hover {
-	background: var(--bs-tertiary-bg);
-	color: var(--bs-emphasis-color);
-}
-
 /* Brand — markup uses d-flex align-items-center gap-2 text-decoration-none fw-semibold */
 .app-brand {
 	color: var(--bs-body-color);
@@ -390,22 +382,18 @@ body:has(.app-layout) {
 	height: 44px;
 }
 
-/* Sidebar — markup uses position-fixed d-flex flex-column overflow-y-auto */
+/* Sidebar (desktop only) — markup uses position-fixed d-none d-lg-flex flex-column */
 .app-sidebar {
-	top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
+	top: 0;
 	left: 0;
 	bottom: 0;
 	width: var(--vs-sidebar-width);
 	background: var(--surface-1);
 	border-right: 1px solid var(--line);
 	z-index: 999;
-	transform: translateX(-100%);
-	transition: transform var(--vs-transition);
+	padding-top: var(--vs-safe-area-top);
 	padding-bottom: var(--vs-safe-area-bottom);
 	padding-left: var(--vs-safe-area-left);
-}
-.app-sidebar.open {
-	transform: translateX(0);
 }
 
 .app-sidebar > .overflow-y-auto {
@@ -413,14 +401,29 @@ body:has(.app-layout) {
 	overscroll-behavior-y: contain;
 }
 
-/* Overlay — markup uses position-fixed */
-.sidebar-overlay {
-	top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
-	left: 0;
-	right: 0;
-	bottom: 0;
-	background: rgba(0, 0, 0, 0.5);
-	z-index: 998;
+/* Tab bar (phones and tablets) — markup uses d-flex d-lg-none flex-shrink-0 border-top.
+   It is the screen's bottom band, so it alone clears the home indicator. */
+.app-tab-bar {
+	height: calc(var(--vs-tab-bar-height) + var(--vs-safe-area-bottom));
+	padding-bottom: var(--vs-safe-area-bottom);
+	padding-left: var(--vs-safe-area-left);
+	padding-right: var(--vs-safe-area-right);
+	background: var(--bs-body-bg);
+	z-index: 1000;
+	-webkit-touch-callout: none;
+}
+/* Equal-width tabs whatever their label, as iOS lays them out. */
+.app-tab {
+	flex: 1 1 0;
+	min-width: 0;
+	color: var(--fg-3);
+	transition: opacity var(--vs-transition);
+}
+.app-tab.active {
+	color: var(--bs-primary);
+}
+.app-tab:active {
+	opacity: 0.6;
 }
 
 /* Main area — markup uses flex-grow-1 */
@@ -430,23 +433,16 @@ body:has(.app-layout) {
 	overscroll-behavior-y: contain;
 }
 
-/* The scroller runs to the screen's bottom edge; only the end of the content
-   clears the home indicator, and by the larger of the two gaps, not their sum. */
+/* The tab bar below the scroller clears the home indicator on phones, and the desktop
+   sidebar layout has none, so the content keeps plain padding at its end. */
 .main-content {
 	padding: 1rem;
 	padding-left: calc(1rem + var(--vs-safe-area-left));
 	padding-right: calc(1rem + var(--vs-safe-area-right));
-	padding-bottom: max(1rem, var(--vs-safe-area-bottom));
 }
 
 /* Desktop layout */
 @media (min-width: 992px) {
-	.app-sidebar {
-		top: 0;
-		bottom: 0;
-		transform: translateX(0);
-		padding-top: var(--vs-safe-area-top);
-	}
 	.app-main {
 		margin-left: var(--vs-sidebar-width);
 		min-height: 100vh;
@@ -854,6 +850,25 @@ body.vs-modal-open .app-main {
 	max-height: 50vh;
 }
 
+/* Install and update banners float above the tab bar and the home indicator. */
+.app-floating-banner {
+	bottom: var(--vs-safe-area-bottom);
+}
+@media (max-width: 991.98px) {
+	.app-floating-banner {
+		bottom: calc(var(--vs-tab-bar-height) + var(--vs-safe-area-bottom));
+	}
+}
+
+@keyframes vsSheetUp {
+	from {
+		transform: translateY(100%);
+	}
+	to {
+		transform: translateY(0);
+	}
+}
+
 @keyframes modalFadeIn {
 	from {
 		opacity: 0;
@@ -887,6 +902,16 @@ body.vs-modal-open .app-main {
 	}
 	to {
 		transform: translateX(0);
+		opacity: 1;
+	}
+}
+@keyframes slideInDown {
+	from {
+		transform: translateY(-100%);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0);
 		opacity: 1;
 	}
 }
@@ -975,10 +1000,6 @@ body.vs-modal-open .app-main {
 	:root {
 		--vs-header-height: 52px;
 	}
-	.form-control,
-	.form-select {
-		font-size: var(--vs-text-body);
-	}
 
 	/* The 44px icon buttons carry their own inset, so a thin edge puts the outer
 	   glyphs in line with the page content and keeps the full name visible at 375px. */
@@ -991,11 +1012,6 @@ body.vs-modal-open .app-main {
 		padding: 0.75rem;
 		padding-left: calc(0.75rem + var(--vs-safe-area-left));
 		padding-right: calc(0.75rem + var(--vs-safe-area-right));
-		padding-bottom: max(0.75rem, var(--vs-safe-area-bottom));
-	}
-
-	.app-sidebar .nav-item {
-		padding: 0.625rem 0.875rem;
 	}
 
 	.toast-container {
@@ -1007,6 +1023,8 @@ body.vs-modal-open .app-main {
 		min-width: auto;
 		max-width: none;
 		width: 100%;
+		/* Full-width toasts drop in from the top, as iOS notifications do. */
+		animation-name: slideInDown;
 	}
 
 	.chat-message {
@@ -1038,6 +1056,12 @@ body.vs-modal-open .app-main {
 		max-height: 100dvh !important;
 		border-radius: 0 !important;
 		border: none !important;
+	}
+	/* A full-screen modal slides up from the bottom, as an iOS sheet does. */
+	@media (prefers-reduced-motion: no-preference) {
+		.vs-modal-dialog {
+			animation: vsSheetUp 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+		}
 	}
 	.vs-modal-dialog .modal-header {
 		padding-top: calc(0.75rem + var(--vs-safe-area-top));
@@ -1260,6 +1284,7 @@ body.vs-modal-open .app-main {
 	}
 	.app-header,
 	.app-sidebar,
+	.app-tab-bar,
 	.nav-item,
 	.btn {
 		-webkit-user-select: none;
@@ -1563,6 +1588,14 @@ small, .small {
    component changes.
 ============================================ */
 @media (pointer: coarse) {
+	/* iOS zooms the page into any field set smaller than 16px when it takes focus. */
+	.form-control,
+	.form-select,
+	.input-group-sm > .form-control,
+	.input-group-sm > .form-select {
+		font-size: var(--vs-text-body);
+	}
+
 	.btn-sm,
 	.btn-group-sm > .btn {
 		--bs-btn-padding-y: 0.5rem;
@@ -1615,5 +1648,15 @@ small, .small {
 	.form-switch .form-check-input {
 		width: 2.5em;
 		margin-left: -3em;
+	}
+}
+
+/* A touch screen has no hover: Bootstrap's hover tint would stay on a row after it is
+   tapped (one that opens in place keeps it until something else is tapped). Rows show
+   the pressed tint instead while a finger is down. */
+@media (hover: none) {
+	.list-group {
+		--bs-list-group-action-hover-bg: var(--bs-list-group-bg);
+		--bs-list-group-action-hover-color: var(--bs-list-group-action-color);
 	}
 }
