@@ -78,7 +78,7 @@
 						</button>
 					}
 				}
-				else
+				else if (IsQueueRunning)
 				{
 					<button type="button" class="btn btn-danger btn-lg" @onclick="() => StopQueueAsync(false)" disabled="@_isMutatingQueue">
 						@if (_isMutatingQueue)
@@ -92,13 +92,27 @@
 						Stop queue
 					</button>
 				}
+				else if (CanStartIdeas)
+				{
+					<button type="button" class="btn btn-primary btn-lg" @onclick="StartQueueAsync" disabled="@_isMutatingQueue">
+						@if (_isMutatingQueue)
+						{
+							<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-play-fill me-2"></i>
+						}
+						Start queued ideas
+					</button>
+				}
 
 				<a class="btn btn-secondary" href="/jobs">
 					<i class="bi bi-box-arrow-up-right me-2"></i>All jobs
 				</a>
 			</div>
 
-			@if (!_queueState.IsPaused && _snapshot.UpcomingIdeasCount > 0 && _snapshot.ProjectsCurrentlyProcessing == 0)
+			@if (IsQueueRunning && CanStartIdeas)
 			{
 				<button type="button" class="btn btn-sm btn-link px-0 mt-1" @onclick="StartQueueAsync" disabled="@_isMutatingQueue">
 					<i class="bi bi-play-circle me-1"></i>Start queued ideas across active projects
@@ -128,92 +142,47 @@
 		}
 		else
 		{
-			<div class="overflow-y-auto" style="max-height: min(28rem, 70vh);">
+			<div class="overflow-y-auto pb-2" style="max-height: min(28rem, 70vh);">
 				@if (_snapshot.RunningJobs.Count > 0)
 				{
-					<div class="px-3 py-2 border-bottom small text-uppercase text-body-secondary fw-semibold">Running Jobs</div>
+					<div class="text-eyebrow px-3 pt-3 pb-2">Running</div>
 					<div class="list-group list-group-flush">
 						@foreach (var job in _snapshot.RunningJobs)
 						{
-							<a class="list-group-item list-group-item-action px-3 py-2 text-decoration-none text-body"
-							   href="/jobs/view/@job.Id">
-								<div class="d-flex align-items-start justify-content-between gap-2">
-									<div class="min-width-0">
-										<div class="d-flex align-items-center gap-2 flex-wrap">
-											<span class="badge @(job.Status is VibeSwarm.Shared.Data.JobStatus.Paused ? "text-bg-warning" : job.Status is VibeSwarm.Shared.Data.JobStatus.Stalled ? "text-bg-danger" : "text-bg-primary")">@(job.Status is VibeSwarm.Shared.Data.JobStatus.Paused ? "Paused" : job.Status is VibeSwarm.Shared.Data.JobStatus.Stalled ? "Stalled" : "Running")</span>
-											<span class="fw-medium text-truncate">@job.DisplayTitle</span>
-										</div>
-										<div class="small text-body-secondary mt-1 text-truncate">
-											@job.ProjectName
-											@if (!string.IsNullOrWhiteSpace(job.ProviderName))
-											{
-												<span class="mx-1">&bull;</span>
-												<span>@job.ProviderName</span>
-											}
-										</div>
-										@if (!string.IsNullOrWhiteSpace(job.CurrentActivity))
-										{
-											<div class="small text-body-secondary mt-1 text-truncate">@job.CurrentActivity</div>
-										}
-									</div>
-									<i class="bi bi-chevron-right text-body-tertiary"></i>
-								</div>
-							</a>
+							<JobRow @key="job.Id" Job="@ToJobSummary(job)" ShowProjectName="true" />
 						}
 					</div>
 				}
 
 				@if (_snapshot.QueuedJobs.Count > 0)
 				{
-					<div class="px-3 py-2 border-bottom border-top small text-uppercase text-body-secondary fw-semibold">Queued Jobs</div>
+					<div class="text-eyebrow px-3 pt-3 pb-2">Queued</div>
 					<div class="list-group list-group-flush">
 						@foreach (var job in _snapshot.QueuedJobs)
 						{
-							<a class="list-group-item list-group-item-action px-3 py-2 text-decoration-none text-body"
-							   href="/jobs/view/@job.Id">
-								<div class="d-flex align-items-start justify-content-between gap-2">
-									<div class="min-width-0">
-										<div class="d-flex align-items-center gap-2 flex-wrap">
-											<span class="badge bg-body-secondary text-body">Pending</span>
-											<span class="fw-medium text-truncate">@job.DisplayTitle</span>
-										</div>
-										<div class="small text-body-secondary mt-1 text-truncate">
-											@job.ProjectName
-											@if (!string.IsNullOrWhiteSpace(job.ProviderName))
-											{
-												<span class="mx-1">&bull;</span>
-												<span>@job.ProviderName</span>
-											}
-										</div>
-									</div>
-									<i class="bi bi-chevron-right text-body-tertiary"></i>
-								</div>
-							</a>
+							<JobRow @key="job.Id" Job="@ToJobSummary(job)" ShowProjectName="true"
+									TrailingText="@job.CreatedAt.FormatShortAge()" />
 						}
 					</div>
 				}
 
 				@if (_snapshot.UpcomingIdeas.Count > 0)
 				{
-					<div class="px-3 py-2 border-bottom border-top small text-uppercase text-body-secondary fw-semibold">Upcoming Ideas</div>
+					<div class="text-eyebrow px-3 pt-3 pb-2">Upcoming ideas</div>
 					<div class="list-group list-group-flush">
 						@foreach (var idea in _snapshot.UpcomingIdeas)
 						{
-							<a class="list-group-item list-group-item-action px-3 py-2 text-decoration-none text-body"
-							   href="/projects/@idea.ProjectId">
-								<div class="d-flex align-items-start justify-content-between gap-2">
-									<div class="min-width-0">
-										<div class="d-flex align-items-center gap-2 flex-wrap">
-											<span class="badge @((idea.IsProjectProcessing || idea.HasQueuedJob) ? "text-bg-info" : "bg-body-secondary text-body")">
-												@((idea.IsProjectProcessing || idea.HasQueuedJob) ? "Queued" : "Pending")
-											</span>
-											<span class="fw-medium text-truncate">@idea.Description</span>
-										</div>
-										<div class="small text-body-secondary mt-1 text-truncate">@idea.ProjectName</div>
-									</div>
-									<i class="bi bi-chevron-right text-body-tertiary"></i>
-								</div>
-							</a>
+							var isQueued = idea.IsProjectProcessing || idea.HasQueuedJob;
+							<ListRow @key="idea.IdeaId"
+									 Href="@($"/projects/{idea.ProjectId}")"
+									 Icon="@(isQueued ? "hourglass-split" : "lightbulb")"
+									 IconClass="@(isQueued ? "text-warning" : "text-body-tertiary")"
+									 Title="@idea.Description"
+									 Subtitle="@idea.ProjectName">
+								<Trailing>
+									<span class="small text-body-secondary flex-shrink-0">@(isQueued ? "Queued" : "Pending")</span>
+								</Trailing>
+							</ListRow>
 						}
 					</div>
 				}
@@ -240,15 +209,37 @@
 
 	private bool IsQueueActive => _snapshot.ProjectsCurrentlyProcessing > 0;
 
+	/// <summary>
+	/// Something is running, waiting to start, or being fed by idea processing, so there is
+	/// something for Stop queue to stop. An idle queue offers no Stop.
+	/// </summary>
+	private bool IsQueueRunning => !_queueState.IsPaused && (_queueState.RunningJobs > 0 || BadgeCount > 0 || IsQueueActive);
+
+	private bool CanStartIdeas => !_queueState.IsPaused && _snapshot.UpcomingIdeasCount > 0 && !IsQueueActive;
+
 	private string QueueStatusLabel => _queueState.IsPaused
 		? "Paused"
-		: _queueState.RunningJobs > 0 || IsQueueActive ? "Running" : "Idle";
+		: IsQueueRunning ? "Running" : "Idle";
 
 	private string QueueStatusClass => _queueState.IsPaused
 		? "text-bg-warning"
-		: _queueState.RunningJobs > 0 || IsQueueActive ? "text-bg-info" : "bg-body-secondary text-body";
+		: IsQueueRunning ? "text-bg-info" : "bg-body-secondary text-body";
 	private int BadgeCount => _snapshot.RunningJobsCount + _snapshot.QueuedJobsCount;
 	private int TotalItemCount => BadgeCount + _snapshot.UpcomingIdeasCount;
+
+	private static JobSummary ToJobSummary(GlobalQueueJobSummary job) => new()
+	{
+		Id = job.Id,
+		Title = job.Title,
+		GoalPrompt = job.GoalPrompt,
+		Status = job.Status,
+		ProjectId = job.ProjectId,
+		ProjectName = job.ProjectName,
+		ProviderName = job.ProviderName,
+		CurrentActivity = job.CurrentActivity,
+		CreatedAt = job.CreatedAt,
+		StartedAt = job.StartedAt
+	};
 
 	protected override async Task OnInitializedAsync()
 	{

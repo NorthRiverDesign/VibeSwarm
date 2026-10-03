@@ -60,8 +60,8 @@ public sealed class QueueDropdownPanelTests
 		Assert.Contains("Queue", cut.Markup);
 		Assert.Contains("1 running", cut.Markup);
 		Assert.Contains("2 upcoming", cut.Markup);
-		Assert.Contains("Running Jobs", cut.Markup);
-		Assert.Contains("Upcoming Ideas", cut.Markup);
+		Assert.Contains(">Running<", cut.Markup);
+		Assert.Contains("Upcoming ideas", cut.Markup);
 		Assert.Contains("Fix auth refresh", cut.Markup);
 		Assert.Contains("Running tests", cut.Markup);
 		Assert.Contains("Add queue controls to navbar", cut.Markup);
@@ -131,7 +131,7 @@ public sealed class QueueDropdownPanelTests
 
 		var cut = context.Render<QueueDropdownPanel>();
 
-		Assert.Contains("Queued Jobs", cut.Markup);
+		Assert.Contains(">Queued<", cut.Markup);
 		Assert.Contains("Add dark mode", cut.Markup);
 		Assert.Contains("Fix login bug", cut.Markup);
 		Assert.Contains("2 queued", cut.Markup);
@@ -182,12 +182,13 @@ public sealed class QueueDropdownPanelTests
 	}
 
 	[Fact]
-	public void QueueDropdownPanel_ShowsPausedAndStalledBadges_ForActiveJobs()
+	public void QueueDropdownPanel_ShowsStatusIconsInsteadOfBadges_ForJobs()
 	{
 		using var context = CreateContext(new FakeIdeaService(
 			new GlobalQueueSnapshot
 			{
-				RunningJobsCount = 2,
+				RunningJobsCount = 3,
+				QueuedJobsCount = 1,
 				ProjectsCurrentlyProcessing = 1,
 				RunningJobs =
 				[
@@ -196,6 +197,15 @@ public sealed class QueueDropdownPanelTests
 						Id = Guid.NewGuid(),
 						ProjectId = Guid.NewGuid(),
 						ProjectName = "Alpha",
+						GoalPrompt = "Busy job",
+						Status = JobStatus.Processing,
+						CurrentActivity = "Editing files"
+					},
+					new GlobalQueueJobSummary
+					{
+						Id = Guid.NewGuid(),
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Beta",
 						GoalPrompt = "Paused job",
 						Status = JobStatus.Paused
 					},
@@ -203,21 +213,140 @@ public sealed class QueueDropdownPanelTests
 					{
 						Id = Guid.NewGuid(),
 						ProjectId = Guid.NewGuid(),
-						ProjectName = "Beta",
+						ProjectName = "Gamma",
 						GoalPrompt = "Stalled job",
 						Status = JobStatus.Stalled
+					}
+				],
+				QueuedJobs =
+				[
+					new GlobalQueueJobSummary
+					{
+						Id = Guid.NewGuid(),
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Delta",
+						GoalPrompt = "Waiting job",
+						Status = JobStatus.New
 					}
 				]
 			}));
 
 		var cut = context.Render<QueueDropdownPanel>();
 
-		Assert.Contains("Paused", cut.Markup);
-		Assert.Contains("Stalled", cut.Markup);
-		Assert.Contains("Paused job", cut.Markup);
-		Assert.Contains("Stalled job", cut.Markup);
-		// Should not show generic Running badge for paused/stalled individual job items
-		Assert.DoesNotContain("text-bg-primary\">Running<", cut.Markup);
+		var rows = cut.FindAll("a.list-group-item[href^='/jobs/view/']");
+		Assert.Equal(4, rows.Count);
+		Assert.Empty(cut.FindAll(".list-group-item .badge"));
+
+		Assert.NotNull(rows[0].QuerySelector(".spinner-border"));
+		Assert.Contains("Editing files", rows[0].TextContent);
+		Assert.NotNull(rows[1].QuerySelector(".bi-chat-dots-fill[title='Waiting for your reply']"));
+		Assert.NotNull(rows[2].QuerySelector(".bi-exclamation-triangle-fill[title='Stalled']"));
+		Assert.NotNull(rows[3].QuerySelector(".bi-hourglass-split[title='Queued']"));
+		Assert.Contains("Delta", rows[3].TextContent);
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_ShowsStatusIcons_ForUpcomingIdeas()
+	{
+		using var context = CreateContext(new FakeIdeaService(
+			new GlobalQueueSnapshot
+			{
+				UpcomingIdeasCount = 2,
+				ProjectsCurrentlyProcessing = 1,
+				UpcomingIdeas =
+				[
+					new GlobalQueueIdeaSummary
+					{
+						IdeaId = Guid.NewGuid(),
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						Description = "Picked up next",
+						IsProjectProcessing = true
+					},
+					new GlobalQueueIdeaSummary
+					{
+						IdeaId = Guid.NewGuid(),
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Beta",
+						Description = "Waiting for a start",
+						IsProjectProcessing = false
+					}
+				]
+			}));
+
+		var cut = context.Render<QueueDropdownPanel>();
+
+		var rows = cut.FindAll("a.list-group-item[href^='/projects/']");
+		Assert.Equal(2, rows.Count);
+		Assert.Empty(cut.FindAll(".list-group-item .badge"));
+		Assert.NotNull(rows[0].QuerySelector(".bi-hourglass-split"));
+		Assert.Contains("Queued", rows[0].TextContent);
+		Assert.NotNull(rows[1].QuerySelector(".bi-lightbulb"));
+		Assert.Contains("Pending", rows[1].TextContent);
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_IdleQueue_DoesNotOfferStop()
+	{
+		using var context = CreateContext(new FakeIdeaService());
+		var cut = context.Render<QueueDropdownPanel>();
+
+		Assert.DoesNotContain("Stop queue", cut.Markup);
+		Assert.DoesNotContain("Start queued ideas", cut.Markup);
+		Assert.Contains("Idle", cut.Markup);
+		Assert.Contains("All jobs", cut.Markup);
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_IdleQueueWithIdeas_OffersStartInsteadOfStop()
+	{
+		using var context = CreateContext(new FakeIdeaService(
+			new GlobalQueueSnapshot
+			{
+				UpcomingIdeasCount = 1,
+				UpcomingIdeas =
+				[
+					new GlobalQueueIdeaSummary
+					{
+						IdeaId = Guid.NewGuid(),
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						Description = "Next idea"
+					}
+				]
+			}));
+
+		var cut = context.Render<QueueDropdownPanel>();
+
+		Assert.DoesNotContain("Stop queue", cut.Markup);
+		var start = cut.FindAll("button").Single(button => button.TextContent.Contains("Start queued ideas"));
+		Assert.Contains("btn-primary", start.ClassList);
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_QueuedJobsWaiting_OfferStop()
+	{
+		using var context = CreateContext(new FakeIdeaService(
+			new GlobalQueueSnapshot
+			{
+				QueuedJobsCount = 1,
+				QueuedJobs =
+				[
+					new GlobalQueueJobSummary
+					{
+						Id = Guid.NewGuid(),
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						GoalPrompt = "About to start",
+						Status = JobStatus.Pending
+					}
+				]
+			}));
+
+		var cut = context.Render<QueueDropdownPanel>();
+
+		Assert.Contains("Stop queue", cut.Markup);
+		Assert.Contains("Running", cut.Find(".badge:not(.notification-bell-badge)").TextContent);
 	}
 
 	[Fact]
