@@ -57,6 +57,7 @@ public static class DataServiceExtensions
 		services.AddScoped<IAgentService, AgentService>();
 		services.AddScoped<IMcpConfigService, McpConfigService>();
 		services.AddScoped<IProjectMemoryService, ProjectMemoryService>();
+		services.AddScoped<ILocalEnvironmentSetupService, LocalEnvironmentSetupService>();
 		services.AddScoped<IIdeaService, IdeaService>();
 		services.AddScoped<IUserService, UserService>();
 		services.AddScoped<IProviderUsageService, ProviderUsageService>();

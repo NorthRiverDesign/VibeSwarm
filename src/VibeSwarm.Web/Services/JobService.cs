@@ -437,7 +437,7 @@ public partial class JobService : IJobService
         }
 
         // Fan out to team swarm jobs if the project has team swarm enabled
-		var swarmJobs = job.AgentId.HasValue
+		var swarmJobs = job.AgentId.HasValue || LocalEnvironmentSetup.IsSetupJob(job)
 			? []
 			: await TryCreateTeamSwarmJobsAsync(job, cancellationToken);
 

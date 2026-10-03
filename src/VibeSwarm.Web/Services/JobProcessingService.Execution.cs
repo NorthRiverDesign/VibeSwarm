@@ -630,7 +630,9 @@ public partial class JobProcessingService
             // Build system prompt rules for agent efficiency
             var injectEfficiencyRules = appSettings?.InjectEfficiencyRules ?? true;
             var injectRepoMap = appSettings?.InjectRepoMap ?? true;
-            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap);
+            var isLocalEnvironmentSetup = LocalEnvironmentSetup.IsSetupJob(job);
+            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap,
+                requireCodeChange: !isLocalEnvironmentSetup);
             projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
             var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
             if (!string.IsNullOrWhiteSpace(projectMemoryRules))
@@ -638,6 +640,15 @@ public partial class JobProcessingService
                 systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
                     ? projectMemoryRules
                     : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
+            }
+
+            if (isLocalEnvironmentSetup && !string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+            {
+                var localSetupRules = PromptBuilder.BuildLocalEnvironmentSetupRules(
+                    LocalEnvironmentSetupService.PrepareResultFile(workingDirectory));
+                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
+                    ? localSetupRules
+                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{localSetupRules}";
             }
 
             // Inject role-specific system prompt context for team swarm jobs
@@ -1184,7 +1195,9 @@ public partial class JobProcessingService
             // tree untouched has not done the work, however articulate its answer was, and
             // recording it as success hides that. Questions and guidance belong to
             // Inference, which does not pretend to have edited anything.
-            if (!wasCancelled && finalResult.Success &&
+            // Local environment setup is the exception: its work (.env files, a database, a mail
+            // trap) lives outside git by design.
+            if (!wasCancelled && finalResult.Success && !LocalEnvironmentSetup.IsSetupJob(job) &&
                 await ProducedNoCodeChangesAsync(workingDirectory, executionContext.GitCommitBefore, CancellationToken.None))
             {
                 finalResult.Success = false;
@@ -1230,6 +1243,11 @@ public partial class JobProcessingService
                 if (hasGitChanges)
                 {
                     await NotifyJobGitDiffUpdatedAsync(job.Id, true);
+                }
+
+                if (LocalEnvironmentSetup.IsSetupJob(job))
+                {
+                    await ApplyLocalEnvironmentSetupResultAsync(job, workingDirectory);
                 }
 
                 // Record usage after successful completion

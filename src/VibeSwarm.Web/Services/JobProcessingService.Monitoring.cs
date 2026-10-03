@@ -226,6 +226,24 @@ public partial class JobProcessingService
         await projectMemoryService.SyncMemoryFromFileAsync(projectId.Value, projectMemoryFilePath, cancellationToken);
     }
 
+    private async Task ApplyLocalEnvironmentSetupResultAsync(Job job, string? workingDirectory)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var localEnvironmentSetupService = scope.ServiceProvider.GetRequiredService<ILocalEnvironmentSetupService>();
+            var environment = await localEnvironmentSetupService.ApplyResultAsync(job.ProjectId, workingDirectory, CancellationToken.None);
+            if (environment != null)
+            {
+                _logger.LogInformation("Local setup job {JobId} saved the Local environment at {Url}", job.Id, environment.Url);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to save the Local environment reported by job {JobId}", job.Id);
+        }
+    }
+
     /// <summary>
     /// Saves a run's conversation to the job's message feed. A provider that echoes its prompt
     /// back as a user message is repeating VibeSwarm's composed prompt, not anything the user

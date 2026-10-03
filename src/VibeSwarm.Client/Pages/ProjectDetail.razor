@@ -179,6 +179,21 @@ else
                 {
                     <Alert Type="Alert.AlertType.Danger" Message="@_environmentError" Class="mb-0" />
                 }
+                <section class="d-flex flex-column gap-2" aria-label="Local development">
+                    <SectionHeader Title="Local development" />
+                    <div class="list-group rounded-4">
+                        <ListRow Icon="laptop" Title="Set up local environment" Subtitle="@GetLocalSetupSubtitle()"
+                                 AttentionLine="@(HasDefaultProvider ? null : "Enable a provider for this project first")"
+                                 OnClick="StartLocalEnvironmentSetup">
+                            <Trailing>
+                                @if (_isStartingLocalSetup)
+                                {
+                                    <span class="spinner-border spinner-border-sm text-primary flex-shrink-0" role="status" aria-label="Starting"></span>
+                                }
+                            </Trailing>
+                        </ListRow>
+                    </div>
+                </section>
                 <EditForm Model="@Project" OnValidSubmit="SaveEnvironments" class="d-flex flex-column gap-3">
                     <ProjectEnvironmentsEditor Project="@Project" />
                     <div class="d-grid d-sm-flex justify-content-sm-end">
@@ -375,6 +390,7 @@ else
 
     // Environment editing state
     private bool _isSavingEnvironments;
+    private bool _isStartingLocalSetup;
     private string? _environmentError;
 
     // Changes tab component

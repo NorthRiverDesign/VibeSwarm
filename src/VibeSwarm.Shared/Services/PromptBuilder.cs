@@ -323,7 +323,8 @@ public static class PromptBuilder
 	public static string? BuildSystemPromptRules(
 		Project? project,
 		bool injectEfficiencyRules = true,
-		bool injectRepoMap = true)
+		bool injectRepoMap = true,
+		bool requireCodeChange = true)
 	{
 		if (project == null)
 		{
@@ -370,7 +371,10 @@ public static class PromptBuilder
 			// with its own attribution settings, so agent commits only get in the way.
 			sb.AppendLine("COMPLETING THE JOB:");
 			sb.AppendLine("- This job runs unattended in a queue. Do not stop to ask questions or wait for confirmation; a question pauses the queue until someone answers. Make the reasonable call and keep going.");
-			sb.AppendLine("- The deliverable is a code change. A run that leaves the working tree unchanged is recorded as failed.");
+			if (requireCodeChange)
+			{
+				sb.AppendLine("- The deliverable is a code change. A run that leaves the working tree unchanged is recorded as failed.");
+			}
 			sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. VibeSwarm delivers your working-tree changes after you exit.");
 			sb.AppendLine("- End with a short summary: what changed, how you verified it, any assumptions you made, and anything left undone.");
 			sb.AppendLine("- Make the last line of your response the commit subject VibeSwarm will use, in this exact format: <commit-summary>A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)</commit-summary>");
@@ -443,6 +447,30 @@ public static class PromptBuilder
 		}
 
 		return sb.Length > 0 ? sb.ToString().TrimEnd() : null;
+	}
+
+	/// <summary>
+	/// Rules for a "Set up local environment" job: get the project running on this machine and
+	/// report where it runs in <paramref name="resultFilePath"/>, which VibeSwarm turns into the
+	/// project's Local environment.
+	/// </summary>
+	public static string BuildLocalEnvironmentSetupRules(string resultFilePath)
+	{
+		var sb = new StringBuilder();
+		sb.AppendLine("LOCAL ENVIRONMENT SETUP:");
+		sb.AppendLine("- This job prepares the project to run on this machine. Success is an app that starts and responds here, not a code change, so it may finish without changing tracked files.");
+		sb.AppendLine("- Learn what the project needs from its README and docs, sample config (.env.example and similar), docker-compose files, package manifests and CI config.");
+		sb.AppendLine("- Prefer tools and services already installed or running on this machine. When something needs root or is unavailable, use a self-contained alternative (SQLite, a container if Docker is available, a log or file mailer) and say what is missing.");
+		sb.AppendLine("- Database: create a dedicated local database and user for this project. Never point at a production or shared database. Run migrations and seed development data when the project provides them.");
+		sb.AppendLine("- Email: send outgoing mail to a local trap (Mailpit, MailHog, or the framework's log or file mailer) so nothing reaches real inboxes.");
+		sb.AppendLine("- Configuration: create missing local config files from their examples with local values. Generate fresh local secrets, never copy production credentials, and use test or stub keys for third-party services.");
+		sb.AppendLine("- Keep machine-specific files out of git: check that every file you create (.env, local databases, uploads) is ignored, and add any that are not to .git/info/exclude, not .gitignore.");
+		sb.AppendLine("- Change tracked files only when the project cannot run locally without it, and keep those changes free of machine-specific values.");
+		sb.AppendLine("- Use ports that are free on this machine. Start the app, confirm it responds (curl or a browser), then stop what you started, except background services such as the database or mail trap.");
+		sb.AppendLine($"- Before finishing, write {resultFilePath} as JSON: {{\"url\": \"http://localhost:<port>\", \"startCommand\": \"<command that starts the app>\", \"notes\": \"<services, ports, mail trap URL, how to reset data>\", \"username\": \"<local login, if the app has one>\", \"password\": \"<its password>\"}}. Leave out what does not apply.");
+		sb.AppendLine("- VibeSwarm saves that file as the project's Local environment so later jobs can start and test the app. Do not put the values anywhere else in the repository.");
+		sb.AppendLine("- End with how to start the app, its URL, and the services you set up.");
+		return sb.ToString().TrimEnd();
 	}
 
 	public static string? BuildProjectMemoryRules(Project? project, string? memoryFilePath)

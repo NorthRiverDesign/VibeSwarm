@@ -83,6 +83,43 @@ public sealed class JobServiceTeamSwarmReproTests : IDisposable
 		Assert.All(allJobs, j => Assert.Equal(created.SwarmId, j.SwarmId));
 	}
 
+	[Fact]
+	public async Task CreateAsync_LocalEnvironmentSetupJob_RunsAloneEvenWithTeamSwarmEnabled()
+	{
+		using var scope = _rootProvider.CreateScope();
+		var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+
+		var provider1 = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = true, IsDefault = true };
+		var provider2 = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = true };
+		dbContext.Providers.AddRange(provider1, provider2);
+		var agent1 = new Agent { Id = Guid.NewGuid(), Name = "A", IsEnabled = true, DefaultProviderId = provider1.Id };
+		var agent2 = new Agent { Id = Guid.NewGuid(), Name = "B", IsEnabled = true, DefaultProviderId = provider2.Id };
+		dbContext.Agents.AddRange(agent1, agent2);
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm",
+			EnableTeamSwarm = true,
+			AgentAssignments =
+			[
+				new ProjectAgent { AgentId = agent1.Id, ProviderId = provider1.Id, IsEnabled = true },
+				new ProjectAgent { AgentId = agent2.Id, ProviderId = provider2.Id, IsEnabled = true }
+			]
+		};
+		dbContext.Projects.Add(project);
+		await dbContext.SaveChangesAsync();
+
+		var service = new JobService(dbContext, scope.ServiceProvider);
+
+		var created = await service.CreateAsync(LocalEnvironmentSetup.CreateJob(project.Id, provider1.Id, null, null));
+
+		var stored = Assert.Single(await dbContext.Jobs.AsNoTracking().ToListAsync());
+		Assert.Equal(created.Id, stored.Id);
+		Assert.Null(stored.SwarmId);
+		Assert.True(LocalEnvironmentSetup.IsSetupJob(stored));
+	}
+
 	public void Dispose()
 	{
 		_rootProvider.Dispose();
