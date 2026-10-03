@@ -148,6 +148,51 @@ public sealed class BuildVerificationPromptTests
 	}
 
 	[Fact]
+	public void BuildSystemPromptRules_StaysCompact()
+	{
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		{
+			Name = "Test Project",
+			WorkingPath = "/tmp/test",
+			BuildCommand = "dotnet build",
+			TestCommand = "dotnet test",
+			Environments = []
+		});
+
+		Assert.NotNull(rules);
+		Assert.Contains("Run `dotnet build`, then `dotnet test`, and fix any failures.", rules);
+		Assert.Null(JobSummaryGenerator.ExtractCommitSummary(rules));
+		Assert.True(rules.Length <= 2000, $"System prompt rules grew to {rules.Length} characters.");
+	}
+
+	[Fact]
+	public void BuildStructuredPrompt_KeepsProjectContextInFull_WhenGoalIsLong()
+	{
+		var goal = "Implement the idea. " + new string('g', 7900);
+		var context = "Always build and redeploy on this machine. " + new string('c', 3900);
+		var prompt = PromptBuilder.BuildStructuredPrompt(new Job
+		{
+			GoalPrompt = goal,
+			Branch = "develop",
+			Project = new Project
+			{
+				Name = "Prompt Project",
+				Description = "The app itself.",
+				WorkingPath = "/tmp/test",
+				PromptContext = context,
+				Environments = []
+			}
+		});
+
+		Assert.StartsWith("<task>", prompt);
+		Assert.Contains(goal, prompt);
+		Assert.Contains($"  {context}{Environment.NewLine}", prompt);
+		Assert.Contains("<name>Prompt Project</name>", prompt);
+		Assert.Contains("Working branch: develop", prompt);
+		Assert.EndsWith("</constraints>", prompt);
+	}
+
+	[Fact]
 	public void BuildStructuredPrompt_LeavesPullRequestCreationToVibeSwarm()
 	{
 		var prompt = PromptBuilder.BuildStructuredPrompt(new Job

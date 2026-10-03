@@ -10,9 +10,7 @@ namespace VibeSwarm.Shared.Services;
 /// </summary>
 public static class PromptBuilder
 {
-	private const int MaxPromptLength = 2000;
-	private const int XmlOverhead = 200;
-	private const int MaxEnvironmentSectionLength = 1200;
+	private const int MaxEnvironmentEntriesLength = 1200;
 	private const int MaxSkillSummaryLength = 160;
 	public const string IdeaToken = "{{idea}}";
 	public const string SpecificationToken = "{{specification}}";
@@ -160,15 +158,11 @@ public static class PromptBuilder
 		{
 			sb.AppendLine("<constraints>");
 
+			// Sent in full, like the goal: both are length-limited where they are saved, and
+			// a goal built from an idea runs well past any fixed total for the whole prompt.
 			if (!string.IsNullOrWhiteSpace(job.Project.PromptContext))
 			{
-				var context = job.Project.PromptContext.Trim();
-				var availableSpace = MaxPromptLength - XmlOverhead - job.GoalPrompt.Length - environmentSection.Length - teamSection.Length - skillSection.Length - 100;
-				if (availableSpace > 0 && context.Length > availableSpace)
-				{
-					context = context[..availableSpace] + "...";
-				}
-				sb.AppendLine($"  {context}");
+				sb.AppendLine($"  {job.Project.PromptContext.Trim()}");
 			}
 
 			if (job.MaxCostUsd.HasValue)
@@ -196,8 +190,7 @@ public static class PromptBuilder
 			sb.AppendLine("</constraints>");
 		}
 
-		var result = sb.ToString().TrimEnd();
-		return result.Length > MaxPromptLength ? job.GoalPrompt : result;
+		return sb.ToString().TrimEnd();
 	}
 
 	public static string BuildExecutionPrompt(Job job, string? planningOutput, bool enableStructuring = true)
@@ -336,54 +329,38 @@ public static class PromptBuilder
 		if (injectEfficiencyRules)
 		{
 			sb.AppendLine("IMPORTANT RULES:");
-			sb.AppendLine("- Do only the requested work. Do not modify unrelated files.");
-			sb.AppendLine("- Do not add comments, docstrings, or type annotations to untouched code.");
-			sb.AppendLine("- Do not refactor beyond the request.");
-			sb.AppendLine("- If you spot unrelated issues, note them without fixing them.");
+			sb.AppendLine("- Do only the requested work. Do not modify unrelated files, refactor beyond the request, or add comments, docstrings, or type annotations to untouched code. Note unrelated issues instead of fixing them.");
 			sb.AppendLine();
 			sb.AppendLine("BUILD VERIFICATION (CRITICAL):");
-			sb.AppendLine("- Verify the project builds before finishing.");
 
-			if (!string.IsNullOrWhiteSpace(project.BuildCommand))
-			{
-				sb.AppendLine($"- Run the project build command: {project.BuildCommand.Trim()}");
-			}
-			else
-			{
-				sb.AppendLine("- Run the appropriate build command for this project (for example: dotnet build, npm run build, cargo build).");
-			}
-
-			if (!string.IsNullOrWhiteSpace(project.TestCommand))
-			{
-				sb.AppendLine($"- Run the project test command: {project.TestCommand.Trim()}");
-			}
-
-			sb.AppendLine("- If the build or tests fail, fix them before finishing.");
+			var buildStep = string.IsNullOrWhiteSpace(project.BuildCommand)
+				? "the appropriate build command for this project (for example: dotnet build, npm run build, cargo build)"
+				: $"`{project.BuildCommand.Trim()}`";
+			sb.AppendLine(string.IsNullOrWhiteSpace(project.TestCommand)
+				? $"- Verify the project builds before finishing. Run {buildStep} and fix any failures."
+				: $"- Verify the project builds before finishing. Run {buildStep}, then `{project.TestCommand.Trim()}`, and fix any failures.");
 			sb.AppendLine("- Do not leave the repository in a broken state. The next queued job starts from it.");
 			// Installing dependencies rewrites lockfiles when the local tool version differs
 			// from the one that wrote them, and everything in the tree gets committed. That
 			// churn lands in every commit and reverses itself on the next machine.
-			sb.AppendLine("- Install dependencies without rewriting lockfiles (npm ci, not npm install; composer install, not update).");
-			sb.AppendLine("- Leave lockfiles alone unless the task changes dependencies. If a build rewrote one as a side effect, restore it before finishing.");
+			sb.AppendLine("- Install dependencies without rewriting lockfiles (npm ci, not npm install; composer install, not update). Unless the task changes dependencies, restore any lockfile a build rewrote.");
 			sb.AppendLine();
 			// Jobs run one after another from a queue, unattended. VibeSwarm owns git: it
 			// resets the checkout before each job and commits the working tree after it,
 			// with its own attribution settings, so agent commits only get in the way.
 			sb.AppendLine("COMPLETING THE JOB:");
-			sb.AppendLine("- This job runs unattended in a queue. Do not stop to ask questions or wait for confirmation; a question pauses the queue until someone answers. Make the reasonable call and keep going.");
+			sb.AppendLine("- This job runs unattended in a queue. Do not stop to ask questions or wait for confirmation; a question pauses the queue. Make the reasonable call and keep going.");
 			if (requireCodeChange)
 			{
 				sb.AppendLine("- The deliverable is a code change. A run that leaves the working tree unchanged is recorded as failed.");
 			}
-			sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. VibeSwarm delivers your working-tree changes after you exit.");
-			sb.AppendLine("- End with a short summary: what changed, how you verified it, any assumptions you made, and anything left undone.");
-			sb.AppendLine("- Make the last line of your response the commit subject VibeSwarm will use, in this exact format: <commit-summary>A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)</commit-summary>");
+			sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. It delivers your working-tree changes after you exit.");
+			sb.AppendLine("- End with a short summary of what changed, how you verified it, assumptions, and anything left undone. Make its last line the commit subject: <commit-summary>A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)</commit-summary>");
 			sb.AppendLine();
 			sb.AppendLine("SESSION ARTIFACTS:");
-			sb.AppendLine("- Commits are for project code. Anything you leave in the working tree may be committed with your change.");
-			sb.AppendLine("- Write screenshots, browser traces, test logs and reports, scratch scripts and temp files outside the repository (for example under /tmp) or under .vibeswarm/, which git ignores.");
+			sb.AppendLine("- Anything left in the working tree may be committed. Write screenshots, browser traces, test logs and reports, scratch scripts and temp files under /tmp or the git-ignored .vibeswarm/ folder.");
 			sb.AppendLine("- If a tool can only write inside the repository, delete its output before finishing or list the path in .git/info/exclude, not .gitignore.");
-			sb.AppendLine("- Do not add agent instruction, plan or memory files (such as CLAUDE.md, AGENTS.md or notes) unless the task asks for them. Keep durable notes in the project memory file when one is provided.");
+			sb.AppendLine("- Do not add agent instruction, plan or memory files (such as CLAUDE.md, AGENTS.md or notes) unless the task asks for them.");
 		}
 
 		var enabledEnvironments = project.Environments
@@ -398,9 +375,7 @@ public static class PromptBuilder
 			}
 
 			sb.AppendLine("DEPLOYED ENVIRONMENTS:");
-			sb.AppendLine("- Use Playwright MCP when browser interaction is needed against configured web environments.");
-			sb.AppendLine("- Do not assume localhost when a project environment URL is available.");
-			sb.AppendLine("- Web environments may lag behind repository changes until a deployment or restart occurs.");
+			sb.AppendLine("- Use Playwright MCP for browser work against configured web environments. Do not assume localhost when a project environment URL is available; deployed code may lag behind the repository until a deploy or restart.");
 		}
 
 		if (enabledEnvironments.Count > 0)
@@ -431,8 +406,7 @@ public static class PromptBuilder
 			}
 
 			sb.AppendLine("ENVIRONMENT AUTHENTICATION:");
-			sb.AppendLine("- When a configured web environment includes login credentials, use those exact values for browser automation.");
-			sb.AppendLine("- Do not invent placeholder or guessed accounts such as test@test.com when environment credentials are available.");
+			sb.AppendLine("- When a web environment has login credentials, use those exact values for browser automation, never guessed accounts such as test@test.com.");
 		}
 
 		if (injectRepoMap && !string.IsNullOrWhiteSpace(project.RepoMap))
@@ -482,18 +456,11 @@ public static class PromptBuilder
 
 		var sb = new StringBuilder();
 		sb.AppendLine("PROJECT MEMORY:");
-		sb.AppendLine($"- Read the project memory file before making changes: {memoryFilePath}");
-		sb.AppendLine("- This file stores durable context from previous runs so fresh sessions can avoid repeating mistakes.");
-		sb.AppendLine("- Update this file whenever you discover stable project-specific guidance, workflow gotchas, or after you make and correct a mistake.");
-		sb.AppendLine("- Keep entries factual, concise, and actionable for future agent runs.");
-		sb.AppendLine("- Do not store secrets, credentials, tokens, or personal data in project memory.");
-		sb.AppendLine($"- Keep the file under {ValidationLimits.ProjectMemoryMaxLength} characters.");
-		sb.AppendLine("- VibeSwarm will sync changes from this file back into the project's stored memory after the job finishes.");
-
-		if (string.IsNullOrWhiteSpace(project.Memory))
-		{
-			sb.AppendLine("- If the file is empty, create an initial memory entry once you learn something worth preserving.");
-		}
+		sb.AppendLine($"- Read {memoryFilePath} before making changes. It holds durable context from earlier runs.");
+		sb.AppendLine($"- Update this file when you learn stable project guidance or workflow gotchas, or after you make and correct a mistake. Keep entries factual, concise and actionable, the file under {ValidationLimits.ProjectMemoryMaxLength} characters, and secrets, credentials and personal data out.");
+		sb.AppendLine(string.IsNullOrWhiteSpace(project.Memory)
+			? "- If the file is empty, add a first entry once you learn something worth keeping. VibeSwarm will sync changes back to the project after the job."
+			: "- VibeSwarm will sync changes back to the project after the job.");
 
 		return sb.ToString().TrimEnd();
 	}
@@ -518,9 +485,7 @@ public static class PromptBuilder
 
 		var sb = new StringBuilder();
 		sb.AppendLine("<environments>");
-		sb.AppendLine("  Configured deployment targets for this project:");
-		sb.AppendLine("  Prefer these URLs instead of assuming localhost.");
-		sb.AppendLine("  Use the stage on each environment to decide what kinds of changes, deploys, and resets are appropriate.");
+		sb.AppendLine("  Configured deployment targets. Prefer these URLs instead of assuming localhost. Let each stage decide which changes, deploys, and resets are appropriate.");
 		foreach (var rule in BuildEnvironmentStageRules(environments))
 		{
 			sb.Append("  - ");
@@ -531,7 +496,10 @@ public static class PromptBuilder
 			sb.AppendLine("  - Use Playwright MCP for browser interaction with web environments.");
 		}
 
+		// The budget covers the environment entries only, so the fixed guidance above never
+		// crowds out the environments themselves.
 		var includedCount = 0;
+		var entriesLength = 0;
 		foreach (var environment in environments)
 		{
 			var lineBuilder = new StringBuilder();
@@ -577,12 +545,13 @@ public static class PromptBuilder
 			}
 
 			var escapedLine = EscapeXml(lineBuilder.ToString());
-			if (sb.Length + escapedLine.Length + 32 > MaxEnvironmentSectionLength)
+			if (entriesLength + escapedLine.Length > MaxEnvironmentEntriesLength)
 			{
 				break;
 			}
 
 			sb.AppendLine(escapedLine);
+			entriesLength += escapedLine.Length;
 			includedCount++;
 		}
 
