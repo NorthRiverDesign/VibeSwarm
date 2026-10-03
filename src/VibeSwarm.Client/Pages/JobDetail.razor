@@ -171,6 +171,7 @@ else
         @* Right Column - Session Panel (Live Output, Console, Command, Conversation) *@
         <div id="job-messages-section" class="col-12 @(ShowSidebarContent ? "col-xl-7 order-1 order-xl-2" : string.Empty) d-flex flex-column">
             <JobSessionPanel Messages="@(Job!.Messages.ToList())" Status="@Job.Status" IsJobActive="@IsJobActive"
+                              RunStartedAt="@Job.StartedAt"
                               TotalMessageCount="@Job.TotalMessageCount"
                               GoalPrompt="@Job.GoalPrompt" GoalPromptIdeaText="@GetGoalPromptIdeaText()"
                               AttachedIdeaFiles="@(_linkedIdea?.Attachments ?? Array.Empty<IdeaAttachment>())"

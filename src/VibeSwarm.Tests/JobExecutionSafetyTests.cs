@@ -451,6 +451,65 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.Equal(fallbackProviderId, persistedJob.ProviderId);
 	}
 
+	[Fact]
+	public async Task SaveRunMessagesAsync_KeepsTheConversationButNotTheEchoedPrompt()
+	{
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var processingService = new JobProcessingService(
+			serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NoOpVersionControlService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+		var jobService = new RecordingMessagesJobService();
+		var jobId = Guid.NewGuid();
+		var startedAt = DateTime.UtcNow;
+		var result = new ExecutionResult
+		{
+			Success = false,
+			Messages =
+			[
+				new ExecutionMessage { Role = "user", Content = "Continue the previous job for this project.", Timestamp = startedAt },
+				new ExecutionMessage { Role = "assistant", Content = "Nothing needed changing.", Timestamp = startedAt.AddSeconds(1) },
+				new ExecutionMessage { Role = "tool_use", Content = "bash", ToolName = "bash", ToolInput = "{\"command\":\"ls\"}", Timestamp = startedAt.AddSeconds(2) },
+				new ExecutionMessage { Role = "tool_error", Content = "exit code 1", ToolName = "bash", ToolOutput = "exit code 1", Timestamp = startedAt.AddSeconds(3) }
+			]
+		};
+
+		var method = typeof(JobProcessingService).GetMethod("SaveRunMessagesAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(method);
+		await (Task)method.Invoke(processingService, [jobService, jobId, result])!;
+
+		Assert.Equal(jobId, jobService.SavedJobId);
+		Assert.Equal(
+			[MessageRole.Assistant, MessageRole.ToolUse, MessageRole.ToolResult],
+			jobService.SavedMessages.Select(message => message.Role));
+		Assert.Equal("Nothing needed changing.", jobService.SavedMessages[0].Content);
+		Assert.Equal(startedAt.AddSeconds(1), jobService.SavedMessages[0].CreatedAt);
+		Assert.Equal("bash", jobService.SavedMessages[2].ToolName);
+	}
+
+	[Fact]
+	public async Task SaveRunMessagesAsync_SavesNothingWhenTheRunOnlyEchoedItsPrompt()
+	{
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var processingService = new JobProcessingService(
+			serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NoOpVersionControlService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+		var jobService = new RecordingMessagesJobService();
+		var result = new ExecutionResult
+		{
+			Messages = [new ExecutionMessage { Role = "user", Content = "Implement the feature." }]
+		};
+
+		var method = typeof(JobProcessingService).GetMethod("SaveRunMessagesAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(method);
+		await (Task)method.Invoke(processingService, [jobService, Guid.NewGuid(), result])!;
+
+		Assert.Null(jobService.SavedJobId);
+	}
+
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
 
 	private static async Task<bool> InvokeClaimJobAsync(JobProcessingService service, Guid jobId, VibeSwarmDbContext dbContext)
@@ -506,6 +565,19 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	public void Dispose()
 	{
 		_connection.Dispose();
+	}
+
+	private sealed class RecordingMessagesJobService : FakeJobServiceBase
+	{
+		public Guid? SavedJobId { get; private set; }
+		public List<JobMessage> SavedMessages { get; } = [];
+
+		public override Task AddMessagesAsync(Guid jobId, IEnumerable<JobMessage> messages, CancellationToken cancellationToken = default)
+		{
+			SavedJobId = jobId;
+			SavedMessages.AddRange(messages);
+			return Task.CompletedTask;
+		}
 	}
 
 	private sealed class NoOpProjectEnvironmentCredentialService : IProjectEnvironmentCredentialService

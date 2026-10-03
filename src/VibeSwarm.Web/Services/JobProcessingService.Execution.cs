@@ -1220,22 +1220,7 @@ public partial class JobProcessingService
                 providerDisplayName ??= provider?.Name;
                 providerDisplayName ??= "Unknown Provider";
                 await ClearProviderRateLimitAsync(job.ProviderId, dbContext, CancellationToken.None);
-                // Save messages
-                if (finalResult.Messages.Count > 0)
-                {
-                    var messages = finalResult.Messages.Select(m => new JobMessage
-                    {
-                        Role = ParseMessageRole(m.Role),
-                        Content = m.Content,
-                        ToolName = m.ToolName,
-                        ToolInput = m.ToolInput,
-                        ToolOutput = m.ToolOutput,
-                        CreatedAt = m.Timestamp
-                    });
-
-                    await checkJobService.AddMessagesAsync(job.Id, messages, CancellationToken.None);
-                    await NotifyJobMessageAddedAsync(job.Id);
-                }
+                await SaveRunMessagesAsync(checkJobService, job.Id, finalResult);
 
                 var hasGitChanges = await CompleteJobAsync(job.Id, JobStatus.Completed, finalResult.SessionId, finalResult.Output,
                     null, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
@@ -1328,6 +1313,10 @@ public partial class JobProcessingService
                     {
                         return;
                     }
+
+                    // A failed run is still the conversation a follow-up continues from, and the
+                    // follow-up clears the console output it would otherwise be rebuilt from.
+                    await SaveRunMessagesAsync(checkJobService, job.Id, finalResult);
 
                     await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
                         finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,

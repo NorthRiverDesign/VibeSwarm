@@ -474,6 +474,10 @@
     [Parameter]
     public bool IsJobActive { get; set; }
 
+    /// <summary>When the current run started; messages from before it are earlier runs of a followed-up job.</summary>
+    [Parameter]
+    public DateTime? RunStartedAt { get; set; }
+
     [Parameter]
     public int TotalMessageCount { get; set; }
 
@@ -587,7 +591,7 @@
         }
 
         _displayStateKey = displayStateKey;
-        _displayedMessages = JobSessionDisplayBuilder.BuildDisplayedMessages(Messages, LiveOutputLines, IsJobActive, LiveMessages);
+        _displayedMessages = JobSessionDisplayBuilder.BuildDisplayedMessages(Messages, LiveOutputLines, IsJobActive, LiveMessages, RunStartedAt);
         _displayedEntries = BuildDisplayEntries(_displayedMessages);
         ApplyFilters();
     }
@@ -808,6 +812,7 @@
 
         return string.Join("|",
             IsJobActive,
+            RunStartedAt?.Ticks ?? 0,
             TotalMessageCount,
             Messages.Count,
             lastPersistedMessage?.Id ?? Guid.Empty,

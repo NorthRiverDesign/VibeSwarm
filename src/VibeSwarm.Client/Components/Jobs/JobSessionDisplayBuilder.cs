@@ -30,34 +30,52 @@ internal static class JobSessionDisplayBuilder
 		};
 	}
 
+	/// <param name="runStartedAt">
+	/// When the job's current run started. Persisted messages from before it belong to earlier
+	/// runs (the conversation a follow-up continues) and stay in the feed beside the live output.
+	/// </param>
 	public static IReadOnlyList<JobMessage> BuildDisplayedMessages(
 		IEnumerable<JobMessage>? persistedMessages,
 		IEnumerable<OutputLine>? outputLines,
 		bool isJobActive,
-		IEnumerable<JobMessage>? liveMessages = null)
+		IEnumerable<JobMessage>? liveMessages = null,
+		DateTime? runStartedAt = null)
 	{
 		var persisted = NormalizePersistedMessages(persistedMessages);
 		var liveTranscript = BuildMessagesFromOutput(outputLines);
 		var supplementalMessages = NormalizePersistedMessages(liveMessages);
 
+		// The user's own messages (follow-ups, answers to questions) and earlier runs never appear
+		// in the current run's output, so they are kept whichever source shows the current run.
+		var earlierMessages = new List<JobMessage>();
+		var currentRunPersisted = new List<JobMessage>();
+		foreach (var message in persisted)
+		{
+			var isEarlier = message.Role == MessageRole.User || message.CreatedAt < runStartedAt;
+			(isEarlier ? earlierMessages : currentRunPersisted).Add(message);
+		}
+
+		var currentRun = SelectCurrentRunMessages(currentRunPersisted, liveTranscript, isJobActive);
+		var conversation = earlierMessages.Count == 0
+			? currentRun
+			: earlierMessages.Concat(currentRun).OrderBy(message => message.CreatedAt).ToList();
+
+		return SanitizeDisplayedMessages(MergeMessages(conversation, supplementalMessages));
+	}
+
+	private static IReadOnlyList<JobMessage> SelectCurrentRunMessages(
+		IReadOnlyList<JobMessage> persisted,
+		IReadOnlyList<JobMessage> liveTranscript,
+		bool isJobActive)
+	{
 		if (isJobActive)
 		{
-			if (liveTranscript.Count > 0)
-			{
-				return SanitizeDisplayedMessages(MergeMessages(liveTranscript, supplementalMessages));
-			}
-
-			if (persisted.Count > 0)
-			{
-				return SanitizeDisplayedMessages(MergeMessages(persisted, supplementalMessages));
-			}
-
-			return SanitizeDisplayedMessages(supplementalMessages);
+			return liveTranscript.Count > 0 ? liveTranscript : persisted;
 		}
 
 		if (persisted.Count == 0)
 		{
-			return SanitizeDisplayedMessages(MergeMessages(liveTranscript, supplementalMessages));
+			return liveTranscript;
 		}
 
 		var persistedHasStructuredMessages = HasStructuredMessages(persisted);
@@ -65,15 +83,15 @@ internal static class JobSessionDisplayBuilder
 
 		if (!persistedHasStructuredMessages && liveTranscript.Count > persisted.Count)
 		{
-			return SanitizeDisplayedMessages(MergeMessages(liveTranscript, supplementalMessages));
+			return liveTranscript;
 		}
 
 		if (!persistedHasStructuredMessages && liveHasStructuredMessages && liveTranscript.Count >= persisted.Count)
 		{
-			return SanitizeDisplayedMessages(MergeMessages(liveTranscript, supplementalMessages));
+			return liveTranscript;
 		}
 
-		return SanitizeDisplayedMessages(MergeMessages(persisted, supplementalMessages));
+		return persisted;
 	}
 
 	private static List<JobMessage> NormalizePersistedMessages(IEnumerable<JobMessage>? persistedMessages)
@@ -597,6 +615,12 @@ internal static class JobSessionDisplayBuilder
 
 			var type = typeProp.GetString();
 
+			if (type?.Contains('.') == true)
+			{
+				messages = ExtractSessionEventMessages(type, root, timestamp, parserState);
+				return true;
+			}
+
 			switch (type)
 			{
 				case "system":
@@ -798,6 +822,135 @@ internal static class JobSessionDisplayBuilder
 
 		return messages;
 	}
+
+	/// <summary>
+	/// Reads the session events Copilot CLI's <c>--output-format json</c> prints: dotted types
+	/// with their fields under <c>data</c>. They map the same way the provider records them, so a
+	/// running job's feed matches the conversation saved when it finishes. Deltas, usage and
+	/// lifecycle events (and the echoed prompt in <c>user.message</c>) are not conversation.
+	/// </summary>
+	private static IReadOnlyList<JobMessage> ExtractSessionEventMessages(
+		string type,
+		JsonElement root,
+		DateTime timestamp,
+		LiveTranscriptParserState parserState)
+	{
+		if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+		{
+			return [];
+		}
+
+		switch (type)
+		{
+			case "assistant.message":
+			{
+				var content = ReadJsonString(data, "content");
+				return string.IsNullOrWhiteSpace(content)
+					? []
+					:
+					[
+						new JobMessage
+						{
+							Role = MessageRole.Assistant,
+							Content = content,
+							Source = MessageSource.Provider,
+							Level = MessageLevel.Normal,
+							CreatedAt = timestamp
+						}
+					];
+			}
+
+			case "assistant.reasoning":
+			{
+				var content = ReadJsonString(data, "content");
+				return string.IsNullOrWhiteSpace(content)
+					? []
+					:
+					[
+						new JobMessage
+						{
+							Role = MessageRole.System,
+							Content = content,
+							Source = MessageSource.Provider,
+							Level = MessageLevel.Normal,
+							DisplayVariant = MessageDisplayVariant.Thinking,
+							CreatedAt = timestamp
+						}
+					];
+			}
+
+			case "tool.execution_start":
+			{
+				var toolName = ReadJsonString(data, "toolName");
+				var displayName = string.IsNullOrWhiteSpace(toolName) ? "unknown_tool" : toolName;
+				var toolInput = data.TryGetProperty("arguments", out var arguments)
+					&& arguments.ValueKind != JsonValueKind.Null
+						? arguments.GetRawText()
+						: null;
+
+				parserState.RegisterToolUse(ReadJsonString(data, "toolCallId"), displayName);
+				return
+				[
+					new JobMessage
+					{
+						Role = MessageRole.ToolUse,
+						Content = displayName,
+						ToolName = displayName,
+						ToolInput = toolInput,
+						CreatedAt = timestamp
+					}
+				];
+			}
+
+			case "tool.execution_complete":
+			{
+				var output = data.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.Object
+					? ReadJsonString(result, "content")
+					: null;
+				if (output == null
+					&& data.TryGetProperty("error", out var error)
+					&& error.ValueKind == JsonValueKind.Object)
+				{
+					output = ReadJsonString(error, "message");
+				}
+
+				return
+				[
+					new JobMessage
+					{
+						Role = MessageRole.ToolResult,
+						Content = output ?? string.Empty,
+						ToolName = parserState.ResolveToolName(ReadJsonString(data, "toolCallId")),
+						ToolOutput = output,
+						CreatedAt = timestamp
+					}
+				];
+			}
+
+			case "session.error":
+				return
+				[
+					new JobMessage
+					{
+						Role = MessageRole.System,
+						Content = ReadJsonString(data, "message")
+							?? ReadJsonString(data, "errorType")
+							?? "The provider reported a session error.",
+						Source = MessageSource.Provider,
+						Level = MessageLevel.Error,
+						CreatedAt = timestamp
+					}
+				];
+
+			default:
+				return [];
+		}
+	}
+
+	private static string? ReadJsonString(JsonElement element, string propertyName)
+		=> element.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+			? value.GetString()
+			: null;
 
 	private static string ExtractJsonContent(JsonElement element)
 	{
