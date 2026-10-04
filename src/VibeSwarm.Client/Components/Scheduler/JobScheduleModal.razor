@@ -342,9 +342,7 @@
 			.OrderByDescending(provider => provider.IsDefault)
 			.ThenBy(provider => provider.Name)
 			.ToList();
-		_inferenceProviders = inferenceProvidersTask.Result
-			.OrderBy(provider => provider.Name)
-			.ToList();
+		_inferenceProviders = inferenceProvidersTask.Result.ToList();
 	}
 
 	private async Task ResetStateAsync()

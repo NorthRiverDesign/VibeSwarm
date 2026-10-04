@@ -632,6 +632,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
                     b.Property<string>("ProviderType")
                         .IsRequired()
                         .HasColumnType("longtext");

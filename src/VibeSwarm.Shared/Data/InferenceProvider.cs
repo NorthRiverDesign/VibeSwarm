@@ -44,6 +44,12 @@ public class InferenceProvider
 	/// </summary>
 	public bool IsEnabled { get; set; } = true;
 
+	/// <summary>
+	/// Position in the user's priority order, lowest first. The first enabled provider is the
+	/// default wherever one is picked for the user.
+	/// </summary>
+	public int Priority { get; set; }
+
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
 	public DateTime? UpdatedAt { get; set; }

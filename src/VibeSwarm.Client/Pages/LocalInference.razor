@@ -19,6 +19,8 @@
 						   OnEditProvider="EditProvider"
 						   OnDeleteProvider="ShowDeleteConfirmation"
 						   OnRefreshModels="RefreshProviderModels"
+						   OnMoveProvider="MoveProvider"
+						   IsReordering="_isReordering"
 						   RefreshingModelsProviderId="_refreshingModelsProviderId"
 						   ModelRefreshVersions="_modelRefreshVersions" />
 
@@ -40,6 +42,7 @@
 	private bool _isLoading = true;
 	private Guid? _initiallyOpenProviderId;
 	private Guid? _refreshingModelsProviderId;
+	private bool _isReordering;
 
 	// Modal state
 	private bool _showModal;
@@ -194,6 +197,34 @@
 		finally
 		{
 			_isDeleting = false;
+		}
+	}
+
+	private async Task MoveProvider((InferenceProvider Provider, int Offset) move)
+	{
+		var from = _providers.IndexOf(move.Provider);
+		var to = from + move.Offset;
+		if (_isReordering || from < 0 || to < 0 || to >= _providers.Count)
+		{
+			return;
+		}
+
+		_isReordering = true;
+		_providers.RemoveAt(from);
+		_providers.Insert(to, move.Provider);
+
+		try
+		{
+			await InferenceProviderService.ReorderAsync(_providers.Select(provider => provider.Id).ToList());
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to save the order: {ex.Message}");
+			await LoadProviders(move.Provider.Id);
+		}
+		finally
+		{
+			_isReordering = false;
 		}
 	}
 

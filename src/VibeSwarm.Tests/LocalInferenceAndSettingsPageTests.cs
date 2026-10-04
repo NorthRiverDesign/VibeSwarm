@@ -336,6 +336,42 @@ public void InferenceProvidersSection_RowActionsInvokeProviderCallbacks()
 	Assert.Same(provider, deletedProvider);
 }
 
+[Fact]
+public void LocalInferencePage_MoveUpMakesTheProviderTheDefault()
+{
+	var ollama = CreateInferenceProvider();
+	ollama.Name = "Desktop";
+	var grok = new InferenceProvider
+	{
+		Id = Guid.NewGuid(),
+		Name = "Grok (X.AI)",
+		ProviderType = InferenceProviderType.Grok,
+		Endpoint = "https://api.x.ai/v1",
+		IsEnabled = true
+	};
+	var providerService = new FakeInferenceProviderService([ollama, grok]);
+
+	using var context = new BunitContext();
+	AddInferenceComponentServices(context, providerService);
+
+	var cut = context.Render<LocalInference>();
+	cut.WaitForAssertion(() => Assert.Contains("Default · Ollama · http://ollama:11434", cut.Markup));
+
+	cut.FindAll("button.list-group-item")
+		.Single(button => button.TextContent.Contains("Grok (X.AI)", StringComparison.Ordinal))
+		.Click();
+	cut.FindAll("button[aria-label='Move up']")
+		.Single(button => !button.HasAttribute("disabled"))
+		.Click();
+
+	cut.WaitForAssertion(() =>
+	{
+		Assert.Equal([grok.Id, ollama.Id], providerService.SavedOrder);
+		Assert.Contains("Default · Grok · https://api.x.ai/v1", cut.Markup);
+		Assert.DoesNotContain("Default · Ollama", cut.Markup);
+	});
+}
+
 private static void AddInferenceComponentServices(BunitContext context, IInferenceProviderService providerService)
 {
 	context.Services.AddSingleton(providerService);
@@ -446,6 +482,7 @@ public void LocalInferencePage_RefreshModelsShowsErrorWhenRefreshFails()
 		public Exception? RefreshModelsException { get; init; }
 		public int RefreshModelsCallCount { get; private set; }
 		public Guid? LastRefreshedProviderId { get; private set; }
+		public IReadOnlyList<Guid>? SavedOrder { get; private set; }
 
 	public override Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers);
 	public override Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(_providers.FirstOrDefault(provider => provider.Id == id));
@@ -471,6 +508,11 @@ public void LocalInferencePage_RefreshModelsShowsErrorWhenRefreshFails()
 		return Task.FromResult<IEnumerable<InferenceModel>>(_modelsByProvider.TryGetValue(providerId, out var models) ? models : []);
 	}
 	public override Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
+	public override Task ReorderAsync(IReadOnlyList<Guid> orderedProviderIds, CancellationToken ct = default)
+	{
+		SavedOrder = orderedProviderIds.ToList();
+		return Task.CompletedTask;
+	}
 	}
 
 	private static InferenceProvider CreateInferenceProvider(Guid? id = null)

@@ -267,6 +267,9 @@ public sealed class OllamaInferenceServiceTests
 		public Task DeleteAsync(Guid id, CancellationToken ct = default)
 			=> throw new NotSupportedException();
 
+		public Task ReorderAsync(IReadOnlyList<Guid> orderedProviderIds, CancellationToken ct = default)
+			=> throw new NotSupportedException();
+
 		public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
 			=> Task.FromResult<IEnumerable<InferenceModel>>([]);
 

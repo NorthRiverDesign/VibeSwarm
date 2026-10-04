@@ -67,6 +67,7 @@ internal abstract class FakeInferenceProviderServiceBase : IInferenceProviderSer
 	public virtual Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
 	public virtual Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
 	public virtual Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
+	public virtual Task ReorderAsync(IReadOnlyList<Guid> orderedProviderIds, CancellationToken ct = default) => throw new NotSupportedException();
 	public virtual Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default) => throw new NotSupportedException();
 	public virtual Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => throw new NotSupportedException();
 	public virtual Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using VibeSwarm.Shared.Data;
 
@@ -10,9 +11,11 @@ using VibeSwarm.Shared.Data;
 namespace VibeSwarm.Web.Data.Migrations.Sqlite
 {
     [DbContext(typeof(SqliteVibeSwarmDbContext))]
-    partial class SqliteVibeSwarmDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261004004033_AddInferenceProviderPriority")]
+    partial class AddInferenceProviderPriority
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.20");

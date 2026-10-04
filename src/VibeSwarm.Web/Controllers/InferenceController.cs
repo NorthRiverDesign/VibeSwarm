@@ -45,6 +45,13 @@ public class InferenceController : ControllerBase
 		return Ok(await _providerService.UpdateAsync(provider, ct));
 	}
 
+	[HttpPut("providers/order")]
+	public async Task<IActionResult> ReorderProviders([FromBody] List<Guid> orderedProviderIds, CancellationToken ct)
+	{
+		await _providerService.ReorderAsync(orderedProviderIds, ct);
+		return Ok();
+	}
+
 	[HttpDelete("providers/{id:guid}")]
 	public async Task<IActionResult> DeleteProvider(Guid id, CancellationToken ct)
 	{

@@ -10,13 +10,15 @@ else if (Providers.Count == 0)
 else
 {
 	<div class="list-group rounded-4">
-		@foreach (var provider in Providers)
+		@for (var index = 0; index < Providers.Count; index++)
 		{
+			var provider = Providers[index];
+			var position = index;
 			<ListRow @key="provider.Id"
 					 Icon="@GetProviderIcon(provider.ProviderType)"
 					 IconClass="@(provider.IsEnabled ? "text-primary" : "text-body-tertiary")"
 					 Title="@provider.Name" TitleClass="@(provider.IsEnabled ? null : "text-body-secondary")"
-					 Subtitle="@($"{provider.ProviderType} · {provider.Endpoint}")"
+					 Subtitle="@GetSubtitle(provider)"
 					 InitiallyExpanded="@(provider.Id == InitiallyOpenProviderId)">
 				<Trailing>
 					@if (!provider.IsEnabled)
@@ -38,12 +40,25 @@ else
 				<ChildContent>
 					<InferenceTestSection Provider="provider" ModelRefreshVersion="@ModelRefreshVersions.GetValueOrDefault(provider.Id)" />
 
-					<div class="d-flex align-items-center gap-2">
+					<div class="d-flex flex-wrap align-items-center gap-2">
 						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnRefreshModels.InvokeAsync(provider)"
 								disabled="@RefreshingModelsProviderId.HasValue">
 							<i class="bi bi-arrow-repeat me-1 @(RefreshingModelsProviderId == provider.Id ? "spin" : "")"></i>Refresh models
 						</button>
 						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnEditProvider.InvokeAsync(provider)">Edit</button>
+						@if (Providers.Count > 1)
+						{
+							<div class="btn-group btn-group-sm" role="group" aria-label="Priority">
+								<button type="button" class="btn btn-secondary" title="Move up" aria-label="Move up"
+										disabled="@(position == 0 || IsReordering)" @onclick="() => OnMoveProvider.InvokeAsync((provider, -1))">
+									<i class="bi bi-arrow-up"></i>
+								</button>
+								<button type="button" class="btn btn-secondary" title="Move down" aria-label="Move down"
+										disabled="@(position == Providers.Count - 1 || IsReordering)" @onclick="() => OnMoveProvider.InvokeAsync((provider, 1))">
+									<i class="bi bi-arrow-down"></i>
+								</button>
+							</div>
+						}
 						<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDeleteProvider.InvokeAsync(provider)">
 							<i class="bi bi-trash me-1"></i>Delete
 						</button>
@@ -80,11 +95,27 @@ else
 	[Parameter]
 	public EventCallback<InferenceProvider> OnRefreshModels { get; set; }
 
+	/// <summary>Moves a connection up (-1) or down (+1) in the priority order.</summary>
+	[Parameter]
+	public EventCallback<(InferenceProvider Provider, int Offset)> OnMoveProvider { get; set; }
+
+	[Parameter]
+	public bool IsReordering { get; set; }
+
 	[Parameter]
 	public Guid? RefreshingModelsProviderId { get; set; }
 
 	[Parameter]
 	public IReadOnlyDictionary<Guid, int> ModelRefreshVersions { get; set; } = new Dictionary<Guid, int>();
+
+	// The first enabled connection is the one picked for you, so it says so.
+	private string GetSubtitle(InferenceProvider provider)
+	{
+		var subtitle = $"{provider.ProviderType} · {provider.Endpoint}";
+		return provider.IsEnabled && Providers.FirstOrDefault(p => p.IsEnabled)?.Id == provider.Id
+			? $"Default · {subtitle}"
+			: subtitle;
+	}
 
 	private static string GetProviderIcon(InferenceProviderType type) => type switch
 	{
