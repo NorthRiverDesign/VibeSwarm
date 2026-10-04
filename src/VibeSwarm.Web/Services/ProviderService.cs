@@ -80,6 +80,7 @@ public class ProviderService : IProviderService
         existing.MaxExecutionMinutes = provider.MaxExecutionMinutes;
         existing.ConfiguredUsageLimit = provider.ConfiguredUsageLimit;
         existing.ConfiguredLimitType = provider.ConfiguredLimitType;
+        existing.SessionLimitPauseThresholdPercent = provider.SessionLimitPauseThresholdPercent;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 

@@ -112,13 +112,20 @@ public partial class JobProcessingService
 
             if (providerResolution.CooldownUntil.HasValue)
             {
+                var sessionLimitReason = await DescribeSessionLimitHoldAsync(
+                    job.Id,
+                    providerResolution.Provider,
+                    providerResolution.CooldownUntil.Value,
+                    dbContext,
+                    cancellationToken);
                 await RequeueJobForProviderCooldownAsync(
                     job.Id,
                     providerResolution.Provider.Name,
                     providerResolution.CooldownUntil.Value,
                     executionContext,
                     dbContext,
-                    cancellationToken);
+                    cancellationToken,
+                    sessionLimitReason);
                 await NotifyStatusChangedAsync(job.Id, JobStatus.New);
                 return;
             }

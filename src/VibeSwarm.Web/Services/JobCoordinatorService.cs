@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -365,7 +366,9 @@ public class JobCoordinatorService : IJobCoordinatorService
 			? health.RateLimitResetTime.Value
 			: (DateTime?)null;
 
-		return GetLaterCooldown(persistedCooldownUntil, trackedCooldownUntil);
+		var sessionHold = await ProviderSessionLimitGuard.GetHoldAsync(dbContext, providerId, now, cancellationToken);
+
+		return GetLaterCooldown(GetLaterCooldown(persistedCooldownUntil, trackedCooldownUntil), sessionHold?.Until);
 	}
 
 	/// <summary>

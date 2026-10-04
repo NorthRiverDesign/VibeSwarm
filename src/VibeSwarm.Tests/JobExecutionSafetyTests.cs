@@ -452,6 +452,179 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ProcessJobAsync_WaitsForTheSessionToResetWhenUsageIsOverThreshold()
+	{
+		var projectId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
+		var jobId = Guid.NewGuid();
+		var sessionReset = DateTime.UtcNow.AddHours(2);
+
+		await using (var setupContext = CreateDbContext())
+		{
+			setupContext.Projects.Add(new Project
+			{
+				Id = projectId,
+				Name = "Session Project",
+				WorkingPath = "/tmp/session-project"
+			});
+			setupContext.Providers.Add(new Provider
+			{
+				Id = providerId,
+				Name = "Claude",
+				Type = ProviderType.Claude,
+				IsEnabled = true,
+				ExecutablePath = "missing-claude"
+			});
+			setupContext.ProviderUsageSummaries.Add(new ProviderUsageSummary
+			{
+				ProviderId = providerId,
+				LimitsRefreshedAt = DateTime.UtcNow,
+				LimitWindows = [SessionWindow(93, sessionReset)]
+			});
+			setupContext.Jobs.Add(new Job
+			{
+				Id = jobId,
+				ProjectId = projectId,
+				ProviderId = providerId,
+				GoalPrompt = "Wait for the session to reset",
+				Status = JobStatus.New
+			});
+
+			await setupContext.SaveChangesAsync();
+		}
+
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		var serviceProvider = services.BuildServiceProvider();
+
+		var processingService = new JobProcessingService(
+			serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NoOpVersionControlService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+
+		await using var executionContext = CreateDbContext();
+		var job = await executionContext.Jobs
+			.Include(j => j.Project)
+			.Include(j => j.Provider)
+			.SingleAsync(j => j.Id == jobId);
+
+		await InvokeProcessJobAsync(
+			processingService,
+			job,
+			new StubJobService(isCancellationRequested: false),
+			new StubProviderService(),
+			executionContext);
+
+		await using var verificationContext = CreateDbContext();
+		var persistedJob = await verificationContext.Jobs.SingleAsync(j => j.Id == jobId);
+
+		Assert.Equal(JobStatus.New, persistedJob.Status);
+		Assert.NotNull(persistedJob.NotBeforeUtc);
+		Assert.Equal(sessionReset, persistedJob.NotBeforeUtc!.Value, TimeSpan.FromSeconds(1));
+		Assert.Contains("session is 93% used", persistedJob.ErrorMessage ?? string.Empty);
+	}
+
+	[Fact]
+	public async Task ResolveProviderForExecutionAsync_LetsJobsStartWhileTheSessionHasRoom()
+	{
+		var projectId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
+		var jobId = Guid.NewGuid();
+
+		await using (var setupContext = CreateDbContext())
+		{
+			setupContext.Projects.Add(new Project { Id = projectId, Name = "Session Project", WorkingPath = "/tmp/session-project" });
+			setupContext.Providers.Add(new Provider { Id = providerId, Name = "Claude", Type = ProviderType.Claude, IsEnabled = true });
+			setupContext.ProviderUsageSummaries.Add(new ProviderUsageSummary
+			{
+				ProviderId = providerId,
+				LimitsRefreshedAt = DateTime.UtcNow,
+				LimitWindows = [SessionWindow(60, DateTime.UtcNow.AddHours(2))]
+			});
+			setupContext.Jobs.Add(new Job { Id = jobId, ProjectId = projectId, ProviderId = providerId, GoalPrompt = "Run now", Status = JobStatus.New });
+			await setupContext.SaveChangesAsync();
+		}
+
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		var processingService = new JobProcessingService(
+			services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NoOpVersionControlService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+
+		await using var executionContext = CreateDbContext();
+		var job = await executionContext.Jobs.Include(j => j.Provider).SingleAsync(j => j.Id == jobId);
+
+		var (resolvedProvider, cooldownUntil) = await InvokeResolveProviderForExecutionAsync(processingService, job, executionContext);
+
+		Assert.Equal(providerId, resolvedProvider?.Id);
+		Assert.Null(cooldownUntil);
+	}
+
+	[Fact]
+	public async Task ResolveProviderForExecutionAsync_SwitchesAwayFromAProviderWaitingForItsSession()
+	{
+		var projectId = Guid.NewGuid();
+		var heldProviderId = Guid.NewGuid();
+		var fallbackProviderId = Guid.NewGuid();
+		var jobId = Guid.NewGuid();
+
+		await using (var setupContext = CreateDbContext())
+		{
+			setupContext.Projects.Add(new Project { Id = projectId, Name = "Fallback Project", WorkingPath = "/tmp/fallback-project" });
+			setupContext.Providers.AddRange(
+				new Provider { Id = heldProviderId, Name = "Claude", Type = ProviderType.Claude, IsEnabled = true },
+				new Provider { Id = fallbackProviderId, Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true });
+			setupContext.ProjectProviders.AddRange(
+				new ProjectProvider { ProjectId = projectId, ProviderId = heldProviderId, Priority = 1, IsEnabled = true },
+				new ProjectProvider { ProjectId = projectId, ProviderId = fallbackProviderId, Priority = 2, IsEnabled = true });
+			setupContext.ProviderUsageSummaries.Add(new ProviderUsageSummary
+			{
+				ProviderId = heldProviderId,
+				LimitsRefreshedAt = DateTime.UtcNow,
+				LimitWindows = [SessionWindow(97, DateTime.UtcNow.AddHours(1))]
+			});
+			setupContext.Jobs.Add(new Job { Id = jobId, ProjectId = projectId, ProviderId = heldProviderId, GoalPrompt = "Use the other provider", Status = JobStatus.New });
+			await setupContext.SaveChangesAsync();
+		}
+
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		var scopeFactory = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+		var healthTracker = new ProviderHealthTracker();
+		var queueManager = new JobQueueManager(scopeFactory, NullLogger<JobQueueManager>.Instance);
+		var jobCoordinator = new JobCoordinatorService(scopeFactory, NullLogger<JobCoordinatorService>.Instance, healthTracker, queueManager);
+
+		var processingService = new JobProcessingService(
+			scopeFactory,
+			NullLogger<JobProcessingService>.Instance,
+			new NoOpVersionControlService(),
+			jobCoordinator: jobCoordinator,
+			healthTracker: healthTracker,
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+
+		await using var executionContext = CreateDbContext();
+		var job = await executionContext.Jobs.Include(j => j.Provider).SingleAsync(j => j.Id == jobId);
+
+		var (resolvedProvider, cooldownUntil) = await InvokeResolveProviderForExecutionAsync(processingService, job, executionContext);
+
+		Assert.Equal(fallbackProviderId, resolvedProvider?.Id);
+		Assert.Null(cooldownUntil);
+	}
+
+	private static UsageLimitWindow SessionWindow(int percentUsed, DateTime resetTime) => new()
+	{
+		Scope = UsageLimitWindowScope.Session,
+		LimitType = UsageLimitType.SessionLimit,
+		Label = "Session (5 hours)",
+		CurrentUsage = percentUsed,
+		MaxUsage = 100,
+		ResetTime = resetTime
+	};
+
+	[Fact]
 	public async Task SaveRunMessagesAsync_KeepsTheConversationButNotTheEchoedPrompt()
 	{
 		var serviceProvider = new ServiceCollection().BuildServiceProvider();

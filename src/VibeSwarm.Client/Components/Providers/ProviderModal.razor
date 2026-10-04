@@ -241,6 +241,25 @@
 								</div>
 							}
 						}
+
+						@if (SessionLimitPolicy.HasSessionLimit(Provider.Type))
+						{
+							<div class="mb-2">
+								<label for="modal-sessionPauseThreshold" class="form-label">Pause at session usage</label>
+								<div class="input-group">
+									<InputNumber id="modal-sessionPauseThreshold" @bind-Value="Provider.SessionLimitPauseThresholdPercent"
+												 class="form-control" placeholder="@SessionLimitPolicy.DefaultPauseThresholdPercent"
+												 min="@SessionLimitPolicy.MinPauseThresholdPercent" max="@SessionLimitPolicy.MaxPauseThresholdPercent" />
+									<span class="input-group-text">%</span>
+								</div>
+								<ValidationMessage For="@(() => Provider.SessionLimitPauseThresholdPercent)" class="text-danger small" />
+								<div class="form-text">
+									Session usage is checked before each job. From this point, or sooner when the next job would
+									likely use up the rest, jobs wait for the session to reset. Leave empty for
+									@(SessionLimitPolicy.DefaultPauseThresholdPercent)%.
+								</div>
+							</div>
+						}
 					</div>
 				}
 
@@ -342,6 +361,7 @@
 					MaxExecutionMinutes = EditProvider.MaxExecutionMinutes,
 					ConfiguredUsageLimit = EditProvider.ConfiguredUsageLimit,
 					ConfiguredLimitType = EditProvider.ConfiguredLimitType,
+					SessionLimitPauseThresholdPercent = EditProvider.SessionLimitPauseThresholdPercent,
 					CreatedAt = EditProvider.CreatedAt,
 					LastConnectedAt = EditProvider.LastConnectedAt
 				};

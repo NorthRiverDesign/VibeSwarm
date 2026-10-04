@@ -144,7 +144,8 @@ public partial class JobProcessingService
         DateTime backoffUntil,
         JobExecutionContext executionContext,
         VibeSwarmDbContext dbContext,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? waitReason = null)
     {
         var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
         if (job == null)
@@ -160,7 +161,7 @@ public partial class JobProcessingService
             executionContext.GetConsoleOutput());
 
         var transition = JobStateMachine.TryTransition(job, JobStatus.New,
-            $"Provider cooldown active for {providerName} until {backoffUntil:u}.");
+            waitReason ?? $"Provider cooldown active for {providerName} until {backoffUntil:u}.");
         if (!transition.Success)
         {
             _logger.LogWarning("Failed to re-queue cooling-down job {JobId}: {Error}", jobId, transition.ErrorMessage);
@@ -168,7 +169,7 @@ public partial class JobProcessingService
         }
 
         job.NotBeforeUtc = backoffUntil;
-        job.ErrorMessage = $"Provider cooldown active for {providerName}. Backing off until {backoffUntil:u}.";
+        job.ErrorMessage = waitReason ?? $"Provider cooldown active for {providerName}. Backing off until {backoffUntil:u}.";
         job.LastActivityAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
     }

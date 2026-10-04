@@ -60,7 +60,9 @@ public partial class JobProcessingService
 				? rateLimitResetTime
 				: (DateTime?)null;
 
-		return GetLaterCooldown(persistedCooldownUntil, trackedCooldownUntil);
+		var sessionHold = await ProviderSessionLimitGuard.GetHoldAsync(dbContext, providerId, now, cancellationToken);
+
+		return GetLaterCooldown(GetLaterCooldown(persistedCooldownUntil, trackedCooldownUntil), sessionHold?.Until);
 	}
 
 	private async Task<(Provider? Provider, DateTime? CooldownUntil)> ResolveProviderForExecutionAsync(
@@ -72,6 +74,8 @@ public partial class JobProcessingService
 		{
 			return (null, null);
 		}
+
+		await ReadSessionUsageBeforeStartAsync(job.Provider, dbContext, cancellationToken);
 
 		var cooldownUntil = await GetProviderCooldownUntilAsync(job.ProviderId, dbContext, cancellationToken);
 		if (!cooldownUntil.HasValue)
