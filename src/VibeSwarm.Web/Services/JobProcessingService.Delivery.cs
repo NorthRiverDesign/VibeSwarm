@@ -129,6 +129,36 @@ public partial class JobProcessingService
     }
 
     /// <summary>
+    /// When re-applying a follow-up's earlier work left conflict markers, checks that the agent
+    /// resolved every one. Returns false (and records why) if any marker is still in place.
+    /// </summary>
+    private async Task<bool> VerifyRestoreConflictsResolvedAsync(
+        Job job,
+        string workingDirectory,
+        JobWorkRestoreResult? priorWorkRestore,
+        CancellationToken cancellationToken)
+    {
+        if (_workSnapshots == null || priorWorkRestore is not { ConflictedFiles.Count: > 0 })
+        {
+            return true;
+        }
+
+        var unresolved = await _workSnapshots.FindUnresolvedConflictsAsync(workingDirectory, priorWorkRestore.ConflictedFiles, cancellationToken);
+        if (unresolved.Count == 0)
+        {
+            return true;
+        }
+
+        _logger.LogWarning("Job {JobId} left merge conflict markers in {Files}", job.Id, string.Join(", ", unresolved));
+        job.BuildVerified = false;
+        job.BuildOutput = "Re-applying this job's earlier work conflicted with newer changes on the branch, " +
+            "and these files still contain conflict markers (<<<<<<< / >>>>>>>):" + Environment.NewLine +
+            string.Join(Environment.NewLine, unresolved.Select(file => $"- {file}")) + Environment.NewLine +
+            "The changes were not committed. Send a follow-up asking the agent to resolve them.";
+        return false;
+    }
+
+    /// <summary>
     /// Runs the project's configured build and test commands to verify the agent's changes compile and pass tests.
     /// Returns true if verification passed (or was not enabled), false if the build/tests failed.
     /// </summary>

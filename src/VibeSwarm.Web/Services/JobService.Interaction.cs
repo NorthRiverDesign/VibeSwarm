@@ -169,6 +169,8 @@ public partial class JobService
             GitCommitHash = job.GitCommitHash,
             GitCommitBefore = job.GitCommitBefore,
             ChangedFilesCount = job.ChangedFilesCount,
+            GitDiff = job.GitDiff,
+            WorkSnapshotCommit = job.WorkSnapshotCommit,
             SessionSummary = job.SessionSummary,
             PullRequestNumber = job.PullRequestNumber,
             PullRequestUrl = job.PullRequestUrl,

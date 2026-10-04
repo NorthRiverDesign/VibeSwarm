@@ -986,6 +986,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			CompletedAt = completedAt,
 			GitCommitHash = "abc1234567890",
 			ChangedFilesCount = 5,
+			GitDiff = "diff --git a/src/Feature.cs b/src/Feature.cs",
+			WorkSnapshotCommit = "fedcba9876543210",
 			SessionSummary = "Did the thing",
 			PullRequestNumber = 42,
 			PullRequestUrl = "https://github.com/owner/repo/pull/42",
@@ -1010,11 +1012,18 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal(0, cs0.FollowUpIndex);
 		Assert.Equal("abc1234567890", cs0.GitCommitHash);
 		Assert.Equal(5, cs0.ChangedFilesCount);
+		Assert.Equal("diff --git a/src/Feature.cs b/src/Feature.cs", cs0.GitDiff);
+		Assert.Equal("fedcba9876543210", cs0.WorkSnapshotCommit);
 		Assert.Equal("Did the thing", cs0.SessionSummary);
 		Assert.Equal(42, cs0.PullRequestNumber);
 		Assert.Equal("https://github.com/owner/repo/pull/42", cs0.PullRequestUrl);
 		Assert.True(cs0.BuildVerified);
 		Assert.Equal("gpt-4o", cs0.ModelUsed);
+
+		// The follow-up run starts without a snapshot of its own; it restores cs0's.
+		var resetJob = await dbContext.Jobs.AsNoTracking().SingleAsync(j => j.Id == job.Id);
+		Assert.Null(resetJob.WorkSnapshotCommit);
+		Assert.Null(resetJob.GitDiff);
 	}
 
 	[Fact]

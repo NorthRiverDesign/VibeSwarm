@@ -289,8 +289,10 @@ public partial class JobProcessingService
                         .FirstOrDefaultAsync(cancellationToken)
                         ?? true;
 
-                    // Run build/test verification before committing if enabled
-                    var buildPassed = await VerifyBuildAsync(job, workingDirectory, cancellationToken);
+                    // Never deliver a restore conflict the agent left unresolved, then run
+                    // build/test verification before committing if enabled
+                    var buildPassed = await VerifyRestoreConflictsResolvedAsync(job, workingDirectory, executionContext.PriorWorkRestore, cancellationToken)
+                        && await VerifyBuildAsync(job, workingDirectory, cancellationToken);
                     if (buildPassed)
                     {
                         await PerformAutoCommitAsync(job, workingDirectory, enableCommitAttribution, cancellationToken);
@@ -304,6 +306,8 @@ public partial class JobProcessingService
                             job.Id, workingDirectory);
                     }
                 }
+
+                job.WorkSnapshotCommit = await SaveRunWorkSnapshotAsync(job, workingDirectory, executionContext.GitCommitBefore, cancellationToken);
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);

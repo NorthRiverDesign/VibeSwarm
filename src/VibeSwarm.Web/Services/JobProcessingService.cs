@@ -33,6 +33,7 @@ public partial class JobProcessingService : BackgroundService
     private readonly IVersionControlService _versionControlService;
     private readonly IInteractionResponseService? _interactionResponseService;
     private readonly IProjectEnvironmentCredentialService _projectEnvironmentCredentialService;
+    private readonly JobWorkSnapshotService? _workSnapshots;
     private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(3); // Poll less frequently, SignalR handles real-time updates
     private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
@@ -62,7 +63,8 @@ public partial class JobProcessingService : BackgroundService
         IJobCoordinatorService? jobCoordinator = null,
         IProviderHealthTracker? healthTracker = null,
         IInteractionResponseService? interactionResponseService = null,
-        IProjectEnvironmentCredentialService? projectEnvironmentCredentialService = null)
+        IProjectEnvironmentCredentialService? projectEnvironmentCredentialService = null,
+        JobWorkSnapshotService? workSnapshots = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -72,6 +74,7 @@ public partial class JobProcessingService : BackgroundService
         _healthTracker = healthTracker;
         _interactionResponseService = interactionResponseService;
         _projectEnvironmentCredentialService = projectEnvironmentCredentialService ?? throw new ArgumentNullException(nameof(projectEnvironmentCredentialService));
+        _workSnapshots = workSnapshots;
     }
 
     /// <summary>
@@ -131,6 +134,11 @@ public partial class JobProcessingService : BackgroundService
         /// Git commit hash at the start of job execution
         /// </summary>
         public string? GitCommitBefore { get; set; }
+
+        /// <summary>
+        /// How a follow-up re-applied its job's earlier work, or null when it had none to restore.
+        /// </summary>
+        public JobWorkRestoreResult? PriorWorkRestore { get; set; }
 
         /// <summary>
         /// Tracks recent output lines for interaction detection context

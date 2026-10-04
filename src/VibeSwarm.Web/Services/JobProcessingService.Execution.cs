@@ -185,6 +185,7 @@ public partial class JobProcessingService
                         await NotifyJobActivityAsync(job.Id, branchActivity, DateTime.UtcNow);
 
                         await PrepareWorkingBranchAsync(job, workingDirectory, checkpointBaseBranch, cancellationToken);
+                        executionContext.PriorWorkRestore = await RestorePriorRunWorkAsync(job, workingDirectory, dbContext, cancellationToken);
                     }
                 }
                 catch (GitCheckpointRequiredException)
@@ -649,6 +650,14 @@ public partial class JobProcessingService
                 systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
                     ? localSetupRules
                     : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{localSetupRules}";
+            }
+
+            var priorWorkRules = PromptBuilder.BuildPriorWorkRules(executionContext.PriorWorkRestore);
+            if (!string.IsNullOrWhiteSpace(priorWorkRules))
+            {
+                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
+                    ? priorWorkRules
+                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{priorWorkRules}";
             }
 
             // Inject role-specific system prompt context for team swarm jobs

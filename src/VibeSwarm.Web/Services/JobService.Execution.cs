@@ -259,6 +259,7 @@ public partial class JobService
         job.GitDiff = null;
         job.GitCommitBefore = null;
         job.GitCommitHash = null;
+        job.WorkSnapshotCommit = null;
         job.PullRequestNumber = null;
         job.PullRequestUrl = null;
         job.PullRequestCreatedAt = null;

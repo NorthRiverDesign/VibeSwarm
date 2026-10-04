@@ -1,6 +1,7 @@
 using System.Text;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Validation;
+using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -444,6 +445,57 @@ public static class PromptBuilder
 		sb.AppendLine($"- Before finishing, write {resultFilePath} as JSON: {{\"url\": \"http://localhost:<port>\", \"startCommand\": \"<command that starts the app>\", \"notes\": \"<services, ports, mail trap URL, how to reset data>\", \"username\": \"<local login, if the app has one>\", \"password\": \"<its password>\"}}. Leave out what does not apply.");
 		sb.AppendLine("- VibeSwarm saves that file as the project's Local environment so later jobs can start and test the app. Do not put the values anywhere else in the repository.");
 		sb.AppendLine("- End with how to start the app, its URL, and the services you set up.");
+		return sb.ToString().TrimEnd();
+	}
+
+	/// <summary>
+	/// Tells a follow-up where its job's earlier work stands after VibeSwarm tried to put it back
+	/// on top of the freshly synced branch, so the agent builds on it instead of redoing or reverting it.
+	/// </summary>
+	public static string? BuildPriorWorkRules(JobWorkRestoreResult? restore)
+	{
+		if (restore == null)
+		{
+			return null;
+		}
+
+		const int maxListedFiles = 20;
+		var sb = new StringBuilder();
+		sb.AppendLine("EARLIER RUNS OF THIS JOB:");
+		switch (restore.Outcome)
+		{
+			case JobWorkRestoreOutcome.AlreadyOnBranch:
+				sb.AppendLine("- This is a follow-up. The changes from the earlier runs of this job are already on this branch. Build on them.");
+				break;
+
+			case JobWorkRestoreOutcome.Restored:
+				sb.AppendLine($"- This is a follow-up. VibeSwarm saved the changes from the earlier runs of this job and re-applied them to the working tree as uncommitted changes ({restore.Files.Count} file(s)).");
+				sb.AppendLine("- They are this job's own work: build on them, and do not revert, stash or redo them. VibeSwarm delivers them together with your changes.");
+				break;
+
+			case JobWorkRestoreOutcome.Conflicted:
+				sb.AppendLine("- This is a follow-up. VibeSwarm saved the changes from the earlier runs of this job and re-applied them to the working tree as uncommitted changes, but the branch has moved on since and some of them conflict.");
+				sb.AppendLine("- First resolve the git conflict markers (<<<<<<< / ======= / >>>>>>>) in these files, keeping both the branch's newer changes and this job's intent:");
+				foreach (var file in restore.ConflictedFiles.Take(maxListedFiles))
+				{
+					sb.AppendLine($"  - {file}");
+				}
+				if (restore.ConflictedFiles.Count > maxListedFiles)
+				{
+					sb.AppendLine($"  - ...and {restore.ConflictedFiles.Count - maxListedFiles} more (search for <<<<<<<)");
+				}
+				sb.AppendLine("- VibeSwarm will not deliver a file that still contains conflict markers. Then build on the earlier work; do not revert, stash or redo it.");
+				break;
+
+			case JobWorkRestoreOutcome.Failed:
+				var reason = restore.Error?.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+				sb.AppendLine(string.IsNullOrWhiteSpace(reason)
+					? "- This is a follow-up, but VibeSwarm could not re-apply the changes from the earlier runs of this job."
+					: $"- This is a follow-up, but VibeSwarm could not re-apply the changes from the earlier runs of this job: {reason}");
+				sb.AppendLine("- Check the working tree and the branch history. If the earlier work is missing, redo it as part of this follow-up.");
+				break;
+		}
+
 		return sb.ToString().TrimEnd();
 	}
 

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
 using VibeSwarm.Shared.Data;
@@ -201,6 +202,99 @@ public partial class JobProcessingService
         return originalBranch;
     }
 
+    /// <summary>
+    /// Puts the work of the job's earlier runs back on top of the freshly prepared branch, so a
+    /// follow-up builds on it and delivers it along with its own changes. Runs are checked newest
+    /// first: one whose commit is already on the branch means everything before it is there too.
+    /// </summary>
+    private async Task<JobWorkRestoreResult?> RestorePriorRunWorkAsync(
+        Job job,
+        string workingDirectory,
+        VibeSwarmDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (_workSnapshots == null)
+        {
+            return null;
+        }
+
+        var priorRuns = await dbContext.JobChangeSets
+            .AsNoTracking()
+            .Where(cs => cs.JobId == job.Id)
+            .OrderByDescending(cs => cs.FollowUpIndex)
+            .Select(cs => new { cs.GitCommitHash, cs.WorkSnapshotCommit })
+            .ToListAsync(cancellationToken);
+
+        try
+        {
+            foreach (var run in priorRuns)
+            {
+                if (!string.IsNullOrWhiteSpace(run.GitCommitHash) &&
+                    await _workSnapshots.IsInHeadAsync(workingDirectory, run.GitCommitHash, cancellationToken))
+                {
+                    return JobWorkRestoreResult.AlreadyOnBranch();
+                }
+
+                if (string.IsNullOrWhiteSpace(run.WorkSnapshotCommit))
+                {
+                    continue;
+                }
+
+                const string activity = "Restoring changes from earlier runs...";
+                await UpdateHeartbeatAsync(job.Id, activity, dbContext, cancellationToken);
+                await NotifyJobActivityAsync(job.Id, activity, DateTime.UtcNow);
+
+                var result = await _workSnapshots.RestoreAsync(workingDirectory, run.WorkSnapshotCommit, cancellationToken);
+                if (result.Outcome == JobWorkRestoreOutcome.Failed)
+                {
+                    _logger.LogWarning("Could not restore earlier work {Snapshot} for job {JobId}: {Error}",
+                        run.WorkSnapshotCommit, job.Id, result.Error);
+                }
+                else
+                {
+                    _logger.LogInformation("Restored earlier work {Snapshot} for job {JobId}: {Outcome}, {FileCount} file(s), {ConflictCount} conflicted",
+                        run.WorkSnapshotCommit, job.Id, result.Outcome, result.Files.Count, result.ConflictedFiles.Count);
+                }
+
+                return result;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Could not restore earlier work for job {JobId}", job.Id);
+            return JobWorkRestoreResult.Failed(ex.Message);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Saves what the run leaves behind so a follow-up can restore it after the next pre-run reset.
+    /// </summary>
+    private async Task<string?> SaveRunWorkSnapshotAsync(Job job, string workingDirectory, string? baseCommit, CancellationToken cancellationToken)
+    {
+        if (_workSnapshots == null || string.IsNullOrWhiteSpace(baseCommit))
+        {
+            return null;
+        }
+
+        try
+        {
+            var snapshot = await _workSnapshots.SaveAsync(workingDirectory, job.Id, baseCommit, cancellationToken);
+            if (snapshot != null)
+            {
+                _logger.LogInformation("Saved the work of job {JobId} as {Snapshot}", job.Id, snapshot[..Math.Min(8, snapshot.Length)]);
+            }
+
+            return snapshot;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Could not save the work of job {JobId}", job.Id);
+            return null;
+        }
+    }
+
     private async Task TryRecordAgentCommitAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(job.GitCommitHash))
@@ -264,6 +358,10 @@ public partial class JobProcessingService
 
         var diff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, job.GitCommitBefore, cancellationToken)
             ?? await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, cancellationToken: cancellationToken);
+
+        // The stash below is easy to lose; the snapshot lets a follow-up pick the work back up.
+        job.WorkSnapshotCommit = await SaveRunWorkSnapshotAsync(job, workingDirectory, job.GitCommitBefore, cancellationToken)
+            ?? job.WorkSnapshotCommit;
 
         var preserveResult = await _versionControlService.PreserveChangesAsync(
             workingDirectory,

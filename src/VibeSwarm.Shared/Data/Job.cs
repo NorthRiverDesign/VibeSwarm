@@ -511,6 +511,15 @@ public class Job
     public string? GitCommitHash { get; set; }
 
     /// <summary>
+    /// Commit holding the job's accumulated work when its latest run ended (uncommitted and
+    /// unpushed changes included), kept under <c>refs/vibeswarm/jobs/</c>. A follow-up copies it
+    /// into its <see cref="JobChangeSet"/> and re-applies it before the agent starts, so work
+    /// that never reached the remote is not lost to the pre-run reset.
+    /// </summary>
+    [StringLength(100)]
+    public string? WorkSnapshotCommit { get; set; }
+
+    /// <summary>
     /// State machine for preserved local git changes captured before destructive branch operations.
     /// </summary>
     public GitCheckpointStatus GitCheckpointStatus { get; set; } = GitCheckpointStatus.None;

@@ -21,6 +21,7 @@ public class JobWatchdogService : BackgroundService
 	private readonly ILogger<JobWatchdogService> _logger;
 	private readonly IJobUpdateService? _jobUpdateService;
 	private readonly IVersionControlService _versionControlService;
+	private readonly JobWorkSnapshotService? _workSnapshots;
 	private readonly string _workerInstanceId;
 
 	/// <summary>
@@ -52,12 +53,14 @@ public class JobWatchdogService : BackgroundService
 		IServiceScopeFactory scopeFactory,
 		ILogger<JobWatchdogService> logger,
 		IVersionControlService versionControlService,
-		IJobUpdateService? jobUpdateService = null)
+		IJobUpdateService? jobUpdateService = null,
+		JobWorkSnapshotService? workSnapshots = null)
 	{
 		_scopeFactory = scopeFactory;
 		_logger = logger;
 		_versionControlService = versionControlService;
 		_jobUpdateService = jobUpdateService;
+		_workSnapshots = workSnapshots;
 		_workerInstanceId = JobProcessingService.GetWorkerInstanceId();
 	}
 
@@ -423,6 +426,13 @@ public class JobWatchdogService : BackgroundService
 
 		var diff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, job.GitCommitBefore, cancellationToken)
 			?? await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, cancellationToken: cancellationToken);
+
+		// The stash below is easy to lose; the snapshot lets a follow-up pick the work back up.
+		if (_workSnapshots != null && !string.IsNullOrWhiteSpace(job.GitCommitBefore))
+		{
+			job.WorkSnapshotCommit = await _workSnapshots.SaveAsync(workingDirectory, job.Id, job.GitCommitBefore, cancellationToken)
+				?? job.WorkSnapshotCommit;
+		}
 
 		var preserveResult = await _versionControlService.PreserveChangesAsync(
 			workingDirectory,

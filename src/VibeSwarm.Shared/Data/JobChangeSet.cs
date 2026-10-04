@@ -5,7 +5,8 @@ namespace VibeSwarm.Shared.Data;
 /// <summary>
 /// Captures the change-set snapshot of a job before it is reset for a follow-up.
 /// One record is saved per follow-up continuation so users can review every
-/// commit / diff produced across all follow-up iterations of the same job.
+/// commit / diff produced across all follow-up iterations of the same job, and so
+/// the follow-up can re-apply the work from <see cref="WorkSnapshotCommit"/>.
 /// </summary>
 public class JobChangeSet
 {
@@ -28,6 +29,18 @@ public class JobChangeSet
 	public string? GitCommitBefore { get; set; }
 
 	public int? ChangedFilesCount { get; set; }
+
+	/// <summary>
+	/// The diff the run ended with, kept because the follow-up clears the job's own.
+	/// </summary>
+	public string? GitDiff { get; set; }
+
+	/// <summary>
+	/// Commit holding the job's accumulated work at the end of this run, kept under
+	/// <c>refs/vibeswarm/jobs/</c> so the pre-run reset of a later job cannot drop it.
+	/// </summary>
+	[StringLength(100)]
+	public string? WorkSnapshotCommit { get; set; }
 
 	public string? SessionSummary { get; set; }
 
