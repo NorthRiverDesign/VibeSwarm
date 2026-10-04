@@ -105,7 +105,7 @@ public partial class IdeaService
 			request.IdeaCount,
 			existingIdeas,
 			request.AdditionalContext);
-		const string systemPrompt = "You are a senior software engineer performing a codebase review. Identify concrete, actionable improvements. Return only a plain list of ideas, one per line starting with \"- \". No explanations or headers.";
+		const string systemPrompt = "You are a senior software engineer performing a codebase review. Identify concrete, actionable improvements. You can't open files or run tools: everything you have is in this message, so answer now. Return only a plain list of ideas, one per line starting with \"- \". No explanations or headers.";
 
 		var generationResult = request.UseInference
 			? await SuggestIdeasWithInferenceAsync(projectId, request, prompt, systemPrompt, cancellationToken)
@@ -120,15 +120,15 @@ public partial class IdeaService
 		var suggestions = ParseCodebaseSuggestions(responseText, request.IdeaCount);
 		if (suggestions.Count == 0)
 		{
-			_logger.LogWarning("No parseable suggestions in generation response for project {ProjectId}. Raw response length: {Len}",
-				projectId, responseText.Length);
+			_logger.LogWarning("No parseable suggestions in generation response for project {ProjectId} from model {Model}. Raw response length: {Len}, finish reason: {FinishReason}",
+				projectId, generationResult.ModelUsed, responseText.Length, generationResult.FinishReason ?? "unknown");
 			return new SuggestIdeasResult
 			{
 				Stage = SuggestIdeasStage.ParseFailed,
 				Message = "The model responded but did not produce ideas in the expected format. Try a different model or re-run.",
 				ModelUsed = generationResult.ModelUsed,
 				GenerationDurationMs = generationResult.DurationMs,
-				ErrorDetail = $"Raw response ({responseText.Length} chars): {responseText[..Math.Min(200, responseText.Length)]}..."
+				ErrorDetail = $"Model {generationResult.ModelUsed ?? "unknown"} stopped ({generationResult.FinishReason ?? "reason unknown"}). Raw response ({responseText.Length} chars): {responseText[..Math.Min(200, responseText.Length)]}..."
 			};
 		}
 
@@ -365,7 +365,8 @@ public partial class IdeaService
 		return SuggestionGenerationResult.Success(
 			inferenceResponse.Response.Trim(),
 			inferenceResponse.ModelUsed,
-			inferenceResponse.DurationMs);
+			inferenceResponse.DurationMs,
+			inferenceResponse.FinishReason);
 	}
 
 	private async Task<SuggestionGenerationResult> SuggestIdeasWithProviderAsync(
@@ -749,9 +750,10 @@ public partial class IdeaService
 		SuggestIdeasResult Result,
 		string? ResponseText,
 		string? ModelUsed,
-		long? DurationMs)
+		long? DurationMs,
+		string? FinishReason = null)
 	{
-		public static SuggestionGenerationResult Success(string responseText, string? modelUsed, long? durationMs)
+		public static SuggestionGenerationResult Success(string responseText, string? modelUsed, long? durationMs, string? finishReason = null)
 			=> new(
 				new SuggestIdeasResult
 				{
@@ -760,7 +762,8 @@ public partial class IdeaService
 				},
 				responseText,
 				modelUsed,
-				durationMs);
+				durationMs,
+				finishReason);
 
 		public static SuggestionGenerationResult Fail(SuggestIdeasResult result)
 			=> new(result, null, result.ModelUsed, result.GenerationDurationMs);

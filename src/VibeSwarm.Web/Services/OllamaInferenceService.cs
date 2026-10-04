@@ -360,7 +360,8 @@ public class OllamaInferenceService : IInferenceService
 					? finalChunk.TotalDuration.Value / 1_000_000
 					: null,
 				PromptTokens = finalChunk.PromptEvalCount,
-				CompletionTokens = finalChunk.EvalCount
+				CompletionTokens = finalChunk.EvalCount,
+				FinishReason = finalChunk.DoneReason
 			};
 		}
 		catch (OperationCanceledException) when (ct.IsCancellationRequested)
