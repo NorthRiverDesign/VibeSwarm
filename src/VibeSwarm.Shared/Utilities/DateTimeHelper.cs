@@ -155,11 +155,15 @@ public static class DateTimeHelper
 	}
 
 	public static string GetTimeZoneOptionLabel(TimeZoneInfo timeZone)
+		=> $"({FormatUtcOffset(timeZone)}) {timeZone.Id}";
+
+	/// <summary>The zone's current offset, such as "UTC-04:00".</summary>
+	public static string FormatUtcOffset(TimeZoneInfo timeZone)
 	{
 		var offset = timeZone.GetUtcOffset(DateTime.UtcNow);
 		var sign = offset < TimeSpan.Zero ? "-" : "+";
 		var absoluteOffset = offset.Duration();
-		return $"(UTC{sign}{absoluteOffset.Hours:D2}:{absoluteOffset.Minutes:D2}) {timeZone.Id}";
+		return $"UTC{sign}{absoluteOffset.Hours:D2}:{absoluteOffset.Minutes:D2}";
 	}
 
 	public static string FormatDateTime(this DateTime? dateTime)

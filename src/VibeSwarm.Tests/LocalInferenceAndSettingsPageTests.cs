@@ -73,6 +73,8 @@ return output.ToHtmlString();
 
 	Assert.Contains(">General<", html);
 	Assert.Contains("Timezone", html);
+	Assert.Contains(">Eastern (UTC-0", html);
+	Assert.DoesNotContain("Europe/", html);
 	Assert.Contains("Enable provider commit attribution", html);
 	Assert.Contains("Idea Prompt Templates", html);
 	Assert.Contains("Idea expansion template", html);
@@ -553,6 +555,19 @@ public Task<InferenceResponse> GenerateAsync(InferenceRequest request, Cancellat
 	return Task.FromResult(GenerateResponse);
 }
 public Task<InferenceResponse> GenerateForTaskAsync(string taskType, string prompt, string? systemPrompt = null, CancellationToken ct = default) => throw new NotSupportedException();
+}
+
+[Fact]
+public void AppTimeZoneService_OffersTheMainUsZonesAndKeepsASavedOtherZone()
+{
+	var service = new AppTimeZoneService(new FakeSettingsService(), NullLogger<AppTimeZoneService>.Instance);
+
+	var names = service.GetTimeZoneOptions("America/Chicago").Select(option => option.Label.Split(' ')[0]);
+	Assert.Equal(["Eastern", "Central", "Mountain", "Arizona", "Pacific", "Alaska", "Hawaii", "UTC"], names);
+
+	var withSavedZone = service.GetTimeZoneOptions("Europe/London");
+	Assert.Equal(9, withSavedZone.Count);
+	Assert.Equal(VibeSwarm.Shared.Utilities.DateTimeHelper.ResolveTimeZone("Europe/London").Id, withSavedZone[^1].Zone.Id);
 }
 
 private sealed class FakeSettingsService : ISettingsService
