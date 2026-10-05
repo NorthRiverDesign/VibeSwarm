@@ -193,6 +193,10 @@ public partial class JobProcessingService
 
                         await PrepareWorkingBranchAsync(job, workingDirectory, checkpointBaseBranch, cancellationToken);
                         executionContext.PriorWorkRestore = await RestorePriorRunWorkAsync(job, workingDirectory, dbContext, cancellationToken);
+                        if (_workSnapshots != null)
+                        {
+                            executionContext.WorktreesBefore = await _workSnapshots.ListWorktreesAsync(workingDirectory, cancellationToken);
+                        }
                     }
                 }
                 catch (GitRemoteUnavailableException ex)
@@ -784,7 +788,9 @@ public partial class JobProcessingService
                                 Title = job.Title,
                                 AppendSystemPrompt = systemPromptRules,
                                 EnvironmentVariables = jobEnvironmentVariables,
-                                DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools
+                                DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools,
+                                StrictMcpConfig = true,
+                                DisableBuiltinMcps = true
                             },
                             progress,
                             planningExecutionCts.Token);
@@ -954,6 +960,10 @@ public partial class JobProcessingService
                             NonBlockingMcpConnection = provider.Type == ProviderType.Claude && hasMcp,
                             DisableAskUser = provider.Type == ProviderType.Copilot,
                             SkipPermissions = provider.Type == ProviderType.OpenCode,
+                            // Only the MCP servers VibeSwarm configures and the repository's own;
+                            // personal and built-in ones would cost context in every job.
+                            StrictMcpConfig = true,
+                            DisableBuiltinMcps = true,
                         },
                         progress,
                         executionCts.Token);
@@ -1222,6 +1232,8 @@ public partial class JobProcessingService
             var checkJobService = checkScope.ServiceProvider.GetRequiredService<IJobService>();
             var wasCancelled = await checkJobService.IsCancellationRequestedAsync(job.Id, CancellationToken.None);
 
+            await CollectLeftoverWorktreesAsync(job, workingDirectory, executionContext);
+
             // A job's deliverable is a change to the code. A run that ends with the working
             // tree untouched has not done the work, however articulate its answer was, and
             // recording it as success hides that. Questions and guidance belong to
@@ -1267,7 +1279,7 @@ public partial class JobProcessingService
                 await SaveRunMessagesAsync(checkJobService, job.Id, finalResult);
 
                 var hasGitChanges = await CompleteJobAsync(job.Id, JobStatus.Completed, finalResult.SessionId, finalResult.Output,
-                    null, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
+                    executionContext.DeliveryNotice, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None,
                     finalResult.IsTokenEstimate);
 
@@ -1368,7 +1380,7 @@ public partial class JobProcessingService
                     await SaveRunMessagesAsync(checkJobService, job.Id, finalResult);
 
                     await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
-                        finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
+                        CombineNotices(finalResult.ErrorMessage, executionContext.DeliveryNotice), finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                         executionContext, workingDirectory, dbContext, CancellationToken.None,
                         finalResult.IsTokenEstimate);
 

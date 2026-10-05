@@ -6,7 +6,7 @@ namespace VibeSwarm.Shared.VersionControl;
 
 /// <summary>
 /// Keeps a job's work safe between its runs. Every job starts by resetting the checkout to the
-/// remote, which drops whatever an earlier run left uncommitted or unpushed. At the end of a run
+/// remote, which sets aside whatever an earlier run left uncommitted. At the end of a run
 /// the work is saved as a commit under <c>refs/vibeswarm/jobs/</c>, outside any branch, and a
 /// follow-up re-applies it on top of the freshly synced branch so both land together.
 /// </summary>

@@ -100,7 +100,7 @@ public partial class JobProcessingService
             else
             {
                 _logger.LogWarning("Auto-commit failed for job {JobId}: {Error}", job.Id, commitResult.Error);
-                job.ErrorMessage = $"The changes could not be committed: {commitResult.Error}";
+                job.ErrorMessage = CombineNotices(job.ErrorMessage, $"The changes could not be committed: {commitResult.Error}");
             }
         }
         catch (Exception ex)
@@ -133,7 +133,7 @@ public partial class JobProcessingService
             if (!rejected || attempt >= MaxPushAttempts)
             {
                 _logger.LogWarning("Auto-push failed for job {JobId}: {Error}. Changes were committed but not pushed.", job.Id, pushResult.Error);
-                job.ErrorMessage = $"Committed, but the push failed: {pushResult.Error} The commit is still on the local branch and goes out with the next push.";
+                job.ErrorMessage = CombineNotices(job.ErrorMessage, $"Committed, but the push failed: {pushResult.Error} The commit is still on the local branch and goes out with the next push.");
                 return;
             }
 
@@ -142,14 +142,14 @@ public partial class JobProcessingService
             if (!syncResult.Success)
             {
                 _logger.LogWarning("Could not catch up with origin for job {JobId}: {Error}", job.Id, syncResult.Error);
-                job.ErrorMessage = $"Committed, but origin moved on and the commit could not be replayed on top of it: {syncResult.Error}";
+                job.ErrorMessage = CombineNotices(job.ErrorMessage, $"Committed, but origin moved on and the commit could not be replayed on top of it: {syncResult.Error}");
                 return;
             }
 
             if (syncResult.RecoveryBranch != null)
             {
                 _logger.LogWarning("Commit for job {JobId} conflicts with origin; kept on {RecoveryBranch}", job.Id, syncResult.RecoveryBranch);
-                job.ErrorMessage = $"Committed, but origin changed the same code while the job ran, so the commit was not pushed. It is kept on the branch {syncResult.RecoveryBranch}.";
+                job.ErrorMessage = CombineNotices(job.ErrorMessage, $"Committed, but origin changed the same code while the job ran, so the commit was not pushed. It is kept on the branch {syncResult.RecoveryBranch}.");
                 return;
             }
 

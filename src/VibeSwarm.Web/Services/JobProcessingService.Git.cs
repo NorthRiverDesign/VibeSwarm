@@ -456,6 +456,67 @@ public partial class JobProcessingService
             currentHash[..Math.Min(8, currentHash.Length)]);
     }
 
+    /// <summary>
+    /// Brings home the work of any worktree the agent created and left behind. When the checkout
+    /// itself is untouched, the worktree's changes become the job's changes; otherwise they stay
+    /// on a branch and the job says which.
+    /// </summary>
+    private async Task CollectLeftoverWorktreesAsync(Job job, string? workingDirectory, JobExecutionContext executionContext)
+    {
+        if (_workSnapshots == null || string.IsNullOrEmpty(workingDirectory) || !Directory.Exists(workingDirectory))
+        {
+            return;
+        }
+
+        try
+        {
+            var checkout = Path.GetFullPath(workingDirectory).TrimEnd(Path.DirectorySeparatorChar);
+            var leftovers = (await _workSnapshots.ListWorktreesAsync(workingDirectory, CancellationToken.None))
+                .Where(path => !executionContext.WorktreesBefore.Contains(path, StringComparer.Ordinal))
+                .Where(path => !string.Equals(Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar), checkout, StringComparison.Ordinal))
+                .ToList();
+
+            // Remove them all first: a worktree inside the repository would make the checkout
+            // itself look changed.
+            var keptBranches = new List<string>();
+            foreach (var worktree in leftovers)
+            {
+                if (await _workSnapshots.CollectWorktreeAsync(workingDirectory, worktree, job.Id, CancellationToken.None) is { } branch)
+                {
+                    keptBranches.Add(branch);
+                }
+            }
+
+            foreach (var branch in keptBranches)
+            {
+                var checkoutUntouched =
+                    !await _versionControlService.HasUncommittedChangesAsync(workingDirectory, CancellationToken.None) &&
+                    string.Equals(
+                        await _versionControlService.GetCurrentCommitHashAsync(workingDirectory, CancellationToken.None),
+                        executionContext.GitCommitBefore,
+                        StringComparison.OrdinalIgnoreCase);
+                if (checkoutUntouched && await _workSnapshots.MergeIntoCleanCheckoutAsync(workingDirectory, branch, CancellationToken.None))
+                {
+                    _logger.LogInformation("Brought the work job {JobId} did in a worktree into the checkout", job.Id);
+                    continue;
+                }
+
+                executionContext.DeliveryNotice = CombineNotices(
+                    executionContext.DeliveryNotice,
+                    $"The agent left work in a git worktree that could not be merged into the checkout. It is kept on the branch {branch}.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not check for worktrees left by job {JobId}", job.Id);
+        }
+    }
+
+    private static string? CombineNotices(string? first, string? second) =>
+        string.IsNullOrWhiteSpace(first) ? second
+        : string.IsNullOrWhiteSpace(second) ? first
+        : $"{first} {second}";
+
     private const string RecoveryBranchPrefix = "vibeswarm/recovery/";
 
     private static string BuildRecoveryBranchName(Guid jobId, string? originalBranch)

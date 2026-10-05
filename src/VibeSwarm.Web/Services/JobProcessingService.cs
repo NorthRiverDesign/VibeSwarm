@@ -155,6 +155,17 @@ public partial class JobProcessingService : BackgroundService
         public JobWorkRestoreResult? PriorWorkRestore { get; set; }
 
         /// <summary>
+        /// Linked worktrees that existed before the agent started, so the ones it adds can be found.
+        /// </summary>
+        public IReadOnlyList<string> WorktreesBefore { get; set; } = [];
+
+        /// <summary>
+        /// Something about how the work was delivered that the job should show, such as work kept
+        /// on a branch instead of in the checkout.
+        /// </summary>
+        public string? DeliveryNotice { get; set; }
+
+        /// <summary>
         /// Tracks recent output lines for interaction detection context
         /// </summary>
         public Queue<string> RecentOutputLines { get; } = new Queue<string>(20);

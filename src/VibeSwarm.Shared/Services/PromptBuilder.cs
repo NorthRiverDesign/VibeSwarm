@@ -354,12 +354,12 @@ public static class PromptBuilder
 		// resets the checkout before each job and commits the working tree after it,
 		// with its own attribution settings, so agent commits only get in the way.
 		sb.AppendLine("COMPLETING THE JOB:");
-		sb.AppendLine("- This job runs unattended in a queue. Do not stop to ask questions or wait for confirmation; a question pauses the queue. Make the reasonable call and keep going.");
+		sb.AppendLine("- This job runs unattended. Do not stop to ask questions or wait for confirmation; make the reasonable call and keep going.");
 		if (requireCodeChange)
 		{
 			sb.AppendLine("- The deliverable is a code change. A run that leaves the working tree unchanged is recorded as failed.");
 		}
-		sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. It delivers your working-tree changes after you exit.");
+		sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. It delivers this checkout's changes after you exit, so bring back and remove any worktree you used.");
 		sb.AppendLine("- End with a short summary of what changed, how you verified it, assumptions, and anything left undone. Make its last line the commit subject: <commit-summary>A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)</commit-summary>");
 		sb.AppendLine();
 		sb.AppendLine("SESSION ARTIFACTS:");

@@ -235,7 +235,7 @@ public sealed class ProviderCliArgsTests
         var args = provider.BuildCliArgs("test", null);
         var denied = args.Select((arg, i) => (arg, i)).Where(x => x.arg == "--disallowed-tools").Select(x => args[x.i + 1]).ToList();
 
-        Assert.Contains("EnterWorktree", denied);
+        Assert.DoesNotContain("EnterWorktree", denied);
         Assert.Contains("PushNotification", denied);
         Assert.Contains("ScheduleWakeup", denied);
         Assert.DoesNotContain("Bash", denied);
@@ -1438,7 +1438,7 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void Claude_WithStrictMcpConfig_WithoutMcpPath_OmitsStrictMcpFlag()
+    public void Claude_WithStrictMcpConfig_WithoutAnyConfig_LoadsNoMcpServers()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
         provider.CachedCliVersion = new Version(2, 1, 100);
@@ -1446,8 +1446,33 @@ public sealed class ProviderCliArgsTests
 
         var args = provider.BuildCliArgs("test", null);
 
-        // --strict-mcp-config is only meaningful when --mcp-config is present.
-        Assert.DoesNotContain("--strict-mcp-config", args);
+        // Strict with no config is what leaves the user's personal servers out of the job.
+        Assert.Contains("--strict-mcp-config", args);
+        Assert.DoesNotContain("--mcp-config", args);
+    }
+
+    [Fact]
+    public void Claude_WithStrictMcpConfig_KeepsTheRepositoryMcpServers()
+    {
+        var repository = Directory.CreateTempSubdirectory("vibeswarm-mcp-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(repository, ".mcp.json"), "{\"mcpServers\":{}}");
+            var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+            provider.CachedCliVersion = new Version(2, 1, 100);
+            provider.ApplyOptions(new ExecutionOptions { StrictMcpConfig = true, McpConfigPath = "/tmp/vibeswarm-mcp.json" });
+
+            var args = provider.BuildCliArgs("test", null, repository);
+
+            var idx = args.IndexOf("--mcp-config");
+            Assert.Equal("/tmp/vibeswarm-mcp.json", args[idx + 1]);
+            Assert.Equal(Path.Combine(repository, ".mcp.json"), args[idx + 2]);
+            Assert.Equal("--strict-mcp-config", args[idx + 3]);
+        }
+        finally
+        {
+            Directory.Delete(repository, recursive: true);
+        }
     }
 
     [Fact]

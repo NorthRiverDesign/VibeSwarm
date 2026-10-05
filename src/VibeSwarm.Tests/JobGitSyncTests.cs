@@ -165,6 +165,52 @@ public sealed class JobGitSyncTests : IDisposable
 		Assert.Equal("theirs", await GitAsync(_repo, "show origin/main:app.txt"));
 	}
 
+	[Fact]
+	public async Task Worktree_WorkComesBackIntoAnUntouchedCheckout()
+	{
+		await InitRepositoryAsync();
+		// Claude Code puts its worktrees inside the repository.
+		var worktree = await AddWorktreeAsync("-b agent-wt", Path.Combine(_repo, ".claude", "worktrees", "agent"));
+		await CommitAsync(worktree, "app.txt", "one\ntwo\nthree\ncommitted in worktree\n", "worktree commit");
+		await WriteAsync(worktree, "new.txt", "left uncommitted\n");
+		var snapshots = new JobWorkSnapshotService(_git, NullLogger<JobWorkSnapshotService>.Instance);
+
+		Assert.Equal([worktree], await snapshots.ListWorktreesAsync(_repo));
+		var keptOn = await snapshots.CollectWorktreeAsync(_repo, worktree, Guid.NewGuid());
+
+		Assert.Equal("agent-wt", keptOn);
+		Assert.False(Directory.Exists(worktree));
+		Assert.Equal("", await GitAsync(_repo, "status --porcelain"));
+		Assert.True(await snapshots.MergeIntoCleanCheckoutAsync(_repo, keptOn));
+		Assert.Empty(await snapshots.ListWorktreesAsync(_repo));
+		Assert.Equal("", await GitAsync(_repo, "branch --list agent-wt"));
+		Assert.Contains("committed in worktree", await File.ReadAllTextAsync(Path.Combine(_repo, "app.txt")));
+		Assert.Equal("left uncommitted\n", await File.ReadAllTextAsync(Path.Combine(_repo, "new.txt")));
+	}
+
+	[Fact]
+	public async Task Worktree_DetachedWorkIsKeptOnARecoveryBranch()
+	{
+		await InitRepositoryAsync();
+		var worktree = await AddWorktreeAsync("--detach", Path.Combine(_root, "agent-worktree"));
+		await WriteAsync(worktree, "app.txt", "worktree version\n");
+		var snapshots = new JobWorkSnapshotService(_git, NullLogger<JobWorkSnapshotService>.Instance);
+
+		var keptOn = await snapshots.CollectWorktreeAsync(_repo, worktree, Guid.NewGuid());
+
+		Assert.StartsWith("vibeswarm/recovery/worktree-", keptOn);
+		Assert.False(Directory.Exists(worktree));
+		Assert.Equal("worktree version", await GitAsync(_repo, $"show {keptOn}:app.txt"));
+		Assert.Equal("", await GitAsync(_repo, "status --porcelain"));
+	}
+
+	private async Task<string> AddWorktreeAsync(string options, string path)
+	{
+		await GitAsync(_repo, $"worktree add -q {options} \"{path}\"");
+		await ConfigureAsync(path);
+		return path;
+	}
+
 	private JobProcessingService CreateProcessor() => new(
 		new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
 		NullLogger<JobProcessingService>.Instance,
