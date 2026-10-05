@@ -22,6 +22,24 @@ public class ClaudeProvider : CliProviderBase
     private static readonly Version AgentVersion = new(2, 1, 64);
     private static readonly Version BareModeVersion = new(2, 1, 81);
     private static readonly Version DisallowedToolsVersion = new(2, 1, 0);
+
+    /// <summary>
+    /// Tools that make no sense for a job nobody is watching: worktrees move edits out of the
+    /// checkout VibeSwarm delivers, schedules and remote triggers outlive the job, and the rest
+    /// notify, message or publish to people and sessions outside it. Unknown names are ignored.
+    /// </summary>
+    internal static readonly IReadOnlyList<string> UnattendedDisallowedTools =
+    [
+        "EnterWorktree",
+        "ExitWorktree",
+        "CronCreate",
+        "CronDelete",
+        "ScheduleWakeup",
+        "RemoteTrigger",
+        "PushNotification",
+        "SendMessage",
+        "ShareOnboardingGuide"
+    ];
     private static readonly Version MaxBudgetVersion = new(2, 0, 28);
     private static readonly Version FromPullRequestVersion = new(2, 1, 27);
     private static readonly Version InitModeVersion = new(2, 1, 10);
@@ -66,7 +84,14 @@ public class ClaudeProvider : CliProviderBase
         var baseEnv = new Dictionary<string, string>
         {
             // Block in-flight CLI self-updates during unattended jobs (Claude v2.1.118+).
-            ["DISABLE_UPDATES"] = "1"
+            ["DISABLE_UPDATES"] = "1",
+            // The account's claude.ai connectors (mail, drive, docs) would otherwise load into
+            // every job: dozens of tools the job has no use for. Servers configured on the host
+            // or in the repository's .mcp.json still load.
+            ["ENABLE_CLAUDEAI_MCP_SERVERS"] = "false",
+            // Auto-memory lives in ~/.claude/projects/<path>/memory, the same folder the user's
+            // own sessions in that checkout use. Jobs get project memory from VibeSwarm instead.
+            ["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
         };
 
         // Subprocess env scrubbing (v2.1.83/2.1.114) is switched off deliberately, and set
@@ -179,6 +204,12 @@ public class ClaudeProvider : CliProviderBase
         toolNamesById.Clear();
 
         var args = BuildCliArgs(prompt, sessionId);
+
+        // The settings below belong to this run. Copy first so they don't leak into the
+        // caller's dictionary and on to later cycles or a fallback provider.
+        CurrentEnvironmentVariables = CurrentEnvironmentVariables == null
+            ? null
+            : new Dictionary<string, string>(CurrentEnvironmentVariables);
 
         // Inject env var to disable 1M context window when requested
         if (CurrentDisableLargeContext)
@@ -533,11 +564,9 @@ public class ClaudeProvider : CliProviderBase
         }
 
         // Disallowed tools (v2.1.0+)
-        if (SupportsCliVersion(DisallowedToolsVersion)
-            && CurrentDisallowedTools != null
-            && CurrentDisallowedTools.Count > 0)
+        if (SupportsCliVersion(DisallowedToolsVersion))
         {
-            foreach (var tool in CurrentDisallowedTools)
+            foreach (var tool in (CurrentDisallowedTools ?? []).Concat(UnattendedDisallowedTools).Distinct(StringComparer.Ordinal))
             {
                 args.Add("--disallowed-tools");
                 args.Add(tool);

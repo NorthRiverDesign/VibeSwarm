@@ -327,42 +327,45 @@ public static class PromptBuilder
 
 		var sb = new StringBuilder();
 
+		// The setting only limits scope. Everything after it is how the pipeline works (no
+		// questions, no git, the commit summary it parses), so it is sent whatever the setting.
 		if (injectEfficiencyRules)
 		{
 			sb.AppendLine("IMPORTANT RULES:");
 			sb.AppendLine("- Do only the requested work. Do not modify unrelated files, refactor beyond the request, or add comments, docstrings, or type annotations to untouched code. Note unrelated issues instead of fixing them.");
 			sb.AppendLine();
-			sb.AppendLine("BUILD VERIFICATION (CRITICAL):");
-
-			var buildStep = string.IsNullOrWhiteSpace(project.BuildCommand)
-				? "the appropriate build command for this project (for example: dotnet build, npm run build, cargo build)"
-				: $"`{project.BuildCommand.Trim()}`";
-			sb.AppendLine(string.IsNullOrWhiteSpace(project.TestCommand)
-				? $"- Verify the project builds before finishing. Run {buildStep} and fix any failures."
-				: $"- Verify the project builds before finishing. Run {buildStep}, then `{project.TestCommand.Trim()}`, and fix any failures.");
-			sb.AppendLine("- Do not leave the repository in a broken state. The next queued job starts from it.");
-			// Installing dependencies rewrites lockfiles when the local tool version differs
-			// from the one that wrote them, and everything in the tree gets committed. That
-			// churn lands in every commit and reverses itself on the next machine.
-			sb.AppendLine("- Install dependencies without rewriting lockfiles (npm ci, not npm install; composer install, not update). Unless the task changes dependencies, restore any lockfile a build rewrote.");
-			sb.AppendLine();
-			// Jobs run one after another from a queue, unattended. VibeSwarm owns git: it
-			// resets the checkout before each job and commits the working tree after it,
-			// with its own attribution settings, so agent commits only get in the way.
-			sb.AppendLine("COMPLETING THE JOB:");
-			sb.AppendLine("- This job runs unattended in a queue. Do not stop to ask questions or wait for confirmation; a question pauses the queue. Make the reasonable call and keep going.");
-			if (requireCodeChange)
-			{
-				sb.AppendLine("- The deliverable is a code change. A run that leaves the working tree unchanged is recorded as failed.");
-			}
-			sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. It delivers your working-tree changes after you exit.");
-			sb.AppendLine("- End with a short summary of what changed, how you verified it, assumptions, and anything left undone. Make its last line the commit subject: <commit-summary>A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)</commit-summary>");
-			sb.AppendLine();
-			sb.AppendLine("SESSION ARTIFACTS:");
-			sb.AppendLine("- Anything left in the working tree may be committed. Write screenshots, browser traces, test logs and reports, scratch scripts and temp files under /tmp or the git-ignored .vibeswarm/ folder.");
-			sb.AppendLine("- If a tool can only write inside the repository, delete its output before finishing or list the path in .git/info/exclude, not .gitignore.");
-			sb.AppendLine("- Keep plans, todo lists and session notes out of the repository: use your built-in todo tool or /tmp. Do not add or append to agent instruction, plan or memory files (such as CLAUDE.md, AGENTS.md, todo.md or notes) unless the task asks for them.");
 		}
+
+		sb.AppendLine("BUILD VERIFICATION (CRITICAL):");
+
+		var buildStep = string.IsNullOrWhiteSpace(project.BuildCommand)
+			? "the appropriate build command for this project (for example: dotnet build, npm run build, cargo build)"
+			: $"`{project.BuildCommand.Trim()}`";
+		sb.AppendLine(string.IsNullOrWhiteSpace(project.TestCommand)
+			? $"- Verify the project builds before finishing. Run {buildStep} and fix any failures."
+			: $"- Verify the project builds before finishing. Run {buildStep}, then `{project.TestCommand.Trim()}`, and fix any failures.");
+		sb.AppendLine("- Do not leave the repository in a broken state. The next queued job starts from it.");
+		// Installing dependencies rewrites lockfiles when the local tool version differs
+		// from the one that wrote them, and everything in the tree gets committed. That
+		// churn lands in every commit and reverses itself on the next machine.
+		sb.AppendLine("- Install dependencies without rewriting lockfiles (npm ci, not npm install; composer install, not update). Unless the task changes dependencies, restore any lockfile a build rewrote.");
+		sb.AppendLine();
+		// Jobs run one after another from a queue, unattended. VibeSwarm owns git: it
+		// resets the checkout before each job and commits the working tree after it,
+		// with its own attribution settings, so agent commits only get in the way.
+		sb.AppendLine("COMPLETING THE JOB:");
+		sb.AppendLine("- This job runs unattended in a queue. Do not stop to ask questions or wait for confirmation; a question pauses the queue. Make the reasonable call and keep going.");
+		if (requireCodeChange)
+		{
+			sb.AppendLine("- The deliverable is a code change. A run that leaves the working tree unchanged is recorded as failed.");
+		}
+		sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. It delivers your working-tree changes after you exit.");
+		sb.AppendLine("- End with a short summary of what changed, how you verified it, assumptions, and anything left undone. Make its last line the commit subject: <commit-summary>A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)</commit-summary>");
+		sb.AppendLine();
+		sb.AppendLine("SESSION ARTIFACTS:");
+		sb.AppendLine("- Anything left in the working tree may be committed. Write screenshots, browser traces, test logs and reports, scratch scripts and temp files under /tmp or the git-ignored .vibeswarm/ folder.");
+		sb.AppendLine("- If a tool can only write inside the repository, delete its output before finishing or list the path in .git/info/exclude, not .gitignore.");
+		sb.AppendLine("- Keep plans, todo lists and session notes out of the repository: use your built-in todo tool or /tmp. Do not add or append to agent instruction, plan or memory files (such as CLAUDE.md, AGENTS.md, todo.md or notes) unless the task asks for them.");
 
 		var enabledEnvironments = project.Environments
 			.Where(environment => environment.IsEnabled)

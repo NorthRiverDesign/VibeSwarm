@@ -84,7 +84,7 @@ public sealed class BuildVerificationPromptTests
 	}
 
 	[Fact]
-	public void BuildSystemPromptRules_OmitsBuildVerificationWhenEfficiencyRulesDisabled()
+	public void BuildSystemPromptRules_KeepsBuildVerificationWhenEfficiencyRulesDisabled()
 	{
 		var rules = PromptBuilder.BuildSystemPromptRules(new Project
 		{
@@ -94,8 +94,10 @@ public sealed class BuildVerificationPromptTests
 			Environments = []
 		}, injectEfficiencyRules: false);
 
-		// When efficiency rules are disabled, build verification section should also be absent
-		Assert.True(rules == null || !rules.Contains("BUILD VERIFICATION"));
+		// The setting limits scope only; the agent still has to leave the build green.
+		Assert.NotNull(rules);
+		Assert.Contains("BUILD VERIFICATION", rules);
+		Assert.DoesNotContain("Do only the requested work", rules);
 	}
 
 	[Fact]
@@ -136,7 +138,7 @@ public sealed class BuildVerificationPromptTests
 	}
 
 	[Fact]
-	public void BuildSystemPromptRules_OmitsJobCompletionRules_WhenEfficiencyRulesDisabled()
+	public void BuildSystemPromptRules_KeepsJobCompletionRules_WhenEfficiencyRulesDisabled()
 	{
 		var rules = PromptBuilder.BuildSystemPromptRules(new Project
 		{
@@ -145,7 +147,10 @@ public sealed class BuildVerificationPromptTests
 			Environments = []
 		}, injectEfficiencyRules: false);
 
-		Assert.True(rules == null || !rules.Contains("COMPLETING THE JOB:"));
+		// Unattended runs depend on these: no questions, no git, and the commit summary.
+		Assert.NotNull(rules);
+		Assert.Contains("COMPLETING THE JOB:", rules);
+		Assert.Contains("<commit-summary>", rules);
 	}
 
 	[Fact]

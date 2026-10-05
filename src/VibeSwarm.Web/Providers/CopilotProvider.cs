@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using GitHub.Copilot;
 using VibeSwarm.Shared.Providers.Claude;
 using VibeSwarm.Shared.Providers.Copilot;
@@ -117,17 +118,43 @@ public class CopilotProvider : CliProviderBase
     }
 
     /// <summary>
-    /// Parses a Copilot CLI version string (e.g. "0.0.418" or "v0.0.418") into a <see cref="Version"/>.
-    /// Returns null if the string cannot be parsed.
+    /// Parses a Copilot CLI version string into a <see cref="Version"/>. Accepts a bare version
+    /// ("0.0.418", "v0.0.418-beta.1") and the binary's own output ("Copilot binary version: 1.0.91").
+    /// Returns null if no version is found.
     /// </summary>
-    private static Version? ParseCliVersion(string? versionString)
+    internal static Version? ParseCliVersion(string? versionString)
     {
         if (string.IsNullOrWhiteSpace(versionString))
             return null;
-        // Strip leading 'v' and any pre-release suffix (e.g. "-beta.1" or "+build")
-        var cleaned = versionString.TrimStart('v').Split('-')[0].Split('+')[0].Trim();
-        return Version.TryParse(cleaned, out var version) ? version : null;
+        var match = Regex.Match(versionString, @"\d+\.\d+\.\d+");
+        return match.Success && Version.TryParse(match.Value, out var version) ? version : null;
     }
+
+    /// <summary>
+    /// Every version-gated flag (JSON output, session ids, reasoning effort) depends on this, so
+    /// it is loaded before each run rather than only by a connection test.
+    /// </summary>
+    private async Task EnsureCachedCliVersionAsync(CancellationToken cancellationToken)
+    {
+        if (_cachedCliVersion != null)
+        {
+            return;
+        }
+
+        var versionString = await GetCliVersionAsync(GetExecutablePath(), "--binary-version", cancellationToken);
+        _cachedCliVersion = ParseCliVersion(versionString);
+    }
+
+    /// <summary>
+    /// Disallowed tools are named the Claude Code way (Bash, Edit, Write). Copilot ignores names
+    /// it doesn't know, so without this its planning stage could still edit files and run commands.
+    /// </summary>
+    internal static string MapToCopilotToolName(string tool) => tool switch
+    {
+        "Bash" => "shell",
+        "Edit" or "Write" or "MultiEdit" or "NotebookEdit" => "write",
+        _ => tool
+    };
 
     /// <summary>
     /// Exposes the cached CLI version for unit testing.
@@ -162,6 +189,7 @@ public class CopilotProvider : CliProviderBase
     {
         EnsureBashEnvEnvironmentVariable();
         EnsureByokEnvironmentVariables();
+        await EnsureCachedCliVersionAsync(cancellationToken);
 
         var execPath = GetExecutablePath();
         if (string.IsNullOrEmpty(execPath))
@@ -589,7 +617,7 @@ public class CopilotProvider : CliProviderBase
         // Denied tools
         if (CurrentDisallowedTools != null && CurrentDisallowedTools.Count > 0)
         {
-            foreach (var tool in CurrentDisallowedTools)
+            foreach (var tool in CurrentDisallowedTools.Select(MapToCopilotToolName).Distinct(StringComparer.Ordinal))
             {
                 args.Add("--deny-tool");
                 args.Add(tool);

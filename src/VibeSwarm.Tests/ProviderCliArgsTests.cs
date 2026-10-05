@@ -1,4 +1,5 @@
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Tests;
 
@@ -222,6 +223,22 @@ public sealed class ProviderCliArgsTests
         Assert.Equal("Read", args[toolsIndices[0] + 1]);
         Assert.Equal("Write", args[toolsIndices[1] + 1]);
         Assert.Equal("Bash", args[toolsIndices[2] + 1]);
+    }
+
+    [Fact]
+    public void Claude_AlwaysDeniesToolsThatReachOutsideTheJob()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 289);
+        provider.ApplyOptions(new ExecutionOptions());
+
+        var args = provider.BuildCliArgs("test", null);
+        var denied = args.Select((arg, i) => (arg, i)).Where(x => x.arg == "--disallowed-tools").Select(x => args[x.i + 1]).ToList();
+
+        Assert.Contains("EnterWorktree", denied);
+        Assert.Contains("PushNotification", denied);
+        Assert.Contains("ScheduleWakeup", denied);
+        Assert.DoesNotContain("Bash", denied);
     }
 
     [Fact]
@@ -566,6 +583,31 @@ public sealed class ProviderCliArgsTests
 		Assert.DoesNotContain("--silent", args);
 	}
 
+	[Theory]
+	[InlineData("Copilot binary version: 1.0.91", "1.0.91")]
+	[InlineData("GitHub Copilot CLI 1.0.91.", "1.0.91")]
+	[InlineData("v0.0.418-beta.1", "0.0.418")]
+	public void Copilot_ParseCliVersion_ReadsWhatTheBinaryPrints(string output, string expected)
+	{
+		Assert.Equal(Version.Parse(expected), CopilotProvider.ParseCliVersion(output));
+	}
+
+	[Fact]
+	public void Copilot_PlanningDeniesItsOwnShellAndWriteTools()
+	{
+		var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+		provider.CachedCliVersion = new Version(1, 0, 91);
+		provider.ApplyOptions(new ExecutionOptions { DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools });
+
+		var args = provider.BuildCliArgs("test", null);
+		var denied = args.Select((arg, i) => (arg, i)).Where(x => x.arg == "--deny-tool").Select(x => args[x.i + 1]).ToList();
+
+		Assert.Contains("shell", denied);
+		Assert.Contains("write", denied);
+		Assert.DoesNotContain("Bash", denied);
+		Assert.Single(denied, tool => tool == "write");
+	}
+
 	[Fact]
 	public void Copilot_WithUnknownVersion_OmitsOutputFormatJson()
 	{
@@ -883,7 +925,7 @@ public sealed class ProviderCliArgsTests
 
         var idx = args.IndexOf("--deny-tool");
         Assert.True(idx >= 0);
-        Assert.Equal("Bash", args[idx + 1]);
+        Assert.Equal("shell", args[idx + 1]);
         Assert.DoesNotContain("--disallowed-tools", args);
     }
 
@@ -1202,12 +1244,51 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void OpenCode_BuildUpdatePlan_ForUserLocalInstall_UsesNpmMethodAndPrefix()
+    public void OpenCode_BuildUpdatePlan_FollowsTheLinkToAnNpmInstall()
     {
-        var plan = OpenCodeProvider.BuildUpdatePlan("/home/test/.local/bin/opencode", "/home/test");
+        var home = Directory.CreateTempSubdirectory("vibeswarm-opencode-").FullName;
+        try
+        {
+            var target = Path.Combine(home, ".local", "lib", "node_modules", "opencode-ai", "bin", "opencode");
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, "");
+            Directory.CreateDirectory(Path.Combine(home, ".local", "bin"));
+            var link = Path.Combine(home, ".local", "bin", "opencode");
+            File.CreateSymbolicLink(link, target);
 
-        Assert.Equal("upgrade --method npm", plan.Arguments);
-        Assert.Equal("/home/test/.local", plan.NpmConfigPrefix);
+            var plan = OpenCodeProvider.BuildUpdatePlan(link, home);
+
+            Assert.Equal("upgrade --method npm", plan.Arguments);
+            Assert.Equal(Path.Combine(home, ".local"), plan.NpmConfigPrefix);
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void OpenCode_BuildUpdatePlan_LetsACurlInstallLinkedFromLocalBinUpgradeItself()
+    {
+        var home = Directory.CreateTempSubdirectory("vibeswarm-opencode-").FullName;
+        try
+        {
+            var target = Path.Combine(home, ".opencode", "bin", "opencode");
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, "");
+            Directory.CreateDirectory(Path.Combine(home, ".local", "bin"));
+            var link = Path.Combine(home, ".local", "bin", "opencode");
+            File.CreateSymbolicLink(link, target);
+
+            var plan = OpenCodeProvider.BuildUpdatePlan(link, home);
+
+            Assert.Equal("upgrade", plan.Arguments);
+            Assert.Null(plan.NpmConfigPrefix);
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
     }
 
     [Fact]
