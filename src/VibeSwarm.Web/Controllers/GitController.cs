@@ -77,6 +77,9 @@ public class GitController : ControllerBase
     [HttpPost("checkout")]
     public async Task<IActionResult> Checkout([FromBody] CheckoutRequest req, CancellationToken ct) => Ok(await _gitService.HardCheckoutBranchAsync(req.Path, req.Branch, req.Remote ?? "origin", null, ct));
 
+    [HttpPost("switch")]
+    public async Task<IActionResult> Switch([FromBody] SwitchBranchRequest req, CancellationToken ct) => Ok(await _gitService.SwitchBranchAsync(req.Path, req.Branch, ct));
+
     [HttpPost("sync")]
     public async Task<IActionResult> Sync([FromBody] SyncRequest req, CancellationToken ct) => Ok(await _gitService.SyncWithOriginAsync(req.Path, req.Remote ?? "origin", null, ct));
 
@@ -143,6 +146,7 @@ public class GitController : ControllerBase
     public record FetchRequest(string Path, string? Remote, bool Prune = true);
     public record CheckoutRequest(string Path, string Branch, string? Remote);
     public record SyncRequest(string Path, string? Remote);
+    public record SwitchBranchRequest(string Path, string Branch);
     public record CloneRequest(string Url, string Path, string? Branch);
     public record CreateBranchRequest(string Path, string Branch, bool SwitchToBranch = true);
     public record DiscardRequest(string Path, bool IncludeUntracked = true);

@@ -220,6 +220,8 @@ public sealed partial class VersionControlService
 
 			progressCallback?.Invoke($"Checking out {branchName}...");
 
+			var localCommits = LocalCommitsOutcome.None;
+
 			// Check if the branch exists locally
 			var localBranchCheck = await _commandExecutor.ExecuteAsync(
 				$"rev-parse --verify refs/heads/{branchName}",
@@ -252,15 +254,10 @@ public sealed partial class VersionControlService
 
 				if (remoteRefCheck.Success)
 				{
-					var hardResetResult = await _commandExecutor.ExecuteAsync(
-						$"reset --hard {remoteName}/{branchName}",
-						workingDirectory,
-						cancellationToken,
-						timeoutSeconds: 30);
-
-					if (!hardResetResult.Success)
+					localCommits = await ResetKeepingLocalCommitsAsync(workingDirectory, branchName, $"{remoteName}/{branchName}", cancellationToken);
+					if (localCommits.Error != null)
 					{
-						return GitOperationResult.Failed($"Failed to reset to remote: {hardResetResult.Error}");
+						return GitOperationResult.Failed($"Failed to reset to remote: {localCommits.Error}");
 					}
 				}
 			}
@@ -296,6 +293,7 @@ public sealed partial class VersionControlService
 			{
 				output += BuildPreserveSummary(preserveResult);
 			}
+			output += localCommits.Describe(remoteName);
 
 			return GitOperationResult.Succeeded(
 				output: output,
@@ -303,7 +301,9 @@ public sealed partial class VersionControlService
 				remoteName: remoteName,
 				commitHash: commitHash,
 				savedReference: preserveResult.SavedReference,
-				changedFilesCount: preserveResult.ChangedFilesCount);
+				changedFilesCount: preserveResult.ChangedFilesCount,
+				keptLocalCommits: localCommits.Kept,
+				recoveryBranch: localCommits.RecoveryBranch);
 		}
 		catch (OperationCanceledException)
 		{
@@ -372,16 +372,10 @@ public sealed partial class VersionControlService
 
 			progressCallback?.Invoke($"Resetting to {remoteName}/{currentBranch}...");
 
-			// Hard reset to remote branch
-			var resetResult = await _commandExecutor.ExecuteAsync(
-				$"reset --hard {remoteName}/{currentBranch}",
-				workingDirectory,
-				cancellationToken,
-				timeoutSeconds: 30);
-
-			if (!resetResult.Success)
+			var localCommits = await ResetKeepingLocalCommitsAsync(workingDirectory, currentBranch, $"{remoteName}/{currentBranch}", cancellationToken);
+			if (localCommits.Error != null)
 			{
-				return GitOperationResult.Failed($"Failed to reset: {resetResult.Error}");
+				return GitOperationResult.Failed($"Failed to reset: {localCommits.Error}");
 			}
 
 			var commitHash = await GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
@@ -390,6 +384,7 @@ public sealed partial class VersionControlService
 			{
 				output += BuildPreserveSummary(preserveResult);
 			}
+			output += localCommits.Describe(remoteName);
 
 			return GitOperationResult.Succeeded(
 				output: output,
@@ -397,7 +392,9 @@ public sealed partial class VersionControlService
 				remoteName: remoteName,
 				commitHash: commitHash,
 				savedReference: preserveResult.SavedReference,
-				changedFilesCount: preserveResult.ChangedFilesCount);
+				changedFilesCount: preserveResult.ChangedFilesCount,
+				keptLocalCommits: localCommits.Kept,
+				recoveryBranch: localCommits.RecoveryBranch);
 		}
 		catch (OperationCanceledException)
 		{
@@ -407,6 +404,123 @@ public sealed partial class VersionControlService
 		{
 			return GitOperationResult.Failed($"Unexpected error: {ex.Message}");
 		}
+	}
+
+	/// <inheritdoc />
+	public async Task<GitOperationResult> SwitchBranchAsync(
+		string workingDirectory,
+		string reference,
+		CancellationToken cancellationToken = default)
+	{
+		if (string.IsNullOrWhiteSpace(reference) || reference.StartsWith('-'))
+		{
+			return GitOperationResult.Failed("Invalid branch name.");
+		}
+
+		try
+		{
+			var result = await _commandExecutor.ExecuteAsync(
+				$"checkout {reference}",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 30);
+
+			return result.Success
+				? GitOperationResult.Succeeded(
+					output: $"Switched to {reference}",
+					branchName: reference,
+					commitHash: await GetCurrentCommitHashAsync(workingDirectory, cancellationToken))
+				: GitOperationResult.Failed(BuildCommandError(result, $"Failed to switch to {reference}."));
+		}
+		catch (OperationCanceledException)
+		{
+			return GitOperationResult.Failed("Switch branch operation was cancelled.");
+		}
+		catch (Exception ex)
+		{
+			return GitOperationResult.Failed($"Unexpected error switching branch: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Resets the checked-out branch to <paramref name="remoteRef"/> without dropping commits that
+	/// were never pushed. Those are replayed on top of the remote; when that conflicts, they are kept
+	/// on a recovery branch before the reset. Expects a clean working tree.
+	/// </summary>
+	private async Task<LocalCommitsOutcome> ResetKeepingLocalCommitsAsync(
+		string workingDirectory,
+		string branchName,
+		string remoteRef,
+		CancellationToken cancellationToken)
+	{
+		var aheadResult = await _commandExecutor.ExecuteAsync(
+			$"rev-list --count {remoteRef}..HEAD",
+			workingDirectory,
+			cancellationToken,
+			timeoutSeconds: 30);
+		var ahead = aheadResult.Success && int.TryParse(aheadResult.Output.Trim(), out var count) ? count : 0;
+		string? recoveryBranch = null;
+
+		if (ahead > 0)
+		{
+			var rebaseResult = await _commandExecutor.ExecuteAsync(
+				$"rebase {remoteRef}",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 120);
+			if (rebaseResult.Success)
+			{
+				return new LocalCommitsOutcome(ahead, null, null);
+			}
+
+			await _commandExecutor.ExecuteAsync("rebase --abort", workingDirectory, cancellationToken, timeoutSeconds: 30);
+
+			recoveryBranch = $"vibeswarm/recovery/{SanitizeRecoverySegment(branchName)}-{DateTime.UtcNow:yyyyMMdd-HHmmss}-unpushed";
+			var saveResult = await _commandExecutor.ExecuteAsync(
+				$"branch {recoveryBranch} HEAD",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 10);
+			if (!saveResult.Success)
+			{
+				// Never reset away commits that could not be saved anywhere else.
+				return new LocalCommitsOutcome(0, null, BuildCommandError(saveResult, $"Could not save {ahead} unpushed commit(s) before resetting."));
+			}
+
+			_logger.LogWarning(
+				"Unpushed commits on {Branch} conflict with {RemoteRef}; kept them on {RecoveryBranch}",
+				branchName,
+				remoteRef,
+				recoveryBranch);
+		}
+
+		var resetResult = await _commandExecutor.ExecuteAsync(
+			$"reset --hard {remoteRef}",
+			workingDirectory,
+			cancellationToken,
+			timeoutSeconds: 30);
+
+		return resetResult.Success
+			? new LocalCommitsOutcome(0, recoveryBranch, null)
+			: new LocalCommitsOutcome(0, recoveryBranch, string.IsNullOrWhiteSpace(resetResult.Error) ? "git reset failed" : resetResult.Error.Trim());
+	}
+
+	private static string SanitizeRecoverySegment(string branchName)
+	{
+		var sanitized = System.Text.RegularExpressions.Regex.Replace(branchName.Trim().ToLowerInvariant(), @"[^a-z0-9/_-]+", "-");
+		sanitized = sanitized.Replace("//", "/").Trim('-', '/');
+		return string.IsNullOrWhiteSpace(sanitized) ? "branch" : sanitized;
+	}
+
+	private readonly record struct LocalCommitsOutcome(int Kept, string? RecoveryBranch, string? Error)
+	{
+		public static LocalCommitsOutcome None => new(0, null, null);
+
+		public string Describe(string remoteName) => RecoveryBranch != null
+			? $" Unpushed commits conflicted with {remoteName} and were kept on {RecoveryBranch}."
+			: Kept > 0
+				? $" Kept {Kept} unpushed commit(s) on top of {remoteName}."
+				: string.Empty;
 	}
 
 	/// <inheritdoc />

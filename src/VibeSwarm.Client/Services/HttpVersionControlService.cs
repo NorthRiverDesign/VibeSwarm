@@ -226,6 +226,12 @@ public class HttpVersionControlService : IVersionControlService
         return await response.ReadJsonAsync(new GitOperationResult { Success = false }, ct);
     }
 
+    public async Task<GitOperationResult> SwitchBranchAsync(string workingDirectory, string reference, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("/api/git/switch", new { Path = workingDirectory, Branch = reference }, ct);
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false }, ct);
+    }
+
     public async Task<GitOperationResult> SyncWithOriginAsync(string workingDirectory, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/sync", new { Path = workingDirectory, Remote = remoteName }, ct);

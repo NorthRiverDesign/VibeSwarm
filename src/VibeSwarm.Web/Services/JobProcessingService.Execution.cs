@@ -195,13 +195,28 @@ public partial class JobProcessingService
                         executionContext.PriorWorkRestore = await RestorePriorRunWorkAsync(job, workingDirectory, dbContext, cancellationToken);
                     }
                 }
-                catch (GitCheckpointRequiredException)
+                catch (GitRemoteUnavailableException ex)
+                {
+                    // Nothing has run yet, so wait for the remote rather than code against a stale copy.
+                    var retryAt = DateTime.UtcNow.Add(GitRemoteRetryDelay);
+                    _logger.LogWarning("Re-queuing job {JobId} until {RetryAt:u}: {Error}", job.Id, retryAt, ex.Message);
+                    await ReleaseJobAsync(job.Id, JobStatus.New, $"{ex.Message} Trying again at {retryAt:u}.", dbContext, cancellationToken);
+                    var waitingJob = await dbContext.Jobs.FindAsync(new object[] { job.Id }, cancellationToken);
+                    if (waitingJob != null)
+                    {
+                        waitingJob.NotBeforeUtc = retryAt;
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                    }
+                    await NotifyStatusChangedAsync(job.Id, JobStatus.New);
+                    return;
+                }
+                catch (GitPreparationException)
                 {
                     throw;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogWarning(ex, "Error preparing git branch for job {JobId}. Continuing with local state.", job.Id);
+                    throw new GitPreparationException($"Couldn't prepare the git checkout before the job: {ex.Message}");
                 }
             }
 

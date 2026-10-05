@@ -73,6 +73,18 @@ public partial class JobProcessingService
         return (null, null);
     }
 
+    /// <summary>
+    /// Pauses between fetch attempts before a job gives up on the remote and waits.
+    /// </summary>
+    internal TimeSpan[] FetchRetryDelays { get; init; } = [TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15)];
+    private static readonly TimeSpan GitRemoteRetryDelay = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Puts the checkout on the job's branch at the latest commit on origin. Anything that would let
+    /// the agent start on the wrong branch or on stale code stops the job before it runs: an
+    /// unreachable remote re-queues it (<see cref="GitRemoteUnavailableException"/>), anything else
+    /// fails it (<see cref="GitPreparationException"/>).
+    /// </summary>
     private async Task PrepareWorkingBranchAsync(Job job, string workingDirectory, string? checkpointBaseBranch, CancellationToken cancellationToken)
     {
         var sourceBranch = string.IsNullOrWhiteSpace(job.Branch)
@@ -80,61 +92,169 @@ public partial class JobProcessingService
             : job.Branch.Trim();
         var targetBranch = GetEffectiveTargetBranch(job);
 
-        if (string.IsNullOrWhiteSpace(sourceBranch))
+        if (sourceBranch == null)
         {
-            _logger.LogInformation("Syncing current branch before job {JobId} execution", job.Id);
-            var syncResult = await _versionControlService.SyncWithOriginAsync(workingDirectory, cancellationToken: cancellationToken);
-            if (!syncResult.Success)
+            var currentBranch = await _versionControlService.GetCurrentBranchAsync(workingDirectory, cancellationToken);
+            if (IsRecoveryBranch(currentBranch))
             {
-                _logger.LogWarning("Failed to sync current branch before job {JobId}: {Error}", job.Id, syncResult.Error);
+                // Older releases left the checkout here after a cancelled run. A job started on it
+                // would deliver its work to the recovery branch instead of the project's branch.
+                sourceBranch = await FindRecoveryBaseBranchAsync(workingDirectory, currentBranch!, cancellationToken)
+                    ?? throw new GitPreparationException(
+                        $"The project checkout is on the recovery branch '{currentBranch}'. Switch it back to the project's working branch, then retry the job.");
             }
+        }
+
+        var hasRemote = !string.IsNullOrWhiteSpace(
+            await _versionControlService.GetRemoteUrlAsync(workingDirectory, cancellationToken: cancellationToken));
+        if (hasRemote)
+        {
+            await FetchWithRetryAsync(job, workingDirectory, cancellationToken);
+        }
+
+        GitOperationResult? syncResult = null;
+        if (sourceBranch == null)
+        {
+            if (hasRemote)
+            {
+                _logger.LogInformation("Syncing current branch before job {JobId} execution", job.Id);
+                syncResult = await _versionControlService.SyncWithOriginAsync(workingDirectory, cancellationToken: cancellationToken);
+                EnsureSynced(syncResult, "the current branch");
+            }
+
+            LogKeptLocalCommits(job, syncResult);
             return;
         }
 
         var branches = await _versionControlService.GetBranchesAsync(workingDirectory, includeRemote: true, cancellationToken);
-        var sourceExists = BranchExists(branches, sourceBranch);
-
-        if (sourceExists)
+        if (BranchExists(branches, sourceBranch))
         {
             _logger.LogInformation("Checking out configured branch '{Branch}' for job {JobId}", sourceBranch, job.Id);
-            var checkoutResult = await _versionControlService.HardCheckoutBranchAsync(workingDirectory, sourceBranch, cancellationToken: cancellationToken);
-            if (!checkoutResult.Success)
-            {
-                _logger.LogWarning("Failed to checkout branch '{Branch}' for job {JobId}: {Error}", sourceBranch, job.Id, checkoutResult.Error);
-            }
-            return;
-        }
-
-        if (!string.IsNullOrWhiteSpace(targetBranch) &&
-            !string.Equals(targetBranch, sourceBranch, StringComparison.Ordinal) &&
-            BranchExists(branches, targetBranch))
-        {
-            _logger.LogInformation("Using target branch '{TargetBranch}' as the base for new branch '{SourceBranch}' on job {JobId}", targetBranch, sourceBranch, job.Id);
-            var baseCheckoutResult = await _versionControlService.HardCheckoutBranchAsync(workingDirectory, targetBranch, cancellationToken: cancellationToken);
-            if (!baseCheckoutResult.Success)
-            {
-                _logger.LogWarning("Failed to checkout target branch '{Branch}' for job {JobId}: {Error}", targetBranch, job.Id, baseCheckoutResult.Error);
-            }
+            syncResult = await CheckOutLatestAsync(workingDirectory, sourceBranch, hasRemote, cancellationToken);
         }
         else
         {
-            var syncResult = await _versionControlService.SyncWithOriginAsync(workingDirectory, cancellationToken: cancellationToken);
-            if (!syncResult.Success)
+            if (!string.IsNullOrWhiteSpace(targetBranch) &&
+                !string.Equals(targetBranch, sourceBranch, StringComparison.Ordinal) &&
+                BranchExists(branches, targetBranch))
             {
-                _logger.LogWarning("Failed to sync current branch before creating new branch '{Branch}' for job {JobId}: {Error}", sourceBranch, job.Id, syncResult.Error);
+                _logger.LogInformation("Using target branch '{TargetBranch}' as the base for new branch '{SourceBranch}' on job {JobId}", targetBranch, sourceBranch, job.Id);
+                syncResult = await CheckOutLatestAsync(workingDirectory, targetBranch, hasRemote, cancellationToken);
+            }
+            else if (hasRemote)
+            {
+                syncResult = await _versionControlService.SyncWithOriginAsync(workingDirectory, cancellationToken: cancellationToken);
+                EnsureSynced(syncResult, "the current branch");
+            }
+
+            var createResult = await _versionControlService.CreateBranchAsync(
+                workingDirectory,
+                sourceBranch,
+                switchToBranch: true,
+                cancellationToken: cancellationToken);
+            if (!createResult.Success)
+            {
+                throw new GitPreparationException($"Couldn't create the job branch '{sourceBranch}': {createResult.Error}");
             }
         }
 
-        var createResult = await _versionControlService.CreateBranchAsync(
-            workingDirectory,
-            sourceBranch,
-            switchToBranch: true,
-            cancellationToken: cancellationToken);
-        if (!createResult.Success)
+        var checkedOut = await _versionControlService.GetCurrentBranchAsync(workingDirectory, cancellationToken);
+        if (!string.Equals(checkedOut, sourceBranch, StringComparison.Ordinal))
         {
-            _logger.LogWarning("Failed to create job branch '{Branch}' for job {JobId}: {Error}", sourceBranch, job.Id, createResult.Error);
+            throw new GitPreparationException($"Expected the checkout to be on '{sourceBranch}' before the job, but it is on '{checkedOut ?? "no branch"}'.");
+        }
+
+        LogKeptLocalCommits(job, syncResult);
+    }
+
+    private async Task<GitOperationResult> CheckOutLatestAsync(string workingDirectory, string branch, bool hasRemote, CancellationToken cancellationToken)
+    {
+        var result = hasRemote
+            ? await _versionControlService.HardCheckoutBranchAsync(workingDirectory, branch, cancellationToken: cancellationToken)
+            : await _versionControlService.SwitchBranchAsync(workingDirectory, branch, cancellationToken);
+        if (!result.Success)
+        {
+            throw new GitPreparationException($"Couldn't check out the latest '{branch}' before the job: {result.Error}");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// A branch that only exists locally has nothing to pull; any other sync failure leaves the
+    /// checkout in a state the job must not start from.
+    /// </summary>
+    private static void EnsureSynced(GitOperationResult result, string description)
+    {
+        if (!result.Success &&
+            result.Error?.Contains("Remote tracking branch", StringComparison.Ordinal) != true)
+        {
+            throw new GitPreparationException($"Couldn't bring {description} up to date with origin before the job: {result.Error}");
         }
     }
+
+    private async Task FetchWithRetryAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
+    {
+        GitOperationResult? fetch = null;
+        for (var attempt = 0; attempt <= FetchRetryDelays.Length; attempt++)
+        {
+            if (attempt > 0)
+            {
+                await Task.Delay(FetchRetryDelays[attempt - 1], cancellationToken);
+            }
+
+            fetch = await _versionControlService.FetchAsync(workingDirectory, cancellationToken: cancellationToken);
+            if (fetch.Success)
+            {
+                return;
+            }
+
+            _logger.LogWarning("Fetch before job {JobId} failed (attempt {Attempt}): {Error}", job.Id, attempt + 1, fetch.Error);
+        }
+
+        throw new GitRemoteUnavailableException($"Couldn't pull the latest changes from origin: {fetch?.Error}");
+    }
+
+    private void LogKeptLocalCommits(Job job, GitOperationResult? syncResult)
+    {
+        if (syncResult?.RecoveryBranch != null)
+        {
+            _logger.LogWarning(
+                "Unpushed commits conflicted with origin before job {JobId}; they are kept on {RecoveryBranch}",
+                job.Id,
+                syncResult.RecoveryBranch);
+        }
+        else if (syncResult?.KeptLocalCommits > 0)
+        {
+            _logger.LogInformation(
+                "Kept {Count} unpushed commit(s) on top of origin before job {JobId}",
+                syncResult.KeptLocalCommits,
+                job.Id);
+        }
+    }
+
+    private static bool IsRecoveryBranch(string? branch) =>
+        branch?.StartsWith(RecoveryBranchPrefix, StringComparison.Ordinal) == true;
+
+    /// <summary>
+    /// Recovery branches are named <c>vibeswarm/recovery/{base}-{timestamp}-{suffix}</c>. Returns
+    /// the base branch when one by that exact name exists.
+    /// </summary>
+    private async Task<string?> FindRecoveryBaseBranchAsync(string workingDirectory, string recoveryBranch, CancellationToken cancellationToken)
+    {
+        var match = RecoveryBranchPattern().Match(recoveryBranch);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var baseBranch = match.Groups["base"].Value;
+        var branches = await _versionControlService.GetBranchesAsync(workingDirectory, includeRemote: true, cancellationToken);
+        return BranchExists(branches, baseBranch) ? baseBranch : null;
+    }
+
+    [GeneratedRegex(@"^vibeswarm/recovery/(?<base>.+)-\d{8}-\d{6}-[0-9a-z]+$")]
+    private static partial Regex RecoveryBranchPattern();
 
     private async Task<string?> PreserveWorkingTreeBeforeBranchPreparationAsync(
         Job job,
@@ -153,6 +273,7 @@ public partial class JobProcessingService
         JobCheckpointStateMachine.TryTransition(job, GitCheckpointStatus.Protecting);
 
         var originalBranch = await _versionControlService.GetCurrentBranchAsync(workingDirectory, cancellationToken);
+        var originalCommit = await _versionControlService.GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
         if (captureJobDiff)
         {
             job.GitDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, null, cancellationToken);
@@ -170,7 +291,7 @@ public partial class JobProcessingService
         if (!createBranchResult.Success)
         {
             job.GitCheckpointStatus = GitCheckpointStatus.None;
-            throw new GitCheckpointRequiredException($"Unable to preserve local git changes before branch preparation: {createBranchResult.Error}");
+            throw new GitPreparationException($"Unable to preserve local git changes before branch preparation: {createBranchResult.Error}");
         }
 
         var checkpointMessage = $"{AppConstants.AppName} checkpoint before job {job.Id.ToString("N")[..8]}";
@@ -181,7 +302,7 @@ public partial class JobProcessingService
         if (!commitResult.Success)
         {
             job.GitCheckpointStatus = GitCheckpointStatus.None;
-            throw new GitCheckpointRequiredException($"Unable to commit preserved local git changes before branch preparation: {commitResult.Error}");
+            throw new GitPreparationException($"Unable to commit preserved local git changes before branch preparation: {commitResult.Error}");
         }
 
         job.GitCheckpointBranch = recoveryBranch;
@@ -192,6 +313,18 @@ public partial class JobProcessingService
         JobCheckpointStateMachine.TryTransition(job, GitCheckpointStatus.Preserved);
 
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Go back to where the checkout was. Left on the recovery branch, the next job would run
+        // there and deliver its work to it instead of to the project's branch.
+        var returnTo = string.IsNullOrWhiteSpace(originalBranch) || originalBranch == "HEAD" ? originalCommit : originalBranch;
+        if (!string.IsNullOrWhiteSpace(returnTo))
+        {
+            var switchBack = await _versionControlService.SwitchBranchAsync(workingDirectory, returnTo, cancellationToken);
+            if (!switchBack.Success)
+            {
+                throw new GitPreparationException($"Preserved local changes on {recoveryBranch}, but couldn't switch back to {returnTo}: {switchBack.Error}");
+            }
+        }
 
         _logger.LogWarning(
             "Preserved local git changes for job {JobId} on recovery branch {RecoveryBranch} ({CommitHash}) before branch preparation",
@@ -323,11 +456,13 @@ public partial class JobProcessingService
             currentHash[..Math.Min(8, currentHash.Length)]);
     }
 
+    private const string RecoveryBranchPrefix = "vibeswarm/recovery/";
+
     private static string BuildRecoveryBranchName(Guid jobId, string? originalBranch)
     {
         var branchSlug = string.IsNullOrWhiteSpace(originalBranch) ? "detached" : SanitizeBranchSegment(originalBranch);
         var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
-        return $"vibeswarm/recovery/{branchSlug}-{timestamp}-{jobId.ToString("N")[..8]}";
+        return $"{RecoveryBranchPrefix}{branchSlug}-{timestamp}-{jobId.ToString("N")[..8]}";
     }
 
     private static string SanitizeBranchSegment(string branchName)

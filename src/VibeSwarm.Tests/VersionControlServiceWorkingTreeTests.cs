@@ -94,6 +94,7 @@ public sealed class VersionControlServiceWorkingTreeTests
 		executor.AddGitResult("rev-parse --verify refs/heads/main", new GitCommandResult { ExitCode = 0, Output = "main\n" });
 		executor.AddGitResult("checkout main", new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("rev-parse --verify refs/remotes/origin/main", new GitCommandResult { ExitCode = 0, Output = "origin/main\n" });
+		executor.AddGitResult("rev-list --count origin/main..HEAD", new GitCommandResult { ExitCode = 0, Output = "0\n" });
 		executor.AddGitResult("reset --hard origin/main", new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("rev-parse HEAD", new GitCommandResult { ExitCode = 0, Output = "abc123\n" });
 
@@ -120,6 +121,7 @@ public sealed class VersionControlServiceWorkingTreeTests
 		executor.AddGitResult($"stash push --include-untracked --message \"{AppConstants.AppName} auto-preserve before sync to origin/main\"", new GitCommandResult { ExitCode = 0, Output = "Saved working directory" });
 		executor.AddGitResult("rev-parse --verify stash@{0}", new GitCommandResult { ExitCode = 0, Output = "stashref456\n" });
 		executor.AddGitResult("clean -fd", new GitCommandResult { ExitCode = 0 });
+		executor.AddGitResult("rev-list --count origin/main..HEAD", new GitCommandResult { ExitCode = 0, Output = "0\n" });
 		executor.AddGitResult("reset --hard origin/main", new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("rev-parse HEAD", new GitCommandResult { ExitCode = 0, Output = "def456\n" });
 

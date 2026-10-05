@@ -51,16 +51,7 @@ public partial class JobProcessingService
                         // Push if configured
                         if (effectiveMode == AutoCommitMode.CommitAndPush)
                         {
-                            var pushResult = await _versionControlService.PushAsync(workingDirectory, cancellationToken: cancellationToken);
-                            if (pushResult.Success)
-                            {
-                                _logger.LogInformation("Auto-pushed agent-committed changes for job {JobId}", job.Id);
-                            }
-                            else
-                            {
-                                _logger.LogWarning("Auto-push failed for job {JobId}: {Error}. Changes were committed but not pushed.",
-                                    job.Id, pushResult.Error);
-                            }
+                            await PushJobCommitAsync(job, workingDirectory, cancellationToken);
                         }
                     }
                     else
@@ -103,28 +94,66 @@ public partial class JobProcessingService
                 // Push if configured
                 if (effectiveCommitMode == AutoCommitMode.CommitAndPush)
                 {
-                    var pushResult = await _versionControlService.PushAsync(workingDirectory, cancellationToken: cancellationToken);
-                    if (pushResult.Success)
-                    {
-                        _logger.LogInformation("Auto-pushed changes for job {JobId}", job.Id);
-                    }
-                    else
-                    {
-                        // Push failed, but commit succeeded - log warning but don't fail the job
-                        _logger.LogWarning("Auto-push failed for job {JobId}: {Error}. Changes were committed but not pushed.",
-                            job.Id, pushResult.Error);
-                    }
+                    await PushJobCommitAsync(job, workingDirectory, cancellationToken);
                 }
             }
             else
             {
                 _logger.LogWarning("Auto-commit failed for job {JobId}: {Error}", job.Id, commitResult.Error);
+                job.ErrorMessage = $"The changes could not be committed: {commitResult.Error}";
             }
         }
         catch (Exception ex)
         {
             // Auto-commit failures should not fail the job
             _logger.LogWarning(ex, "Error during auto-commit for job {JobId}", job.Id);
+        }
+    }
+
+    private const int MaxPushAttempts = 3;
+
+    /// <summary>
+    /// Pushes the job's commit. When origin moved on while the job ran, the commit is replayed on
+    /// top of it and pushed again, so the agent never has to deal with the merge. A commit that
+    /// conflicts with origin is kept on a recovery branch. Either way the job records what happened,
+    /// because a commit that only exists on this machine is not delivered.
+    /// </summary>
+    private async Task PushJobCommitAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            var pushResult = await _versionControlService.PushAsync(workingDirectory, cancellationToken: cancellationToken);
+            if (pushResult.Success)
+            {
+                _logger.LogInformation("Auto-pushed changes for job {JobId}", job.Id);
+                return;
+            }
+
+            var rejected = pushResult.Error?.StartsWith("Push was rejected", StringComparison.Ordinal) == true;
+            if (!rejected || attempt >= MaxPushAttempts)
+            {
+                _logger.LogWarning("Auto-push failed for job {JobId}: {Error}. Changes were committed but not pushed.", job.Id, pushResult.Error);
+                job.ErrorMessage = $"Committed, but the push failed: {pushResult.Error} The commit is still on the local branch and goes out with the next push.";
+                return;
+            }
+
+            _logger.LogInformation("Origin moved on during job {JobId}; replaying its commit on top before pushing again", job.Id);
+            var syncResult = await _versionControlService.SyncWithOriginAsync(workingDirectory, cancellationToken: cancellationToken);
+            if (!syncResult.Success)
+            {
+                _logger.LogWarning("Could not catch up with origin for job {JobId}: {Error}", job.Id, syncResult.Error);
+                job.ErrorMessage = $"Committed, but origin moved on and the commit could not be replayed on top of it: {syncResult.Error}";
+                return;
+            }
+
+            if (syncResult.RecoveryBranch != null)
+            {
+                _logger.LogWarning("Commit for job {JobId} conflicts with origin; kept on {RecoveryBranch}", job.Id, syncResult.RecoveryBranch);
+                job.ErrorMessage = $"Committed, but origin changed the same code while the job ran, so the commit was not pushed. It is kept on the branch {syncResult.RecoveryBranch}.";
+                return;
+            }
+
+            job.GitCommitHash = syncResult.CommitHash ?? job.GitCommitHash;
         }
     }
 

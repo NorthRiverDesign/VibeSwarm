@@ -17,9 +17,23 @@ namespace VibeSwarm.Web.Services;
 
 public partial class JobProcessingService : BackgroundService
 {
-    private sealed class GitCheckpointRequiredException : InvalidOperationException
+    /// <summary>
+    /// The checkout can't be put in a safe state for the job, so it fails before the agent starts.
+    /// </summary>
+    private sealed class GitPreparationException : InvalidOperationException
     {
-        public GitCheckpointRequiredException(string message)
+        public GitPreparationException(string message)
+            : base(message)
+        {
+        }
+    }
+
+    /// <summary>
+    /// The project's remote can't be reached, so the job waits instead of running on stale code.
+    /// </summary>
+    private sealed class GitRemoteUnavailableException : InvalidOperationException
+    {
+        public GitRemoteUnavailableException(string message)
             : base(message)
         {
         }
