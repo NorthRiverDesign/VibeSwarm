@@ -93,6 +93,13 @@ public partial class JobProcessingService
             job.ConsoleOutput = consoleOutput;
         }
 
+        // The next start resets the checkout; the resumed run gets this work back from the snapshot.
+        if (!string.IsNullOrEmpty(workingDirectory))
+        {
+            job.WorkSnapshotCommit = await SaveRunWorkSnapshotAsync(job, workingDirectory, executionContext.GitCommitBefore, cancellationToken)
+                ?? job.WorkSnapshotCommit;
+        }
+
         var resumeFromStatus = job.Status == JobStatus.Planning
             ? JobStatus.Planning
             : JobStatus.Processing;

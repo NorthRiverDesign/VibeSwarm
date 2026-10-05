@@ -7,6 +7,7 @@ using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.VersionControl;
+using VibeSwarm.Shared.VersionControl.Models;
 using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Tests;
@@ -209,6 +210,95 @@ public sealed class JobGitSyncTests : IDisposable
 		await GitAsync(_repo, $"worktree add -q {options} \"{path}\"");
 		await ConfigureAsync(path);
 		return path;
+	}
+
+	[Fact]
+	public async Task PowerLoss_PausesTheJobAndResumeGivesItsWorkBack()
+	{
+		await InitRepositoryAsync();
+		var baseCommit = await GitAsync(_repo, "rev-parse HEAD");
+		await WriteAsync(_repo, "app.txt", "one\ntwo\nthree\nhalf done\n");
+		await WriteAsync(_repo, "new.txt", "started before the power went out\n");
+
+		var services = new ServiceCollection();
+		var connection = new SqliteConnection("Data Source=:memory:");
+		connection.Open();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(connection));
+		await using var provider = services.BuildServiceProvider();
+		using (var scope = provider.CreateScope())
+		{
+			var db = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+			await db.Database.EnsureCreatedAsync();
+		}
+
+		var jobId = Guid.NewGuid();
+		using (var scope = provider.CreateScope())
+		{
+			var db = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+			var project = new Project { Id = Guid.NewGuid(), Name = "Power Project", WorkingPath = _repo };
+			var agent = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+			db.AddRange(project, agent, new Job
+			{
+				Id = jobId,
+				ProjectId = project.Id,
+				ProviderId = agent.Id,
+				GoalPrompt = "Build it",
+				Status = JobStatus.Processing,
+				SessionId = "session-1",
+				GitCommitBefore = baseCommit,
+				StartedAt = DateTime.UtcNow.AddHours(-3),
+				WorkerInstanceId = "worker-before-the-power-cut",
+				LastHeartbeatAt = DateTime.UtcNow.AddMinutes(-5)
+			});
+			await db.SaveChangesAsync();
+		}
+
+		var processor = new JobProcessingService(
+			provider.GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			_versionControl,
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService(),
+			workSnapshots: new JobWorkSnapshotService(_git, NullLogger<JobWorkSnapshotService>.Instance));
+
+		await (Task)typeof(JobProcessingService).GetMethod("RecoverOrphanedJobsAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+			.Invoke(processor, [CancellationToken.None])!;
+
+		using (var scope = provider.CreateScope())
+		{
+			var db = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+			var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+			Assert.Equal(JobStatus.Stalled, job.Status);
+			Assert.StartsWith(JobProcessingService.InterruptedUnexpectedly, job.ErrorMessage);
+			Assert.Equal(JobStatus.Processing, job.ResumeFromStatus);
+			Assert.Equal("session-1", job.SessionId);
+			Assert.NotNull(job.WorkSnapshotCommit);
+			Assert.Null(job.WorkerInstanceId);
+			Assert.Equal("", await GitAsync(_repo, "status --porcelain"));
+			Assert.Equal("main", await GitAsync(_repo, "rev-parse --abbrev-ref HEAD"));
+
+			// Resuming restores the work on top of the branch before the agent carries on.
+			var restore = GetMethod("RestorePriorRunWorkAsync");
+			var result = await (Task<JobWorkRestoreResult?>)restore.Invoke(processor, [job, _repo, db, CancellationToken.None])!;
+			Assert.Equal(JobWorkRestoreOutcome.Restored, result!.Outcome);
+		}
+
+		Assert.Contains("half done", await File.ReadAllTextAsync(Path.Combine(_repo, "app.txt")));
+		Assert.Equal("started before the power went out\n", await File.ReadAllTextAsync(Path.Combine(_repo, "new.txt")));
+	}
+
+	[Fact]
+	public void StaleIndexLock_IsRemovedOnlyWhenOlderThanTheBoot()
+	{
+		var gitDir = Path.Combine(_root, "locked", ".git");
+		Directory.CreateDirectory(gitDir);
+		var lockFile = Path.Combine(gitDir, "index.lock");
+		File.WriteAllText(lockFile, "");
+		File.SetLastWriteTimeUtc(lockFile, DateTime.UtcNow.AddHours(-1));
+
+		Assert.False(JobProcessingService.RemoveStaleGitIndexLock(Path.Combine(_root, "locked"), DateTime.UtcNow.AddHours(-2)));
+		Assert.True(File.Exists(lockFile));
+		Assert.True(JobProcessingService.RemoveStaleGitIndexLock(Path.Combine(_root, "locked"), DateTime.UtcNow.AddMinutes(-5)));
+		Assert.False(File.Exists(lockFile));
 	}
 
 	private JobProcessingService CreateProcessor() => new(

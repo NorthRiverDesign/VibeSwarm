@@ -812,6 +812,42 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ResumeJobAsync_QueuesAnInterruptedJobToCarryOnWhereItLeftOff()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Interrupted Project", WorkingPath = "/tmp/interrupted-project" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true, IsDefault = true };
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Project = project,
+			ProviderId = provider.Id,
+			GoalPrompt = "Build the feature",
+			Status = JobStatus.Stalled,
+			ResumeFromStatus = JobStatus.Processing,
+			SessionId = "session-1",
+			WorkSnapshotCommit = "0123456789abcdef0123456789abcdef01234567",
+			StartedAt = DateTime.UtcNow.AddHours(-5),
+			ErrorMessage = "Interrupted when VibeSwarm stopped unexpectedly (a crash or power loss). Its work so far is saved."
+		};
+		dbContext.AddRange(project, provider, job);
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+
+		Assert.True(await jobService.ResumeJobAsync(job.Id));
+
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal(JobStatus.New, savedJob.Status);
+		Assert.Equal(JobStatus.Processing, savedJob.ResumeFromStatus);
+		Assert.Equal("session-1", savedJob.SessionId);
+		Assert.Equal("0123456789abcdef0123456789abcdef01234567", savedJob.WorkSnapshotCommit);
+		Assert.Null(savedJob.ErrorMessage);
+		Assert.Null(savedJob.StartedAt);
+	}
+
+	[Fact]
 	public async Task ResumeJobAsync_ReturnsPlanningStatus_WhenPlanIsStillPending()
 	{
 		await using var dbContext = CreateDbContext();

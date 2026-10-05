@@ -690,7 +690,8 @@ public class Job
     /// </summary>
     public Services.JobCompletionCriteria GetCompletionCriteria()
     {
-        // Priority: Job-level setting > Provider-level setting > Default (1 hour)
+        // Priority: Job-level setting > Provider-level setting > Default. Jobs build whole
+        // features and often run for hours, so the default only stops a run that has lost its way.
         TimeSpan maxExecutionTime;
         if (MaxExecutionMinutes.HasValue)
         {
@@ -702,7 +703,7 @@ public class Job
         }
         else
         {
-            maxExecutionTime = TimeSpan.FromHours(1);
+            maxExecutionTime = Services.JobCompletionCriteria.DefaultMaxExecutionTime;
         }
 
         return new Services.JobCompletionCriteria

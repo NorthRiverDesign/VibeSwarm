@@ -1422,7 +1422,7 @@ public partial class JobProcessingService
         }
         catch (OperationCanceledException)
         {
-            _logger.LogInformation("Job {JobId} was cancelled, resetting for potential retry", job.Id);
+            _logger.LogInformation("Job {JobId} was cancelled or interrupted", job.Id);
             string? timeLimitMessage = null;
             try
             {
@@ -1432,67 +1432,66 @@ public partial class JobProcessingService
                 if (jobEntity != null)
                 {
                     var stoppedByTimeLimit = executionContext.TimeLimit?.Reached == true && !jobEntity.CancellationRequested;
-                    if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+                    if (!jobEntity.CancellationRequested && !stoppedByTimeLimit)
                     {
-                        try
-                        {
-                            if (stoppedByTimeLimit)
-                            {
-                                // Saved as the run's work too, so a follow-up starts from it.
-                                jobEntity.WorkSnapshotCommit = await SaveRunWorkSnapshotAsync(jobEntity, workingDirectory, jobEntity.GitCommitBefore, CancellationToken.None)
-                                    ?? jobEntity.WorkSnapshotCommit;
-                            }
-
-                            await PreserveWorkingTreeBeforeBranchPreparationAsync(
-                                jobEntity,
-                                workingDirectory,
-                                resetDbContext,
-                                captureJobDiff: true,
-                                reason: jobEntity.CancellationRequested
-                                    ? "Preserved local changes after the job was cancelled."
-                                    : stoppedByTimeLimit
-                                        ? "Preserved local changes after the job reached its time limit."
-                                        : "Preserved local changes after the worker shut down during execution.",
-                                cancellationToken: CancellationToken.None);
-                        }
-                        catch (Exception checkpointEx)
-                        {
-                            _logger.LogWarning(checkpointEx, "Failed to preserve local changes for cancelled job {JobId}", job.Id);
-                        }
-                    }
-
-                    if (jobEntity.CancellationRequested)
-                    {
-                        // User requested cancellation
-                        JobStateMachine.TryTransition(jobEntity, JobStatus.Cancelled, "Job was cancelled by user.");
-                        JobRecoveryHelper.ClearRecoveryState(jobEntity);
-                        jobEntity.ErrorMessage = "Job was cancelled by user";
-                    }
-                    else if (stoppedByTimeLimit)
-                    {
-                        // Not queued again: another run would spend the same budget again.
-                        timeLimitMessage = JobTimeLimit.BuildStopMessage(
-                            executionContext.TimeLimit!.Limit,
-                            jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved ? jobEntity.GitCheckpointBranch : null);
-                        JobStateMachine.TryTransition(jobEntity, JobStatus.Failed, timeLimitMessage);
-                        JobRecoveryHelper.ClearRecoveryState(jobEntity);
-                        jobEntity.ErrorMessage = timeLimitMessage;
-                        jobEntity.ConsoleOutput = executionContext.GetConsoleOutput() is { Length: > 0 } console ? console : jobEntity.ConsoleOutput;
+                        // The service is stopping. The job waits, paused, to be resumed from the UI.
+                        await PauseInterruptedJobAsync(
+                            jobEntity,
+                            workingDirectory,
+                            resetDbContext,
+                            InterruptedByShutdown,
+                            executionContext.ActivePrompt,
+                            executionContext.GetConsoleOutput(),
+                            CancellationToken.None);
                     }
                     else
                     {
-                        // Service shutdown or timeout - reset for retry
-                        JobRecoveryHelper.CaptureRecoveryState(
-                            jobEntity,
-                            jobEntity.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
-                            executionContext.ActivePrompt,
-                            executionContext.SessionId ?? jobEntity.SessionId,
-                            executionContext.GetConsoleOutput());
-                        JobStateMachine.TryTransition(jobEntity, JobStatus.New, "Service shutdown during execution. Queued for retry.");
-                        jobEntity.ErrorMessage = jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved
-                            ? "Service shutdown during execution. Queued for retry after preserving local changes."
-                            : "Service shutdown during execution. Queued for retry.";
+                        if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+                        {
+                            try
+                            {
+                                if (stoppedByTimeLimit)
+                                {
+                                    // Saved as the run's work too, so a follow-up starts from it.
+                                    jobEntity.WorkSnapshotCommit = await SaveRunWorkSnapshotAsync(jobEntity, workingDirectory, jobEntity.GitCommitBefore, CancellationToken.None)
+                                        ?? jobEntity.WorkSnapshotCommit;
+                                }
+
+                                await PreserveWorkingTreeBeforeBranchPreparationAsync(
+                                    jobEntity,
+                                    workingDirectory,
+                                    resetDbContext,
+                                    captureJobDiff: true,
+                                    reason: stoppedByTimeLimit
+                                        ? "Preserved local changes after the job reached its time limit."
+                                        : "Preserved local changes after the job was cancelled.",
+                                    cancellationToken: CancellationToken.None);
+                            }
+                            catch (Exception checkpointEx)
+                            {
+                                _logger.LogWarning(checkpointEx, "Failed to preserve local changes for cancelled job {JobId}", job.Id);
+                            }
+                        }
+
+                        if (stoppedByTimeLimit)
+                        {
+                            // Not queued again: another run would spend the same budget again.
+                            timeLimitMessage = JobTimeLimit.BuildStopMessage(
+                                executionContext.TimeLimit!.Limit,
+                                jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved ? jobEntity.GitCheckpointBranch : null);
+                            JobStateMachine.TryTransition(jobEntity, JobStatus.Failed, timeLimitMessage);
+                            JobRecoveryHelper.ClearRecoveryState(jobEntity);
+                            jobEntity.ErrorMessage = timeLimitMessage;
+                            jobEntity.ConsoleOutput = executionContext.GetConsoleOutput() is { Length: > 0 } console ? console : jobEntity.ConsoleOutput;
+                        }
+                        else
+                        {
+                            JobStateMachine.TryTransition(jobEntity, JobStatus.Cancelled, "Job was cancelled by user.");
+                            JobRecoveryHelper.ClearRecoveryState(jobEntity);
+                            jobEntity.ErrorMessage = "Job was cancelled by user";
+                        }
                     }
+
                     jobEntity.WorkerInstanceId = null;
                     jobEntity.LastHeartbeatAt = null;
                     jobEntity.ProcessId = null;

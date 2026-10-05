@@ -329,6 +329,11 @@ public partial class JobProcessingService : BackgroundService
     /// <summary>
     /// Recovers jobs that were left in Started/Processing state by this worker in a previous run.
     /// </summary>
+    /// <summary>
+    /// How long a running job can go without a heartbeat before its worker counts as gone.
+    /// </summary>
+    internal static readonly TimeSpan OrphanedHeartbeatAge = TimeSpan.FromMinutes(2);
+
     private async Task RecoverOrphanedJobsAsync(CancellationToken cancellationToken)
     {
         try
@@ -358,53 +363,29 @@ public partial class JobProcessingService : BackgroundService
                 _logger.LogInformation("Fixed {Count} jobs with completed timestamp but non-terminal status", completedWrongStatus.Count);
             }
 
-            // Find jobs that were being processed by any worker but appear orphaned
-            // (Started/Planning/Processing with old heartbeats, excluding already-completed jobs)
-            var cutoffTime = DateTime.UtcNow - TimeSpan.FromMinutes(10);
+            // Jobs a previous run of the service was working on when it died (a crash or power
+            // loss). Heartbeats come every 30 seconds while a job runs, so two minutes without one
+            // means its worker is gone. They are paused for the user to resume, not restarted.
+            var cutoffTime = DateTime.UtcNow - OrphanedHeartbeatAge;
             var orphanedJobs = await dbContext.Jobs
                 .Include(j => j.Project)
                 .Where(j => (j.Status == JobStatus.Pending || j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing))
                 .Where(j => !j.CompletedAt.HasValue)
+                .Where(j => j.WorkerInstanceId != _workerInstanceId)
                 .Where(j => !j.LastHeartbeatAt.HasValue || j.LastHeartbeatAt.Value < cutoffTime)
                 .ToListAsync(cancellationToken);
 
             foreach (var job in orphanedJobs)
             {
-                _logger.LogWarning("Found orphaned job {JobId} from worker {WorkerId}, resetting for retry",
+                _logger.LogWarning("Found job {JobId} interrupted on worker {WorkerId}; pausing it to be resumed",
                     job.Id, job.WorkerInstanceId ?? "unknown");
-
-                if (await TryPreserveChangesForRecoveryAsync(
-                    job,
-                    "Worker crashed or became unresponsive before job changes were finalized.",
-                    cancellationToken))
-                {
-                    continue;
-                }
-
-                if (job.MaxRetries == 0 || job.RetryCount < job.MaxRetries)
-                {
-                    JobRecoveryHelper.CaptureRecoveryState(
-                        job,
-                        job.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
-                        job.RecoveryPrompt ?? job.GoalPrompt,
-                        job.SessionId,
-                        job.ConsoleOutput);
-                    JobStateMachine.TryTransition(job, JobStatus.New, "Automatic orphan recovery");
-                    job.RetryCount++;
-                    job.ErrorMessage = "Worker crashed or became unresponsive. Automatic recovery.";
-                }
-                else
-                {
-                    JobRecoveryHelper.ClearRecoveryState(job);
-                    JobStateMachine.TryTransition(job, JobStatus.Failed, "Automatic orphan recovery exhausted retries");
-                    job.ErrorMessage = $"Job failed after {job.RetryCount} retry attempts (worker crash).";
-                }
+                await PauseInterruptedJobAsync(job, job.Project?.WorkingPath, dbContext, InterruptedUnexpectedly, null, null, cancellationToken);
             }
 
             if (orphanedJobs.Any())
             {
                 await dbContext.SaveChangesAsync(cancellationToken);
-                _logger.LogInformation("Recovered {Count} orphaned jobs", orphanedJobs.Count);
+                _logger.LogInformation("Paused {Count} interrupted jobs", orphanedJobs.Count);
             }
         }
         catch (Exception ex)

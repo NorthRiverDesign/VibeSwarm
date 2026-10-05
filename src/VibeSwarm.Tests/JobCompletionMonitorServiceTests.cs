@@ -211,7 +211,7 @@ public sealed class JobCompletionMonitorServiceTests : IDisposable
 				ProviderId = providerId,
 				GoalPrompt = "A long job",
 				Status = JobStatus.Processing,
-				StartedAt = now.AddHours(-2),
+				StartedAt = now - JobCompletionCriteria.DefaultMaxExecutionTime - TimeSpan.FromHours(1),
 				LastActivityAt = now.AddSeconds(-10),
 				LastHeartbeatAt = now.AddSeconds(-10),
 				WorkerInstanceId = ownedByThisWorker ? JobProcessingService.GetWorkerInstanceId() : "worker-that-went-away"

@@ -11,6 +11,7 @@ public partial class JobDetail : ComponentBase
     private bool IsCancelling { get; set; }
     private bool IsForceCancelling { get; set; }
     private bool IsRetrying { get; set; }
+    private bool IsResuming { get; set; }
     private bool IsForceResetting { get; set; }
 
     // Retry modal state
@@ -274,6 +275,34 @@ public partial class JobDetail : ComponentBase
         finally
         {
             IsRetrying = false;
+        }
+    }
+
+    private async Task ResumeInterruptedJob()
+    {
+        if (Job == null) return;
+
+        IsResuming = true;
+
+        try
+        {
+            if (await JobService.ResumeJobAsync(Job.Id))
+            {
+                NotificationService.ShowProjectSuccess(Job.Project?.Name, "The job will continue where it left off.");
+                await LoadJob();
+            }
+            else
+            {
+                NotificationService.ShowProjectError(Job.Project?.Name, "Could not resume the job.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowProjectError(Job.Project?.Name, $"Error resuming job: {ex.Message}");
+        }
+        finally
+        {
+            IsResuming = false;
         }
     }
 

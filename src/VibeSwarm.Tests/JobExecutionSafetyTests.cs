@@ -585,6 +585,68 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ProcessJobAsync_PausesAJobInterruptedByAServiceStop()
+	{
+		var workingPath = Directory.CreateTempSubdirectory("vibeswarm-interrupted-").FullName;
+		var jobId = Guid.NewGuid();
+		Provider providerConfig;
+		await using (var setupContext = CreateDbContext())
+		{
+			var project = new Project { Id = Guid.NewGuid(), Name = "Interrupted Project", WorkingPath = workingPath };
+			providerConfig = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+			setupContext.AddRange(project, providerConfig, new Job
+			{
+				Id = jobId,
+				ProjectId = project.Id,
+				ProviderId = providerConfig.Id,
+				GoalPrompt = "Work for hours",
+				Status = JobStatus.New
+			});
+			await setupContext.SaveChangesAsync();
+		}
+
+		var agent = new NeverFinishingProvider(providerConfig, throwsWhenCancelled: true);
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		services.AddSingleton<IProjectMemoryService, NoOpProjectMemoryService>();
+		services.AddSingleton<IJobService>(new StubJobService(isCancellationRequested: false));
+		services.AddSingleton<IProviderService>(new StubProviderService());
+		var processingService = new JobProcessingService(
+			services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NotARepositoryVersionControlService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService())
+		{
+			ProviderFactoryOverride = _ => agent
+		};
+
+		using var jobCts = new CancellationTokenSource();
+		try
+		{
+			await using var executionContext = CreateDbContext();
+			var job = await executionContext.Jobs.Include(j => j.Project).Include(j => j.Provider).SingleAsync(j => j.Id == jobId);
+			var run = InvokeProcessJobAsync(processingService, job, new StubJobService(isCancellationRequested: false), new StubProviderService(), executionContext, externalJobCts: jobCts);
+
+			// The service stopping cancels every running job's source.
+			await agent.Started.Task.WaitAsync(TimeSpan.FromSeconds(30));
+			jobCts.Cancel();
+			await run.WaitAsync(TimeSpan.FromSeconds(30));
+		}
+		finally
+		{
+			Directory.Delete(workingPath, recursive: true);
+		}
+
+		await using var verificationContext = CreateDbContext();
+		var persistedJob = await verificationContext.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.True(agent.WasStopped);
+		Assert.Equal(JobStatus.Stalled, persistedJob.Status);
+		Assert.StartsWith(JobProcessingService.InterruptedByShutdown, persistedJob.ErrorMessage);
+		Assert.Equal(JobStatus.Processing, persistedJob.ResumeFromStatus);
+		Assert.Contains("Work for hours", persistedJob.RecoveryPrompt);
+	}
+
+	[Fact]
 	public async Task JobTimeLimit_DoesNotCountTimeSpentWaitingForTheUser()
 	{
 		var reached = new TaskCompletionSource();
@@ -785,7 +847,8 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		IJobService jobService,
 		IProviderService providerService,
 		VibeSwarmDbContext dbContext,
-		bool withJobCancellation = false)
+		bool withJobCancellation = false,
+		CancellationTokenSource? externalJobCts = null)
 	{
 		var contextType = typeof(JobProcessingService).GetNestedType("JobExecutionContext", BindingFlags.NonPublic);
 		Assert.NotNull(contextType);
@@ -794,7 +857,9 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.NotNull(executionContext);
 
 		// The worker gives every job its own cancellation source; stopping a job cancels it.
-		using var jobCts = new CancellationTokenSource();
+		using var ownJobCts = new CancellationTokenSource();
+		var jobCts = externalJobCts ?? ownJobCts;
+		withJobCancellation |= externalJobCts != null;
 		if (withJobCancellation)
 		{
 			contextType!.GetProperty("CancellationTokenSource")!.SetValue(executionContext, jobCts);
@@ -894,6 +959,7 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	private sealed class NeverFinishingProvider(Provider config, bool throwsWhenCancelled) : SdkProviderBase(config)
 	{
 		public bool WasStopped { get; private set; }
+		public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
 		public override ProviderType Type => ProviderType.Claude;
 		public override Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
@@ -908,6 +974,7 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		{
 			try
 			{
+				Started.TrySetResult();
 				await Task.Delay(Timeout.Infinite, cancellationToken);
 				return new ExecutionResult { Success = true };
 			}

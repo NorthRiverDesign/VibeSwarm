@@ -351,6 +351,19 @@ public partial class JobProcessingService
             return null;
         }
 
+        // A run resumed after an interruption gets back exactly what it had done. That snapshot
+        // already holds whatever earlier runs restored, so nothing older is needed.
+        if (JobRecoveryHelper.IsResumeCandidate(job) && !string.IsNullOrWhiteSpace(job.WorkSnapshotCommit))
+        {
+            const string resumeActivity = "Restoring the work from before the interruption...";
+            await UpdateHeartbeatAsync(job.Id, resumeActivity, dbContext, cancellationToken);
+            await NotifyJobActivityAsync(job.Id, resumeActivity, DateTime.UtcNow);
+            var restored = await _workSnapshots.RestoreAsync(workingDirectory, job.WorkSnapshotCommit, cancellationToken);
+            _logger.LogInformation("Restored the interrupted work {Snapshot} for job {JobId}: {Outcome}",
+                job.WorkSnapshotCommit, job.Id, restored.Outcome);
+            return restored;
+        }
+
         var priorRuns = await dbContext.JobChangeSets
             .AsNoTracking()
             .Where(cs => cs.JobId == job.Id)
@@ -531,60 +544,5 @@ public partial class JobProcessingService
         var sanitized = Regex.Replace(branchName.Trim().ToLowerInvariant(), @"[^a-z0-9/_-]+", "-");
         sanitized = sanitized.Replace("//", "/").Trim('-', '/');
         return string.IsNullOrWhiteSpace(sanitized) ? "branch" : sanitized;
-    }
-
-    private async Task<bool> TryPreserveChangesForRecoveryAsync(Job job, string reason, CancellationToken cancellationToken)
-    {
-        var workingDirectory = job.Project?.WorkingPath;
-        if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
-        {
-            return false;
-        }
-
-        if (!await _versionControlService.IsGitRepositoryAsync(workingDirectory, cancellationToken))
-        {
-            return false;
-        }
-
-        var workingTreeStatus = await _versionControlService.GetWorkingTreeStatusAsync(workingDirectory, cancellationToken);
-        if (!workingTreeStatus.HasUncommittedChanges)
-        {
-            return false;
-        }
-
-        var diff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, job.GitCommitBefore, cancellationToken)
-            ?? await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, cancellationToken: cancellationToken);
-
-        // The stash below is easy to lose; the snapshot lets a follow-up pick the work back up.
-        job.WorkSnapshotCommit = await SaveRunWorkSnapshotAsync(job, workingDirectory, job.GitCommitBefore, cancellationToken)
-            ?? job.WorkSnapshotCommit;
-
-        var preserveResult = await _versionControlService.PreserveChangesAsync(
-            workingDirectory,
-            $"{AppConstants.AppName} job {job.Id}: {reason}",
-            cancellationToken);
-
-        if (!preserveResult.Success)
-        {
-            _logger.LogWarning("Failed to preserve workspace changes for recovered job {JobId}: {Error}", job.Id, preserveResult.Error);
-            return false;
-        }
-
-        var transition = JobStateMachine.TryTransition(job, JobStatus.Stalled, reason);
-        if (!transition.Success)
-        {
-            _logger.LogWarning("Failed to move recovered job {JobId} into stalled state: {Error}", job.Id, transition.ErrorMessage);
-            return false;
-        }
-
-        job.GitDiff = !string.IsNullOrWhiteSpace(diff) ? diff : job.GitDiff;
-        job.ChangedFilesCount = workingTreeStatus.ChangedFilesCount;
-        job.WorkerInstanceId = null;
-        job.LastHeartbeatAt = null;
-        job.ProcessId = null;
-        job.CurrentActivity = null;
-        job.ErrorMessage = $"{reason} Preserved {workingTreeStatus.ChangedFilesCount} changed file(s) in {preserveResult.SavedReference ?? "stash@{0}"} for recovery.";
-
-        return true;
     }
 }
