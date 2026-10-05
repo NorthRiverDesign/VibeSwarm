@@ -6,6 +6,7 @@ using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.VersionControl;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -286,8 +287,9 @@ public partial class IdeaService
 
 			// Stop ideas auto-processing when another attempt cannot possibly do better:
 			// a cancelled job (provider maintenance or rate limits made the user pull the
-			// plug), or a failure the host caused — a CLI that will not start fails the
-			// same way every ten seconds and quietly spends the usage budget doing it.
+			// plug), a failure the host caused — a CLI that will not start fails the
+			// same way every ten seconds and quietly spends the usage budget doing it — or a
+			// run stopped at its time limit, which a retry would only repeat at the same cost.
 			var job = await _dbContext.Jobs
 				.AsNoTracking()
 				.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
@@ -296,7 +298,9 @@ public partial class IdeaService
 				? "it was cancelled"
 				: ProviderFailureClassifier.IsUnrecoverable(job?.ErrorMessage)
 					? "it failed with an unrecoverable error"
-					: null;
+					: JobTimeLimit.IsStopMessage(job?.ErrorMessage)
+						? "it reached its time limit"
+						: null;
 
 			if (haltReason != null)
 			{

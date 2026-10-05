@@ -525,6 +525,91 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.Contains("session is 93% used", persistedJob.ErrorMessage ?? string.Empty);
 	}
 
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public async Task ProcessJobAsync_StopsTheAgentAtItsTimeLimitAndDoesNotRequeueIt(bool throwsWhenCancelled)
+	{
+		var workingPath = Directory.CreateTempSubdirectory("vibeswarm-time-limit-").FullName;
+		var jobId = Guid.NewGuid();
+		Provider providerConfig;
+		await using (var setupContext = CreateDbContext())
+		{
+			var project = new Project { Id = Guid.NewGuid(), Name = "Time Limit Project", WorkingPath = workingPath };
+			providerConfig = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+			setupContext.AddRange(project, providerConfig, new Job
+			{
+				Id = jobId,
+				ProjectId = project.Id,
+				ProviderId = providerConfig.Id,
+				GoalPrompt = "Work forever",
+				Status = JobStatus.New
+			});
+			await setupContext.SaveChangesAsync();
+		}
+
+		var agent = new NeverFinishingProvider(providerConfig, throwsWhenCancelled);
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		services.AddSingleton<IProjectMemoryService, NoOpProjectMemoryService>();
+		services.AddSingleton<IJobService>(new StubJobService(isCancellationRequested: false));
+		services.AddSingleton<IProviderService>(new StubProviderService());
+		var processingService = new JobProcessingService(
+			services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NotARepositoryVersionControlService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService())
+		{
+			TimeLimitOverride = TimeSpan.FromSeconds(3),
+			ProviderFactoryOverride = _ => agent
+		};
+
+		try
+		{
+			await using var executionContext = CreateDbContext();
+			var job = await executionContext.Jobs.Include(j => j.Project).Include(j => j.Provider).SingleAsync(j => j.Id == jobId);
+			await InvokeProcessJobAsync(processingService, job, new StubJobService(isCancellationRequested: false), new StubProviderService(), executionContext, withJobCancellation: true)
+				.WaitAsync(TimeSpan.FromSeconds(60));
+		}
+		finally
+		{
+			Directory.Delete(workingPath, recursive: true);
+		}
+
+		await using var verificationContext = CreateDbContext();
+		var persistedJob = await verificationContext.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.True(agent.WasStopped, $"{persistedJob.Status}: {persistedJob.ErrorMessage}");
+		Assert.Equal(JobStatus.Failed, persistedJob.Status);
+		Assert.True(JobTimeLimit.IsStopMessage(persistedJob.ErrorMessage), persistedJob.ErrorMessage);
+		Assert.Null(persistedJob.ResumeFromStatus);
+	}
+
+	[Fact]
+	public async Task JobTimeLimit_DoesNotCountTimeSpentWaitingForTheUser()
+	{
+		var reached = new TaskCompletionSource();
+		using var limit = new JobTimeLimit(TimeSpan.FromMilliseconds(300), () => reached.TrySetResult());
+
+		limit.Pause();
+		await Task.Delay(600);
+		Assert.False(limit.Reached);
+
+		limit.Resume();
+		await reached.Task.WaitAsync(TimeSpan.FromSeconds(10));
+		Assert.True(limit.Reached);
+	}
+
+	[Fact]
+	public async Task JobTimeLimit_StopsCountingOnceTheAgentIsDone()
+	{
+		using var limit = new JobTimeLimit(TimeSpan.FromMilliseconds(200), () => { });
+
+		limit.Stop();
+		await Task.Delay(500);
+
+		Assert.False(limit.Reached);
+	}
+
 	[Fact]
 	public async Task ResolveProviderForExecutionAsync_LetsJobsStartWhileTheSessionHasRoom()
 	{
@@ -699,7 +784,8 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Job job,
 		IJobService jobService,
 		IProviderService providerService,
-		VibeSwarmDbContext dbContext)
+		VibeSwarmDbContext dbContext,
+		bool withJobCancellation = false)
 	{
 		var contextType = typeof(JobProcessingService).GetNestedType("JobExecutionContext", BindingFlags.NonPublic);
 		Assert.NotNull(contextType);
@@ -707,11 +793,18 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		var executionContext = Activator.CreateInstance(contextType!);
 		Assert.NotNull(executionContext);
 
+		// The worker gives every job its own cancellation source; stopping a job cancels it.
+		using var jobCts = new CancellationTokenSource();
+		if (withJobCancellation)
+		{
+			contextType!.GetProperty("CancellationTokenSource")!.SetValue(executionContext, jobCts);
+		}
+
 		var method = typeof(JobProcessingService).GetMethod("ProcessJobAsync", BindingFlags.Instance | BindingFlags.NonPublic);
 		Assert.NotNull(method);
 
 		var skillStorage = new SkillStorageService(dbContext, NullLogger<SkillStorageService>.Instance);
-		var task = (Task)method.Invoke(service, [job, jobService, providerService, dbContext, skillStorage, executionContext!, CancellationToken.None])!;
+		var task = (Task)method.Invoke(service, [job, jobService, providerService, dbContext, skillStorage, executionContext!, withJobCancellation ? jobCts.Token : CancellationToken.None])!;
 		await task;
 	}
 
@@ -780,5 +873,60 @@ public sealed class JobExecutionSafetyTests : IDisposable
 
 	private sealed class NoOpVersionControlService : FakeVersionControlServiceBase
 	{
+	}
+
+	private sealed class NoOpProjectMemoryService : IProjectMemoryService
+	{
+		public Task<string?> PrepareMemoryFileAsync(Project? project, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+		public Task SyncMemoryFromFileAsync(Guid projectId, string? memoryFilePath, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task EnsureGitExcludeAsync(string workingPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
+	}
+
+	private sealed class NotARepositoryVersionControlService : FakeVersionControlServiceBase
+	{
+		public override Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(false);
+	}
+
+	/// <summary>
+	/// An agent that works until it is stopped: a CLI provider throws when cancelled, an SDK
+	/// provider returns a failed result.
+	/// </summary>
+	private sealed class NeverFinishingProvider(Provider config, bool throwsWhenCancelled) : SdkProviderBase(config)
+	{
+		public bool WasStopped { get; private set; }
+
+		public override ProviderType Type => ProviderType.Claude;
+		public override Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+		public override Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default) => Task.FromResult(string.Empty);
+
+		public override async Task<ExecutionResult> ExecuteWithSessionAsync(
+			string prompt,
+			string? sessionId = null,
+			string? workingDirectory = null,
+			IProgress<ExecutionProgress>? progress = null,
+			CancellationToken cancellationToken = default)
+		{
+			try
+			{
+				await Task.Delay(Timeout.Infinite, cancellationToken);
+				return new ExecutionResult { Success = true };
+			}
+			catch (OperationCanceledException)
+			{
+				WasStopped = true;
+				if (throwsWhenCancelled)
+				{
+					throw;
+				}
+
+				return new ExecutionResult { Success = false, ErrorMessage = "Execution was cancelled." };
+			}
+		}
+
+		public override Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default) => Task.FromResult(new ProviderInfo());
+		public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new UsageLimits());
+		public override Task<SessionSummary> GetSessionSummaryAsync(string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => Task.FromResult(new SessionSummary());
+		public override Task<PromptResponse> GetPromptResponseAsync(string prompt, string? workingDirectory = null, CancellationToken cancellationToken = default) => Task.FromResult(PromptResponse.Fail("not used"));
+		public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
 	}
 }

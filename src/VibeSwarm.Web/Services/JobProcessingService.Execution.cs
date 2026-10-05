@@ -149,6 +149,17 @@ public partial class JobProcessingService
             await UpdateJobStatusAsync(job.Id, JobStatus.Started, dbContext, cancellationToken);
             await NotifyStatusChangedAsync(job.Id, JobStatus.Started);
 
+            // The guardrail against a run that keeps spending usage. Cancelling the run stops the
+            // agent's process; the cancellation handling below keeps its work and fails the job.
+            var timeLimit = TimeLimitOverride
+                ?? job.GetCompletionCriteria().MaxExecutionTime
+                ?? JobCompletionCriteria.Default.MaxExecutionTime!.Value;
+            executionContext.TimeLimit = new JobTimeLimit(timeLimit, () =>
+            {
+                _logger.LogWarning("Job {JobId} reached its time limit of {Limit}; stopping the agent", job.Id, timeLimit);
+                try { executionContext.CancellationTokenSource?.Cancel(); } catch (ObjectDisposedException) { }
+            });
+
             // Update status to processing
             var initialStatus = job.ResumeFromStatus switch
             {
@@ -324,6 +335,7 @@ public partial class JobProcessingService
                 executionContext.IsPausedForInteraction = false;
                 executionContext.CurrentInteractionRequest = null;
                 executionContext.PendingInteractionResponseTask = null;
+                executionContext.TimeLimit?.Resume();
             }
 
             async Task<bool> PauseForDetectedInteractionAsync(InteractionDetector.InteractionRequest interactionRequest)
@@ -543,6 +555,7 @@ public partial class JobProcessingService
 
                             executionContext.IsPausedForInteraction = true;
                             executionContext.CurrentInteractionRequest = interactionRequest;
+                            executionContext.TimeLimit?.Pause();
 
                             // Update database and notify UI in background
                             _ = Task.Run(async () =>
@@ -814,6 +827,8 @@ public partial class JobProcessingService
                         CleanupMcpExecutionResources(planningMcpOptions.Resources);
                     }
 
+                    ThrowIfStoppedByTimeLimit(executionContext, planningResult);
+
                     if (planningResult.IsPaused && executionContext.IsPausedForInteraction)
                     {
                         var interactionResume = await WaitForInteractionResponseAndBuildPromptAsync(planningPrompt);
@@ -1066,6 +1081,7 @@ public partial class JobProcessingService
                 await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
 
                 var result = await ExecuteCurrentCycleAsync(promptToExecute, cycleSessionId);
+                ThrowIfStoppedByTimeLimit(executionContext, result);
                 if (attemptedSessionResume && IsSessionResumeFailure(result))
                 {
                     _logger.LogWarning(
@@ -1196,6 +1212,11 @@ public partial class JobProcessingService
                     currentCycle++;
                 }
             }
+
+            // The agent is done, or was stopped: the checks and delivery that follow must not trip
+            // the time limit.
+            executionContext.TimeLimit?.Stop();
+            ThrowIfStoppedByTimeLimit(executionContext, lastResult);
 
             // Use accumulated results
             var finalResult = lastResult ?? new ExecutionResult { Success = false, ErrorMessage = "No execution result" };
@@ -1402,6 +1423,7 @@ public partial class JobProcessingService
         catch (OperationCanceledException)
         {
             _logger.LogInformation("Job {JobId} was cancelled, resetting for potential retry", job.Id);
+            string? timeLimitMessage = null;
             try
             {
                 using var resetScope = _scopeFactory.CreateScope();
@@ -1409,10 +1431,18 @@ public partial class JobProcessingService
                 var jobEntity = await resetDbContext.Jobs.FindAsync(job.Id);
                 if (jobEntity != null)
                 {
+                    var stoppedByTimeLimit = executionContext.TimeLimit?.Reached == true && !jobEntity.CancellationRequested;
                     if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
                     {
                         try
                         {
+                            if (stoppedByTimeLimit)
+                            {
+                                // Saved as the run's work too, so a follow-up starts from it.
+                                jobEntity.WorkSnapshotCommit = await SaveRunWorkSnapshotAsync(jobEntity, workingDirectory, jobEntity.GitCommitBefore, CancellationToken.None)
+                                    ?? jobEntity.WorkSnapshotCommit;
+                            }
+
                             await PreserveWorkingTreeBeforeBranchPreparationAsync(
                                 jobEntity,
                                 workingDirectory,
@@ -1420,7 +1450,9 @@ public partial class JobProcessingService
                                 captureJobDiff: true,
                                 reason: jobEntity.CancellationRequested
                                     ? "Preserved local changes after the job was cancelled."
-                                    : "Preserved local changes after the worker shut down during execution.",
+                                    : stoppedByTimeLimit
+                                        ? "Preserved local changes after the job reached its time limit."
+                                        : "Preserved local changes after the worker shut down during execution.",
                                 cancellationToken: CancellationToken.None);
                         }
                         catch (Exception checkpointEx)
@@ -1435,6 +1467,17 @@ public partial class JobProcessingService
                         JobStateMachine.TryTransition(jobEntity, JobStatus.Cancelled, "Job was cancelled by user.");
                         JobRecoveryHelper.ClearRecoveryState(jobEntity);
                         jobEntity.ErrorMessage = "Job was cancelled by user";
+                    }
+                    else if (stoppedByTimeLimit)
+                    {
+                        // Not queued again: another run would spend the same budget again.
+                        timeLimitMessage = JobTimeLimit.BuildStopMessage(
+                            executionContext.TimeLimit!.Limit,
+                            jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved ? jobEntity.GitCheckpointBranch : null);
+                        JobStateMachine.TryTransition(jobEntity, JobStatus.Failed, timeLimitMessage);
+                        JobRecoveryHelper.ClearRecoveryState(jobEntity);
+                        jobEntity.ErrorMessage = timeLimitMessage;
+                        jobEntity.ConsoleOutput = executionContext.GetConsoleOutput() is { Length: > 0 } console ? console : jobEntity.ConsoleOutput;
                     }
                     else
                     {
@@ -1461,6 +1504,11 @@ public partial class JobProcessingService
             {
                 _logger.LogError(resetEx, "Failed to reset job {JobId} after cancellation", job.Id);
             }
+
+            if (timeLimitMessage != null)
+            {
+                await NotifyJobCompletedAsync(job.Id, false, timeLimitMessage);
+            }
         }
         catch (Exception ex)
         {
@@ -1476,6 +1524,8 @@ public partial class JobProcessingService
         }
         finally
         {
+            executionContext.TimeLimit?.Dispose();
+
             if (!string.IsNullOrWhiteSpace(projectMemoryFilePath))
             {
                 try
@@ -1500,6 +1550,18 @@ public partial class JobProcessingService
                     _logger.LogWarning(disposeEx, "Error disposing provider for job {JobId}", job.Id);
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// A run cut short by the time limit goes to the cancellation handling, which keeps its work
+    /// and fails the job, instead of on to another cycle or a fallback provider.
+    /// </summary>
+    private static void ThrowIfStoppedByTimeLimit(JobExecutionContext executionContext, ExecutionResult? result)
+    {
+        if (executionContext.TimeLimit?.Reached == true && result?.Success != true)
+        {
+            throw new OperationCanceledException("The job reached its time limit.");
         }
     }
 

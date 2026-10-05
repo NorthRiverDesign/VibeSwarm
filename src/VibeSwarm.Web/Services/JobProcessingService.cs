@@ -69,6 +69,16 @@ public partial class JobProcessingService : BackgroundService
     /// </summary>
     public static string GetWorkerInstanceId() => _workerInstanceId;
 
+    /// <summary>
+    /// Replaces the job's own time limit; for tests.
+    /// </summary>
+    internal TimeSpan? TimeLimitOverride { get; init; }
+
+    /// <summary>
+    /// Replaces the real provider CLIs and SDKs; for tests.
+    /// </summary>
+    internal Func<Provider, IProvider>? ProviderFactoryOverride { get; init; }
+
     public JobProcessingService(
         IServiceScopeFactory scopeFactory,
         ILogger<JobProcessingService> logger,
@@ -158,6 +168,11 @@ public partial class JobProcessingService : BackgroundService
         /// Linked worktrees that existed before the agent started, so the ones it adds can be found.
         /// </summary>
         public IReadOnlyList<string> WorktreesBefore { get; set; } = [];
+
+        /// <summary>
+        /// The run's time limit; cancels the run when reached.
+        /// </summary>
+        public JobTimeLimit? TimeLimit { get; set; }
 
         /// <summary>
         /// Something about how the work was delivered that the job should show, such as work kept

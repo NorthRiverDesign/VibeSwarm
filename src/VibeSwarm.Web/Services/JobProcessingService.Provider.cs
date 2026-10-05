@@ -258,8 +258,13 @@ public partial class JobProcessingService
     /// Bare mode requires a direct API key (ANTHROPIC_API_KEY). When the provider has no API key
     /// configured, Claude CLI uses OAuth session auth which --bare disables.
     /// </summary>
-    private static IProvider CreateProviderInstance(Provider config)
+    private IProvider CreateProviderInstance(Provider config)
     {
+        if (ProviderFactoryOverride != null)
+        {
+            return ProviderFactoryOverride(config);
+        }
+
         return (config.Type, config.ConnectionMode) switch
         {
             (ProviderType.Claude, ProviderConnectionMode.SDK) => new ClaudeSdkProvider(config),

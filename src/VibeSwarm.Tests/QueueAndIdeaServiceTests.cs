@@ -3221,11 +3221,14 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		}
 	}
 
-	[Fact]
-	public async Task HandleJobCompletionAsync_UnrecoverableFailure_StopsIdeasProcessing()
+	[Theory]
+	[InlineData("error: bubblewrap is required for subprocess env scrubbing and isolation.")]
+	[InlineData("Stopped at its time limit of 60 minutes, before the agent finished. Raise the limit or split the task before running it again.")]
+	public async Task HandleJobCompletionAsync_UnrecoverableFailure_StopsIdeasProcessing(string errorMessage)
 	{
 		// A CLI that cannot start fails the same way on every retry, so the idea loop has
-		// to stop instead of re-queueing the same job every few seconds.
+		// to stop instead of re-queueing the same job every few seconds. A run stopped at its
+		// time limit would spend the same budget again.
 		await using var dbContext = CreateDbContext();
 		var project = new Project
 		{
@@ -3249,7 +3252,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			ProviderId = provider.Id,
 			GoalPrompt = "Implement the idea",
 			Status = JobStatus.Failed,
-			ErrorMessage = "error: bubblewrap is required for subprocess env scrubbing and isolation."
+			ErrorMessage = errorMessage
 		};
 		var idea = new Idea
 		{
