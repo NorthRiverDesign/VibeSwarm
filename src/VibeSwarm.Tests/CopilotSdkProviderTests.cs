@@ -18,6 +18,32 @@ public sealed class CopilotSdkProviderTests
 	}
 
 	[Fact]
+	public void ApplyRunSettings_SendsTheJobRulesAndBlocksPlanningTools()
+	{
+		var provider = new CopilotSdkProvider(CreateConfig());
+		provider.ApplyOptions(new ExecutionOptions
+		{
+			AppendSystemPrompt = "JOB RULES",
+			ReasoningEffort = "high",
+			DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools
+		});
+
+		foreach (SessionConfigBase config in new SessionConfigBase[] { new SessionConfig(), new ResumeSessionConfig() })
+		{
+			provider.ApplyRunSettings(config, "/repo");
+
+			Assert.Null(config.Model);
+			Assert.Equal("/repo", config.WorkingDirectory);
+			Assert.Equal("high", config.ReasoningEffort);
+			Assert.Equal(SystemMessageMode.Append, config.SystemMessage!.Mode);
+			Assert.Equal("JOB RULES", config.SystemMessage.Content);
+			Assert.Contains("bash", config.ExcludedTools!);
+			Assert.Contains("edit", config.ExcludedTools!);
+			Assert.DoesNotContain("Bash", config.ExcludedTools!);
+		}
+	}
+
+	[Fact]
 	public void ApplyResumeSessionDefaults_SetsApproveAllPermissionHandler()
 	{
 		var config = new ResumeSessionConfig();
