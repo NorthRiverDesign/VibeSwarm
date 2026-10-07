@@ -22,6 +22,10 @@
 	{
 		<UsageMeter UsageSummary="UsageSummary" Compact="true" ShowResetTime="true" ShowEmptyState="true" />
 	}
+	@if (!string.IsNullOrWhiteSpace(UsageRefreshError))
+	{
+		<span class="small text-warning-emphasis text-break">@UsageRefreshError</span>
+	}
 </a>
 
 @code {
@@ -42,6 +46,10 @@
 
 	[Parameter]
 	public ProviderUsageSummary? UsageSummary { get; set; }
+
+	/// <summary>Why the last usage refresh failed for this provider, if it did.</summary>
+	[Parameter]
+	public string? UsageRefreshError { get; set; }
 
 	private bool ShouldShowUsageSection()
 	{

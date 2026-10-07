@@ -115,9 +115,22 @@
     <section class="d-flex flex-column gap-2" aria-label="Providers">
         <SectionHeader Title="Providers">
             <Actions>
+                @if (!IsLoading && VisibleProviders.Any())
+                {
+                    <button type="button" class="btn btn-sm btn-link text-decoration-none px-0"
+                            title="Reload usage. Connections that report limits on demand run one tiny request each."
+                            @onclick="RefreshProviderUsageAsync" disabled="@IsRefreshingUsage">
+                        <i class="bi bi-arrow-repeat me-1 @(IsRefreshingUsage ? "spin" : "")"></i>Refresh usage
+                    </button>
+                }
                 <a href="/providers" class="btn btn-sm btn-link text-decoration-none px-0">Manage</a>
             </Actions>
         </SectionHeader>
+
+        @if (!string.IsNullOrWhiteSpace(UsageReloadError))
+        {
+            <div class="small text-warning-emphasis px-1">@UsageReloadError</div>
+        }
 
         @if (IsLoading)
         {
@@ -139,7 +152,8 @@
                 {
                     <DashboardProviderRow @key="provider.Id" Name="@provider.Name" ProviderType="@provider.Type.ToString()"
                                           ConnectionMode="@provider.ConnectionMode.ToString()" IsEnabled="@provider.IsEnabled"
-                                          CliVersion="@GetCliVersion(provider)" UsageSummary="@GetUsageSummary(provider.Id)" />
+                                          CliVersion="@GetCliVersion(provider)" UsageSummary="@GetUsageSummary(provider.Id)"
+                                          UsageRefreshError="@GetUsageRefreshError(provider.Id)" />
                 }
             </div>
         }
@@ -189,6 +203,9 @@
     private DashboardProjectSortOption SelectedProjectSort { get; set; } = DashboardProjectSortOption.LastRan;
     private bool IsLoading { get; set; } = true;
     private bool IsRefreshingDashboardData { get; set; }
+    private bool IsRefreshingUsage { get; set; }
+    private Dictionary<Guid, string> UsageRefreshErrors { get; set; } = new();
+    private string? UsageReloadError { get; set; }
     private bool PendingDashboardRefresh { get; set; }
     private HubConnection? HubConnection { get; set; }
     private CancellationTokenSource? SignalRCts { get; set; }
@@ -254,6 +271,60 @@
     private ProviderUsageSummary? GetUsageSummary(Guid providerId)
     {
         return UsageSummaries.TryGetValue(providerId, out var summary) ? summary : null;
+    }
+
+    private string? GetUsageRefreshError(Guid providerId)
+    {
+        return UsageRefreshErrors.TryGetValue(providerId, out var error) ? error : null;
+    }
+
+    /// <summary>
+    /// Re-reads usage for the providers shown. Connections that can report limits on demand are
+    /// asked first, which spends one tiny request each, so this only ever runs from the button.
+    /// </summary>
+    private async Task RefreshProviderUsageAsync()
+    {
+        if (IsRefreshingUsage)
+        {
+            return;
+        }
+
+        IsRefreshingUsage = true;
+        UsageRefreshErrors.Clear();
+        UsageReloadError = null;
+
+        try
+        {
+            var probes = await Task.WhenAll(VisibleProviders
+                .Where(ProviderCapabilities.SupportsUsageRefresh)
+                .Select(async provider => (provider.Id, Result: await HttpProviderService.RefreshUsageAsync(provider.Id))));
+
+            foreach (var (providerId, result) in probes)
+            {
+                if (result.Success && result.Summary != null)
+                {
+                    UsageSummaries[providerId] = result.Summary;
+                }
+                else if (result.IsSupported)
+                {
+                    UsageRefreshErrors[providerId] = result.ErrorMessage ?? "Could not read usage.";
+                }
+            }
+
+            try
+            {
+                UsageSummaries = await HttpProviderService.GetAllUsageSummariesAsync();
+            }
+            catch (Exception ex)
+            {
+                // Keep the figures already on screen rather than blanking the meters.
+                UsageReloadError = $"Could not reload usage: {ex.Message}";
+            }
+        }
+        finally
+        {
+            IsRefreshingUsage = false;
+        }
     }
 
     private async Task FetchBranchInfoAsync()

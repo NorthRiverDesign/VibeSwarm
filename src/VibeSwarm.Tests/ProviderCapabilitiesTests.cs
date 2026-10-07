@@ -129,4 +129,16 @@ public sealed class ProviderCapabilitiesTests
 
 		Assert.Equal("Custom Provider", ProviderCapabilities.GetConnectionTypeLabel(provider));
 	}
+
+	[Theory]
+	[InlineData(ProviderType.Claude, ProviderConnectionMode.CLI, true)]
+	[InlineData(ProviderType.Claude, ProviderConnectionMode.SDK, false)]
+	[InlineData(ProviderType.Copilot, ProviderConnectionMode.CLI, false)]
+	[InlineData(ProviderType.OpenCode, ProviderConnectionMode.CLI, false)]
+	public void SupportsUsageRefresh_OnlyForConnectionsThatReportLimitsOnDemand(ProviderType type, ProviderConnectionMode mode, bool expected)
+	{
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Provider", Type = type, ConnectionMode = mode };
+
+		Assert.Equal(expected, ProviderCapabilities.SupportsUsageRefresh(provider));
+	}
 }

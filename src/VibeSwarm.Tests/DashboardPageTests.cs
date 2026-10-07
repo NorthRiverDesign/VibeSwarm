@@ -1,10 +1,12 @@
 using System.Net;
+using Bunit;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
+using VibeSwarm.Client.Components.Dashboard;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
@@ -314,6 +316,95 @@ public sealed class DashboardPageTests
 		Assert.Contains($"href=\"/projects/{projectId}\"", html);
 	}
 
+	[Fact]
+	public void Dashboard_RefreshUsage_ProbesOnDemandProvidersAndShowsNewFigures()
+	{
+		var claude = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = true };
+		var copilot = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = true };
+		var handler = new UsageRefreshHandler(new Dictionary<Guid, ProviderUsageSummary>
+		{
+			[claude.Id] = CreateUsageSummary(claude.Id, "Weekly limit 40/100 used")
+		})
+		{
+			RefreshResult = id => new UsageRefreshResult { Success = true, Summary = CreateUsageSummary(id, "Weekly limit 85/100 used") }
+		};
+		using var context = CreateInteractiveContext([claude, copilot], handler);
+
+		var cut = context.Render<DashboardView>();
+		cut.WaitForAssertion(() => Assert.Contains("Weekly limit 40/100 used", cut.Markup));
+
+		FindRefreshUsageButton(cut).Click();
+
+		cut.WaitForAssertion(() => Assert.Contains("Weekly limit 85/100 used", cut.Markup));
+		Assert.Equal([claude.Id], handler.RefreshedProviderIds);
+		Assert.Equal(2, handler.SummaryReloads);
+		Assert.False(FindRefreshUsageButton(cut).HasAttribute("disabled"));
+	}
+
+	[Fact]
+	public void Dashboard_RefreshUsage_ShowsWhyAProviderCouldNotBeRead()
+	{
+		var claude = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = true };
+		var handler = new UsageRefreshHandler(new Dictionary<Guid, ProviderUsageSummary>
+		{
+			[claude.Id] = CreateUsageSummary(claude.Id, "Weekly limit 40/100 used")
+		})
+		{
+			RefreshResult = _ => new UsageRefreshResult { Success = false, ErrorMessage = "Timed out waiting for the provider to report usage." }
+		};
+		using var context = CreateInteractiveContext([claude], handler);
+
+		var cut = context.Render<DashboardView>();
+		cut.WaitForAssertion(() => Assert.Contains("Weekly limit 40/100 used", cut.Markup));
+
+		FindRefreshUsageButton(cut).Click();
+
+		cut.WaitForAssertion(() => Assert.Contains("Timed out waiting for the provider to report usage.", cut.Markup));
+		Assert.Contains("Weekly limit 40/100 used", cut.Markup);
+	}
+
+	[Fact]
+	public void Dashboard_HidesRefreshUsage_WhenNoProvidersAreShown()
+	{
+		var disabled = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = false };
+		using var context = CreateInteractiveContext([disabled], new UsageRefreshHandler([]));
+
+		var cut = context.Render<DashboardView>();
+		cut.WaitForAssertion(() => Assert.Contains("No active providers", cut.Markup));
+
+		Assert.DoesNotContain("Refresh usage", cut.Markup);
+	}
+
+	private static BunitContext CreateInteractiveContext(IReadOnlyList<Provider> providers, UsageRefreshHandler handler)
+	{
+		var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService(providers));
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
+		context.Services.AddSingleton<ICommonProviderSetupService>(new FakeCommonProviderSetupService([]));
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton(new HttpProviderService(new HttpClient(handler)
+		{
+			BaseAddress = new Uri("http://localhost")
+		}));
+
+		return context;
+	}
+
+	private static AngleSharp.Dom.IElement FindRefreshUsageButton(IRenderedComponent<DashboardView> cut)
+		=> cut.FindAll("button").Single(button => button.TextContent.Contains("Refresh usage", StringComparison.Ordinal));
+
+	private static ProviderUsageSummary CreateUsageSummary(Guid providerId, string limitMessage) => new()
+	{
+		ProviderId = providerId,
+		LimitType = UsageLimitType.RateLimit,
+		CurrentUsage = 1,
+		LimitMessage = limitMessage,
+		LastUpdatedAt = DateTime.UtcNow
+	};
+
 	private static async Task<string> RenderDashboardPageAsync(
 		IProjectService projectService,
 		IProviderService providerService,
@@ -508,6 +599,41 @@ public sealed class DashboardPageTests
 				{
 					Content = JsonContent.Create(_usageSummaries)
 				});
+			}
+
+			return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+		}
+	}
+
+	/// <summary>Serves stored usage, and a probe that saves what it read the way the server does.</summary>
+	private sealed class UsageRefreshHandler(Dictionary<Guid, ProviderUsageSummary> usageSummaries) : HttpMessageHandler
+	{
+		private readonly Dictionary<Guid, ProviderUsageSummary> _usageSummaries = usageSummaries;
+
+		public Func<Guid, UsageRefreshResult> RefreshResult { get; init; } = _ => new UsageRefreshResult { Success = false, IsSupported = false };
+		public List<Guid> RefreshedProviderIds { get; } = [];
+		public int SummaryReloads { get; private set; }
+
+		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+		{
+			var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+			if (request.Method == HttpMethod.Get && path == "/api/providers/usage-summaries")
+			{
+				SummaryReloads++;
+				return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(_usageSummaries) });
+			}
+
+			var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+			if (request.Method == HttpMethod.Post && segments is ["api", "providers", var id, "usage", "refresh"] && Guid.TryParse(id, out var providerId))
+			{
+				RefreshedProviderIds.Add(providerId);
+				var result = RefreshResult(providerId);
+				if (result.Summary != null)
+				{
+					_usageSummaries[providerId] = result.Summary;
+				}
+
+				return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(result) });
 			}
 
 			return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
