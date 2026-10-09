@@ -139,7 +139,9 @@ public sealed class ProjectMemoryServiceTests : IDisposable
 				"dotnet-test.log",
 				"notes.tmp",
 				"tmp/probe.js",
-				"CLAUDE.local.md"
+				"CLAUDE.local.md",
+				"tasks/todo.md",
+				"tasks/lessons.md"
 			];
 			string[] projectFiles =
 			[
@@ -169,6 +171,43 @@ public sealed class ProjectMemoryServiceTests : IDisposable
 		finally
 		{
 			Directory.Delete(repository, recursive: true);
+		}
+	}
+
+	[Fact]
+	public async Task EnsureGitExcludeAsync_HidesSessionArtifactsInLinkedWorktree()
+	{
+		var root = Path.Combine(Path.GetTempPath(), "vibeswarm-tests", Guid.NewGuid().ToString("N"));
+		var repository = Path.Combine(root, "main");
+		var worktree = Path.Combine(root, "feature");
+		Directory.CreateDirectory(repository);
+		var git = new GitCommandExecutor();
+
+		try
+		{
+			Assert.True((await git.ExecuteAsync("init", repository)).Success);
+			Assert.True((await git.ExecuteAsync("-c user.name=Test -c user.email=test@example.com -c commit.gpgsign=false commit --allow-empty -m init", repository)).Success);
+			Assert.True((await git.ExecuteAsync($"worktree add \"{worktree}\"", repository)).Success);
+
+			await using (var dbContext = CreateDbContext())
+			{
+				await CreateService(dbContext).EnsureGitExcludeAsync(worktree);
+			}
+
+			foreach (var path in new[] { ".vibeswarm/project-memory.md", "tasks/todo.md", "App.cs" })
+			{
+				var fullPath = Path.Combine(worktree, path);
+				Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+				await File.WriteAllTextAsync(fullPath, "content");
+			}
+
+			var status = await git.ExecuteAsync("status --porcelain=v1 --untracked-files=all", worktree);
+			Assert.True(status.Success);
+			Assert.Equal("?? App.cs", status.Output.Trim());
+		}
+		finally
+		{
+			Directory.Delete(root, recursive: true);
 		}
 	}
 

@@ -7,6 +7,11 @@ public class JobCompletionCriteria
 	public static readonly TimeSpan DefaultStallTimeoutValue = TimeSpan.FromMinutes(15);
 
 	/// <summary>
+	/// The time limit when neither the job nor its provider sets one.
+	/// </summary>
+	public static readonly TimeSpan DefaultMaxExecutionTime = TimeSpan.FromHours(12);
+
+	/// <summary>
 	/// Maximum time a job can run before being considered timed out
 	/// </summary>
 	public TimeSpan? MaxExecutionTime { get; set; }
@@ -38,7 +43,7 @@ public class JobCompletionCriteria
 
 	public static JobCompletionCriteria Default => new()
 	{
-		MaxExecutionTime = TimeSpan.FromHours(1),
+		MaxExecutionTime = DefaultMaxExecutionTime,
 		StallTimeout = DefaultStallTimeoutValue
 	};
 

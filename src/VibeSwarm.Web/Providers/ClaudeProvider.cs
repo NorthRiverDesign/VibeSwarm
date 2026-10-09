@@ -22,6 +22,22 @@ public class ClaudeProvider : CliProviderBase
     private static readonly Version AgentVersion = new(2, 1, 64);
     private static readonly Version BareModeVersion = new(2, 1, 81);
     private static readonly Version DisallowedToolsVersion = new(2, 1, 0);
+
+    /// <summary>
+    /// Tools that make no sense for a job nobody is watching: schedules and remote triggers outlive
+    /// the job, and the rest notify, message or publish to people and sessions outside it. Unknown
+    /// names are ignored. Worktrees are allowed; VibeSwarm collects any a job leaves behind.
+    /// </summary>
+    internal static readonly IReadOnlyList<string> UnattendedDisallowedTools =
+    [
+        "CronCreate",
+        "CronDelete",
+        "ScheduleWakeup",
+        "RemoteTrigger",
+        "PushNotification",
+        "SendMessage",
+        "ShareOnboardingGuide"
+    ];
     private static readonly Version MaxBudgetVersion = new(2, 0, 28);
     private static readonly Version FromPullRequestVersion = new(2, 1, 27);
     private static readonly Version InitModeVersion = new(2, 1, 10);
@@ -66,7 +82,14 @@ public class ClaudeProvider : CliProviderBase
         var baseEnv = new Dictionary<string, string>
         {
             // Block in-flight CLI self-updates during unattended jobs (Claude v2.1.118+).
-            ["DISABLE_UPDATES"] = "1"
+            ["DISABLE_UPDATES"] = "1",
+            // The account's claude.ai connectors (mail, drive, docs) would otherwise load into
+            // every job: dozens of tools the job has no use for. Servers configured on the host
+            // or in the repository's .mcp.json still load.
+            ["ENABLE_CLAUDEAI_MCP_SERVERS"] = "false",
+            // Auto-memory lives in ~/.claude/projects/<path>/memory, the same folder the user's
+            // own sessions in that checkout use. Jobs get project memory from VibeSwarm instead.
+            ["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
         };
 
         // Subprocess env scrubbing (v2.1.83/2.1.114) is switched off deliberately, and set
@@ -178,7 +201,13 @@ public class ClaudeProvider : CliProviderBase
         _systemErrorMessage = null;
         toolNamesById.Clear();
 
-        var args = BuildCliArgs(prompt, sessionId);
+        var args = BuildCliArgs(prompt, sessionId, effectiveWorkingDir);
+
+        // The settings below belong to this run. Copy first so they don't leak into the
+        // caller's dictionary and on to later cycles or a fallback provider.
+        CurrentEnvironmentVariables = CurrentEnvironmentVariables == null
+            ? null
+            : new Dictionary<string, string>(CurrentEnvironmentVariables);
 
         // Inject env var to disable 1M context window when requested
         if (CurrentDisableLargeContext)
@@ -394,7 +423,7 @@ public class ClaudeProvider : CliProviderBase
     /// Builds the CLI argument list for Claude Code execution.
     /// Internal for unit testing — validates only supported flags are emitted.
     /// </summary>
-    internal List<string> BuildCliArgs(string prompt, string? sessionId)
+    internal List<string> BuildCliArgs(string prompt, string? sessionId, string? workingDirectory = null)
     {
         var args = new List<string>
         {
@@ -533,11 +562,9 @@ public class ClaudeProvider : CliProviderBase
         }
 
         // Disallowed tools (v2.1.0+)
-        if (SupportsCliVersion(DisallowedToolsVersion)
-            && CurrentDisallowedTools != null
-            && CurrentDisallowedTools.Count > 0)
+        if (SupportsCliVersion(DisallowedToolsVersion))
         {
-            foreach (var tool in CurrentDisallowedTools)
+            foreach (var tool in (CurrentDisallowedTools ?? []).Concat(UnattendedDisallowedTools).Distinct(StringComparer.Ordinal))
             {
                 args.Add("--disallowed-tools");
                 args.Add(tool);
@@ -586,16 +613,31 @@ public class ClaudeProvider : CliProviderBase
             args.Add(reasoningEffort);
         }
 
+        // Strict mode loads only the MCP servers named here: VibeSwarm's own and the repository's
+        // .mcp.json. Personal servers in ~/.claude.json are left out; one measured 28 KB of
+        // instructions in every request.
+        var strictMcp = CurrentStrictMcpConfig && SupportsCliVersion(StrictMcpConfigVersion);
+        var mcpConfigs = new List<string>();
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
         {
-            args.Add("--mcp-config");
-            args.Add(CurrentMcpConfigPath);
-
-            // Use ONLY the supplied MCP config — ignore user-level ~/.claude.json MCP entries.
-            if (CurrentStrictMcpConfig && SupportsCliVersion(StrictMcpConfigVersion))
+            mcpConfigs.Add(CurrentMcpConfigPath);
+        }
+        if (strictMcp && !string.IsNullOrEmpty(workingDirectory))
+        {
+            var repositoryMcpConfig = Path.Combine(workingDirectory, ".mcp.json");
+            if (File.Exists(repositoryMcpConfig))
             {
-                args.Add("--strict-mcp-config");
+                mcpConfigs.Add(repositoryMcpConfig);
             }
+        }
+        if (mcpConfigs.Count > 0)
+        {
+            args.Add("--mcp-config");
+            args.AddRange(mcpConfigs);
+        }
+        if (strictMcp)
+        {
+            args.Add("--strict-mcp-config");
         }
 
         // Explicit settings sources for reproducible dispatch across worker hosts.

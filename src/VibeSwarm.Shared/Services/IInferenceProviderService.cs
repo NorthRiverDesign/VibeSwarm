@@ -15,6 +15,11 @@ public interface IInferenceProviderService
 	Task DeleteAsync(Guid id, CancellationToken ct = default);
 
 	/// <summary>
+	/// Saves the priority order, first to last. Providers left out keep their relative order after the listed ones.
+	/// </summary>
+	Task ReorderAsync(IReadOnlyList<Guid> orderedProviderIds, CancellationToken ct = default);
+
+	/// <summary>
 	/// Gets the stored models for a specific inference provider.
 	/// </summary>
 	Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default);

@@ -23,7 +23,8 @@ public class InferenceProviderService : IInferenceProviderService
 	public async Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default)
 		=> await _db.InferenceProviders
 			.Include(p => p.Models)
-			.OrderBy(p => p.Name)
+			.OrderBy(p => p.Priority)
+			.ThenBy(p => p.Name)
 			.ToListAsync(ct);
 
 	public async Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -35,7 +36,8 @@ public class InferenceProviderService : IInferenceProviderService
 		=> await _db.InferenceProviders
 			.Include(p => p.Models)
 			.Where(p => p.IsEnabled)
-			.OrderBy(p => p.Name)
+			.OrderBy(p => p.Priority)
+			.ThenBy(p => p.Name)
 			.ToListAsync(ct);
 
 	public async Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default)
@@ -43,6 +45,10 @@ public class InferenceProviderService : IInferenceProviderService
 		provider.Id = Guid.NewGuid();
 		provider.CreatedAt = DateTime.UtcNow;
 		provider.UpdatedAt = null;
+		// A new connection joins the end of the order, so adding one never changes the default.
+		provider.Priority = await _db.InferenceProviders.AnyAsync(ct)
+			? await _db.InferenceProviders.MaxAsync(p => p.Priority, ct) + 1
+			: 0;
 
 		_db.InferenceProviders.Add(provider);
 		await _db.SaveChangesAsync(ct);
@@ -72,6 +78,27 @@ public class InferenceProviderService : IInferenceProviderService
 			?? throw new KeyNotFoundException($"Inference provider {id} not found");
 
 		_db.InferenceProviders.Remove(provider);
+		await _db.SaveChangesAsync(ct);
+	}
+
+	public async Task ReorderAsync(IReadOnlyList<Guid> orderedProviderIds, CancellationToken ct = default)
+	{
+		var providers = await _db.InferenceProviders
+			.OrderBy(p => p.Priority)
+			.ThenBy(p => p.Name)
+			.ToListAsync(ct);
+		var requested = orderedProviderIds.Distinct().ToList();
+		var ordered = providers
+			.Where(p => requested.Contains(p.Id))
+			.OrderBy(p => requested.IndexOf(p.Id))
+			.Concat(providers.Where(p => !requested.Contains(p.Id)))
+			.ToList();
+
+		for (var index = 0; index < ordered.Count; index++)
+		{
+			ordered[index].Priority = index;
+		}
+
 		await _db.SaveChangesAsync(ct);
 	}
 
@@ -166,6 +193,8 @@ public class InferenceProviderService : IInferenceProviderService
 			.Include(m => m.InferenceProvider)
 			.Where(m => m.InferenceProvider != null && m.InferenceProvider.IsEnabled
 				&& m.TaskType == taskType && m.IsDefault && m.IsAvailable)
+			.OrderBy(m => m.InferenceProvider!.Priority)
+			.ThenBy(m => m.InferenceProvider!.Name)
 			.FirstOrDefaultAsync(ct);
 
 		if (model != null)
@@ -178,6 +207,8 @@ public class InferenceProviderService : IInferenceProviderService
 				.Include(m => m.InferenceProvider)
 				.Where(m => m.InferenceProvider != null && m.InferenceProvider.IsEnabled
 					&& m.TaskType == "default" && m.IsDefault && m.IsAvailable)
+				.OrderBy(m => m.InferenceProvider!.Priority)
+				.ThenBy(m => m.InferenceProvider!.Name)
 				.FirstOrDefaultAsync(ct);
 		}
 

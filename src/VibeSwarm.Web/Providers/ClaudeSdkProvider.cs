@@ -14,19 +14,30 @@ namespace VibeSwarm.Shared.Providers;
 public class ClaudeSdkProvider : SdkProviderBase
 {
 	private AnthropicClient? _client;
-	private const string DefaultModel = "claude-sonnet-4-6-20260201";
-	private const string ConnectionTestFallbackModel = "claude-sonnet-4-5-20250929";
+	private const string DefaultModel = "claude-opus-5-5";
+	private const string ConnectionTestFallbackModel = "claude-haiku-4-5";
+	private const int MaxTokensPerTurn = 16000;
+	private const int DefaultMaxTurns = 200;
 	private UsageLimits? _lastObservedUsageLimits;
 
 	private static readonly string[] AvailableModels =
 	[
-		"claude-opus-4-7-20260416",
-		"claude-sonnet-4-6-20260201",
-		"claude-opus-4-6-20260101",
-		"claude-sonnet-4-5-20250929",
-		"claude-opus-4-20250514",
-		"claude-haiku-4-5-20251001"
+		"claude-opus-5-5",
+		"claude-sonnet-5-5",
+		"claude-fable-5-1",
+		"claude-haiku-4-5"
 	];
+
+	/// <summary>
+	/// Tells the model how this harness works. The job's own rules arrive through the appended
+	/// system prompt, as they do for the CLI.
+	/// </summary>
+	private const string AgentSystemPrompt =
+		"You are a coding agent working in a git checkout. Use the bash tool to run commands and the " +
+		"str_replace_based_edit_tool to view and edit files. Each bash command runs in a fresh shell " +
+		"in the repository root, so chain commands that depend on each other (cd dir && make). " +
+		"Paths are relative to the repository root. Keep working until the task is done, then reply " +
+		"without calling a tool.";
 
 	public override ProviderType Type => ProviderType.Claude;
 
@@ -68,12 +79,19 @@ public class ClaudeSdkProvider : SdkProviderBase
 		// Map short aliases
 		return model.ToLowerInvariant() switch
 		{
-			"sonnet" => "claude-sonnet-4-6-20260201",
-			"opus" => "claude-opus-4-6-20260101",
-			"haiku" => "claude-haiku-4-5-20251001",
+			"sonnet" => "claude-sonnet-5-5",
+			"opus" => "claude-opus-5-5",
+			"haiku" => "claude-haiku-4-5",
+			"fable" => "claude-fable-5-1",
 			_ => model
 		};
 	}
+
+	/// <summary>
+	/// Haiku 4.5 predates adaptive thinking and the effort setting; every other current model takes both.
+	/// </summary>
+	private static bool SupportsAdaptiveThinking(string model) =>
+		!model.StartsWith("claude-haiku-4", StringComparison.OrdinalIgnoreCase);
 
 	public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
 	{
@@ -154,14 +172,20 @@ public class ClaudeSdkProvider : SdkProviderBase
 
 		var message = await client.Messages.Create(new MessageCreateParams
 		{
-			MaxTokens = 8192,
+			MaxTokens = MaxTokensPerTurn,
 			Messages = [new MessageParam { Role = Role.User, Content = prompt }],
 			Model = model
 		}, cancellationToken);
 
+		EnsureCompleted(message);
 		return ExtractTextContent(message);
 	}
 
+	/// <summary>
+	/// Runs the job as an agent: the model works through the bash and text editor tools in the
+	/// checkout until it replies without calling one. A run that stops for any other reason
+	/// (output limit, refusal, too many turns) is a failure, never a success.
+	/// </summary>
 	public override async Task<ExecutionResult> ExecuteWithSessionAsync(
 		string prompt,
 		string? sessionId = null,
@@ -171,112 +195,152 @@ public class ClaudeSdkProvider : SdkProviderBase
 	{
 		var client = EnsureClient();
 		var model = ResolveModel(CurrentModel);
-		var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
-
-		var messages = new List<MessageParam>
+		var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
+		var result = new ExecutionResult
 		{
-			new() { Role = Role.User, Content = prompt }
+			Messages = new List<ExecutionMessage>(),
+			SessionId = sessionId ?? Guid.NewGuid().ToString(),
+			CommandUsed = $"Claude SDK ({model})",
+			ModelUsed = model
 		};
 
-		var createParams = new MessageCreateParams
+		var disallowed = CurrentDisallowedTools ?? [];
+		var allowShell = !disallowed.Contains("Bash", StringComparer.Ordinal);
+		var tools = new ClaudeSdkToolExecutor(effectiveWorkingDir, CurrentEnvironmentVariables)
 		{
-			MaxTokens = 8192,
-			Messages = messages,
-			Model = model
+			AllowEdits = !disallowed.Any(tool => tool is "Edit" or "Write" or "MultiEdit")
 		};
+
+		List<ToolUnion> toolDefinitions = [new ToolUnion(new ToolTextEditor20250728())];
+		if (allowShell)
+		{
+			toolDefinitions.Insert(0, new ToolUnion(new ToolBash20250124()));
+		}
+
+		var systemPrompt = string.IsNullOrWhiteSpace(CurrentSystemPrompt) ? AgentSystemPrompt : CurrentSystemPrompt;
+		if (!string.IsNullOrWhiteSpace(CurrentAppendSystemPrompt))
+		{
+			systemPrompt += "\n\n" + CurrentAppendSystemPrompt;
+		}
+
+		var messages = new List<MessageParam> { new() { Role = Role.User, Content = prompt } };
+		var finalText = new System.Text.StringBuilder();
+		long inputTokens = 0;
+		long outputTokens = 0;
+		var maxTurns = CurrentMaxTurns ?? DefaultMaxTurns;
 
 		try
 		{
-			progress?.Report(new ExecutionProgress
-			{
-				CurrentMessage = "Connecting to Claude SDK...",
-				IsStreaming = false
-			});
+			progress?.Report(new ExecutionProgress { CurrentMessage = "Starting Claude SDK agent...", SessionId = result.SessionId });
 
-			var contentBuilder = new System.Text.StringBuilder();
-			long inputTokens = 0;
-			long outputTokens = 0;
-			string? modelUsed = null;
-			string? messageId = null;
-
-			await foreach (var evt in client.Messages.CreateStreaming(createParams).WithCancellation(cancellationToken))
+			for (var turn = 1; ; turn++)
 			{
-				if (evt.TryPickStart(out var startEvent))
+				cancellationToken.ThrowIfCancellationRequested();
+				if (turn > maxTurns)
 				{
-					messageId = startEvent.Message.ID;
-					modelUsed = startEvent.Message.Model.ToString();
-					if (startEvent.Message.Usage != null)
-					{
-						inputTokens = startEvent.Message.Usage.InputTokens;
-					}
-
-					progress?.Report(new ExecutionProgress
-					{
-						CurrentMessage = "Processing...",
-						IsStreaming = true,
-						SessionId = messageId
-					});
+					result.Success = false;
+					result.ErrorMessage = $"The agent did not finish within {maxTurns} turns.";
+					break;
 				}
-				else if (evt.TryPickContentBlockDelta(out var deltaEvent))
+
+				var request = new MessageCreateParams
 				{
-					if (deltaEvent.Delta.TryPickThinking(out var thinkingDelta))
+					Model = model,
+					MaxTokens = MaxTokensPerTurn,
+					System = systemPrompt,
+					Messages = messages,
+					Tools = toolDefinitions,
+					// Every turn resends the conversation; caching it keeps a long job affordable.
+					CacheControl = new CacheControlEphemeral()
+				};
+				if (SupportsAdaptiveThinking(model))
+				{
+					request = request with { Thinking = new ThinkingConfigAdaptive() };
+					if (ParseEffort(CurrentReasoningEffort) is { } effort)
 					{
-						var thinkingText = thinkingDelta.Thinking;
-						if (!string.IsNullOrEmpty(thinkingText))
-						{
-							progress?.Report(new ExecutionProgress
-							{
-								OutputLine = thinkingText,
-								IsStreaming = true,
-								IsThinkingContent = true,
-								ContentCategory = "thinking"
-							});
-						}
+						request = request with { OutputConfig = new OutputConfig { Effort = effort } };
+					}
+				}
+
+				var response = await client.Messages.Create(request, cancellationToken);
+				inputTokens += response.Usage.InputTokens
+					+ (response.Usage.CacheReadInputTokens ?? 0)
+					+ (response.Usage.CacheCreationInputTokens ?? 0);
+				outputTokens += response.Usage.OutputTokens;
+
+				var assistantContent = new List<ContentBlockParam>();
+				var toolResults = new List<ContentBlockParam>();
+				var turnText = new System.Text.StringBuilder();
+				foreach (var block in response.Content)
+				{
+					if (block.TryPickText(out var text))
+					{
+						assistantContent.Add(new TextBlockParam { Text = text.Text });
+						turnText.Append(text.Text);
+					}
+					else if (block.TryPickThinking(out var thinking))
+					{
+						assistantContent.Add(new ThinkingBlockParam { Thinking = thinking.Thinking, Signature = thinking.Signature });
+					}
+					else if (block.TryPickRedactedThinking(out var redacted))
+					{
+						assistantContent.Add(new RedactedThinkingBlockParam { Data = redacted.Data });
+					}
+					else if (block.TryPickToolUse(out var toolUse))
+					{
+						assistantContent.Add(new ToolUseBlockParam { ID = toolUse.ID, Name = toolUse.Name, Input = toolUse.Input });
+					}
+				}
+
+				if (turnText.Length > 0)
+				{
+					result.Messages.Add(new ExecutionMessage { Role = "assistant", Content = turnText.ToString(), Timestamp = DateTime.UtcNow });
+					progress?.Report(new ExecutionProgress { OutputLine = turnText.ToString(), ContentCategory = "text" });
+				}
+
+				var stopReason = StopReasonOf(response);
+				if (stopReason != "tool_use")
+				{
+					finalText.Append(turnText);
+					if (stopReason is "end_turn" or "stop_sequence")
+					{
+						result.Success = true;
 					}
 					else
 					{
-						var deltaText = deltaEvent.Delta.ToString();
-						if (!string.IsNullOrEmpty(deltaText))
-						{
-							contentBuilder.Append(deltaText);
-
-							progress?.Report(new ExecutionProgress
-							{
-								OutputLine = deltaText,
-								IsStreaming = true,
-								ContentCategory = "text"
-							});
-						}
+						result.Success = false;
+						result.ErrorMessage = DescribeStop(response);
 					}
+					break;
 				}
-				else if (evt.TryPickDelta(out var messageDelta))
+
+				foreach (var block in response.Content)
 				{
-					if (messageDelta.Usage != null)
+					if (!block.TryPickToolUse(out var toolUse))
 					{
-						outputTokens = messageDelta.Usage.OutputTokens;
+						continue;
 					}
+
+					var input = System.Text.Json.JsonSerializer.SerializeToElement(toolUse.Input);
+					progress?.Report(new ExecutionProgress { CurrentMessage = $"Running {toolUse.Name}", ToolName = toolUse.Name });
+					var (output, isError) = await tools.RunAsync(toolUse.Name, input, cancellationToken);
+					toolResults.Add(new ToolResultBlockParam { ToolUseID = toolUse.ID, Content = output, IsError = isError });
+					result.Messages.Add(new ExecutionMessage
+					{
+						Role = "tool",
+						Content = output,
+						ToolName = toolUse.Name,
+						ToolInput = input.GetRawText(),
+						ToolOutput = output,
+						Timestamp = DateTime.UtcNow
+					});
 				}
+
+				messages.Add(new MessageParam { Role = Role.Assistant, Content = assistantContent });
+				messages.Add(new MessageParam { Role = Role.User, Content = toolResults });
 			}
 
-			var content = contentBuilder.ToString();
-
-			result.Success = true;
-			result.SessionId = messageId ?? sessionId;
-			result.Output = content;
-			result.ModelUsed = modelUsed;
-			result.InputTokens = (int)inputTokens;
-			result.OutputTokens = (int)outputTokens;
-			result.CommandUsed = $"Claude SDK ({model})";
-
-			if (!string.IsNullOrEmpty(content))
-			{
-				result.Messages.Add(new ExecutionMessage
-				{
-					Role = "assistant",
-					Content = content,
-					Timestamp = DateTime.UtcNow
-				});
-			}
+			result.Output = finalText.ToString();
 		}
 		catch (AnthropicRateLimitException ex)
 		{
@@ -306,7 +370,45 @@ public class ClaudeSdkProvider : SdkProviderBase
 			result.ErrorMessage = $"Unexpected error: {ex.Message}";
 		}
 
+		result.InputTokens = (int)Math.Min(int.MaxValue, inputTokens);
+		result.OutputTokens = (int)Math.Min(int.MaxValue, outputTokens);
 		return result;
+	}
+
+	/// <summary>The wire value, such as end_turn or tool_use.</summary>
+	internal static string? StopReasonOf(Message message) => message.StopReason?.Raw();
+
+	private static Effort? ParseEffort(string? effort) => effort?.Trim().ToLowerInvariant() switch
+	{
+		"low" => Effort.Low,
+		"medium" or "standard" => Effort.Medium,
+		"high" => Effort.High,
+		"xhigh" => Effort.Xhigh,
+		"max" => Effort.Max,
+		_ => null
+	};
+
+	private static string DescribeStop(Message response)
+	{
+		var stopReason = StopReasonOf(response);
+		return stopReason switch
+		{
+			"max_tokens" => "The model hit its output limit before finishing.",
+			"refusal" => $"The model declined the request{(response.StopDetails is { } details ? $" ({details.Category}): {details.Explanation}" : ".")}",
+			_ => $"The model stopped unexpectedly ({stopReason ?? "no reason given"})."
+		};
+	}
+
+	/// <summary>
+	/// A reply cut off by the output limit, or refused, is not an answer.
+	/// </summary>
+	private static void EnsureCompleted(Message message)
+	{
+		var stopReason = StopReasonOf(message);
+		if (stopReason is not ("end_turn" or "stop_sequence"))
+		{
+			throw new InvalidOperationException(DescribeStop(message));
+		}
 	}
 
 	public override async Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default)
@@ -321,17 +423,16 @@ public class ClaudeSdkProvider : SdkProviderBase
 			},
 			Pricing = new PricingInfo
 			{
-				InputTokenPricePerMillion = 3.00m,
-				OutputTokenPricePerMillion = 15.00m,
+				// Claude Sonnet 5.5 rates; the other models are multiples of them.
+				InputTokenPricePerMillion = 2.00m,
+				OutputTokenPricePerMillion = 10.00m,
 				Currency = "USD",
 				ModelMultipliers = new Dictionary<string, decimal>
 				{
-					["claude-opus-4-7-20260416"] = 5.0m,
-					["claude-sonnet-4-6-20260201"] = 1.0m,
-					["claude-opus-4-6-20260101"] = 5.0m,
-					["claude-sonnet-4-5-20250929"] = 1.0m,
-					["claude-opus-4-20250514"] = 5.0m,
-					["claude-haiku-4-5-20251001"] = 0.27m
+					["claude-opus-5-5"] = 2.0m,
+					["claude-sonnet-5-5"] = 1.0m,
+					["claude-fable-5-1"] = 5.0m,
+					["claude-haiku-4-5"] = 0.5m
 				}
 			},
 			ModelRetirementDates = new Dictionary<string, DateTime>
@@ -463,9 +564,7 @@ public class ClaudeSdkProvider : SdkProviderBase
 		{
 			ConnectionTestFallbackModel,
 			DefaultModel,
-			"claude-haiku-4-5-20251001",
-			"claude-opus-4-20250514",
-			"claude-opus-4-6-20260101"
+			"claude-sonnet-5-5"
 		};
 
 		return models.Distinct(StringComparer.OrdinalIgnoreCase);

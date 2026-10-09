@@ -228,6 +228,7 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
 
 		if (Job != null && Enum.TryParse<JobStatus>(status, out var newStatus))
 		{
+			ClearLiveOutputForNewRun(Job.Status, newStatus);
 			Job.Status = newStatus;
             if (newStatus == JobStatus.Started)
             {

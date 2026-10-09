@@ -1,4 +1,6 @@
 @using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.VersionControl
+@using VibeSwarm.Shared.VersionControl.Models
 
 @if (ChangeSets.Count > 0)
 {
@@ -49,6 +51,12 @@
 										<i class="bi bi-files me-1 opacity-75"></i>@cs.ChangedFilesCount @(cs.ChangedFilesCount == 1 ? "file" : "files") changed
 									</span>
 								}
+								@if (!string.IsNullOrWhiteSpace(cs.WorkSnapshotCommit))
+								{
+									<span class="badge bg-body-tertiary text-body" title="Saved so later runs of this job build on it">
+										<i class="bi bi-shield-check me-1 opacity-75"></i>Work saved
+									</span>
+								}
 								@if (cs.BuildVerified == true)
 								{
 									<span class="badge bg-success-subtle text-success">
@@ -80,6 +88,28 @@
 								}
 							</div>
 
+							@{ var files = GetFiles(cs); }
+							@if (files.Count > 0)
+							{
+								<div class="border rounded p-3 d-flex flex-column gap-2 min-width-0">
+									<div class="small fw-semibold text-body-secondary text-uppercase">Changed files</div>
+									<ul class="list-unstyled mb-0 d-flex flex-column gap-1 small">
+										@foreach (var file in files.Take(MaxListedFiles))
+										{
+											<li class="d-flex align-items-center gap-2 min-width-0">
+												<span class="font-monospace text-truncate flex-grow-1 min-width-0" title="@file.FileName">@file.FileName</span>
+												<span class="text-success flex-shrink-0">+@file.Additions</span>
+												<span class="text-danger flex-shrink-0">&minus;@file.Deletions</span>
+											</li>
+										}
+									</ul>
+									@if (files.Count > MaxListedFiles)
+									{
+										<div class="small text-body-secondary">and @(files.Count - MaxListedFiles) more</div>
+									}
+								</div>
+							}
+
 							@if (!string.IsNullOrWhiteSpace(cs.SessionSummary))
 							{
 								<div class="border rounded p-3 d-flex flex-column gap-2 min-width-0">
@@ -98,6 +128,36 @@
 @code {
 	[Parameter, EditorRequired]
 	public IReadOnlyList<JobChangeSet> ChangeSets { get; set; } = [];
+
+	private const int MaxListedFiles = 10;
+	private readonly Dictionary<Guid, List<DiffFile>> _filesByChangeSet = new();
+
+	protected override void OnParametersSet()
+	{
+		_filesByChangeSet.Clear();
+	}
+
+	// A diff can hold the same file twice (committed, then uncommitted changes), so merge by name.
+	private List<DiffFile> GetFiles(JobChangeSet cs)
+	{
+		if (!_filesByChangeSet.TryGetValue(cs.Id, out var files))
+		{
+			files = string.IsNullOrWhiteSpace(cs.GitDiff)
+				? []
+				: GitDiffParser.ParseDiff(cs.GitDiff)
+					.GroupBy(file => file.FileName, StringComparer.Ordinal)
+					.Select(group => new DiffFile
+					{
+						FileName = group.Key,
+						Additions = group.Sum(file => file.Additions),
+						Deletions = group.Sum(file => file.Deletions)
+					})
+					.ToList();
+			_filesByChangeSet[cs.Id] = files;
+		}
+
+		return files;
+	}
 
 	private static string GetLabel(JobChangeSet cs)
 		=> cs.FollowUpIndex == 0 ? "Initial Run" : $"Follow-up #{cs.FollowUpIndex}";

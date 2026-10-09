@@ -67,6 +67,7 @@ internal abstract class FakeInferenceProviderServiceBase : IInferenceProviderSer
 	public virtual Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
 	public virtual Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
 	public virtual Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
+	public virtual Task ReorderAsync(IReadOnlyList<Guid> orderedProviderIds, CancellationToken ct = default) => throw new NotSupportedException();
 	public virtual Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default) => throw new NotSupportedException();
 	public virtual Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => throw new NotSupportedException();
 	public virtual Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
@@ -106,6 +107,7 @@ internal abstract class FakeVersionControlServiceBase : IVersionControlService
 	public virtual Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync(string workingDirectory, bool includeRemote = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GitOperationResult> HardCheckoutBranchAsync( string workingDirectory, string branchName, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<GitOperationResult> SwitchBranchAsync(string workingDirectory, string reference, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GitOperationResult> SyncWithOriginAsync( string workingDirectory, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GitOperationResult> CloneRepositoryAsync( string repositoryUrl, string targetDirectory, string? branch = null, Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual string GetGitHubCloneUrl(string ownerAndRepo, bool useSsh = true) => throw new NotSupportedException();

@@ -131,14 +131,9 @@ else
 <div class="mb-3">
 <label for="timeZoneId" class="form-label">Timezone</label>
 <select id="timeZoneId" class="form-select" @bind="_settings.TimeZoneId">
-	@foreach (var group in GetGroupedTimeZones())
+	@foreach (var option in _timeZoneOptions)
 	{
-		<optgroup label="@group.Key">
-			@foreach (var timeZone in group)
-			{
-				<option value="@timeZone.Id">@DateTimeHelper.GetTimeZoneOptionLabel(timeZone)</option>
-			}
-		</optgroup>
+		<option value="@option.Zone.Id">@option.Label</option>
 	}
 </select>
 <div class="form-text">
@@ -378,7 +373,7 @@ else
 	private bool _directoryExists;
 	private DirectoryBrowser? _directoryBrowser;
 	private ScanProjectsModal? _scanProjectsModal;
-	private IReadOnlyList<TimeZoneInfo> _timeZones = [];
+	private IReadOnlyList<TimeZoneOption> _timeZoneOptions = [];
 	private bool _isLoadingCriticalErrorLogs;
 	private bool _isPruningCriticalErrorLogs;
 	private List<CriticalErrorLogEntry> _criticalErrorLogs = [];
@@ -391,17 +386,9 @@ else
 	private string _placeholder => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
 	private string _examplePath => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
 
-	private IOrderedEnumerable<IGrouping<string, TimeZoneInfo>> GetGroupedTimeZones()
-	{
-		return _timeZones
-			.GroupBy(tz => tz.Id.Contains('/') ? tz.Id.Split('/')[0] : "Other")
-			.OrderBy(g => g.Key == "Other" ? 1 : 0)
-			.ThenBy(g => g.Key, StringComparer.Ordinal);
-	}
-
 	protected override async Task OnInitializedAsync()
 	{
-		_timeZones = AppTimeZoneService.GetAvailableTimeZones();
+		_timeZoneOptions = AppTimeZoneService.GetTimeZoneOptions();
 		await AppTimeZoneService.EnsureInitializedAsync();
 		await LoadSettings();
 	}
@@ -414,6 +401,7 @@ else
 		{
 			_settings = await SettingsService.GetSettingsAsync();
 			_settings.TimeZoneId = DateTimeHelper.ResolveTimeZone(_settings.TimeZoneId).Id;
+			_timeZoneOptions = AppTimeZoneService.GetTimeZoneOptions(_settings.TimeZoneId);
 			AppTimeZoneService.ApplyTimeZone(_settings.TimeZoneId);
 			_developerModeStatus = await DeveloperModeService.GetStatusAsync();
 			await CheckDirectoryExists();

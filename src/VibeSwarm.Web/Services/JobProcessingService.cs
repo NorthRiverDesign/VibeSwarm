@@ -17,9 +17,23 @@ namespace VibeSwarm.Web.Services;
 
 public partial class JobProcessingService : BackgroundService
 {
-    private sealed class GitCheckpointRequiredException : InvalidOperationException
+    /// <summary>
+    /// The checkout can't be put in a safe state for the job, so it fails before the agent starts.
+    /// </summary>
+    private sealed class GitPreparationException : InvalidOperationException
     {
-        public GitCheckpointRequiredException(string message)
+        public GitPreparationException(string message)
+            : base(message)
+        {
+        }
+    }
+
+    /// <summary>
+    /// The project's remote can't be reached, so the job waits instead of running on stale code.
+    /// </summary>
+    private sealed class GitRemoteUnavailableException : InvalidOperationException
+    {
+        public GitRemoteUnavailableException(string message)
             : base(message)
         {
         }
@@ -33,6 +47,7 @@ public partial class JobProcessingService : BackgroundService
     private readonly IVersionControlService _versionControlService;
     private readonly IInteractionResponseService? _interactionResponseService;
     private readonly IProjectEnvironmentCredentialService _projectEnvironmentCredentialService;
+    private readonly JobWorkSnapshotService? _workSnapshots;
     private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(3); // Poll less frequently, SignalR handles real-time updates
     private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
@@ -54,6 +69,16 @@ public partial class JobProcessingService : BackgroundService
     /// </summary>
     public static string GetWorkerInstanceId() => _workerInstanceId;
 
+    /// <summary>
+    /// Replaces the job's own time limit; for tests.
+    /// </summary>
+    internal TimeSpan? TimeLimitOverride { get; init; }
+
+    /// <summary>
+    /// Replaces the real provider CLIs and SDKs; for tests.
+    /// </summary>
+    internal Func<Provider, IProvider>? ProviderFactoryOverride { get; init; }
+
     public JobProcessingService(
         IServiceScopeFactory scopeFactory,
         ILogger<JobProcessingService> logger,
@@ -62,7 +87,8 @@ public partial class JobProcessingService : BackgroundService
         IJobCoordinatorService? jobCoordinator = null,
         IProviderHealthTracker? healthTracker = null,
         IInteractionResponseService? interactionResponseService = null,
-        IProjectEnvironmentCredentialService? projectEnvironmentCredentialService = null)
+        IProjectEnvironmentCredentialService? projectEnvironmentCredentialService = null,
+        JobWorkSnapshotService? workSnapshots = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -72,6 +98,7 @@ public partial class JobProcessingService : BackgroundService
         _healthTracker = healthTracker;
         _interactionResponseService = interactionResponseService;
         _projectEnvironmentCredentialService = projectEnvironmentCredentialService ?? throw new ArgumentNullException(nameof(projectEnvironmentCredentialService));
+        _workSnapshots = workSnapshots;
     }
 
     /// <summary>
@@ -131,6 +158,27 @@ public partial class JobProcessingService : BackgroundService
         /// Git commit hash at the start of job execution
         /// </summary>
         public string? GitCommitBefore { get; set; }
+
+        /// <summary>
+        /// How a follow-up re-applied its job's earlier work, or null when it had none to restore.
+        /// </summary>
+        public JobWorkRestoreResult? PriorWorkRestore { get; set; }
+
+        /// <summary>
+        /// Linked worktrees that existed before the agent started, so the ones it adds can be found.
+        /// </summary>
+        public IReadOnlyList<string> WorktreesBefore { get; set; } = [];
+
+        /// <summary>
+        /// The run's time limit; cancels the run when reached.
+        /// </summary>
+        public JobTimeLimit? TimeLimit { get; set; }
+
+        /// <summary>
+        /// Something about how the work was delivered that the job should show, such as work kept
+        /// on a branch instead of in the checkout.
+        /// </summary>
+        public string? DeliveryNotice { get; set; }
 
         /// <summary>
         /// Tracks recent output lines for interaction detection context
@@ -281,6 +329,11 @@ public partial class JobProcessingService : BackgroundService
     /// <summary>
     /// Recovers jobs that were left in Started/Processing state by this worker in a previous run.
     /// </summary>
+    /// <summary>
+    /// How long a running job can go without a heartbeat before its worker counts as gone.
+    /// </summary>
+    internal static readonly TimeSpan OrphanedHeartbeatAge = TimeSpan.FromMinutes(2);
+
     private async Task RecoverOrphanedJobsAsync(CancellationToken cancellationToken)
     {
         try
@@ -310,53 +363,29 @@ public partial class JobProcessingService : BackgroundService
                 _logger.LogInformation("Fixed {Count} jobs with completed timestamp but non-terminal status", completedWrongStatus.Count);
             }
 
-            // Find jobs that were being processed by any worker but appear orphaned
-            // (Started/Planning/Processing with old heartbeats, excluding already-completed jobs)
-            var cutoffTime = DateTime.UtcNow - TimeSpan.FromMinutes(10);
+            // Jobs a previous run of the service was working on when it died (a crash or power
+            // loss). Heartbeats come every 30 seconds while a job runs, so two minutes without one
+            // means its worker is gone. They are paused for the user to resume, not restarted.
+            var cutoffTime = DateTime.UtcNow - OrphanedHeartbeatAge;
             var orphanedJobs = await dbContext.Jobs
                 .Include(j => j.Project)
                 .Where(j => (j.Status == JobStatus.Pending || j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing))
                 .Where(j => !j.CompletedAt.HasValue)
+                .Where(j => j.WorkerInstanceId != _workerInstanceId)
                 .Where(j => !j.LastHeartbeatAt.HasValue || j.LastHeartbeatAt.Value < cutoffTime)
                 .ToListAsync(cancellationToken);
 
             foreach (var job in orphanedJobs)
             {
-                _logger.LogWarning("Found orphaned job {JobId} from worker {WorkerId}, resetting for retry",
+                _logger.LogWarning("Found job {JobId} interrupted on worker {WorkerId}; pausing it to be resumed",
                     job.Id, job.WorkerInstanceId ?? "unknown");
-
-                if (await TryPreserveChangesForRecoveryAsync(
-                    job,
-                    "Worker crashed or became unresponsive before job changes were finalized.",
-                    cancellationToken))
-                {
-                    continue;
-                }
-
-                if (job.MaxRetries == 0 || job.RetryCount < job.MaxRetries)
-                {
-                    JobRecoveryHelper.CaptureRecoveryState(
-                        job,
-                        job.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
-                        job.RecoveryPrompt ?? job.GoalPrompt,
-                        job.SessionId,
-                        job.ConsoleOutput);
-                    JobStateMachine.TryTransition(job, JobStatus.New, "Automatic orphan recovery");
-                    job.RetryCount++;
-                    job.ErrorMessage = "Worker crashed or became unresponsive. Automatic recovery.";
-                }
-                else
-                {
-                    JobRecoveryHelper.ClearRecoveryState(job);
-                    JobStateMachine.TryTransition(job, JobStatus.Failed, "Automatic orphan recovery exhausted retries");
-                    job.ErrorMessage = $"Job failed after {job.RetryCount} retry attempts (worker crash).";
-                }
+                await PauseInterruptedJobAsync(job, job.Project?.WorkingPath, dbContext, InterruptedUnexpectedly, null, null, cancellationToken);
             }
 
             if (orphanedJobs.Any())
             {
                 await dbContext.SaveChangesAsync(cancellationToken);
-                _logger.LogInformation("Recovered {Count} orphaned jobs", orphanedJobs.Count);
+                _logger.LogInformation("Paused {Count} interrupted jobs", orphanedJobs.Count);
             }
         }
         catch (Exception ex)

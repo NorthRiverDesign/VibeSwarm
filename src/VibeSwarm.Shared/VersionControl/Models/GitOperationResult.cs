@@ -28,6 +28,16 @@ public sealed class GitOperationResult
 	public int? ChangedFilesCount { get; init; }
 
 	/// <summary>
+	/// Local commits that were not on the remote yet and were replayed on top of it by a sync.
+	/// </summary>
+	public int? KeptLocalCommits { get; init; }
+
+	/// <summary>
+	/// Branch that holds local commits a sync could not replay on top of the remote.
+	/// </summary>
+	public string? RecoveryBranch { get; init; }
+
+	/// <summary>
 	/// Merge conflict files captured during merge preview or resolution.
 	/// </summary>
 	public IReadOnlyList<MergeConflictFile> MergeConflictFiles { get; init; } = [];
@@ -42,7 +52,9 @@ public sealed class GitOperationResult
 		int? pullRequestNumber = null,
 		string? savedReference = null,
 		int? changedFilesCount = null,
-		IReadOnlyList<MergeConflictFile>? mergeConflictFiles = null)
+		IReadOnlyList<MergeConflictFile>? mergeConflictFiles = null,
+		int? keptLocalCommits = null,
+		string? recoveryBranch = null)
 	{
 		return new GitOperationResult
 		{
@@ -56,7 +68,9 @@ public sealed class GitOperationResult
 			PullRequestNumber = pullRequestNumber,
 			SavedReference = savedReference,
 			ChangedFilesCount = changedFilesCount,
-			MergeConflictFiles = mergeConflictFiles ?? []
+			MergeConflictFiles = mergeConflictFiles ?? [],
+			KeptLocalCommits = keptLocalCommits,
+			RecoveryBranch = recoveryBranch
 		};
 	}
 

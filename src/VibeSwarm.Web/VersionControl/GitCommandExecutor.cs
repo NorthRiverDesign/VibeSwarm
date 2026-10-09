@@ -43,6 +43,9 @@ public sealed class GitCommandExecutor : IGitCommandExecutor
 			StandardErrorEncoding = Encoding.UTF8
 		};
 
+		// Nobody can answer a credential prompt; fail fast instead of waiting out the timeout.
+		startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
+
 		using var process = new Process { StartInfo = startInfo };
 		var outputBuilder = new StringBuilder();
 		var errorBuilder = new StringBuilder();

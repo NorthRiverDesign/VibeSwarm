@@ -23,6 +23,7 @@ public class JobCompletionMonitorService : BackgroundService
 	private readonly ProcessSupervisor _processSupervisor;
 	private readonly JobProcessingService _jobProcessingService;
 	private readonly IVersionControlService _versionControlService;
+	private readonly string _workerInstanceId = JobProcessingService.GetWorkerInstanceId();
 	private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(15);
 
 	public JobCompletionMonitorService(
@@ -124,6 +125,13 @@ public class JobCompletionMonitorService : BackgroundService
 				}
 
 				var criteria = job.GetCompletionCriteria();
+				if (job.WorkerInstanceId == _workerInstanceId)
+				{
+					// This process is running the job and enforces its time limit itself: it can stop
+					// the agent and keep its work. Marking it failed here would leave the agent running.
+					criteria.MaxExecutionTime = null;
+				}
+
 				var evaluation = JobStateMachine.EvaluateCompletion(job, criteria);
 
 				if (evaluation.IsComplete)

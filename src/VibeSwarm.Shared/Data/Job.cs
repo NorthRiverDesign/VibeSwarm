@@ -511,6 +511,15 @@ public class Job
     public string? GitCommitHash { get; set; }
 
     /// <summary>
+    /// Commit holding the job's accumulated work when its latest run ended (uncommitted and
+    /// unpushed changes included), kept under <c>refs/vibeswarm/jobs/</c>. A follow-up copies it
+    /// into its <see cref="JobChangeSet"/> and re-applies it before the agent starts, so work
+    /// that never reached the remote is not lost to the pre-run reset.
+    /// </summary>
+    [StringLength(100)]
+    public string? WorkSnapshotCommit { get; set; }
+
+    /// <summary>
     /// State machine for preserved local git changes captured before destructive branch operations.
     /// </summary>
     public GitCheckpointStatus GitCheckpointStatus { get; set; } = GitCheckpointStatus.None;
@@ -681,7 +690,8 @@ public class Job
     /// </summary>
     public Services.JobCompletionCriteria GetCompletionCriteria()
     {
-        // Priority: Job-level setting > Provider-level setting > Default (1 hour)
+        // Priority: Job-level setting > Provider-level setting > Default. Jobs build whole
+        // features and often run for hours, so the default only stops a run that has lost its way.
         TimeSpan maxExecutionTime;
         if (MaxExecutionMinutes.HasValue)
         {
@@ -693,7 +703,7 @@ public class Job
         }
         else
         {
-            maxExecutionTime = TimeSpan.FromHours(1);
+            maxExecutionTime = Services.JobCompletionCriteria.DefaultMaxExecutionTime;
         }
 
         return new Services.JobCompletionCriteria

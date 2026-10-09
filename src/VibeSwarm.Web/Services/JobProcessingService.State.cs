@@ -93,6 +93,13 @@ public partial class JobProcessingService
             job.ConsoleOutput = consoleOutput;
         }
 
+        // The next start resets the checkout; the resumed run gets this work back from the snapshot.
+        if (!string.IsNullOrEmpty(workingDirectory))
+        {
+            job.WorkSnapshotCommit = await SaveRunWorkSnapshotAsync(job, workingDirectory, executionContext.GitCommitBefore, cancellationToken)
+                ?? job.WorkSnapshotCommit;
+        }
+
         var resumeFromStatus = job.Status == JobStatus.Planning
             ? JobStatus.Planning
             : JobStatus.Processing;
@@ -144,7 +151,8 @@ public partial class JobProcessingService
         DateTime backoffUntil,
         JobExecutionContext executionContext,
         VibeSwarmDbContext dbContext,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? waitReason = null)
     {
         var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
         if (job == null)
@@ -160,7 +168,7 @@ public partial class JobProcessingService
             executionContext.GetConsoleOutput());
 
         var transition = JobStateMachine.TryTransition(job, JobStatus.New,
-            $"Provider cooldown active for {providerName} until {backoffUntil:u}.");
+            waitReason ?? $"Provider cooldown active for {providerName} until {backoffUntil:u}.");
         if (!transition.Success)
         {
             _logger.LogWarning("Failed to re-queue cooling-down job {JobId}: {Error}", jobId, transition.ErrorMessage);
@@ -168,7 +176,7 @@ public partial class JobProcessingService
         }
 
         job.NotBeforeUtc = backoffUntil;
-        job.ErrorMessage = $"Provider cooldown active for {providerName}. Backing off until {backoffUntil:u}.";
+        job.ErrorMessage = waitReason ?? $"Provider cooldown active for {providerName}. Backing off until {backoffUntil:u}.";
         job.LastActivityAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -289,8 +297,10 @@ public partial class JobProcessingService
                         .FirstOrDefaultAsync(cancellationToken)
                         ?? true;
 
-                    // Run build/test verification before committing if enabled
-                    var buildPassed = await VerifyBuildAsync(job, workingDirectory, cancellationToken);
+                    // Never deliver a restore conflict the agent left unresolved, then run
+                    // build/test verification before committing if enabled
+                    var buildPassed = await VerifyRestoreConflictsResolvedAsync(job, workingDirectory, executionContext.PriorWorkRestore, cancellationToken)
+                        && await VerifyBuildAsync(job, workingDirectory, cancellationToken);
                     if (buildPassed)
                     {
                         await PerformAutoCommitAsync(job, workingDirectory, enableCommitAttribution, cancellationToken);
@@ -304,6 +314,8 @@ public partial class JobProcessingService
                             job.Id, workingDirectory);
                     }
                 }
+
+                job.WorkSnapshotCommit = await SaveRunWorkSnapshotAsync(job, workingDirectory, executionContext.GitCommitBefore, cancellationToken);
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);

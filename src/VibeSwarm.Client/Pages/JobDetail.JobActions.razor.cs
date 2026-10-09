@@ -11,6 +11,7 @@ public partial class JobDetail : ComponentBase
     private bool IsCancelling { get; set; }
     private bool IsForceCancelling { get; set; }
     private bool IsRetrying { get; set; }
+    private bool IsResuming { get; set; }
     private bool IsForceResetting { get; set; }
 
     // Retry modal state
@@ -89,7 +90,13 @@ public partial class JobDetail : ComponentBase
 	{
         try
         {
+            var previousStatus = Job?.Status;
             Job = await JobService.GetByIdWithMessagesAsync(JobId);
+            if (previousStatus.HasValue && Job != null)
+            {
+                ClearLiveOutputForNewRun(previousStatus.Value, Job.Status);
+            }
+
             _linkedIdea = Job == null ? null : await IdeaService.GetByJobIdAsync(Job.Id);
 
             if (Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary))
@@ -271,6 +278,34 @@ public partial class JobDetail : ComponentBase
         }
     }
 
+    private async Task ResumeInterruptedJob()
+    {
+        if (Job == null) return;
+
+        IsResuming = true;
+
+        try
+        {
+            if (await JobService.ResumeJobAsync(Job.Id))
+            {
+                NotificationService.ShowProjectSuccess(Job.Project?.Name, "The job will continue where it left off.");
+                await LoadJob();
+            }
+            else
+            {
+                NotificationService.ShowProjectError(Job.Project?.Name, "Could not resume the job.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowProjectError(Job.Project?.Name, $"Error resuming job: {ex.Message}");
+        }
+        finally
+        {
+            IsResuming = false;
+        }
+    }
+
     private async Task ForceResetJob()
     {
         if (Job == null) return;
@@ -333,6 +368,7 @@ public partial class JobDetail : ComponentBase
                 return;
             }
 
+            ClearLiveOutputForNewRun(Job.Status, JobStatus.New);
             Job.Status = JobStatus.New;
             Job.CompletedAt = null;
             Job.CurrentActivity = "Queued follow-up instructions...";
@@ -347,6 +383,21 @@ public partial class JobDetail : ComponentBase
             NotificationService.ShowProjectError(Job.Project?.Name, $"Failed to continue job: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// A finished job going back to the queue is starting a new run (a follow-up or a retry).
+    /// The buffered output is the previous run's, and replaying it would show that run twice.
+    /// </summary>
+    private void ClearLiveOutputForNewRun(JobStatus previousStatus, JobStatus newStatus)
+    {
+        if (IsFinishedStatus(previousStatus) && !IsFinishedStatus(newStatus))
+        {
+            ClearLiveOutput();
+        }
+    }
+
+    private static bool IsFinishedStatus(JobStatus status)
+        => status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
 
     private void ShowRetryModal() => _showRetryModal = true;
 

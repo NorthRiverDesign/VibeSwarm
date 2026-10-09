@@ -148,6 +148,14 @@ public static class ProviderCapabilities
 	public static bool SupportsCliUpdate(ProviderConnectionMode mode) => mode == ProviderConnectionMode.CLI;
 
 	/// <summary>
+	/// Whether the provider can be asked for its current usage on demand. Only CLI connections
+	/// can be probed; SDK connections go through the API, which does not report subscription windows.
+	/// </summary>
+	public static bool SupportsUsageRefresh(Provider provider)
+		=> provider.ConnectionMode == ProviderConnectionMode.CLI
+			&& provider.Type is ProviderType.Claude;
+
+	/// <summary>
 	/// Validates provider configuration and returns validation errors.
 	/// </summary>
 	public static IReadOnlyList<string> ValidateConfiguration(Provider provider)

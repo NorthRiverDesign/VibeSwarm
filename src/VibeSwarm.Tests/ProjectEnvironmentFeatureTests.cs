@@ -239,6 +239,40 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	}
 
 	[Fact]
+	public void BuildStructuredPrompt_EnvironmentGuidanceDoesNotCrowdOutEnvironments()
+	{
+		var stages = new[] { EnvironmentStage.Production, EnvironmentStage.Development, EnvironmentStage.Local, EnvironmentStage.Development };
+		var job = new Job
+		{
+			GoalPrompt = "Verify the deployed app works.",
+			Project = new Project
+			{
+				Name = "Web App",
+				Environments = stages
+					.Select((stage, index) => new ProjectEnvironment
+					{
+						Name = $"Environment {index}",
+						Type = EnvironmentType.Web,
+						Stage = stage,
+						Url = $"https://env{index}.example.com",
+						Description = "Seeded with demo data; reset nightly.",
+						IsEnabled = true,
+						SortOrder = index
+					})
+					.ToList()
+			}
+		};
+
+		var prompt = PromptBuilder.BuildStructuredPrompt(job, true);
+
+		for (var index = 0; index < stages.Length; index++)
+		{
+			Assert.Contains($"https://env{index}.example.com", prompt);
+		}
+		Assert.DoesNotContain("omitted for brevity", prompt);
+	}
+
+	[Fact]
 	public void BuildStructuredPrompt_IncludesPartialEnvironmentCredentials()
 	{
 		var job = new Job

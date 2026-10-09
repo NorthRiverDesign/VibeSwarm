@@ -21,6 +21,8 @@ public class JobWatchdogService : BackgroundService
 	private readonly ILogger<JobWatchdogService> _logger;
 	private readonly IJobUpdateService? _jobUpdateService;
 	private readonly IVersionControlService _versionControlService;
+	private readonly JobWorkSnapshotService? _workSnapshots;
+	private readonly JobProcessingService? _jobProcessingService;
 	private readonly string _workerInstanceId;
 
 	/// <summary>
@@ -52,12 +54,16 @@ public class JobWatchdogService : BackgroundService
 		IServiceScopeFactory scopeFactory,
 		ILogger<JobWatchdogService> logger,
 		IVersionControlService versionControlService,
-		IJobUpdateService? jobUpdateService = null)
+		IJobUpdateService? jobUpdateService = null,
+		JobWorkSnapshotService? workSnapshots = null,
+		JobProcessingService? jobProcessingService = null)
 	{
 		_scopeFactory = scopeFactory;
 		_logger = logger;
 		_versionControlService = versionControlService;
 		_jobUpdateService = jobUpdateService;
+		_workSnapshots = workSnapshots;
+		_jobProcessingService = jobProcessingService;
 		_workerInstanceId = JobProcessingService.GetWorkerInstanceId();
 	}
 
@@ -312,8 +318,9 @@ public class JobWatchdogService : BackgroundService
 		using var scope = _scopeFactory.CreateScope();
 		var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
 
-		// Get all active workers by checking recent heartbeats from jobs
-		var activeWorkerCutoff = DateTime.UtcNow - TimeSpan.FromMinutes(10);
+		// Heartbeats come every 30 seconds while a job runs; without one for this long, the
+		// worker that owned the job is gone (a crash or power loss).
+		var activeWorkerCutoff = DateTime.UtcNow - JobProcessingService.OrphanedHeartbeatAge;
 
 		// Find jobs that are running but assigned to workers that haven't sent heartbeats recently
 		// AND are not our worker (we handle our own jobs in CheckForStalledJobsAsync)
@@ -328,55 +335,23 @@ public class JobWatchdogService : BackgroundService
 		foreach (var job in orphanedJobs)
 		{
 			_logger.LogWarning(
-				"Job {JobId} appears orphaned (worker {WorkerId} not responding). Recovering...",
+				"Job {JobId} appears orphaned (worker {WorkerId} not responding). Pausing it to be resumed.",
 				job.Id, job.WorkerInstanceId);
 
-			if (await TryPreserveChangesForRecoveryAsync(job,
-				"Worker crashed or became unresponsive before job changes were finalized.",
-				cancellationToken))
+			if (_jobProcessingService == null)
 			{
-				await dbContext.SaveChangesAsync(cancellationToken);
-				await NotifyJobStatusChangedAsync(job.Id, job.Status);
 				continue;
 			}
 
-			// Check if we should retry or fail
-			if (job.MaxRetries == 0 || job.RetryCount < job.MaxRetries)
-			{
-				JobRecoveryHelper.CaptureRecoveryState(
-					job,
-					job.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
-					job.RecoveryPrompt ?? job.GoalPrompt,
-					job.SessionId,
-					job.ConsoleOutput);
-				// Reset job for retry
-				job.Status = JobStatus.New;
-				job.RetryCount++;
-				job.StartedAt = null;
-				job.WorkerInstanceId = null;
-				job.LastHeartbeatAt = null;
-				job.ProcessId = null;
-				job.CommandUsed = null;
-				job.PlanningCommandUsed = null;
-				job.ExecutionCommandUsed = null;
-				job.CurrentActivity = null;
-				job.ErrorMessage = $"Worker crashed or became unresponsive. Retry {job.RetryCount}/{job.MaxRetries}";
-
-				_logger.LogInformation("Orphaned job {JobId} recovered and queued for retry", job.Id);
-			}
-			else
-			{
-				// Exceeded retry limit
-				job.Status = JobStatus.Failed;
-				job.CompletedAt = DateTime.UtcNow;
-				job.WorkerInstanceId = null;
-				job.ProcessId = null;
-				job.CurrentActivity = null;
-				job.ErrorMessage = $"Job failed after {job.RetryCount} retry attempts. Last failure: worker became unresponsive.";
-
-				_logger.LogError("Orphaned job {JobId} permanently failed after {RetryCount} retries", job.Id, job.RetryCount);
-			}
-
+			// Paused with its work saved, never restarted on its own: the user resumes it.
+			await _jobProcessingService.PauseInterruptedJobAsync(
+				job,
+				job.Project?.WorkingPath,
+				dbContext,
+				JobProcessingService.InterruptedUnexpectedly,
+				null,
+				null,
+				cancellationToken);
 			await dbContext.SaveChangesAsync(cancellationToken);
 			await NotifyJobStatusChangedAsync(job.Id, job.Status);
 		}
@@ -423,6 +398,13 @@ public class JobWatchdogService : BackgroundService
 
 		var diff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, job.GitCommitBefore, cancellationToken)
 			?? await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, cancellationToken: cancellationToken);
+
+		// The stash below is easy to lose; the snapshot lets a follow-up pick the work back up.
+		if (_workSnapshots != null && !string.IsNullOrWhiteSpace(job.GitCommitBefore))
+		{
+			job.WorkSnapshotCommit = await _workSnapshots.SaveAsync(workingDirectory, job.Id, job.GitCommitBefore, cancellationToken)
+				?? job.WorkSnapshotCommit;
+		}
 
 		var preserveResult = await _versionControlService.PreserveChangesAsync(
 			workingDirectory,

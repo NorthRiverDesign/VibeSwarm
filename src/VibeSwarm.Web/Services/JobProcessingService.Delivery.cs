@@ -21,9 +21,6 @@ public partial class JobProcessingService
     {
         try
         {
-            // Remove agent artifacts (task files, screenshots, etc.) before staging
-            CleanupAgentArtifacts(job.Id, workingDirectory);
-
             var shouldCreatePullRequest = ShouldCreatePullRequest(job);
 
             // Check if there are uncommitted changes
@@ -54,16 +51,7 @@ public partial class JobProcessingService
                         // Push if configured
                         if (effectiveMode == AutoCommitMode.CommitAndPush)
                         {
-                            var pushResult = await _versionControlService.PushAsync(workingDirectory, cancellationToken: cancellationToken);
-                            if (pushResult.Success)
-                            {
-                                _logger.LogInformation("Auto-pushed agent-committed changes for job {JobId}", job.Id);
-                            }
-                            else
-                            {
-                                _logger.LogWarning("Auto-push failed for job {JobId}: {Error}. Changes were committed but not pushed.",
-                                    job.Id, pushResult.Error);
-                            }
+                            await PushJobCommitAsync(job, workingDirectory, cancellationToken);
                         }
                     }
                     else
@@ -106,22 +94,13 @@ public partial class JobProcessingService
                 // Push if configured
                 if (effectiveCommitMode == AutoCommitMode.CommitAndPush)
                 {
-                    var pushResult = await _versionControlService.PushAsync(workingDirectory, cancellationToken: cancellationToken);
-                    if (pushResult.Success)
-                    {
-                        _logger.LogInformation("Auto-pushed changes for job {JobId}", job.Id);
-                    }
-                    else
-                    {
-                        // Push failed, but commit succeeded - log warning but don't fail the job
-                        _logger.LogWarning("Auto-push failed for job {JobId}: {Error}. Changes were committed but not pushed.",
-                            job.Id, pushResult.Error);
-                    }
+                    await PushJobCommitAsync(job, workingDirectory, cancellationToken);
                 }
             }
             else
             {
                 _logger.LogWarning("Auto-commit failed for job {JobId}: {Error}", job.Id, commitResult.Error);
+                job.ErrorMessage = CombineNotices(job.ErrorMessage, $"The changes could not be committed: {commitResult.Error}");
             }
         }
         catch (Exception ex)
@@ -129,6 +108,83 @@ public partial class JobProcessingService
             // Auto-commit failures should not fail the job
             _logger.LogWarning(ex, "Error during auto-commit for job {JobId}", job.Id);
         }
+    }
+
+    private const int MaxPushAttempts = 3;
+
+    /// <summary>
+    /// Pushes the job's commit. When origin moved on while the job ran, the commit is replayed on
+    /// top of it and pushed again, so the agent never has to deal with the merge. A commit that
+    /// conflicts with origin is kept on a recovery branch. Either way the job records what happened,
+    /// because a commit that only exists on this machine is not delivered.
+    /// </summary>
+    private async Task PushJobCommitAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            var pushResult = await _versionControlService.PushAsync(workingDirectory, cancellationToken: cancellationToken);
+            if (pushResult.Success)
+            {
+                _logger.LogInformation("Auto-pushed changes for job {JobId}", job.Id);
+                return;
+            }
+
+            var rejected = pushResult.Error?.StartsWith("Push was rejected", StringComparison.Ordinal) == true;
+            if (!rejected || attempt >= MaxPushAttempts)
+            {
+                _logger.LogWarning("Auto-push failed for job {JobId}: {Error}. Changes were committed but not pushed.", job.Id, pushResult.Error);
+                job.ErrorMessage = CombineNotices(job.ErrorMessage, $"Committed, but the push failed: {pushResult.Error} The commit is still on the local branch and goes out with the next push.");
+                return;
+            }
+
+            _logger.LogInformation("Origin moved on during job {JobId}; replaying its commit on top before pushing again", job.Id);
+            var syncResult = await _versionControlService.SyncWithOriginAsync(workingDirectory, cancellationToken: cancellationToken);
+            if (!syncResult.Success)
+            {
+                _logger.LogWarning("Could not catch up with origin for job {JobId}: {Error}", job.Id, syncResult.Error);
+                job.ErrorMessage = CombineNotices(job.ErrorMessage, $"Committed, but origin moved on and the commit could not be replayed on top of it: {syncResult.Error}");
+                return;
+            }
+
+            if (syncResult.RecoveryBranch != null)
+            {
+                _logger.LogWarning("Commit for job {JobId} conflicts with origin; kept on {RecoveryBranch}", job.Id, syncResult.RecoveryBranch);
+                job.ErrorMessage = CombineNotices(job.ErrorMessage, $"Committed, but origin changed the same code while the job ran, so the commit was not pushed. It is kept on the branch {syncResult.RecoveryBranch}.");
+                return;
+            }
+
+            job.GitCommitHash = syncResult.CommitHash ?? job.GitCommitHash;
+        }
+    }
+
+    /// <summary>
+    /// When re-applying a follow-up's earlier work left conflict markers, checks that the agent
+    /// resolved every one. Returns false (and records why) if any marker is still in place.
+    /// </summary>
+    private async Task<bool> VerifyRestoreConflictsResolvedAsync(
+        Job job,
+        string workingDirectory,
+        JobWorkRestoreResult? priorWorkRestore,
+        CancellationToken cancellationToken)
+    {
+        if (_workSnapshots == null || priorWorkRestore is not { ConflictedFiles.Count: > 0 })
+        {
+            return true;
+        }
+
+        var unresolved = await _workSnapshots.FindUnresolvedConflictsAsync(workingDirectory, priorWorkRestore.ConflictedFiles, cancellationToken);
+        if (unresolved.Count == 0)
+        {
+            return true;
+        }
+
+        _logger.LogWarning("Job {JobId} left merge conflict markers in {Files}", job.Id, string.Join(", ", unresolved));
+        job.BuildVerified = false;
+        job.BuildOutput = "Re-applying this job's earlier work conflicted with newer changes on the branch, " +
+            "and these files still contain conflict markers (<<<<<<< / >>>>>>>):" + Environment.NewLine +
+            string.Join(Environment.NewLine, unresolved.Select(file => $"- {file}")) + Environment.NewLine +
+            "The changes were not committed. Send a follow-up asking the agent to resolve them.";
+        return false;
     }
 
     /// <summary>
@@ -537,45 +593,5 @@ public partial class JobProcessingService
                 .Where(model => model.IsAvailable && model.IsDefault && string.Equals(model.TaskType, "default", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(model => model.ModelId)
                 .FirstOrDefault();
-    }
-
-    /// <summary>
-    /// Deletes known agent artifact files from the working directory so they are not
-    /// included in auto-commits. Artifacts are non-code files that CLI agents create
-    /// for their own internal tracking (task lists, screenshots, etc.).
-    /// </summary>
-    private void CleanupAgentArtifacts(Guid jobId, string workingDirectory)
-    {
-        foreach (var pattern in ProjectMemoryService.ArtifactCleanupPatterns)
-        {
-            try
-            {
-                var fullPath = Path.Combine(workingDirectory, pattern);
-                if (File.Exists(fullPath))
-                {
-                    File.Delete(fullPath);
-                    _logger.LogInformation("Cleaned up agent artifact {Artifact} for job {JobId}", pattern, jobId);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Failed to clean up agent artifact {Artifact} for job {JobId}", pattern, jobId);
-            }
-        }
-
-        // Remove empty tasks/ directory if all artifact files were deleted
-        try
-        {
-            var tasksDir = Path.Combine(workingDirectory, "tasks");
-            if (Directory.Exists(tasksDir) && !Directory.EnumerateFileSystemEntries(tasksDir).Any())
-            {
-                Directory.Delete(tasksDir);
-                _logger.LogDebug("Removed empty tasks/ directory for job {JobId}", jobId);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Failed to remove empty tasks/ directory for job {JobId}", jobId);
-        }
     }
 }

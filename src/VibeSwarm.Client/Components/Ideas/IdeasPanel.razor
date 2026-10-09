@@ -1471,7 +1471,6 @@
 				&& AvailableInferenceProviders.Any(p => p.Id == DefaultInferenceProviderId.Value))
 				? DefaultInferenceProviderId
 				: AvailableInferenceProviders
-					.OrderBy(provider => provider.Name)
 					.Select(provider => (Guid?)provider.Id)
 					.FirstOrDefault();
 

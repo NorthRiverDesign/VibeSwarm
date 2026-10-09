@@ -85,6 +85,35 @@ public sealed class ProjectDetailTabMergeTests
 		});
 	}
 
+	[Fact]
+	public void ProjectDetail_SetUpLocalEnvironment_QueuesSetupJobAndOpensIt()
+	{
+		var jobService = new FakeJobService([]);
+		using var context = CreateContext(ideas: [], jobs: [], jobService);
+		var navigation = context.Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+
+		var cut = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
+		cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("ul.nav-pills button.nav-link")));
+		cut.FindAll("ul.nav-pills button.nav-link").Single(button => button.TextContent.Trim() == "Environments").Click();
+
+		// Providers load after the tabs appear, and the row shows its subtitle only once they have.
+		cut.WaitForAssertion(() =>
+		{
+			var setupRow = cut.FindAll("button.list-group-item").Single(button => button.TextContent.Contains("Set up local environment", StringComparison.Ordinal));
+			Assert.Contains("so it runs on this machine", setupRow.TextContent);
+		});
+		cut.FindAll("button.list-group-item").Single(button => button.TextContent.Contains("Set up local environment", StringComparison.Ordinal)).Click();
+
+		cut.WaitForAssertion(() =>
+		{
+			var job = Assert.Single(jobService.CreatedJobs);
+			Assert.Equal(TestProject.Id, job.ProjectId);
+			Assert.Equal(Guid.Parse("22222222-2222-2222-2222-222222222222"), job.ProviderId);
+			Assert.True(LocalEnvironmentSetup.IsSetupJob(job));
+			Assert.EndsWith($"/jobs/view/{job.Id}", navigation.Uri);
+		});
+	}
+
 	private static readonly Project TestProject = new()
 	{
 		Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -92,12 +121,12 @@ public sealed class ProjectDetailTabMergeTests
 		WorkingPath = "/tmp/vibeswarm-tests"
 	};
 
-	private static BunitContext CreateContext(IReadOnlyList<Idea> ideas, IReadOnlyList<JobSummary> jobs)
+	private static BunitContext CreateContext(IReadOnlyList<Idea> ideas, IReadOnlyList<JobSummary> jobs, FakeJobService? jobService = null)
 	{
 		var context = new BunitContext();
 		context.JSInterop.Mode = JSRuntimeMode.Loose;
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService(TestProject));
-		context.Services.AddSingleton<IJobService>(new FakeJobService(jobs));
+		context.Services.AddSingleton<IJobService>(jobService ?? new FakeJobService(jobs));
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<IAgentService>(new FakeAgentService());
@@ -126,6 +155,15 @@ public sealed class ProjectDetailTabMergeTests
 
 	private sealed class FakeJobService(IReadOnlyList<JobSummary> jobs) : FakeJobServiceBase
 	{
+		public List<Job> CreatedJobs { get; } = [];
+
+		public override Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)
+		{
+			job.Id = Guid.NewGuid();
+			CreatedJobs.Add(job);
+			return Task.FromResult(job);
+		}
+
 		public override Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);
 		public override Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);
 		public override Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, string? search = null, string statusFilter = "all", CancellationToken cancellationToken = default)

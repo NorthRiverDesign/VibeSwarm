@@ -812,6 +812,42 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ResumeJobAsync_QueuesAnInterruptedJobToCarryOnWhereItLeftOff()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Interrupted Project", WorkingPath = "/tmp/interrupted-project" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true, IsDefault = true };
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Project = project,
+			ProviderId = provider.Id,
+			GoalPrompt = "Build the feature",
+			Status = JobStatus.Stalled,
+			ResumeFromStatus = JobStatus.Processing,
+			SessionId = "session-1",
+			WorkSnapshotCommit = "0123456789abcdef0123456789abcdef01234567",
+			StartedAt = DateTime.UtcNow.AddHours(-5),
+			ErrorMessage = "Interrupted when VibeSwarm stopped unexpectedly (a crash or power loss). Its work so far is saved."
+		};
+		dbContext.AddRange(project, provider, job);
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+
+		Assert.True(await jobService.ResumeJobAsync(job.Id));
+
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal(JobStatus.New, savedJob.Status);
+		Assert.Equal(JobStatus.Processing, savedJob.ResumeFromStatus);
+		Assert.Equal("session-1", savedJob.SessionId);
+		Assert.Equal("0123456789abcdef0123456789abcdef01234567", savedJob.WorkSnapshotCommit);
+		Assert.Null(savedJob.ErrorMessage);
+		Assert.Null(savedJob.StartedAt);
+	}
+
+	[Fact]
 	public async Task ResumeJobAsync_ReturnsPlanningStatus_WhenPlanIsStillPending()
 	{
 		await using var dbContext = CreateDbContext();
@@ -986,6 +1022,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			CompletedAt = completedAt,
 			GitCommitHash = "abc1234567890",
 			ChangedFilesCount = 5,
+			GitDiff = "diff --git a/src/Feature.cs b/src/Feature.cs",
+			WorkSnapshotCommit = "fedcba9876543210",
 			SessionSummary = "Did the thing",
 			PullRequestNumber = 42,
 			PullRequestUrl = "https://github.com/owner/repo/pull/42",
@@ -1010,11 +1048,18 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal(0, cs0.FollowUpIndex);
 		Assert.Equal("abc1234567890", cs0.GitCommitHash);
 		Assert.Equal(5, cs0.ChangedFilesCount);
+		Assert.Equal("diff --git a/src/Feature.cs b/src/Feature.cs", cs0.GitDiff);
+		Assert.Equal("fedcba9876543210", cs0.WorkSnapshotCommit);
 		Assert.Equal("Did the thing", cs0.SessionSummary);
 		Assert.Equal(42, cs0.PullRequestNumber);
 		Assert.Equal("https://github.com/owner/repo/pull/42", cs0.PullRequestUrl);
 		Assert.True(cs0.BuildVerified);
 		Assert.Equal("gpt-4o", cs0.ModelUsed);
+
+		// The follow-up run starts without a snapshot of its own; it restores cs0's.
+		var resetJob = await dbContext.Jobs.AsNoTracking().SingleAsync(j => j.Id == job.Id);
+		Assert.Null(resetJob.WorkSnapshotCommit);
+		Assert.Null(resetJob.GitDiff);
 	}
 
 	[Fact]
@@ -3212,11 +3257,14 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		}
 	}
 
-	[Fact]
-	public async Task HandleJobCompletionAsync_UnrecoverableFailure_StopsIdeasProcessing()
+	[Theory]
+	[InlineData("error: bubblewrap is required for subprocess env scrubbing and isolation.")]
+	[InlineData("Stopped at its time limit of 60 minutes, before the agent finished. Raise the limit or split the task before running it again.")]
+	public async Task HandleJobCompletionAsync_UnrecoverableFailure_StopsIdeasProcessing(string errorMessage)
 	{
 		// A CLI that cannot start fails the same way on every retry, so the idea loop has
-		// to stop instead of re-queueing the same job every few seconds.
+		// to stop instead of re-queueing the same job every few seconds. A run stopped at its
+		// time limit would spend the same budget again.
 		await using var dbContext = CreateDbContext();
 		var project = new Project
 		{
@@ -3240,7 +3288,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			ProviderId = provider.Id,
 			GoalPrompt = "Implement the idea",
 			Status = JobStatus.Failed,
-			ErrorMessage = "error: bubblewrap is required for subprocess env scrubbing and isolation."
+			ErrorMessage = errorMessage
 		};
 		var idea = new Idea
 		{

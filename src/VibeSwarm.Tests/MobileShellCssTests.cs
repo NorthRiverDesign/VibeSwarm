@@ -21,15 +21,41 @@ public sealed class MobileShellCssTests
 	}
 
 	[Fact]
-	public void SiteCss_ClearsTheHomeIndicatorOnlyAtTheBottomEdgeOfContent()
+	public void SiteCss_ClearsTheHomeIndicatorOnlyAtTheBottomEdgeOfTheScreen()
 	{
 		var css = ReadSiteCss();
 
 		Assert.Contains("--vs-safe-area-bottom: env(safe-area-inset-bottom, 0px);", css);
-		Assert.Matches(new Regex(@"\.main-content\s*\{[^}]*padding-bottom:\s*max\(1rem, var\(--vs-safe-area-bottom\)\);"), css);
+		// On phones the tab bar is the bottom band, so it clears the home indicator and the
+		// page content above it doesn't add the inset a second time.
+		Assert.Matches(new Regex(@"\.app-tab-bar\s*\{[^}]*padding-bottom:\s*var\(--vs-safe-area-bottom\);"), css);
+		Assert.DoesNotMatch(new Regex(@"\.main-content\s*\{[^}]*safe-area-bottom"), css);
 		// A full-screen modal pads whichever band is last, never the body and the footer both.
 		Assert.Matches(new Regex(@"\.vs-modal-dialog \.modal-body:last-child\s*\{[^}]*max\("), css);
 		Assert.Matches(new Regex(@"\.vs-modal-dialog \.modal-footer\s*\{[^}]*padding-bottom:\s*max\(0\.75rem, var\(--vs-safe-area-bottom\)\);"), css);
+	}
+
+	[Fact]
+	public void SiteCss_KeepsIosFromZoomingIntoSmallFields()
+	{
+		var css = ReadSiteCss();
+
+		// iOS zooms the page into any focused field under 16px, small input groups included.
+		Assert.Matches(new Regex(@"@media \(pointer: coarse\)\s*\{[^@]*\.input-group-sm > \.form-control,[^}]*\{\s*font-size: var\(--vs-text-body\);"), css);
+	}
+
+	[Fact]
+	public void FloatingBanners_SitAboveTheTabBar()
+	{
+		foreach (var banner in new[] { "AppUpdateBanner.razor", "InstallPromptBanner.razor" })
+		{
+			var markup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Components", "Common", banner));
+
+			Assert.Contains("app-floating-banner", markup);
+			Assert.DoesNotContain("bottom-0", markup);
+		}
+
+		Assert.Matches(new Regex(@"\.app-floating-banner\s*\{[^}]*bottom:\s*calc\(var\(--vs-tab-bar-height\) \+ var\(--vs-safe-area-bottom\)\);"), ReadSiteCss());
 	}
 
 	[Theory]

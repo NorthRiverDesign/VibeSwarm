@@ -374,7 +374,9 @@ public static partial class JobSummaryGenerator
 		return breakAt > maxLength / 2 ? text[..breakAt] : text[..maxLength];
 	}
 
-	[GeneratedRegex(@"<commit-summary>\s*(.+?)\s*</commit-summary>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+	// A match may not cross another opening tag, so an unclosed mention of the tag earlier in the
+	// reply (prose like "kept the `<commit-summary>` example") can't swallow the real one.
+	[GeneratedRegex(@"<commit-summary>\s*((?:(?!<commit-summary>).)+?)\s*</commit-summary>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
 	private static partial Regex CommitSummaryTagRegex();
 
 	[GeneratedRegex(@"(\r?\n\s*){3,}")]

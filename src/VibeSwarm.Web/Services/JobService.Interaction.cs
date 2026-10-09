@@ -89,6 +89,11 @@ public partial class JobService
             return false;
         }
 
+        if (job.Status == JobStatus.Stalled)
+        {
+            return await ResumeInterruptedJobAsync(job, cancellationToken);
+        }
+
         // Only allow resuming paused jobs
         if (job.Status != JobStatus.Paused)
         {
@@ -121,6 +126,47 @@ public partial class JobService
             catch { }
         }
 
+        return true;
+    }
+
+    /// <summary>
+    /// Queues a job that stopped mid-run (a restart, crash, power loss or stall) to carry on where
+    /// it left off: the run resumes the agent's session with a recovery prompt, and the work it had
+    /// done is restored on top of the freshly synced branch.
+    /// </summary>
+    private async Task<bool> ResumeInterruptedJobAsync(Job job, CancellationToken cancellationToken)
+    {
+        var resumeFrom = job.ResumeFromStatus ?? JobStatus.Processing;
+        if (!JobStateMachine.TryTransition(job, JobStatus.New, "Resumed from the UI.").Success)
+        {
+            return false;
+        }
+
+        job.ResumeFromStatus = resumeFrom;
+        job.ForceFreshSession = false;
+        job.CancellationRequested = false;
+        job.ErrorMessage = null;
+        job.CompletedAt = null;
+        job.StartedAt = null;
+        job.NotBeforeUtc = null;
+        job.WorkerInstanceId = null;
+        job.LastHeartbeatAt = null;
+        job.ProcessId = null;
+        job.CurrentActivity = "Queued to resume where it left off...";
+        job.LastActivityAt = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+                await _jobUpdateService.NotifyJobListChanged();
+            }
+            catch { }
+        }
+
+        _jobProcessingService?.TriggerProcessing();
         return true;
     }
 
@@ -169,6 +215,8 @@ public partial class JobService
             GitCommitHash = job.GitCommitHash,
             GitCommitBefore = job.GitCommitBefore,
             ChangedFilesCount = job.ChangedFilesCount,
+            GitDiff = job.GitDiff,
+            WorkSnapshotCommit = job.WorkSnapshotCommit,
             SessionSummary = job.SessionSummary,
             PullRequestNumber = job.PullRequestNumber,
             PullRequestUrl = job.PullRequestUrl,

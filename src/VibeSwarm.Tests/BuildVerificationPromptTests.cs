@@ -79,11 +79,12 @@ public sealed class BuildVerificationPromptTests
 		Assert.Contains("SESSION ARTIFACTS:", rules);
 		Assert.Contains("screenshots, browser traces, test logs and reports", rules);
 		Assert.Contains(".git/info/exclude, not .gitignore", rules);
-		Assert.Contains("Do not add agent instruction, plan or memory files", rules);
+		Assert.Contains("Keep plans, todo lists and session notes out of the repository", rules);
+		Assert.Contains("Do not add or append to agent instruction, plan or memory files", rules);
 	}
 
 	[Fact]
-	public void BuildSystemPromptRules_OmitsBuildVerificationWhenEfficiencyRulesDisabled()
+	public void BuildSystemPromptRules_KeepsBuildVerificationWhenEfficiencyRulesDisabled()
 	{
 		var rules = PromptBuilder.BuildSystemPromptRules(new Project
 		{
@@ -93,8 +94,10 @@ public sealed class BuildVerificationPromptTests
 			Environments = []
 		}, injectEfficiencyRules: false);
 
-		// When efficiency rules are disabled, build verification section should also be absent
-		Assert.True(rules == null || !rules.Contains("BUILD VERIFICATION"));
+		// The setting limits scope only; the agent still has to leave the build green.
+		Assert.NotNull(rules);
+		Assert.Contains("BUILD VERIFICATION", rules);
+		Assert.DoesNotContain("Do only the requested work", rules);
 	}
 
 	[Fact]
@@ -135,7 +138,7 @@ public sealed class BuildVerificationPromptTests
 	}
 
 	[Fact]
-	public void BuildSystemPromptRules_OmitsJobCompletionRules_WhenEfficiencyRulesDisabled()
+	public void BuildSystemPromptRules_KeepsJobCompletionRules_WhenEfficiencyRulesDisabled()
 	{
 		var rules = PromptBuilder.BuildSystemPromptRules(new Project
 		{
@@ -144,7 +147,55 @@ public sealed class BuildVerificationPromptTests
 			Environments = []
 		}, injectEfficiencyRules: false);
 
-		Assert.True(rules == null || !rules.Contains("COMPLETING THE JOB:"));
+		// Unattended runs depend on these: no questions, no git, and the commit summary.
+		Assert.NotNull(rules);
+		Assert.Contains("COMPLETING THE JOB:", rules);
+		Assert.Contains("<commit-summary>", rules);
+	}
+
+	[Fact]
+	public void BuildSystemPromptRules_StaysCompact()
+	{
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		{
+			Name = "Test Project",
+			WorkingPath = "/tmp/test",
+			BuildCommand = "dotnet build",
+			TestCommand = "dotnet test",
+			Environments = []
+		});
+
+		Assert.NotNull(rules);
+		Assert.Contains("Run `dotnet build`, then `dotnet test`, and fix any failures.", rules);
+		Assert.Null(JobSummaryGenerator.ExtractCommitSummary(rules));
+		Assert.True(rules.Length <= 2000, $"System prompt rules grew to {rules.Length} characters.");
+	}
+
+	[Fact]
+	public void BuildStructuredPrompt_KeepsProjectContextInFull_WhenGoalIsLong()
+	{
+		var goal = "Implement the idea. " + new string('g', 7900);
+		var context = "Always build and redeploy on this machine. " + new string('c', 3900);
+		var prompt = PromptBuilder.BuildStructuredPrompt(new Job
+		{
+			GoalPrompt = goal,
+			Branch = "develop",
+			Project = new Project
+			{
+				Name = "Prompt Project",
+				Description = "The app itself.",
+				WorkingPath = "/tmp/test",
+				PromptContext = context,
+				Environments = []
+			}
+		});
+
+		Assert.StartsWith("<task>", prompt);
+		Assert.Contains(goal, prompt);
+		Assert.Contains($"  {context}{Environment.NewLine}", prompt);
+		Assert.Contains("<name>Prompt Project</name>", prompt);
+		Assert.Contains("Working branch: develop", prompt);
+		Assert.EndsWith("</constraints>", prompt);
 	}
 
 	[Fact]

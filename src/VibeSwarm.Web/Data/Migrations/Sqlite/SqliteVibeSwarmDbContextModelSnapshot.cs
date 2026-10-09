@@ -623,6 +623,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Priority")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ProviderType")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -1033,6 +1036,10 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("WorkSnapshotCommit")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("WorkerInstanceId")
                         .HasColumnType("TEXT");
 
@@ -1089,6 +1096,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("GitDiff")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("JobId")
                         .HasColumnType("TEXT");
 
@@ -1107,6 +1117,10 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasColumnType("TEXT");
 
                     b.Property<string>("SessionSummary")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WorkSnapshotCommit")
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -1876,6 +1890,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(4000)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("LimitsRefreshedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("MaxUsage")
                         .HasColumnType("INTEGER");
 
@@ -2035,6 +2052,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("SessionLimitPauseThresholdPercent")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int?>("StallTimeoutSeconds")
                         .HasColumnType("INTEGER");

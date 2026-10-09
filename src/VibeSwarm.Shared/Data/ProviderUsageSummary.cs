@@ -52,6 +52,11 @@ public class ProviderUsageSummary
 	public string? LimitMessage { get; set; }
 
 	/// <summary>
+	/// When the limits were last read live from the provider, as opposed to observed during a job.
+	/// </summary>
+	public DateTime? LimitsRefreshedAt { get; set; }
+
+	/// <summary>
 	/// Persisted JSON payload of detailed concurrent limit windows.
 	/// </summary>
 	[StringLength(4000)]

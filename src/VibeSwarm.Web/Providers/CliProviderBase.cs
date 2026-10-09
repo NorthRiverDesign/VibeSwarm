@@ -272,28 +272,15 @@ public abstract class CliProviderBase : ProviderBase
 
 			PlatformHelper.ConfigureForCrossPlatform(startInfo);
 
-			using var process = new Process { StartInfo = startInfo };
-			using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-			using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-			process.Start();
-
-			var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
-			var error = await process.StandardError.ReadToEndAsync(linkedCts.Token);
-
-			try
+			var (exitCode, output, error, timedOut) = await RunUpdateProcessAsync(startInfo, cancellationToken);
+			if (timedOut)
 			{
-				await process.WaitForExitAsync(linkedCts.Token);
-			}
-			catch (OperationCanceledException)
-			{
-				try { process.Kill(entireProcessTree: true); } catch { }
 				return CliUpdateResult.Fail("Update command timed out", previousVersion);
 			}
 
-			if (process.ExitCode != 0)
+			if (exitCode != 0)
 			{
-				var errorMsg = !string.IsNullOrEmpty(error) ? error.Trim() : $"Exit code: {process.ExitCode}";
+				var errorMsg = !string.IsNullOrEmpty(error) ? error.Trim() : $"Exit code: {exitCode}";
 				return CliUpdateResult.Fail($"Update failed: {errorMsg}", previousVersion);
 			}
 
@@ -313,6 +300,45 @@ public abstract class CliProviderBase : ProviderBase
 		catch (Exception ex)
 		{
 			return CliUpdateResult.Fail($"Update failed: {ex.Message}", previousVersion);
+		}
+	}
+
+	/// <summary>
+	/// Runs an update command to completion. Nobody can answer a prompt, so stdin is closed; both
+	/// streams are read at once so a chatty stderr can't fill its pipe and stall the updater; and a
+	/// run that outlives the timeout is killed rather than left behind.
+	/// </summary>
+	protected static async Task<(int ExitCode, string Output, string Error, bool TimedOut)> RunUpdateProcessAsync(
+		ProcessStartInfo startInfo,
+		CancellationToken cancellationToken)
+	{
+		using var process = new Process { StartInfo = startInfo };
+		using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+		using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+		process.Start();
+		if (startInfo.RedirectStandardInput)
+		{
+			process.StandardInput.Close();
+		}
+
+		try
+		{
+			var outputTask = process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+			var errorTask = process.StandardError.ReadToEndAsync(linkedCts.Token);
+			await process.WaitForExitAsync(linkedCts.Token);
+			return (process.ExitCode, await outputTask, await errorTask, false);
+		}
+		catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+		{
+			return (-1, string.Empty, string.Empty, true);
+		}
+		finally
+		{
+			if (!process.HasExited)
+			{
+				try { process.Kill(entireProcessTree: true); } catch { }
+			}
 		}
 	}
 

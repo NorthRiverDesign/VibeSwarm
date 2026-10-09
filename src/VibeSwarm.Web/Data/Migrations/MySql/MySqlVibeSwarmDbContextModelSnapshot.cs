@@ -632,6 +632,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
                     b.Property<string>("ProviderType")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -1042,6 +1045,10 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<string>("WorkSnapshotCommit")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
                     b.Property<string>("WorkerInstanceId")
                         .HasColumnType("longtext");
 
@@ -1098,6 +1105,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<string>("GitDiff")
+                        .HasColumnType("longtext");
+
                     b.Property<Guid>("JobId")
                         .HasColumnType("char(36)");
 
@@ -1117,6 +1127,10 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
                     b.Property<string>("SessionSummary")
                         .HasColumnType("longtext");
+
+                    b.Property<string>("WorkSnapshotCommit")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
 
                     b.HasKey("Id");
 
@@ -1885,6 +1899,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(4000)
                         .HasColumnType("longtext");
 
+                    b.Property<DateTime?>("LimitsRefreshedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<int?>("MaxUsage")
                         .HasColumnType("int");
 
@@ -2044,6 +2061,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
+
+                    b.Property<int?>("SessionLimitPauseThresholdPercent")
+                        .HasColumnType("int");
 
                     b.Property<int?>("StallTimeoutSeconds")
                         .HasColumnType("int");

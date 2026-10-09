@@ -810,6 +810,46 @@ public partial class ProjectDetail
         }
     }
 
+    /// <summary>
+    /// Queues a job that gets the project running on this machine, then opens it. When it
+    /// succeeds, the server records where the app runs as the project's Local environment.
+    /// </summary>
+    private async Task StartLocalEnvironmentSetup()
+    {
+        if (Project == null || _isStartingLocalSetup) return;
+
+        var provider = GetPreferredJobProvider();
+        if (provider == null)
+        {
+            _environmentError = "Enable a provider for this project to set up a local environment.";
+            return;
+        }
+
+        _isStartingLocalSetup = true;
+        _environmentError = null;
+
+        try
+        {
+            var job = LocalEnvironmentSetup.CreateJob(ProjectId, provider.Id, GetDefaultIdeasProcessingModelId(), CurrentBranch);
+            var createdJob = await JobService.CreateAsync(job);
+            NavigationManager.NavigateTo($"/jobs/view/{createdJob.Id}");
+        }
+        catch (Exception ex)
+        {
+            _environmentError = $"Couldn't start local setup: {ex.Message}";
+            _isStartingLocalSetup = false;
+        }
+    }
+
+    private string GetLocalSetupSubtitle()
+    {
+        var localUrl = Project?.Environments?
+            .FirstOrDefault(environment => environment.IsEnabled && environment.Stage == EnvironmentStage.Local)?.Url;
+        return string.IsNullOrWhiteSpace(localUrl)
+            ? "Config, database and mail trap, so it runs on this machine"
+            : $"Runs at {localUrl} · Tap to set it up again";
+    }
+
     private async Task LoadPreviousJobsPage()
     {
         if (_jobsPageNumber <= 1 || _isLoadingJobsPage)

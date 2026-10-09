@@ -38,7 +38,7 @@
 										   IsRefreshingModels="@(RefreshingModelsId == provider.Id)"
 										   IsUpdatingCli="@(UpdatingCliId == provider.Id)"
 										   IsRefreshingUsage="@(RefreshingUsageId == provider.Id)"
-										   SupportsUsageRefresh="@SupportsUsageRefresh(provider)"
+										   SupportsUsageRefresh="@ProviderCapabilities.SupportsUsageRefresh(provider)"
 										   UsageRefreshError="@GetUsageRefreshError(provider.Id)"
 										   OnRefreshUsage="OnRefreshUsage"
 										   OnToggleEnabled="OnToggleEnabled"
@@ -167,12 +167,4 @@
 
 	private string? GetUsageRefreshError(Guid providerId)
 		=> UsageRefreshErrors.TryGetValue(providerId, out var error) ? error : null;
-
-	/// <summary>
-	/// Only CLI connections can be probed for usage. SDK connections go through the API,
-	/// which does not report subscription windows.
-	/// </summary>
-	private static bool SupportsUsageRefresh(Provider provider)
-		=> provider.ConnectionMode == ProviderConnectionMode.CLI
-			&& provider.Type is ProviderType.Claude;
 }

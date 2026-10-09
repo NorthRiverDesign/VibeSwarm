@@ -260,6 +260,210 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public async Task RenderedJobSessionPanel_KeepsEarlierRunAndFollowUpVisibleWhileFollowUpRuns()
+	{
+		var runStartedAt = DateTime.UtcNow.AddSeconds(-30);
+
+		var html = await RenderPanelHtmlAsync(new Dictionary<string, object?>
+		{
+			[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+			[nameof(JobSessionPanel.IsJobActive)] = true,
+			[nameof(JobSessionPanel.RunStartedAt)] = runStartedAt,
+			[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+			{
+				new()
+				{
+					Id = Guid.NewGuid(),
+					Role = MessageRole.Assistant,
+					Content = "Added the login form.",
+					CreatedAt = runStartedAt.AddMinutes(-10)
+				},
+				new()
+				{
+					Id = Guid.NewGuid(),
+					Role = MessageRole.User,
+					Content = "Also validate the email field.",
+					CreatedAt = runStartedAt.AddMinutes(-1)
+				}
+			},
+			[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+			{
+				new()
+				{
+					Content = "[Assistant] Adding email validation now.",
+					Timestamp = runStartedAt.AddSeconds(5)
+				}
+			}
+		});
+
+		var earlierRun = html.IndexOf("Added the login form.", StringComparison.Ordinal);
+		var followUp = html.IndexOf("Also validate the email field.", StringComparison.Ordinal);
+		var liveRun = html.IndexOf("Adding email validation now.", StringComparison.Ordinal);
+		Assert.True(earlierRun >= 0 && followUp > earlierRun && liveRun > followUp, html);
+		Assert.Contains("chat-message-user", html);
+	}
+
+	[Fact]
+	public async Task RenderedJobSessionPanel_ShowsAFailedFollowUpRunAfterTheConversationItContinues()
+	{
+		var runStartedAt = DateTime.UtcNow.AddMinutes(-2);
+
+		var html = await RenderPanelHtmlAsync(new Dictionary<string, object?>
+		{
+			[nameof(JobSessionPanel.Status)] = JobStatus.Failed,
+			[nameof(JobSessionPanel.RunStartedAt)] = runStartedAt,
+			[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+			{
+				new()
+				{
+					Id = Guid.NewGuid(),
+					Role = MessageRole.Assistant,
+					Content = "Added the login form.",
+					CreatedAt = runStartedAt.AddMinutes(-10)
+				},
+				new()
+				{
+					Id = Guid.NewGuid(),
+					Role = MessageRole.User,
+					Content = "Also validate the email field.",
+					CreatedAt = runStartedAt.AddSeconds(-30)
+				}
+			},
+			[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+			{
+				new()
+				{
+					Content = "[Assistant] Trying the shared validator.",
+					Timestamp = runStartedAt.AddSeconds(10)
+				},
+				new()
+				{
+					Content = "[Tool] bash: npm test",
+					ContentCategory = "tool",
+					Timestamp = runStartedAt.AddSeconds(20)
+				}
+			}
+		});
+
+		var earlierRun = html.IndexOf("Added the login form.", StringComparison.Ordinal);
+		var followUp = html.IndexOf("Also validate the email field.", StringComparison.Ordinal);
+		var failedRun = html.IndexOf("Trying the shared validator.", StringComparison.Ordinal);
+		Assert.True(earlierRun >= 0 && followUp > earlierRun && failedRun > followUp, html);
+		Assert.Contains("npm test", html);
+	}
+
+	[Fact]
+	public async Task RenderedJobSessionPanel_ShowsPersistedFollowUpRunInsteadOfItsConsoleReplay()
+	{
+		var runStartedAt = DateTime.UtcNow.AddMinutes(-2);
+
+		var html = await RenderPanelHtmlAsync(new Dictionary<string, object?>
+		{
+			[nameof(JobSessionPanel.Status)] = JobStatus.Completed,
+			[nameof(JobSessionPanel.RunStartedAt)] = runStartedAt,
+			[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+			{
+				new()
+				{
+					Id = Guid.NewGuid(),
+					Role = MessageRole.Assistant,
+					Content = "Added the login form.",
+					CreatedAt = runStartedAt.AddMinutes(-10)
+				},
+				new()
+				{
+					Id = Guid.NewGuid(),
+					Role = MessageRole.User,
+					Content = "Also validate the email field.",
+					CreatedAt = runStartedAt.AddSeconds(-30)
+				},
+				new()
+				{
+					Id = Guid.NewGuid(),
+					Role = MessageRole.ToolUse,
+					Content = "bash",
+					ToolName = "bash",
+					ToolInput = "npm test",
+					CreatedAt = runStartedAt.AddSeconds(10)
+				},
+				new()
+				{
+					Id = Guid.NewGuid(),
+					Role = MessageRole.Assistant,
+					Content = "Email validation is in place.",
+					CreatedAt = runStartedAt.AddSeconds(20)
+				}
+			},
+			[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+			{
+				new()
+				{
+					Content = "[Assistant] Console replay of the follow-up run.",
+					Timestamp = runStartedAt.AddSeconds(5)
+				}
+			}
+		});
+
+		Assert.Contains("Added the login form.", html);
+		Assert.Contains("Also validate the email field.", html);
+		Assert.Contains("Email validation is in place.", html);
+		Assert.DoesNotContain("Console replay of the follow-up run.", html);
+	}
+
+	[Fact]
+	public async Task RenderedJobSessionPanel_ExpandsCopilotSessionEventsInLiveTranscript()
+	{
+		var timestamp = DateTime.UtcNow;
+
+		var html = await RenderPanelHtmlAsync(new Dictionary<string, object?>
+		{
+			[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+			[nameof(JobSessionPanel.IsJobActive)] = true,
+			[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+			{
+				new()
+				{
+					Content = """{"type":"user.message","data":{"content":"The composed prompt sent to the provider."},"id":"a2"}""",
+					Timestamp = timestamp.AddSeconds(-5)
+				},
+				new()
+				{
+					Content = """{"type":"assistant.message_delta","data":{"messageId":"m1","deltaContent":"Running the "},"ephemeral":true,"id":"a3"}""",
+					Timestamp = timestamp.AddSeconds(-4)
+				},
+				new()
+				{
+					Content = """{"type":"assistant.message","data":{"messageId":"m1","model":"gpt-5-mini","content":"Running the test suite first.","toolRequests":[]},"id":"a4"}""",
+					Timestamp = timestamp.AddSeconds(-3)
+				},
+				new()
+				{
+					Content = """{"type":"tool.execution_start","data":{"toolCallId":"call_live_1","toolName":"bash","arguments":{"command":"dotnet test"}},"id":"a5"}""",
+					Timestamp = timestamp.AddSeconds(-2)
+				},
+				new()
+				{
+					Content = """{"type":"tool.execution_complete","data":{"toolCallId":"call_live_1","success":false,"error":{"message":"exit code 1"}},"id":"a6"}""",
+					Timestamp = timestamp.AddSeconds(-1)
+				},
+				new()
+				{
+					Content = """{"type":"session.error","data":{"errorType":"model","message":"Model not available"},"id":"a7"}""",
+					Timestamp = timestamp
+				}
+			}
+		});
+
+		Assert.Contains("Running the test suite first.", html);
+		Assert.Contains("dotnet test", html);
+		Assert.Contains("exit code 1", html);
+		Assert.Contains("Model not available", html);
+		Assert.DoesNotContain("The composed prompt sent to the provider.", html);
+		Assert.DoesNotContain("call_live_1", html);
+		Assert.DoesNotContain("deltaContent", html);
+	}
+
+	[Fact]
 	public async Task RenderedJobSessionPanel_KeepsSystemMessagesSeparateAndStyled()
 	{
 		var services = new ServiceCollection();
@@ -1575,6 +1779,21 @@ public sealed class JobSessionPanelTests
 			.Add(panel => panel.OnSendFollowUp, async (string prompt) => await Task.CompletedTask));
 
 		Assert.Empty(cut.FindAll("button[title='Send follow-up']"));
+	}
+
+	private static async Task<string> RenderPanelHtmlAsync(Dictionary<string, object?> parameters)
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		return await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(ParameterView.FromDictionary(parameters));
+			return output.ToHtmlString();
+		});
 	}
 
 	private sealed class NoOpJsRuntime : IJSRuntime

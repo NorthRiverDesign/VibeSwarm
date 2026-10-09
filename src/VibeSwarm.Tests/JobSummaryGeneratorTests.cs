@@ -140,6 +140,22 @@ public sealed class JobSummaryGeneratorTests
 	}
 
 	[Fact]
+	public void BuildCommitSubject_IgnoresAnUnclosedMentionOfTheTagBeforeTheRealOne()
+	{
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: null,
+			title: null,
+			goalPrompt: "fallback prompt",
+			consoleOutput: """
+				I kept the `<commit-summary>` example text as it was, because the summary parser uses it.
+
+				<commit-summary>Stop capping long job prompts and compact the VibeSwarm system prompt</commit-summary>
+				""");
+
+		Assert.Equal("Stop capping long job prompts and compact the VibeSwarm system prompt", subject);
+	}
+
+	[Fact]
 	public void BuildCommitSubject_NeverUsesThePromptPlaceholder()
 	{
 		var subject = JobSummaryGenerator.BuildCommitSubject(

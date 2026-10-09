@@ -29,7 +29,7 @@
 				<label for="suggestIdeasProvider" class="form-label fw-medium">@GetProviderLabel()</label>
 				<select id="suggestIdeasProvider" class="form-select" @bind="SelectedProviderIdValue"
 						disabled="@(!CurrentProviders.Any())">
-					@foreach (var provider in CurrentProviders.OrderBy(provider => provider.Name))
+					@foreach (var provider in CurrentProviders)
 					{
 						<option value="@provider.Id">@provider.Name</option>
 					}
@@ -144,7 +144,6 @@
 
 	private IReadOnlyList<SuggestionProviderOption> CurrentProviders => UseInference
 		? AvailableInferenceProviders
-			.OrderBy(provider => provider.Name)
 			.Select(provider => new SuggestionProviderOption(
 				provider.Id,
 				provider.Name,

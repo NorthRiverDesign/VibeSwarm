@@ -320,28 +320,15 @@ public class OpenCodeProvider : CliProviderBase
                 startInfo.Environment["npm_config_prefix"] = updatePlan.NpmConfigPrefix;
             }
 
-            using var process = new Process { StartInfo = startInfo };
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-            process.Start();
-
-            var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
-            var error = await process.StandardError.ReadToEndAsync(linkedCts.Token);
-
-            try
+            var (exitCode, output, error, timedOut) = await RunUpdateProcessAsync(startInfo, cancellationToken);
+            if (timedOut)
             {
-                await process.WaitForExitAsync(linkedCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                try { process.Kill(entireProcessTree: true); } catch { }
                 return CliUpdateResult.Fail("Update command timed out", previousVersion);
             }
 
-            if (process.ExitCode != 0)
+            if (exitCode != 0)
             {
-                var errorMsg = !string.IsNullOrEmpty(error) ? error.Trim() : $"Exit code: {process.ExitCode}";
+                var errorMsg = !string.IsNullOrEmpty(error) ? error.Trim() : $"Exit code: {exitCode}";
                 return CliUpdateResult.Fail($"Update failed: {errorMsg}", previousVersion);
             }
 
@@ -1195,16 +1182,36 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         var localPrefix = Path.GetFullPath(Path.Combine(homeDirectory, ".local"));
-        var executableFullPath = Path.GetFullPath(executablePath);
+        var executableFullPath = ResolveLinkTarget(Path.GetFullPath(executablePath));
         var prefixWithSeparator = EnsureTrailingDirectorySeparator(localPrefix);
         var comparison = PlatformHelper.IsWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var nodeModulesSegment = $"{Path.DirectorySeparatorChar}node_modules{Path.DirectorySeparatorChar}";
 
-        if (executableFullPath.StartsWith(prefixWithSeparator, comparison))
+        // Only an npm install under ~/.local needs npm pointed at that prefix. ~/.local/bin often
+        // just links to the curl install in ~/.opencode/bin, which `opencode upgrade` detects itself.
+        if (executableFullPath.StartsWith(prefixWithSeparator, comparison) &&
+            executableFullPath.Contains(nodeModulesSegment, comparison))
         {
             return new OpenCodeUpdatePlan("upgrade --method npm", localPrefix);
         }
 
         return new OpenCodeUpdatePlan("upgrade", null);
+    }
+
+    private static string ResolveLinkTarget(string path)
+    {
+        try
+        {
+            return File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName ?? path;
+        }
+        catch (IOException)
+        {
+            return path;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return path;
+        }
     }
 
     private static string EnsureTrailingDirectorySeparator(string path)

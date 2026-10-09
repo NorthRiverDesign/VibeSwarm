@@ -115,6 +115,12 @@
 						</ul>
 					</div>
 				}
+				@if (CanResume)
+				{
+					<ActionButton Icon="play-fill" Text="@(IsResuming ? "Resuming..." : "Resume")"
+								  Style="ActionButton.ButtonStyle.Primary" Size="ActionButton.ButtonSize.Small"
+								  IsLoading="@IsResuming" OnClick="OnResume" />
+				}
 				@if (CanEdit)
 				{
 					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" OnClick="OnEdit" />
@@ -375,6 +381,16 @@
 
 	[Parameter]
 	public bool CanRetry { get; set; }
+
+	/// <summary>The job stopped mid-run and can carry on where it left off.</summary>
+	[Parameter]
+	public bool CanResume { get; set; }
+
+	[Parameter]
+	public bool IsResuming { get; set; }
+
+	[Parameter]
+	public EventCallback OnResume { get; set; }
 
 	[Parameter]
 	public bool CanCancel { get; set; }

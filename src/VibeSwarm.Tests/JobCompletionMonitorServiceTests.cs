@@ -188,6 +188,59 @@ public sealed class JobCompletionMonitorServiceTests : IDisposable
 		Assert.Null(job.CompletedAt);
 	}
 
+	[Theory]
+	[InlineData(true, JobStatus.Processing)]
+	[InlineData(false, JobStatus.Failed)]
+	public async Task CheckRunningJobsAsync_LeavesTheTimeLimitToTheWorkerRunningTheJob(bool ownedByThisWorker, JobStatus expected)
+	{
+		// The worker running a job stops the agent at its time limit and keeps its work. Failing
+		// the job here would only mark it failed while the agent kept going. A job no live worker
+		// owns is still failed here.
+		var projectId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
+		var jobId = Guid.NewGuid();
+		var now = DateTime.UtcNow;
+		await using (var setupContext = CreateDbContext())
+		{
+			setupContext.Projects.Add(new Project { Id = projectId, Name = "Long Project", WorkingPath = "/tmp/long" });
+			setupContext.Providers.Add(new Provider { Id = providerId, Name = "Claude Provider", Type = ProviderType.Claude, IsEnabled = true });
+			setupContext.Jobs.Add(new Job
+			{
+				Id = jobId,
+				ProjectId = projectId,
+				ProviderId = providerId,
+				GoalPrompt = "A long job",
+				Status = JobStatus.Processing,
+				StartedAt = now - JobCompletionCriteria.DefaultMaxExecutionTime - TimeSpan.FromHours(1),
+				LastActivityAt = now.AddSeconds(-10),
+				LastHeartbeatAt = now.AddSeconds(-10),
+				WorkerInstanceId = ownedByThisWorker ? JobProcessingService.GetWorkerInstanceId() : "worker-that-went-away"
+			});
+			await setupContext.SaveChangesAsync();
+		}
+
+		var services = BuildServices();
+		var scopeFactory = services.GetRequiredService<IServiceScopeFactory>();
+		var versionControlService = services.GetRequiredService<IVersionControlService>();
+		var processingService = new JobProcessingService(
+			scopeFactory,
+			NullLogger<JobProcessingService>.Instance,
+			versionControlService,
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+		var monitor = new JobCompletionMonitorService(
+			scopeFactory,
+			NullLogger<JobCompletionMonitorService>.Instance,
+			new ProviderHealthTracker(),
+			processingService,
+			versionControlService,
+			new ProcessSupervisor());
+
+		await InvokeCheckRunningJobsAsync(monitor);
+
+		await using var verificationContext = CreateDbContext();
+		Assert.Equal(expected, (await verificationContext.Jobs.SingleAsync(j => j.Id == jobId)).Status);
+	}
+
 	private ServiceProvider BuildServices()
 	{
 		var services = new ServiceCollection();

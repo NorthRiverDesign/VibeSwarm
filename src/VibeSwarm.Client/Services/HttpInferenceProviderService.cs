@@ -49,6 +49,13 @@ public class HttpInferenceProviderService : IInferenceProviderService
 		_allProvidersCache.Invalidate();
 	}
 
+	public async Task ReorderAsync(IReadOnlyList<Guid> orderedProviderIds, CancellationToken ct = default)
+	{
+		var response = await _http.PutAsJsonAsync("/api/inference/providers/order", orderedProviderIds, ct);
+		response.EnsureSuccessStatusCode();
+		_allProvidersCache.Invalidate();
+	}
+
 	public async Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
 		=> await _http.GetJsonAsync($"/api/inference/providers/{providerId}/models", new List<InferenceModel>(), ct);
 

@@ -13,7 +13,11 @@ namespace VibeSwarm.Shared.Providers;
 public class CopilotSdkProvider : SdkProviderBase
 {
 	private CopilotClient? _client;
-	private const string DefaultModel = "gpt-4o";
+	/// <summary>
+	/// Only for a custom (BYOK) endpoint, which needs a model named. Copilot itself picks its own
+	/// default when none is set.
+	/// </summary>
+	private const string DefaultByokModel = "gpt-4o";
 	private UsageLimits? _lastObservedUsageLimits;
 	private static readonly string[] FallbackAvailableModels =
 	[
@@ -201,11 +205,60 @@ public class CopilotSdkProvider : SdkProviderBase
 	}
 
 	/// <summary>
-	/// Resolves model string, falling back to default.
+	/// The model to request, or null to let Copilot choose.
 	/// </summary>
-	private string ResolveModel()
+	private string? ResolveModel()
 	{
-		return !string.IsNullOrEmpty(CurrentModel) ? CurrentModel : DefaultModel;
+		if (!string.IsNullOrEmpty(CurrentModel))
+		{
+			return CurrentModel;
+		}
+
+		return string.IsNullOrEmpty(ApiEndpoint) ? null : DefaultByokModel;
+	}
+
+	/// <summary>
+	/// Copilot's own names for the tools planning blocks (given the Claude Code way: Bash, Edit).
+	/// </summary>
+	internal static IReadOnlyList<string> MapToSdkToolNames(IEnumerable<string> tools) => tools
+		.SelectMany(tool => tool switch
+		{
+			"Bash" => new[] { "bash", "write_bash", "powershell", "write_powershell" },
+			"Edit" or "Write" or "MultiEdit" or "NotebookEdit" => new[] { "edit", "create", "apply_patch", "str_replace_editor" },
+			_ => new[] { tool }
+		})
+		.Distinct(StringComparer.Ordinal)
+		.ToList();
+
+	/// <summary>
+	/// What a job run needs on a new or resumed session alike: the job's rules, its reasoning
+	/// effort, the tools its stage may not use, and its checkout.
+	/// </summary>
+	internal void ApplyRunSettings(SessionConfigBase config, string workingDirectory)
+	{
+		config.Model = ResolveModel();
+		config.Streaming = true;
+		config.WorkingDirectory = workingDirectory;
+		ApplyByokConfig(config);
+
+		if (!string.IsNullOrEmpty(CurrentReasoningEffort))
+		{
+			config.ReasoningEffort = CurrentReasoningEffort;
+		}
+
+		if (!string.IsNullOrWhiteSpace(CurrentSystemPrompt))
+		{
+			config.SystemMessage = new SystemMessageConfig { Mode = SystemMessageMode.Replace, Content = CurrentSystemPrompt };
+		}
+		else if (!string.IsNullOrWhiteSpace(CurrentAppendSystemPrompt))
+		{
+			config.SystemMessage = new SystemMessageConfig { Mode = SystemMessageMode.Append, Content = CurrentAppendSystemPrompt };
+		}
+
+		if (CurrentDisallowedTools is { Count: > 0 } disallowed)
+		{
+			config.ExcludedTools = MapToSdkToolNames(disallowed).ToList();
+		}
 	}
 
 	/// <summary>
@@ -213,7 +266,7 @@ public class CopilotSdkProvider : SdkProviderBase
 	/// when an API endpoint is configured. This enables routing requests through
 	/// custom providers like OpenAI, Azure AI Foundry, or Anthropic.
 	/// </summary>
-	private void ApplyByokConfig(SessionConfig sessionConfig)
+	private void ApplyByokConfig(SessionConfigBase sessionConfig)
 	{
 		if (!string.IsNullOrEmpty(ApiEndpoint))
 		{
@@ -407,31 +460,19 @@ public class CopilotSdkProvider : SdkProviderBase
 
 			var client = await EnsureClientAsync(effectiveWorkingDir, cancellationToken);
 
-			result.CommandUsed = $"Copilot SDK ({model})";
+			result.CommandUsed = $"Copilot SDK ({model ?? "default model"})";
 
 			var sessionConfig = new SessionConfig
 			{
-				Model = model,
-				Streaming = true,
 				InfiniteSessions = new InfiniteSessionConfig { Enabled = true }
 			};
 			ApplySessionDefaults(sessionConfig);
-
-			// Apply BYOK provider configuration if an API endpoint is set
-			ApplyByokConfig(sessionConfig);
-
-			// Set reasoning effort if specified
-			if (!string.IsNullOrEmpty(CurrentReasoningEffort))
-			{
-				sessionConfig.ReasoningEffort = CurrentReasoningEffort;
-			}
+			ApplyRunSettings(sessionConfig, effectiveWorkingDir);
 
 			if (!string.IsNullOrEmpty(sessionId))
 			{
 				sessionConfig.SessionId = sessionId;
 			}
-
-			sessionConfig.WorkingDirectory = effectiveWorkingDir;
 
 			// Create or resume session
 			CopilotSession session;
@@ -439,13 +480,9 @@ public class CopilotSdkProvider : SdkProviderBase
 			{
 				try
 				{
-					var resumeConfig = new ResumeSessionConfig
-					{
-						Model = model,
-						Streaming = true,
-						WorkingDirectory = effectiveWorkingDir
-					};
+					var resumeConfig = new ResumeSessionConfig();
 					ApplyResumeSessionDefaults(resumeConfig);
+					ApplyRunSettings(resumeConfig, effectiveWorkingDir);
 					session = await client.ResumeSessionAsync(sessionId, resumeConfig, cancellationToken);
 				}
 				catch
@@ -505,9 +542,9 @@ public class CopilotSdkProvider : SdkProviderBase
 
 				await session.SendAsync(messageOptions);
 
-				// Wait for session idle or cancellation
+				// Wait for session idle or cancellation. No time cap of its own: like a CLI run, a
+				// job ends when it finishes, is cancelled, or the watchdog finds it stalled.
 				using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-				cts.CancelAfter(TimeSpan.FromMinutes(30));
 				using var reg = cts.Token.Register(() =>
 				{
 					done.TrySetCanceled();

@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Services;
@@ -223,6 +224,53 @@ public partial class JobProcessingService
         using var scope = _scopeFactory.CreateScope();
         var projectMemoryService = scope.ServiceProvider.GetRequiredService<IProjectMemoryService>();
         await projectMemoryService.SyncMemoryFromFileAsync(projectId.Value, projectMemoryFilePath, cancellationToken);
+    }
+
+    private async Task ApplyLocalEnvironmentSetupResultAsync(Job job, string? workingDirectory)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var localEnvironmentSetupService = scope.ServiceProvider.GetRequiredService<ILocalEnvironmentSetupService>();
+            var environment = await localEnvironmentSetupService.ApplyResultAsync(job.ProjectId, workingDirectory, CancellationToken.None);
+            if (environment != null)
+            {
+                _logger.LogInformation("Local setup job {JobId} saved the Local environment at {Url}", job.Id, environment.Url);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to save the Local environment reported by job {JobId}", job.Id);
+        }
+    }
+
+    /// <summary>
+    /// Saves a run's conversation to the job's message feed. A provider that echoes its prompt
+    /// back as a user message is repeating VibeSwarm's composed prompt, not anything the user
+    /// said; the user's own messages (follow-ups, answers to questions) are recorded when sent.
+    /// </summary>
+    private async Task SaveRunMessagesAsync(IJobService jobService, Guid jobId, ExecutionResult result)
+    {
+        var messages = result.Messages
+            .Select(m => new JobMessage
+            {
+                Role = ParseMessageRole(m.Role),
+                Content = m.Content,
+                ToolName = m.ToolName,
+                ToolInput = m.ToolInput,
+                ToolOutput = m.ToolOutput,
+                CreatedAt = m.Timestamp
+            })
+            .Where(m => m.Role != MessageRole.User)
+            .ToList();
+
+        if (messages.Count == 0)
+        {
+            return;
+        }
+
+        await jobService.AddMessagesAsync(jobId, messages, CancellationToken.None);
+        await NotifyJobMessageAddedAsync(jobId);
     }
 
     private static MessageRole ParseMessageRole(string role)

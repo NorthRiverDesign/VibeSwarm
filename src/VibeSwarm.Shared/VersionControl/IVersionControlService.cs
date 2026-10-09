@@ -164,8 +164,10 @@ public interface IVersionControlService
 	Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken cancellationToken = default);
 
 	/// <summary>
-	/// Performs a hard checkout to a branch, discarding all local changes.
-	/// This is equivalent to: git fetch, git checkout branch, git reset --hard origin/branch
+	/// Checks out a branch at the latest commit on the remote: git fetch, git checkout branch,
+	/// then git reset --hard origin/branch. Uncommitted changes are stashed first. Commits that
+	/// were never pushed are replayed on top of the remote branch, or kept on a recovery branch
+	/// (<see cref="GitOperationResult.RecoveryBranch"/>) when they conflict, so a reset never drops them.
 	/// </summary>
 	/// <param name="branchName">The branch name to checkout.</param>
 	/// <param name="progressCallback">Optional callback for progress updates.</param>
@@ -177,14 +179,23 @@ public interface IVersionControlService
 		CancellationToken cancellationToken = default);
 
 	/// <summary>
-	/// Syncs the current branch with the remote, discarding all local changes.
-	/// This is equivalent to: git fetch origin, git reset --hard origin/current-branch
+	/// Brings the current branch up to the latest commit on the remote: git fetch origin, then
+	/// git reset --hard origin/current-branch. Uncommitted changes are stashed and unpushed
+	/// commits are kept, as in <see cref="HardCheckoutBranchAsync"/>.
 	/// </summary>
 	/// <param name="progressCallback">Optional callback for progress updates.</param>
 	Task<GitOperationResult> SyncWithOriginAsync(
 		string workingDirectory,
 		string remoteName = "origin",
 		Action<string>? progressCallback = null,
+		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Switches the checkout to an existing branch or commit without fetching or resetting it.
+	/// </summary>
+	Task<GitOperationResult> SwitchBranchAsync(
+		string workingDirectory,
+		string reference,
 		CancellationToken cancellationToken = default);
 
 	/// <summary>

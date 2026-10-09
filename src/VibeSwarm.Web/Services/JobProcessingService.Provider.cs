@@ -82,6 +82,88 @@ public partial class JobProcessingService
         return result;
     }
 
+    /// <summary>
+    /// Reads a session-limited provider's usage live before a job starts, so the session check
+    /// also sees usage from outside VibeSwarm, such as another session on the same account.
+    /// If the reading fails, the stored figures stand.
+    /// </summary>
+    private async Task ReadSessionUsageBeforeStartAsync(
+        Provider providerConfig,
+        VibeSwarmDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            var summary = await dbContext.ProviderUsageSummaries
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.ProviderId == providerConfig.Id, cancellationToken);
+            var storedHold = await ProviderSessionLimitGuard.GetHoldAsync(dbContext, providerConfig.Id, now, cancellationToken);
+            if (!ProviderSessionLimitGuard.NeedsLiveReading(summary, storedHold, now))
+            {
+                return;
+            }
+
+            using var usageScope = _scopeFactory.CreateScope();
+            var providerUsageService = usageScope.ServiceProvider.GetService<IProviderUsageService>();
+            if (providerUsageService == null)
+            {
+                return;
+            }
+
+            var limits = await CreateProviderInstance(providerConfig).RefreshUsageLimitsAsync(cancellationToken);
+            if (limits == null || !ShouldApplyProviderUsage(limits))
+            {
+                return;
+            }
+
+            await providerUsageService.ApplyDetectedLimitsAsync(providerConfig.Id, limits, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not read session usage for provider {ProviderName} before starting a job; using stored figures",
+                providerConfig.Name);
+        }
+    }
+
+    /// <summary>
+    /// Explains a provider cooldown that comes from its session limit and tells connected
+    /// clients. Returns null when the cooldown has another cause.
+    /// </summary>
+    private async Task<string?> DescribeSessionLimitHoldAsync(
+        Guid jobId,
+        Provider providerConfig,
+        DateTime cooldownUntil,
+        VibeSwarmDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var hold = await ProviderSessionLimitGuard.GetHoldAsync(dbContext, providerConfig.Id, DateTime.UtcNow, cancellationToken);
+        if (hold == null || hold.Until != cooldownUntil)
+        {
+            return null;
+        }
+
+        var message = hold.Describe(providerConfig.Name);
+        _logger.LogWarning("Job {JobId} waits for the session limit: {Message}", jobId, message);
+
+        if (_jobUpdateService != null)
+        {
+            await _jobUpdateService.NotifyProviderUsageWarning(
+                providerConfig.Id,
+                providerConfig.Name,
+                hold.PercentUsed,
+                message,
+                hold.PercentUsed >= 100,
+                hold.Until);
+        }
+
+        return message;
+    }
+
     private async Task<string?> ValidateProviderAvailabilityAsync(
         Guid jobId,
         Provider providerConfig,
@@ -176,8 +258,13 @@ public partial class JobProcessingService
     /// Bare mode requires a direct API key (ANTHROPIC_API_KEY). When the provider has no API key
     /// configured, Claude CLI uses OAuth session auth which --bare disables.
     /// </summary>
-    private static IProvider CreateProviderInstance(Provider config)
+    private IProvider CreateProviderInstance(Provider config)
     {
+        if (ProviderFactoryOverride != null)
+        {
+            return ProviderFactoryOverride(config);
+        }
+
         return (config.Type, config.ConnectionMode) switch
         {
             (ProviderType.Claude, ProviderConnectionMode.SDK) => new ClaudeSdkProvider(config),

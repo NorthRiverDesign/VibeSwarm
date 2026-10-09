@@ -149,7 +149,7 @@ public class GrokInferenceService : IInferenceService
 			{
 				Model = model,
 				Messages = messages,
-				MaxTokens = request.MaxTokens ?? 4096,
+				MaxCompletionTokens = request.MaxTokens ?? 4096,
 				Temperature = request.Temperature ?? 0.7
 			};
 
@@ -220,7 +220,8 @@ public class GrokInferenceService : IInferenceService
 			};
 		}
 
-		var responseText = chatResponse.Choices?.FirstOrDefault()?.Message?.Content;
+		var choice = chatResponse.Choices?.FirstOrDefault();
+		var responseText = choice?.Message?.Content;
 
 		if (string.IsNullOrWhiteSpace(responseText))
 		{
@@ -238,7 +239,8 @@ public class GrokInferenceService : IInferenceService
 			Response = responseText,
 			ModelUsed = chatResponse.Model ?? model,
 			PromptTokens = chatResponse.Usage?.PromptTokens,
-			CompletionTokens = chatResponse.Usage?.CompletionTokens
+			CompletionTokens = chatResponse.Usage?.CompletionTokens,
+			FinishReason = choice?.FinishReason
 		};
 	}
 
@@ -355,7 +357,8 @@ public class GrokInferenceService : IInferenceService
 	{
 		public string Model { get; set; } = string.Empty;
 		public List<ChatMessage> Messages { get; set; } = [];
-		public int MaxTokens { get; set; }
+		// max_tokens is deprecated; this one counts only visible output, not reasoning.
+		public int MaxCompletionTokens { get; set; }
 		public double Temperature { get; set; }
 	}
 
@@ -369,6 +372,7 @@ public class GrokInferenceService : IInferenceService
 	private class ChatChoice
 	{
 		public ChatMessage? Message { get; set; }
+		public string? FinishReason { get; set; }
 	}
 
 	private class ChatUsage

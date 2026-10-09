@@ -112,13 +112,20 @@ public partial class JobProcessingService
 
             if (providerResolution.CooldownUntil.HasValue)
             {
+                var sessionLimitReason = await DescribeSessionLimitHoldAsync(
+                    job.Id,
+                    providerResolution.Provider,
+                    providerResolution.CooldownUntil.Value,
+                    dbContext,
+                    cancellationToken);
                 await RequeueJobForProviderCooldownAsync(
                     job.Id,
                     providerResolution.Provider.Name,
                     providerResolution.CooldownUntil.Value,
                     executionContext,
                     dbContext,
-                    cancellationToken);
+                    cancellationToken,
+                    sessionLimitReason);
                 await NotifyStatusChangedAsync(job.Id, JobStatus.New);
                 return;
             }
@@ -141,6 +148,17 @@ public partial class JobProcessingService
             // the job is actually about to begin executing.
             await UpdateJobStatusAsync(job.Id, JobStatus.Started, dbContext, cancellationToken);
             await NotifyStatusChangedAsync(job.Id, JobStatus.Started);
+
+            // The guardrail against a run that keeps spending usage. Cancelling the run stops the
+            // agent's process; the cancellation handling below keeps its work and fails the job.
+            var timeLimit = TimeLimitOverride
+                ?? job.GetCompletionCriteria().MaxExecutionTime
+                ?? JobCompletionCriteria.Default.MaxExecutionTime!.Value;
+            executionContext.TimeLimit = new JobTimeLimit(timeLimit, () =>
+            {
+                _logger.LogWarning("Job {JobId} reached its time limit of {Limit}; stopping the agent", job.Id, timeLimit);
+                try { executionContext.CancellationTokenSource?.Cancel(); } catch (ObjectDisposedException) { }
+            });
 
             // Update status to processing
             var initialStatus = job.ResumeFromStatus switch
@@ -185,15 +203,35 @@ public partial class JobProcessingService
                         await NotifyJobActivityAsync(job.Id, branchActivity, DateTime.UtcNow);
 
                         await PrepareWorkingBranchAsync(job, workingDirectory, checkpointBaseBranch, cancellationToken);
+                        executionContext.PriorWorkRestore = await RestorePriorRunWorkAsync(job, workingDirectory, dbContext, cancellationToken);
+                        if (_workSnapshots != null)
+                        {
+                            executionContext.WorktreesBefore = await _workSnapshots.ListWorktreesAsync(workingDirectory, cancellationToken);
+                        }
                     }
                 }
-                catch (GitCheckpointRequiredException)
+                catch (GitRemoteUnavailableException ex)
+                {
+                    // Nothing has run yet, so wait for the remote rather than code against a stale copy.
+                    var retryAt = DateTime.UtcNow.Add(GitRemoteRetryDelay);
+                    _logger.LogWarning("Re-queuing job {JobId} until {RetryAt:u}: {Error}", job.Id, retryAt, ex.Message);
+                    await ReleaseJobAsync(job.Id, JobStatus.New, $"{ex.Message} Trying again at {retryAt:u}.", dbContext, cancellationToken);
+                    var waitingJob = await dbContext.Jobs.FindAsync(new object[] { job.Id }, cancellationToken);
+                    if (waitingJob != null)
+                    {
+                        waitingJob.NotBeforeUtc = retryAt;
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                    }
+                    await NotifyStatusChangedAsync(job.Id, JobStatus.New);
+                    return;
+                }
+                catch (GitPreparationException)
                 {
                     throw;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogWarning(ex, "Error preparing git branch for job {JobId}. Continuing with local state.", job.Id);
+                    throw new GitPreparationException($"Couldn't prepare the git checkout before the job: {ex.Message}");
                 }
             }
 
@@ -297,6 +335,7 @@ public partial class JobProcessingService
                 executionContext.IsPausedForInteraction = false;
                 executionContext.CurrentInteractionRequest = null;
                 executionContext.PendingInteractionResponseTask = null;
+                executionContext.TimeLimit?.Resume();
             }
 
             async Task<bool> PauseForDetectedInteractionAsync(InteractionDetector.InteractionRequest interactionRequest)
@@ -516,6 +555,7 @@ public partial class JobProcessingService
 
                             executionContext.IsPausedForInteraction = true;
                             executionContext.CurrentInteractionRequest = interactionRequest;
+                            executionContext.TimeLimit?.Pause();
 
                             // Update database and notify UI in background
                             _ = Task.Run(async () =>
@@ -630,7 +670,9 @@ public partial class JobProcessingService
             // Build system prompt rules for agent efficiency
             var injectEfficiencyRules = appSettings?.InjectEfficiencyRules ?? true;
             var injectRepoMap = appSettings?.InjectRepoMap ?? true;
-            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap);
+            var isLocalEnvironmentSetup = LocalEnvironmentSetup.IsSetupJob(job);
+            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap,
+                requireCodeChange: !isLocalEnvironmentSetup);
             projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
             var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
             if (!string.IsNullOrWhiteSpace(projectMemoryRules))
@@ -638,6 +680,23 @@ public partial class JobProcessingService
                 systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
                     ? projectMemoryRules
                     : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
+            }
+
+            if (isLocalEnvironmentSetup && !string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+            {
+                var localSetupRules = PromptBuilder.BuildLocalEnvironmentSetupRules(
+                    LocalEnvironmentSetupService.PrepareResultFile(workingDirectory));
+                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
+                    ? localSetupRules
+                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{localSetupRules}";
+            }
+
+            var priorWorkRules = PromptBuilder.BuildPriorWorkRules(executionContext.PriorWorkRestore);
+            if (!string.IsNullOrWhiteSpace(priorWorkRules))
+            {
+                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
+                    ? priorWorkRules
+                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{priorWorkRules}";
             }
 
             // Inject role-specific system prompt context for team swarm jobs
@@ -742,7 +801,9 @@ public partial class JobProcessingService
                                 Title = job.Title,
                                 AppendSystemPrompt = systemPromptRules,
                                 EnvironmentVariables = jobEnvironmentVariables,
-                                DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools
+                                DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools,
+                                StrictMcpConfig = true,
+                                DisableBuiltinMcps = true
                             },
                             progress,
                             planningExecutionCts.Token);
@@ -765,6 +826,8 @@ public partial class JobProcessingService
 
                         CleanupMcpExecutionResources(planningMcpOptions.Resources);
                     }
+
+                    ThrowIfStoppedByTimeLimit(executionContext, planningResult);
 
                     if (planningResult.IsPaused && executionContext.IsPausedForInteraction)
                     {
@@ -912,6 +975,10 @@ public partial class JobProcessingService
                             NonBlockingMcpConnection = provider.Type == ProviderType.Claude && hasMcp,
                             DisableAskUser = provider.Type == ProviderType.Copilot,
                             SkipPermissions = provider.Type == ProviderType.OpenCode,
+                            // Only the MCP servers VibeSwarm configures and the repository's own;
+                            // personal and built-in ones would cost context in every job.
+                            StrictMcpConfig = true,
+                            DisableBuiltinMcps = true,
                         },
                         progress,
                         executionCts.Token);
@@ -1014,6 +1081,7 @@ public partial class JobProcessingService
                 await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
 
                 var result = await ExecuteCurrentCycleAsync(promptToExecute, cycleSessionId);
+                ThrowIfStoppedByTimeLimit(executionContext, result);
                 if (attemptedSessionResume && IsSessionResumeFailure(result))
                 {
                     _logger.LogWarning(
@@ -1145,6 +1213,11 @@ public partial class JobProcessingService
                 }
             }
 
+            // The agent is done, or was stopped: the checks and delivery that follow must not trip
+            // the time limit.
+            executionContext.TimeLimit?.Stop();
+            ThrowIfStoppedByTimeLimit(executionContext, lastResult);
+
             // Use accumulated results
             var finalResult = lastResult ?? new ExecutionResult { Success = false, ErrorMessage = "No execution result" };
             finalResult.InputTokens = executionInputTokens;
@@ -1180,11 +1253,15 @@ public partial class JobProcessingService
             var checkJobService = checkScope.ServiceProvider.GetRequiredService<IJobService>();
             var wasCancelled = await checkJobService.IsCancellationRequestedAsync(job.Id, CancellationToken.None);
 
+            await CollectLeftoverWorktreesAsync(job, workingDirectory, executionContext);
+
             // A job's deliverable is a change to the code. A run that ends with the working
             // tree untouched has not done the work, however articulate its answer was, and
             // recording it as success hides that. Questions and guidance belong to
             // Inference, which does not pretend to have edited anything.
-            if (!wasCancelled && finalResult.Success &&
+            // Local environment setup is the exception: its work (.env files, a database, a mail
+            // trap) lives outside git by design.
+            if (!wasCancelled && finalResult.Success && !LocalEnvironmentSetup.IsSetupJob(job) &&
                 await ProducedNoCodeChangesAsync(workingDirectory, executionContext.GitCommitBefore, CancellationToken.None))
             {
                 finalResult.Success = false;
@@ -1220,31 +1297,21 @@ public partial class JobProcessingService
                 providerDisplayName ??= provider?.Name;
                 providerDisplayName ??= "Unknown Provider";
                 await ClearProviderRateLimitAsync(job.ProviderId, dbContext, CancellationToken.None);
-                // Save messages
-                if (finalResult.Messages.Count > 0)
-                {
-                    var messages = finalResult.Messages.Select(m => new JobMessage
-                    {
-                        Role = ParseMessageRole(m.Role),
-                        Content = m.Content,
-                        ToolName = m.ToolName,
-                        ToolInput = m.ToolInput,
-                        ToolOutput = m.ToolOutput,
-                        CreatedAt = m.Timestamp
-                    });
-
-                    await checkJobService.AddMessagesAsync(job.Id, messages, CancellationToken.None);
-                    await NotifyJobMessageAddedAsync(job.Id);
-                }
+                await SaveRunMessagesAsync(checkJobService, job.Id, finalResult);
 
                 var hasGitChanges = await CompleteJobAsync(job.Id, JobStatus.Completed, finalResult.SessionId, finalResult.Output,
-                    null, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
+                    executionContext.DeliveryNotice, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None,
                     finalResult.IsTokenEstimate);
 
                 if (hasGitChanges)
                 {
                     await NotifyJobGitDiffUpdatedAsync(job.Id, true);
+                }
+
+                if (LocalEnvironmentSetup.IsSetupJob(job))
+                {
+                    await ApplyLocalEnvironmentSetupResultAsync(job, workingDirectory);
                 }
 
                 // Record usage after successful completion
@@ -1329,8 +1396,12 @@ public partial class JobProcessingService
                         return;
                     }
 
+                    // A failed run is still the conversation a follow-up continues from, and the
+                    // follow-up clears the console output it would otherwise be rebuilt from.
+                    await SaveRunMessagesAsync(checkJobService, job.Id, finalResult);
+
                     await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
-                        finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
+                        CombineNotices(finalResult.ErrorMessage, executionContext.DeliveryNotice), finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                         executionContext, workingDirectory, dbContext, CancellationToken.None,
                         finalResult.IsTokenEstimate);
 
@@ -1351,7 +1422,8 @@ public partial class JobProcessingService
         }
         catch (OperationCanceledException)
         {
-            _logger.LogInformation("Job {JobId} was cancelled, resetting for potential retry", job.Id);
+            _logger.LogInformation("Job {JobId} was cancelled or interrupted", job.Id);
+            string? timeLimitMessage = null;
             try
             {
                 using var resetScope = _scopeFactory.CreateScope();
@@ -1359,47 +1431,67 @@ public partial class JobProcessingService
                 var jobEntity = await resetDbContext.Jobs.FindAsync(job.Id);
                 if (jobEntity != null)
                 {
-                    if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+                    var stoppedByTimeLimit = executionContext.TimeLimit?.Reached == true && !jobEntity.CancellationRequested;
+                    if (!jobEntity.CancellationRequested && !stoppedByTimeLimit)
                     {
-                        try
-                        {
-                            await PreserveWorkingTreeBeforeBranchPreparationAsync(
-                                jobEntity,
-                                workingDirectory,
-                                resetDbContext,
-                                captureJobDiff: true,
-                                reason: jobEntity.CancellationRequested
-                                    ? "Preserved local changes after the job was cancelled."
-                                    : "Preserved local changes after the worker shut down during execution.",
-                                cancellationToken: CancellationToken.None);
-                        }
-                        catch (Exception checkpointEx)
-                        {
-                            _logger.LogWarning(checkpointEx, "Failed to preserve local changes for cancelled job {JobId}", job.Id);
-                        }
-                    }
-
-                    if (jobEntity.CancellationRequested)
-                    {
-                        // User requested cancellation
-                        JobStateMachine.TryTransition(jobEntity, JobStatus.Cancelled, "Job was cancelled by user.");
-                        JobRecoveryHelper.ClearRecoveryState(jobEntity);
-                        jobEntity.ErrorMessage = "Job was cancelled by user";
+                        // The service is stopping. The job waits, paused, to be resumed from the UI.
+                        await PauseInterruptedJobAsync(
+                            jobEntity,
+                            workingDirectory,
+                            resetDbContext,
+                            InterruptedByShutdown,
+                            executionContext.ActivePrompt,
+                            executionContext.GetConsoleOutput(),
+                            CancellationToken.None);
                     }
                     else
                     {
-                        // Service shutdown or timeout - reset for retry
-                        JobRecoveryHelper.CaptureRecoveryState(
-                            jobEntity,
-                            jobEntity.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
-                            executionContext.ActivePrompt,
-                            executionContext.SessionId ?? jobEntity.SessionId,
-                            executionContext.GetConsoleOutput());
-                        JobStateMachine.TryTransition(jobEntity, JobStatus.New, "Service shutdown during execution. Queued for retry.");
-                        jobEntity.ErrorMessage = jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved
-                            ? "Service shutdown during execution. Queued for retry after preserving local changes."
-                            : "Service shutdown during execution. Queued for retry.";
+                        if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+                        {
+                            try
+                            {
+                                if (stoppedByTimeLimit)
+                                {
+                                    // Saved as the run's work too, so a follow-up starts from it.
+                                    jobEntity.WorkSnapshotCommit = await SaveRunWorkSnapshotAsync(jobEntity, workingDirectory, jobEntity.GitCommitBefore, CancellationToken.None)
+                                        ?? jobEntity.WorkSnapshotCommit;
+                                }
+
+                                await PreserveWorkingTreeBeforeBranchPreparationAsync(
+                                    jobEntity,
+                                    workingDirectory,
+                                    resetDbContext,
+                                    captureJobDiff: true,
+                                    reason: stoppedByTimeLimit
+                                        ? "Preserved local changes after the job reached its time limit."
+                                        : "Preserved local changes after the job was cancelled.",
+                                    cancellationToken: CancellationToken.None);
+                            }
+                            catch (Exception checkpointEx)
+                            {
+                                _logger.LogWarning(checkpointEx, "Failed to preserve local changes for cancelled job {JobId}", job.Id);
+                            }
+                        }
+
+                        if (stoppedByTimeLimit)
+                        {
+                            // Not queued again: another run would spend the same budget again.
+                            timeLimitMessage = JobTimeLimit.BuildStopMessage(
+                                executionContext.TimeLimit!.Limit,
+                                jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved ? jobEntity.GitCheckpointBranch : null);
+                            JobStateMachine.TryTransition(jobEntity, JobStatus.Failed, timeLimitMessage);
+                            JobRecoveryHelper.ClearRecoveryState(jobEntity);
+                            jobEntity.ErrorMessage = timeLimitMessage;
+                            jobEntity.ConsoleOutput = executionContext.GetConsoleOutput() is { Length: > 0 } console ? console : jobEntity.ConsoleOutput;
+                        }
+                        else
+                        {
+                            JobStateMachine.TryTransition(jobEntity, JobStatus.Cancelled, "Job was cancelled by user.");
+                            JobRecoveryHelper.ClearRecoveryState(jobEntity);
+                            jobEntity.ErrorMessage = "Job was cancelled by user";
+                        }
                     }
+
                     jobEntity.WorkerInstanceId = null;
                     jobEntity.LastHeartbeatAt = null;
                     jobEntity.ProcessId = null;
@@ -1410,6 +1502,11 @@ public partial class JobProcessingService
             catch (Exception resetEx)
             {
                 _logger.LogError(resetEx, "Failed to reset job {JobId} after cancellation", job.Id);
+            }
+
+            if (timeLimitMessage != null)
+            {
+                await NotifyJobCompletedAsync(job.Id, false, timeLimitMessage);
             }
         }
         catch (Exception ex)
@@ -1426,6 +1523,8 @@ public partial class JobProcessingService
         }
         finally
         {
+            executionContext.TimeLimit?.Dispose();
+
             if (!string.IsNullOrWhiteSpace(projectMemoryFilePath))
             {
                 try
@@ -1450,6 +1549,18 @@ public partial class JobProcessingService
                     _logger.LogWarning(disposeEx, "Error disposing provider for job {JobId}", job.Id);
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// A run cut short by the time limit goes to the cancellation handling, which keeps its work
+    /// and fails the job, instead of on to another cycle or a fallback provider.
+    /// </summary>
+    private static void ThrowIfStoppedByTimeLimit(JobExecutionContext executionContext, ExecutionResult? result)
+    {
+        if (executionContext.TimeLimit?.Reached == true && result?.Success != true)
+        {
+            throw new OperationCanceledException("The job reached its time limit.");
         }
     }
 
