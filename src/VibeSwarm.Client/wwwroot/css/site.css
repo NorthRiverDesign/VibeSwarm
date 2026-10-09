@@ -152,13 +152,14 @@
 	--bs-info-contrast: #1c212b;
 
 	/* Secondary is the quiet neutral: a secondary button is a grey key, so the one
-	   primary action on a surface stands out. */
-	--bs-secondary-base: var(--bs-bg-2);
-	--bs-secondary-bg: var(--bs-bg-2);
+	   primary action on a surface stands out. It sits a step above bg-2, the panel
+	   surface, so secondary buttons and badges still read on a panel. */
+	--bs-secondary-base: var(--bs-bg-3);
+	--bs-secondary-bg: var(--bs-bg-3);
 	--bs-secondary-fg: var(--bs-fg-3);
 	--bs-secondary-fg-emphasis: var(--bs-fg-1);
 	--bs-secondary-bg-subtle: var(--bs-bg-1);
-	--bs-secondary-bg-muted: var(--bs-bg-3);
+	--bs-secondary-bg-muted: var(--bs-bg-4);
 	--bs-secondary-border: var(--bs-border-emphasized);
 	--bs-secondary-focus-ring: color-mix(in oklch, var(--bs-fg-3) 50%, transparent);
 	--bs-secondary-contrast: var(--bs-fg-body);
@@ -182,12 +183,10 @@
 @media (pointer: coarse) {
 	:root {
 		/* Small buttons and inputs share one set of tokens in Bootstrap 6: grow them to a
-		   44px-class target, and keep their text at 16px, as iOS zooms the page into any
-		   field set smaller than that when it takes focus. */
+		   44px-class target. Their text stays small; fields get 16px text in section 14. */
 		--bs-btn-input-sm-min-height: 2.5rem;
 		--bs-btn-input-sm-padding-y: 0.5rem;
 		--bs-btn-input-sm-padding-x: 0.75rem;
-		--bs-btn-input-sm-font-size: var(--vs-text-body);
 	}
 }
 
@@ -514,6 +513,13 @@ details[open] > summary .details-chevron {
 }
 .diff-stats {
 	font-family: var(--bs-font-mono);
+}
+/* Line-number gutter in the diffs GitDiffParser renders. */
+.diff-line-nums {
+	width: 3.5rem;
+	min-width: 3.5rem;
+	border-right: 1px solid rgba(128, 128, 128, 0.2);
+	line-height: inherit;
 }
 
 /* ============================================

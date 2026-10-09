@@ -100,7 +100,7 @@ public static class GitDiffParser
 	{
 		var normalizedDiff = NormalizeDiffContent(diff);
 		if (string.IsNullOrWhiteSpace(normalizedDiff))
-			return "<span class=\"text-muted\">No changes</span>";
+			return "<span class=\"fg-1\">No changes</span>";
 
 		var lines = normalizedDiff.Split('\n');
 		var result = new StringBuilder();
@@ -140,27 +140,27 @@ public static class GitDiffParser
 					newLine = int.Parse(match.Groups[2].Value);
 				}
 				// Show hunk header spanning both line number columns
-				result.Append($"<div class=\"diff-hunk d-flex text-info bg-dark bg-opacity-50\"><span class=\"diff-line-nums text-end pe-2 opacity-50 flex-shrink-0\">...</span><span class=\"px-2 flex-grow-1\">{escapedLine}</span></div>");
+				result.Append($"<div class=\"diff-hunk d-flex fg-info bg-black bg-50\"><span class=\"diff-line-nums text-end pe-3 opacity-50 flex-shrink-0\">...</span><span class=\"px-3 flex-grow-1\">{escapedLine}</span></div>");
 			}
 			else if (line.StartsWith("\\ No newline at end of file", StringComparison.Ordinal))
 			{
-				result.Append($"<div class=\"diff-note d-flex text-body-secondary\"><span class=\"diff-line-nums text-end pe-2 opacity-50 flex-shrink-0\"></span><span class=\"px-2 flex-grow-1 fst-italic\">{escapedLine}</span></div>");
+				result.Append($"<div class=\"diff-note d-flex fg-1\"><span class=\"diff-line-nums text-end pe-3 opacity-50 flex-shrink-0\"></span><span class=\"px-3 flex-grow-1 fst-italic\">{escapedLine}</span></div>");
 			}
 			else if (line.StartsWith("+") && !line.StartsWith("+++"))
 			{
-				result.Append($"<div class=\"diff-add d-flex text-success bg-success bg-opacity-10\"><span class=\"diff-line-nums text-end pe-2 opacity-75 flex-shrink-0\">{newLine}</span><span class=\"px-2 flex-grow-1\">{escapedLine}</span></div>");
+				result.Append($"<div class=\"diff-add d-flex fg-success bg-success bg-10\"><span class=\"diff-line-nums text-end pe-3 opacity-75 flex-shrink-0\">{newLine}</span><span class=\"px-3 flex-grow-1\">{escapedLine}</span></div>");
 				newLine++;
 			}
 			else if (line.StartsWith("-") && !line.StartsWith("---"))
 			{
-				result.Append($"<div class=\"diff-del d-flex text-danger bg-danger bg-opacity-10\"><span class=\"diff-line-nums text-end pe-2 opacity-75 flex-shrink-0\">{oldLine}</span><span class=\"px-2 flex-grow-1\">{escapedLine}</span></div>");
+				result.Append($"<div class=\"diff-del d-flex fg-danger bg-danger bg-10\"><span class=\"diff-line-nums text-end pe-3 opacity-75 flex-shrink-0\">{oldLine}</span><span class=\"px-3 flex-grow-1\">{escapedLine}</span></div>");
 				oldLine++;
 			}
 			else
 			{
 				// Context line - both line numbers advance
 				var lineNum = oldLine > 0 ? oldLine.ToString() : "";
-				result.Append($"<div class=\"diff-context d-flex\"><span class=\"diff-line-nums text-end pe-2 opacity-50 flex-shrink-0\">{lineNum}</span><span class=\"px-2 flex-grow-1\">{escapedLine}</span></div>");
+				result.Append($"<div class=\"diff-context d-flex\"><span class=\"diff-line-nums text-end pe-3 opacity-50 flex-shrink-0\">{lineNum}</span><span class=\"px-3 flex-grow-1\">{escapedLine}</span></div>");
 				oldLine++;
 				newLine++;
 			}

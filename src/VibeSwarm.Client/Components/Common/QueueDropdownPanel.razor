@@ -68,13 +68,6 @@
 							<i class="bi bi-play-fill"></i>
 						}
 						Start queue
-					<span class="spinner-border spinner-sm me-3" role="status"></span>
-						}
-						else
-						{
-							<i class="bi bi-play-fill me-3"></i>
-						}
-						Start queue
 					</button>
 
 					@if (_queueState.RunningJobs > 0)
@@ -97,13 +90,6 @@
 							<i class="bi bi-stop-fill"></i>
 						}
 						Stop queue
-					<span class="spinner-border spinner-sm me-3" role="status"></span>
-						}
-						else
-						{
-							<i class="bi bi-stop-fill me-3"></i>
-						}
-						Stop queue
 					</button>
 				}
 				else if (CanStartIdeas)
@@ -116,13 +102,6 @@
 						else
 						{
 							<i class="bi bi-play-fill"></i>
-						}
-						Start queued ideas
-					<span class="spinner-border spinner-sm me-3" role="status"></span>
-						}
-						else
-						{
-							<i class="bi bi-play-fill me-3"></i>
 						}
 						Start queued ideas
 					</button>

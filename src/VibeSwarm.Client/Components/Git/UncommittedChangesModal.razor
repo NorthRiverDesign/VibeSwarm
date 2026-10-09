@@ -219,14 +219,6 @@
                             <i class="bi bi-check-circle"></i>
                             <span>Commit</span>
                         }
-                    <span class="spinner-border spinner-sm me-1" role="status"></span>
-                            <span>Committing...</span>
-                        }
-                        else
-                        {
-                            <i class="bi bi-check-circle me-1"></i>
-                            <span>Commit</span>
-                        }
                     </button>
                     <button type="button" class="btn-solid theme-primary" @onclick="HandleCommitAndPush"
                             disabled="@(IsCommitting || IsDiscarding || string.IsNullOrWhiteSpace(_commitMessage))">
@@ -238,14 +230,6 @@
                         else
                         {
                             <i class="bi bi-cloud-arrow-up"></i>
-                            <span>Commit & Push</span>
-                        }
-                    <span class="spinner-border spinner-sm me-1" role="status"></span>
-                            <span>@(string.IsNullOrEmpty(CommitProgress) ? "Committing..." : CommitProgress)</span>
-                        }
-                        else
-                        {
-                            <i class="bi bi-cloud-arrow-up me-1"></i>
                             <span>Commit & Push</span>
                         }
                     </button>

@@ -10,7 +10,7 @@
             @* Tabs *@
             <ul class="nav nav-underline flex-grow-1 flex-nowrap" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab =="session" ? "active" : "")"
+                    <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab == "session" ? "active" : "")"
                             @onclick="@(() => _activeTab = "session")" role="tab">
                         @if (IsJobActive)
                         {
@@ -21,24 +21,15 @@
                             <i class="bi bi-chat-dots opacity-75"></i>
                         }
                         <span>Messages</span>
-                    <span class="live-dot me-1"></span>
-                        }
-                        else
-                        {
-                            <i class="bi bi-chat-dots me-1 opacity-75"></i>
-                        }
-                        <span>Messages</span>
                     </button>
                 </li>
                 @if (!string.IsNullOrEmpty(ConsoleOutput) && !IsJobActive)
                 {
                     <li class="nav-item" role="presentation">
-                        <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab =="console" ? "active" : "")"
+                        <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab == "console" ? "active" : "")"
                                 @onclick="@(() => _activeTab = "console")" role="tab">
                             <i class="bi bi-terminal opacity-75"></i>
                             <span class="d-none sm:d-inline">Console Output</span>
-                            <span class="sm:d-none">Console</span>
-                        <span class="d-none sm:d-inline">Console Output</span>
                             <span class="sm:d-none">Console</span>
                         </button>
                     </li>
@@ -46,7 +37,7 @@
                 @if (HasCommandTab)
                 {
                     <li class="nav-item" role="presentation">
-                        <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab =="command" ? "active" : "")"
+                        <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab == "command" ? "active" : "")"
                                 @onclick="@(() => _activeTab = "command")" role="tab">
                             <i class="bi bi-terminal-fill opacity-75"></i>
                             <span>Command</span>
@@ -212,13 +203,6 @@
                                             <i class="bi bi-check-lg"></i>
                                         }
                                         <span>Save</span>
-                                    <span class="spinner-border spinner-sm me-1" role="status"></span>
-                                        }
-                                        else
-                                        {
-                                            <i class="bi bi-check-lg me-1"></i>
-                                        }
-                                        <span>Save</span>
                                     </button>
                                 </div>
                             }
@@ -379,7 +363,6 @@
                                                 title="@($"Copy {step.Label} command to clipboard")">
                                             <i class="bi bi-clipboard"></i>
                                             <span class="d-none sm:d-inline">Copy</span>
-                                        <span class="d-none sm:d-inline">Copy</span>
                                         </button>
                                     </div>
                                     <div class="p-5 bg-2 rounded border">
@@ -397,7 +380,6 @@
                                 title="Copy command to clipboard">
                             <i class="bi bi-clipboard"></i>
                             <span class="d-none sm:d-inline">Copy</span>
-                        <span class="d-none sm:d-inline">Copy</span>
                         </button>
                     </div>
                     <div class="p-5 bg-2 rounded border">

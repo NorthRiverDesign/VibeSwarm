@@ -59,13 +59,6 @@
 						<i class="bi bi-play-fill fg-success"></i>
 					}
 					@StartIdeaQueueLabel
-				<span class="spinner-border spinner-sm me-3" role="status"></span>
-					}
-					else
-					{
-						<i class="bi bi-play-fill me-3 fg-success"></i>
-					}
-					@StartIdeaQueueLabel
 				</button>
 		}
 		@if (HasGitActions)
@@ -91,13 +84,6 @@
 							<i class="bi bi-arrow-repeat fg-success"></i>
 						}
 						@SyncLabel
-					<span class="spinner-border spinner-sm me-3" role="status"></span>
-						}
-						else
-						{
-							<i class="bi bi-arrow-repeat me-3 fg-success"></i>
-						}
-						@SyncLabel
 					</button>
 			}
 		@if (ShowCreateBranchAction)
@@ -118,13 +104,6 @@
 						<i class="bi bi-arrow-left-right fg-success"></i>
 					}
 					Merge Branch...
-				<span class="spinner-border spinner-sm me-3" role="status"></span>
-					}
-					else
-					{
-						<i class="bi bi-arrow-left-right me-3 fg-success"></i>
-					}
-					Merge Branch...
 				</button>
 		}
 		@if (ShowPruneBranchesAction)
@@ -137,13 +116,6 @@
 						else
 						{
 							<i class="bi bi-scissors fg-warning"></i>
-						}
-						Prune Stale Branches
-					<span class="spinner-border spinner-sm me-3" role="status"></span>
-						}
-						else
-						{
-							<i class="bi bi-scissors me-3 fg-warning"></i>
 						}
 						Prune Stale Branches
 					</button>

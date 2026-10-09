@@ -35,10 +35,10 @@ public sealed class MobileShellCssTests
 	{
 		var css = ReadSiteCss();
 
-		// iOS zooms the page into any focused field under 16px. Small fields and input groups
-		// read their size from shared tokens, so pin every field, and the small token, to 16px.
+		// iOS zooms the page into any focused field under 16px, small fields included; small
+		// buttons keep their small text.
 		Assert.Matches(new Regex(@"@media \(pointer: coarse\)\s*\{[^@]*\.form-control\s*\{\s*--bs-control-font-size: var\(--vs-text-body\);"), css);
-		Assert.Matches(new Regex(@"@media \(pointer: coarse\)\s*\{\s*:root\s*\{[^}]*--bs-btn-input-sm-font-size: var\(--vs-text-body\);"), css);
+		Assert.DoesNotContain("--bs-btn-input-sm-font-size", css);
 	}
 
 	[Fact]

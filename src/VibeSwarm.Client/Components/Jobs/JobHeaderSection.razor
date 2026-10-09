@@ -30,13 +30,6 @@
 											<i class="bi bi-arrow-repeat"></i>
 										}
 										@(IsRetrying ? "Retrying..." : "Retry Job")
-									<span class="spinner-border spinner-sm me-3" role="status"></span>
-										}
-										else
-										{
-											<i class="bi bi-arrow-repeat me-3"></i>
-										}
-										@(IsRetrying ? "Retrying..." : "Retry Job")
 									</button>
 								@if (ShowRetryOptions)
 								{
@@ -61,13 +54,6 @@
 										<i class="bi bi-exclamation-triangle"></i>
 									}
 									@(IsForceResetting ? "Marking as Failed..." : "Mark as Failed")
-								<span class="spinner-border spinner-sm me-3" role="status"></span>
-									}
-									else
-									{
-										<i class="bi bi-exclamation-triangle me-3"></i>
-									}
-									@(IsForceResetting ? "Marking as Failed..." : "Mark as Failed")
 								</button>
 						}
 						@if (ShowGitActions)
@@ -90,13 +76,6 @@
 											<i class="bi bi-cloud-download fg-success"></i>
 										}
 										Sync with Origin
-									<span class="spinner-border spinner-sm me-3" role="status"></span>
-										}
-										else
-										{
-											<i class="bi bi-cloud-download me-3 fg-success"></i>
-										}
-										Sync with Origin
 									</button>
 									<button class="menu-item" @onclick="OnPruneBranches" disabled="@AreGitActionsBusy">
 										@if (IsGitPruning)
@@ -106,13 +85,6 @@
 										else
 										{
 											<i class="bi bi-scissors fg-warning"></i>
-										}
-										Prune Stale Branches
-									<span class="spinner-border spinner-sm me-3" role="status"></span>
-										}
-										else
-										{
-											<i class="bi bi-scissors me-3 fg-warning"></i>
 										}
 										Prune Stale Branches
 									</button>
