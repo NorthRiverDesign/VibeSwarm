@@ -25,7 +25,7 @@
         </NavLink>
         <div class="ms-auto d-flex align-items-center flex-shrink-0">
             <button type="button"
-                    class="btn-link fg-secondary p-0 fs-lg d-flex align-items-center justify-content-center touch-manipulation mobile-header-icon"
+                    class="btn-link fg-secondary p-0 fs-lg d-flex touch-manipulation mobile-header-icon"
                     @onclick="OpenSearch" title="Search" aria-label="Search">
                 <i class="bi bi-search"></i>
             </button>
@@ -42,62 +42,62 @@
             <span class="app-brand-mark app-mark-sm d-inline-block"></span>
             <span>@AppBranding.Name</span>
         </div>
-        <div class="flex-grow-1 vs-side-nav d-flex flex-column gap-1 overflow-y-auto min-h-0 p-3">
-            <button class="nav-btn cursor-pointer" @onclick="OpenSearch" title="Search (Ctrl+K)">
+        <nav class="flex-grow-1 nav flex-column flex-nowrap vs-side-nav gap-1 overflow-y-auto min-h-0 p-3">
+            <button class="nav-link text-start" @onclick="OpenSearch" title="Search (Ctrl+K)">
                 <i class="bi bi-search"></i>
                 <span class="flex-grow-1">Search</span>
                 <kbd class="border rounded px-1 fg-1 bg-transparent small d-none lg:d-inline">⌃K</kbd>
             </button>
-            <NavLink class="nav-item" href="/" Match="NavLinkMatch.All">
+            <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
                 <i class="bi bi-speedometer2"></i>
                 <span>Dashboard</span>
             </NavLink>
-            <NavLink class="nav-item" href="/projects">
+            <NavLink class="nav-link" href="/projects">
                 <i class="bi bi-folder"></i>
                 <span>Projects</span>
             </NavLink>
-            <NavLink class="nav-item" href="/jobs">
+            <NavLink class="nav-link" href="/jobs">
                 <i class="bi bi-list-task"></i>
                 <span>Jobs</span>
             </NavLink>
 
             @* Grouped so the eleven destinations read as three short lists rather than one long one. *@
             <div class="vs-nav-heading text-eyebrow">Automate</div>
-            <NavLink class="nav-item" href="/scheduler">
+            <NavLink class="nav-link" href="/scheduler">
                 <i class="bi bi-calendar3"></i>
                 <span>Scheduler</span>
             </NavLink>
-            <NavLink class="nav-item" href="/agents">
+            <NavLink class="nav-link" href="/agents">
                 <i class="bi bi-robot"></i>
                 <span>Agents</span>
             </NavLink>
-            <NavLink class="nav-item" href="/skills">
+            <NavLink class="nav-link" href="/skills">
                 <i class="bi bi-stars"></i>
                 <span>Skills</span>
             </NavLink>
 
             <div class="vs-nav-heading text-eyebrow">Configure</div>
-            <NavLink class="nav-item" href="/providers">
+            <NavLink class="nav-link" href="/providers">
                 <i class="bi bi-plug"></i>
                 <span>Providers</span>
             </NavLink>
-            <NavLink class="nav-item" href="/inference">
+            <NavLink class="nav-link" href="/inference">
                 <i class="bi bi-cpu"></i>
                 <span>Inference</span>
             </NavLink>
             <AuthorizeView Roles="Admin">
                 <Authorized>
-                    <NavLink class="nav-item" href="/users">
+                    <NavLink class="nav-link" href="/users">
                         <i class="bi bi-people"></i>
                         <span>Users</span>
                     </NavLink>
                 </Authorized>
             </AuthorizeView>
-            <NavLink class="nav-item" href="/settings">
+            <NavLink class="nav-link" href="/settings">
                 <i class="bi bi-gear"></i>
                 <span>Settings</span>
             </NavLink>
-        </div>
+        </nav>
 
         <div class="border-top d-none lg:d-flex flex-column">
             <div class="px-5 py-3">
@@ -107,7 +107,6 @@
     </nav>
 
     @* Notifications Panel Overlay — rendered outside sticky header to avoid fixed-in-sticky clipping on mobile *@
-    <NotificationsPanelOverlay />
     <DeveloperUpdateOverlay />
 
     @* Main Content *@
@@ -130,15 +129,15 @@
                             <p class="fg-1 mb-7">An unexpected error occurred while loading this page.</p>
                             <div class="d-flex flex-column sm:flex-row gap-3 justify-content-center">
                                 <button class="btn-solid theme-primary" @onclick="RecoverFromError">
-                                    <i class="bi bi-arrow-clockwise me-3"></i>Try Again
+                                    <i class="bi bi-arrow-clockwise"></i>Try Again
                                 </button>
                                 <button class="btn-solid theme-secondary" @onclick="NavigateToDashboard">
-                                    <i class="bi bi-house me-3"></i>Go to Dashboard
+                                    <i class="bi bi-house"></i>Go to Dashboard
                                 </button>
                             </div>
                             <div class="mt-3">
                                 <button class="btn-link btn-sm fg-1" @onclick="ForceReloadPage">
-                                    <i class="bi bi-arrow-repeat me-1"></i>Full page reload
+                                    <i class="bi bi-arrow-repeat"></i>Full page reload
                                 </button>
                             </div>
                             @if (IsDevelopment())
@@ -165,20 +164,20 @@
         <nav class="app-tab-bar d-flex lg:d-none flex-shrink-0 border-top user-select-none" aria-label="Main">
             <NavLink class="app-tab d-flex flex-column align-items-center justify-content-center gap-1 text-decoration-none" href="/" Match="NavLinkMatch.All">
                 <i class="bi bi-speedometer2 fs-xl lh-1"></i>
-                <span class="text-caption fw-medium">Dashboard</span>
+                <span class="text-xs fw-medium">Dashboard</span>
             </NavLink>
             <NavLink class="app-tab d-flex flex-column align-items-center justify-content-center gap-1 text-decoration-none" href="/projects">
                 <i class="bi bi-folder fs-xl lh-1"></i>
-                <span class="text-caption fw-medium">Projects</span>
+                <span class="text-xs fw-medium">Projects</span>
             </NavLink>
             <NavLink class="app-tab d-flex flex-column align-items-center justify-content-center gap-1 text-decoration-none" href="/jobs">
                 <i class="bi bi-list-task fs-xl lh-1"></i>
-                <span class="text-caption fw-medium">Jobs</span>
+                <span class="text-xs fw-medium">Jobs</span>
             </NavLink>
             <a class="app-tab d-flex flex-column align-items-center justify-content-center gap-1 text-decoration-none @(IsMoreTabActive ? "active" : "")"
                href="/more" aria-current="@(IsMoreTabActive ? "page" : null)">
                 <i class="bi bi-three-dots fs-xl lh-1"></i>
-                <span class="text-caption fw-medium">More</span>
+                <span class="text-xs fw-medium">More</span>
             </a>
         </nav>
 
@@ -828,31 +827,13 @@ TimeSpan.FromSeconds(10) })
     private async Task ForceReloadPage()
     {
         await LogRefreshActionAsync("page-reload");
-
-        try
-        {
-            await JSRuntime.InvokeVoidAsync("location.reload", true);
-        }
-        catch
-        {
-            // JSInterop can fail after iOS app suspension - fall back to NavigationManager
-            try { NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true); } catch { }
-        }
+        NavigationManager.Refresh(forceReload: true);
     }
 
     private async Task ForceNavigateToDashboard()
     {
         await LogRefreshActionAsync("navigate-dashboard");
-
-        try
-        {
-            await JSRuntime.InvokeVoidAsync("eval", "window.location.href = '/'");
-        }
-        catch
-        {
-            // JSInterop can fail after iOS app suspension - fall back to NavigationManager
-            try { NavigationManager.NavigateTo("/", forceLoad: true); } catch { }
-        }
+        NavigationManager.NavigateTo("/", forceLoad: true);
     }
 
     private void NavigateToDashboard()

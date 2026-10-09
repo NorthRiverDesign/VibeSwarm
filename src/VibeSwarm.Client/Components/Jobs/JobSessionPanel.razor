@@ -10,11 +10,18 @@
             @* Tabs *@
             <ul class="nav nav-underline flex-grow-1 flex-nowrap" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab == "session" ? "active" : "")"
+                    <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab =="session" ? "active" : "")"
                             @onclick="@(() => _activeTab = "session")" role="tab">
                         @if (IsJobActive)
                         {
-                            <span class="live-indicator me-1"></span>
+                            <span class="live-dot me-1"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-chat-dots opacity-75"></i>
+                        }
+                        <span>Messages</span>
+                    <span class="live-dot me-1"></span>
                         }
                         else
                         {
@@ -26,10 +33,12 @@
                 @if (!string.IsNullOrEmpty(ConsoleOutput) && !IsJobActive)
                 {
                     <li class="nav-item" role="presentation">
-                        <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab == "console" ? "active" : "")"
+                        <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab =="console" ? "active" : "")"
                                 @onclick="@(() => _activeTab = "console")" role="tab">
-                            <i class="bi bi-terminal me-1 opacity-75"></i>
+                            <i class="bi bi-terminal opacity-75"></i>
                             <span class="d-none sm:d-inline">Console Output</span>
+                            <span class="sm:d-none">Console</span>
+                        <span class="d-none sm:d-inline">Console Output</span>
                             <span class="sm:d-none">Console</span>
                         </button>
                     </li>
@@ -37,9 +46,9 @@
                 @if (HasCommandTab)
                 {
                     <li class="nav-item" role="presentation">
-                        <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab == "command" ? "active" : "")"
+                        <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab =="command" ? "active" : "")"
                                 @onclick="@(() => _activeTab = "command")" role="tab">
-                            <i class="bi bi-terminal-fill me-1 opacity-75"></i>
+                            <i class="bi bi-terminal-fill opacity-75"></i>
                             <span>Command</span>
                         </button>
                     </li>
@@ -59,7 +68,7 @@
     @* Error Alert - inside the card when job has an error *@
     @if (!string.IsNullOrEmpty(ErrorMessage) && _activeTab == "session")
     {
-        <div class="alert theme-danger align-items-start m-3 mb-0" role="alert">
+        <div class="alert theme-danger m-3 mb-0" role="alert">
             <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
             <div class="flex-grow-1 min-w-0">
                 <strong class="d-block mb-1">Error</strong>
@@ -79,7 +88,7 @@
                         @if (!IsJobActive && _displayedMessages.Any())
                         {
                             <div>
-                                <button class="btn-sm btn-solid theme-secondary d-inline-flex align-items-center gap-1"
+                                <button class="btn-sm btn-solid theme-secondary"
                                         type="button" data-bs-toggle="menu" data-bs-placement="bottom-end" data-bs-auto-close="outside"
                                         aria-expanded="false">
                                     <i class="bi bi-funnel"></i>
@@ -189,7 +198,7 @@
                             {
                                 <div class="d-flex justify-content-end gap-3 px-3">
                                     <button type="button" class="btn-sm btn-solid theme-secondary" @onclick="CancelGoalPromptEdit" title="Cancel editing">
-                                        <i class="bi bi-x-lg me-1"></i>
+                                        <i class="bi bi-x-lg"></i>
                                         <span>Cancel</span>
                                     </button>
                                     <button type="button" class="btn-sm btn-solid theme-primary" @onclick="SaveGoalPrompt"
@@ -197,6 +206,13 @@
                                         @if (_isSavingGoalPrompt)
                                         {
                                             <span class="spinner-border spinner-sm me-1" role="status"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-check-lg"></i>
+                                        }
+                                        <span>Save</span>
+                                    <span class="spinner-border spinner-sm me-1" role="status"></span>
                                         }
                                         else
                                         {
@@ -361,8 +377,9 @@
                                         <button type="button" class="btn-sm btn-solid theme-secondary"
                                                 @onclick="@(() => CopyCommandToClipboard(step.Command))"
                                                 title="@($"Copy {step.Label} command to clipboard")">
-                                            <i class="bi bi-clipboard me-1"></i>
+                                            <i class="bi bi-clipboard"></i>
                                             <span class="d-none sm:d-inline">Copy</span>
+                                        <span class="d-none sm:d-inline">Copy</span>
                                         </button>
                                     </div>
                                     <div class="p-5 bg-2 rounded border">
@@ -378,8 +395,9 @@
                     <div class="d-flex justify-content-end mb-3">
                         <button type="button" class="btn-sm btn-solid theme-secondary" @onclick="CopyPrimaryCommandToClipboard"
                                 title="Copy command to clipboard">
-                            <i class="bi bi-clipboard me-1"></i>
+                            <i class="bi bi-clipboard"></i>
                             <span class="d-none sm:d-inline">Copy</span>
+                        <span class="d-none sm:d-inline">Copy</span>
                         </button>
                     </div>
                     <div class="p-5 bg-2 rounded border">
@@ -388,8 +406,9 @@
                 }
                 @if (!string.IsNullOrEmpty(SessionId))
                 {
-                    <div class="mt-5">
-                        <StatItem Label="Session ID" Value="@SessionId" Monospace="true" />
+                    <div class="mt-5 bg-2 rounded-4 p-3">
+                        <div class="fg-1 mb-1 text-eyebrow">Session ID</div>
+                        <div class="fw-semibold font-monospace small">@SessionId</div>
                     </div>
                 }
             </div>
@@ -412,8 +431,7 @@
             <div class="d-flex gap-3">
                 <textarea class="form-control" rows="4"
                           placeholder="@(Status is JobStatus.Stalled or JobStatus.Failed ? "Describe what to try next..." : "Add follow-up instructions...")"
-                          value="@_followUpPrompt"
-                          @oninput="HandleFollowUpInput" disabled="@_isSendingFollowUp"></textarea>
+                          @bind="_followUpPrompt" @bind:event="oninput" disabled="@_isSendingFollowUp"></textarea>
                 <button class="btn-solid theme-primary align-self-end flex-shrink-0" @onclick="SendFollowUp"
                         disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp)" title="Send follow-up">
                     @if (_isSendingFollowUp)
@@ -740,11 +758,6 @@
         }
     }
 
-    private Task HandleFollowUpInput(ChangeEventArgs e)
-    {
-        _followUpPrompt = e.Value?.ToString() ?? string.Empty;
-        return Task.CompletedTask;
-    }
 
     private static string? NormalizeCommand(string? command)
         => string.IsNullOrWhiteSpace(command) ? null : command.Trim();
@@ -1206,7 +1219,7 @@
     </ChildContent>
     <FooterContent>
         <button type="button" class="btn-solid theme-secondary" @onclick="CopyGoalPrompt">
-            <i class="bi bi-clipboard me-1"></i>Copy to Clipboard
+            <i class="bi bi-clipboard"></i>Copy to Clipboard
         </button>
         <button type="button" class="btn-solid theme-secondary" @onclick="CloseGoalPromptModal">Close</button>
     </FooterContent>

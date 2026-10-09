@@ -5,7 +5,7 @@
 @implements IDisposable
 
 <div class="@(Compact ? "mobile-header-dropdown" : string.Empty)">
-	<button class="btn-link fg-secondary p-0 fs-lg d-flex align-items-center justify-content-center position-relative touch-manipulation @(Compact ? "mobile-header-icon" : "lh-1")"
+	<button class="btn-link fg-secondary p-0 fs-lg d-flex position-relative touch-manipulation @(Compact ? "mobile-header-icon" : "lh-1")"
 			type="button"
 			data-bs-toggle="menu" data-bs-placement="@(OpenUpward ? "top-end" : "bottom-end")"
 			data-bs-display="@(Compact ? "static" : null)"
@@ -23,7 +23,7 @@
 		}
 	</button>
 
-	<div class="menu vs-nav-dropdown-menu p-0 overflow-hidden" style="min-width: min(24rem, 92vw); max-width: min(24rem, 92vw);">
+	<div class="menu p-0 overflow-hidden" style="min-width: min(24rem, 92vw); max-width: min(24rem, 92vw);">
 		<div class="p-5 border-bottom bg-2">
 			<div class="d-flex align-items-start justify-content-between gap-5">
 				<div class="min-w-0">
@@ -65,6 +65,13 @@
 						}
 						else
 						{
+							<i class="bi bi-play-fill"></i>
+						}
+						Start queue
+					<span class="spinner-border spinner-sm me-3" role="status"></span>
+						}
+						else
+						{
 							<i class="bi bi-play-fill me-3"></i>
 						}
 						Start queue
@@ -73,7 +80,7 @@
 					@if (_queueState.RunningJobs > 0)
 					{
 						<button type="button" class="btn-outline theme-danger" @onclick="() => StopQueueAsync(true)" disabled="@_isMutatingQueue">
-							<i class="bi bi-stop-fill me-3"></i>
+							<i class="bi bi-stop-fill"></i>
 							Also stop @_queueState.RunningJobs job@(_queueState.RunningJobs == 1 ? "" : "s") still finishing
 						</button>
 					}
@@ -84,6 +91,13 @@
 						@if (_isMutatingQueue)
 						{
 							<span class="spinner-border spinner-sm me-3" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-stop-fill"></i>
+						}
+						Stop queue
+					<span class="spinner-border spinner-sm me-3" role="status"></span>
 						}
 						else
 						{
@@ -101,6 +115,13 @@
 						}
 						else
 						{
+							<i class="bi bi-play-fill"></i>
+						}
+						Start queued ideas
+					<span class="spinner-border spinner-sm me-3" role="status"></span>
+						}
+						else
+						{
 							<i class="bi bi-play-fill me-3"></i>
 						}
 						Start queued ideas
@@ -108,14 +129,14 @@
 				}
 
 				<a class="btn-solid theme-secondary" href="/jobs">
-					<i class="bi bi-box-arrow-up-right me-3"></i>All jobs
+					<i class="bi bi-box-arrow-up-right"></i>All jobs
 				</a>
 			</div>
 
 			@if (IsQueueRunning && CanStartIdeas)
 			{
 				<button type="button" class="btn-sm btn-link px-0 mt-1" @onclick="StartQueueAsync" disabled="@_isMutatingQueue">
-					<i class="bi bi-play-circle me-1"></i>Start queued ideas across active projects
+					<i class="bi bi-play-circle"></i>Start queued ideas across active projects
 				</button>
 			}
 		</div>

@@ -13,7 +13,7 @@
 					<div>
 						<button class="btn-sm btn-solid theme-secondary" type="button" data-bs-toggle="menu" data-bs-placement="bottom-end"
 								aria-expanded="false" title="Job actions">
-							<i class="bi bi-gear me-1"></i>
+							<i class="bi bi-gear"></i>
 							<span>Actions</span>
 							<i class="bi bi-chevron-down small opacity-75"></i>
 						</button>
@@ -24,6 +24,13 @@
 										@if (IsRetrying)
 										{
 											<span class="spinner-border spinner-sm me-3" role="status"></span>
+										}
+										else
+										{
+											<i class="bi bi-arrow-repeat"></i>
+										}
+										@(IsRetrying ? "Retrying..." : "Retry Job")
+									<span class="spinner-border spinner-sm me-3" role="status"></span>
 										}
 										else
 										{
@@ -51,6 +58,13 @@
 									}
 									else
 									{
+										<i class="bi bi-exclamation-triangle"></i>
+									}
+									@(IsForceResetting ? "Marking as Failed..." : "Mark as Failed")
+								<span class="spinner-border spinner-sm me-3" role="status"></span>
+									}
+									else
+									{
 										<i class="bi bi-exclamation-triangle me-3"></i>
 									}
 									@(IsForceResetting ? "Marking as Failed..." : "Mark as Failed")
@@ -64,12 +78,19 @@
 								}
 									<h6 class="menu-header">Git</h6>
 									<button class="menu-item" @onclick="OnCreateBranch" disabled="@AreGitActionsBusy">
-										<i class="bi bi-plus-lg me-3 fg-primary"></i>New Branch
+										<i class="bi bi-plus-lg fg-primary"></i>New Branch
 									</button>
 									<button class="menu-item" @onclick="OnSync" disabled="@AreGitActionsBusy">
 										@if (IsGitSyncing)
 										{
 											<span class="spinner-border spinner-sm me-3" role="status"></span>
+										}
+										else
+										{
+											<i class="bi bi-cloud-download fg-success"></i>
+										}
+										Sync with Origin
+									<span class="spinner-border spinner-sm me-3" role="status"></span>
 										}
 										else
 										{
@@ -84,12 +105,19 @@
 										}
 										else
 										{
+											<i class="bi bi-scissors fg-warning"></i>
+										}
+										Prune Stale Branches
+									<span class="spinner-border spinner-sm me-3" role="status"></span>
+										}
+										else
+										{
 											<i class="bi bi-scissors me-3 fg-warning"></i>
 										}
 										Prune Stale Branches
 									</button>
 									<button class="menu-item" @onclick="OnRefresh" disabled="@AreGitActionsBusy">
-										<i class="bi bi-arrow-clockwise me-3 @(IsGitRefreshing ? "spin" : string.Empty)"></i>
+										<i class="bi bi-arrow-clockwise @(IsGitRefreshing ? "spinner-rotate" : string.Empty)"></i>
 										Refresh Branches
 									</button>
 							}

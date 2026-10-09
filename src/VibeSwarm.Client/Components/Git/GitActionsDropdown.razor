@@ -9,12 +9,19 @@
 	</button>
 	<div class="menu">
 			<button class="menu-item" @onclick="OnCreateBranch" disabled="@IsDisabled">
-				<i class="bi bi-plus-lg me-3 fg-primary"></i>New Branch
+				<i class="bi bi-plus-lg fg-primary"></i>New Branch
 			</button>
 			<button class="menu-item" @onclick="OnSync" disabled="@IsDisabled">
 				@if (IsSyncing)
 				{
 					<span class="spinner-border spinner-sm me-3" role="status"></span>
+				}
+				else
+				{
+					<i class="bi bi-cloud-download fg-success"></i>
+				}
+				Sync with Origin
+			<span class="spinner-border spinner-sm me-3" role="status"></span>
 				}
 				else
 				{
@@ -29,13 +36,20 @@
 				}
 				else
 				{
+					<i class="bi bi-scissors fg-warning"></i>
+				}
+				Prune Stale Branches
+			<span class="spinner-border spinner-sm me-3" role="status"></span>
+				}
+				else
+				{
 					<i class="bi bi-scissors me-3 fg-warning"></i>
 				}
 				Prune Stale Branches
 			</button>
 			<hr class="menu-divider">
 			<button class="menu-item" @onclick="OnRefresh" disabled="@IsDisabled">
-				<i class="bi bi-arrow-clockwise me-3 @(IsRefreshing ? "spin" : "")"></i>
+				<i class="bi bi-arrow-clockwise @(IsRefreshing ? "spinner-rotate" : "")"></i>
 				Refresh Branches
 			</button>
 	</div>

@@ -137,14 +137,14 @@
 			{
 				<button type="button" class="btn-solid theme-success btn-sm" @onclick="ShowCreateDirectoryInput"
 						disabled="@(_isCreatingDirectory || string.IsNullOrEmpty(_directoryResult?.CurrentPath))">
-					<i class="bi bi-folder-plus me-1"></i>Create Directory
+					<i class="bi bi-folder-plus"></i>Create Directory
 				</button>
 			}
 		</div>
 		<button type="button" class="btn-solid theme-secondary" @onclick="Close">Cancel</button>
 		<button type="button" class="btn-solid theme-primary" @onclick="SelectCurrentDirectory"
 				disabled="@(string.IsNullOrEmpty(_selectedPath) && string.IsNullOrEmpty(_directoryResult?.CurrentPath))">
-			<i class="bi bi-check-lg me-1"></i>Select
+			<i class="bi bi-check-lg"></i>Select
 		</button>
 	</FooterContent>
 </ModalDialog>

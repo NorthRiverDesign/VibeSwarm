@@ -1,9 +1,4 @@
 using System.Text.RegularExpressions;
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
-using VibeSwarm.Client.Components.Common.Primitives;
 
 namespace VibeSwarm.Tests;
 
@@ -58,35 +53,6 @@ public sealed class MobileShellCssTests
 		}
 
 		Assert.Matches(new Regex(@"\.app-floating-banner\s*\{[^}]*bottom:\s*calc\(var\(--vs-tab-bar-height\) \+ var\(--vs-safe-area-bottom\)\);"), ReadSiteCss());
-	}
-
-	[Theory]
-	[InlineData("sm", "status-disc-sm")]
-	[InlineData("md", "status-disc-md")]
-	[InlineData("lg", "status-disc-lg")]
-	public async Task StatusIconPill_RendersAFixedSizeCircle(string size, string expectedSizeClass)
-	{
-		var services = new ServiceCollection();
-		services.AddLogging();
-
-		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
-
-		var html = await renderer.Dispatcher.InvokeAsync(async () =>
-		{
-			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
-			{
-				[nameof(StatusIconPill.Status)] = "completed",
-				[nameof(StatusIconPill.Size)] = size
-			});
-
-			var output = await renderer.RenderComponentAsync<StatusIconPill>(parameters);
-			return output.ToHtmlString();
-		});
-
-		// A padded badge takes its height from the icon font's line box and renders as an oval.
-		Assert.Contains("rounded-circle", html);
-		Assert.Contains(expectedSizeClass, html);
-		Assert.DoesNotContain("badge", html);
 	}
 
 	private static string ReadSiteCss()

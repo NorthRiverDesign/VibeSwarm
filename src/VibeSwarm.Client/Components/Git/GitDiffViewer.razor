@@ -12,7 +12,7 @@
 				</div>
 				@if (IsVerifying)
 				{
-					<span class="badge theme-info d-inline-flex align-items-center gap-1">
+					<span class="badge theme-info">
 						<span class="spinner-border spinner-sm" style="width: 0.75rem; height: 0.75rem;"></span>
 						Verifying...
 					</span>
@@ -21,7 +21,7 @@
 				{
 					@if (IsVerified)
 					{
-						<span class="badge theme-success d-inline-flex align-items-center gap-1"
+						<span class="badge theme-success"
 							  title="Working copy matches job changes">
 							<i class="bi bi-check-circle"></i>
 							<span class="d-none sm:d-inline">Verified</span>
@@ -29,7 +29,7 @@
 					}
 					else if (IsDiverged)
 					{
-						<span class="badge theme-warning d-inline-flex align-items-center gap-1"
+						<span class="badge theme-warning"
 							  title="Working copy has diverged from job changes">
 							<i class="bi bi-exclamation-triangle"></i>
 							<span class="d-none sm:d-inline">Diverged</span>
@@ -38,7 +38,7 @@
 				}
 				@if (IsCommitted)
 				{
-					<span class="badge theme-success d-inline-flex align-items-center gap-1"
+					<span class="badge theme-success"
 						  title="Changes have been committed">
 						<i class="bi bi-check-circle"></i>
 						<span class="d-none sm:d-inline">Committed</span>
@@ -100,7 +100,7 @@
 				}
 				<div class="mt-3">
 					<button class="btn-sm btn-solid theme-warning" @onclick="OnRecheck" disabled="@IsVerifying">
-						<i class="bi bi-arrow-repeat me-1"></i>Re-check
+						<i class="bi bi-arrow-repeat"></i>Re-check
 					</button>
 				</div>
 			</div>

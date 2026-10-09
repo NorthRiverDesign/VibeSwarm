@@ -1,10 +1,10 @@
-@* A single action inside a <RowActionsDropdown>. Use <RowActionsDivider/> for separators. *@
+@* A single action inside a <RowActionsDropdown>. Separate groups with <hr class="menu-divider">. *@
 
 <button type="button" class="menu-item @(Danger ? "theme-danger" : "") @(Warning ? "theme-warning" : "")"
 		@onclick="OnClick" @onclick:stopPropagation="true" disabled="@Disabled">
 	@if (!string.IsNullOrEmpty(Icon))
 	{
-		<i class="bi bi-@Icon @(IconSpin ? "spin" : "")"></i>
+		<i class="bi bi-@Icon @(IconSpin ? "spinner-rotate" : "")"></i>
 	}
 	@Text
 	@if (ChildContent != null)

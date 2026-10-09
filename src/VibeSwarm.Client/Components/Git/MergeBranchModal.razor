@@ -100,7 +100,7 @@
 			}
 			else if (ConflictFiles.Count > 0)
 			{
-				<div class="alert theme-warning py-3 mb-5 align-items-start">
+				<div class="alert theme-warning py-3 mb-5">
 					<i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
 					<div>
 						<div class="fw-semibold">This merge needs manual conflict resolution.</div>
@@ -134,21 +134,21 @@
 			}
 			else if (!string.IsNullOrWhiteSpace(PreviewError))
 			{
-				<div class="alert theme-danger py-3 mb-0 align-items-start">
+				<div class="alert theme-danger py-3 mb-0">
 					<i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
 					<div>@PreviewError</div>
 				</div>
 			}
 			else if (IsAlreadyUpToDate && !string.IsNullOrWhiteSpace(PreviewMessage))
 			{
-				<div class="alert theme-warning py-3 mb-0 align-items-start">
+				<div class="alert theme-warning py-3 mb-0">
 					<i class="bi bi-check2-all mt-1 flex-shrink-0"></i>
 					<div>@PreviewMessage</div>
 				</div>
 			}
 			else if (!string.IsNullOrWhiteSpace(PreviewMessage))
 			{
-				<div class="alert theme-success py-3 mb-0 align-items-start">
+				<div class="alert theme-success py-3 mb-0">
 					<i class="bi bi-check-circle-fill mt-1 flex-shrink-0"></i>
 					<div>@PreviewMessage</div>
 				</div>
@@ -170,6 +170,14 @@
 				}
 				else
 				{
+					<i class="bi bi-github"></i>
+					<span>Create Pull Request</span>
+				}
+			<span class="spinner-border spinner-sm me-1" role="status"></span>
+					<span>Creating PR...</span>
+				}
+				else
+				{
 					<i class="bi bi-github me-1"></i>
 					<span>Create Pull Request</span>
 				}
@@ -182,6 +190,29 @@
 				@if (IsMerging)
 				{
 					<span class="spinner-border spinner-sm me-1" role="status"></span>
+					<span>Merging...</span>
+				}
+				else if (ConflictFiles.Count > 0 && PushAfterMerge)
+				{
+					<i class="bi bi-wrench-adjustable-circle"></i>
+					<span>Resolve, Merge & Push</span>
+				}
+				else if (ConflictFiles.Count > 0)
+				{
+					<i class="bi bi-wrench-adjustable-circle"></i>
+					<span>Resolve & Merge</span>
+				}
+				else if (PushAfterMerge)
+				{
+					<i class="bi bi-cloud-arrow-up"></i>
+					<span>Merge & Push</span>
+				}
+				else
+				{
+					<i class="bi bi-arrow-left-right"></i>
+					<span>Merge Locally</span>
+				}
+			<span class="spinner-border spinner-sm me-1" role="status"></span>
 					<span>Merging...</span>
 				}
 				else if (ConflictFiles.Count > 0 && PushAfterMerge)

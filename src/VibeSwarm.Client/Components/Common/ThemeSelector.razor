@@ -42,7 +42,7 @@
 	private string GetButtonClass(ThemePreference theme)
 	{
 		var isSelected = SelectedTheme == theme;
-		return $"btn-solid {(isSelected ? "theme-primary" : "theme-secondary")} flex-fill d-inline-flex align-items-center justify-content-center gap-1";
+		return $"btn-solid {(isSelected ? "theme-primary" : "theme-secondary")} flex-fill";
 	}
 
 	private Task SelectThemeAsync(ThemePreference theme) => OnThemeSelected.InvokeAsync(theme);

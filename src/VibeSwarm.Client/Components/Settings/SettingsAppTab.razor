@@ -57,6 +57,19 @@ else
 }
 else if (_developerModeStatus.IsUpdateInProgress)
 {
+<i class="bi bi-arrow-repeat"></i>
+<span>Update In Progress</span>
+}
+else
+{
+<i class="bi bi-arrow-repeat"></i>
+<span>Rebuild And Restart</span>
+}
+<span class="spinner-border spinner-sm me-1" role="status"></span>
+<span>Starting...</span>
+}
+else if (_developerModeStatus.IsUpdateInProgress)
+{
 <i class="bi bi-arrow-repeat me-1"></i>
 <span>Update In Progress</span>
 }
@@ -112,16 +125,16 @@ the working path will default to
 @if (_directoryExists)
 {
 <span class="badge badge-subtle theme-success">
-<i class="bi bi-check-circle me-1"></i>Directory exists
+<i class="bi bi-check-circle"></i>Directory exists
 </span>
 <button type="button" class="btn-solid theme-primary btn-sm" @onclick="OpenScanProjectsModal">
-<i class="bi bi-folder-symlink me-1"></i>Import projects
+<i class="bi bi-folder-symlink"></i>Import projects
 </button>
 }
 else
 {
 <span class="badge badge-subtle theme-warning">
-<i class="bi bi-exclamation-triangle me-1"></i>Directory does not exist
+<i class="bi bi-exclamation-triangle"></i>Directory does not exist
 </span>
 }
 </div>
@@ -275,12 +288,18 @@ BadgeClass="theme-danger" @bind-IsOpen="_openErrorLogs">
 		{
 			<span class="spinner-border spinner-sm me-1" role="status"></span>
 		}
+		<i class="bi bi-arrow-clockwise"></i>Refresh Logs
+	<span class="spinner-border spinner-sm me-1" role="status"></span>
+		}
 		<i class="bi bi-arrow-clockwise me-1"></i>Refresh Logs
 	</button>
 	<button type="button" class="btn-solid theme-secondary btn-sm" @onclick="PruneCriticalErrorLogs" disabled="@_isPruningCriticalErrorLogs">
 		@if (_isPruningCriticalErrorLogs)
 		{
 			<span class="spinner-border spinner-sm me-1" role="status"></span>
+		}
+		<i class="bi bi-trash3"></i>Apply Retention Now
+	<span class="spinner-border spinner-sm me-1" role="status"></span>
 		}
 		<i class="bi bi-trash3 me-1"></i>Apply Retention Now
 	</button>
@@ -306,7 +325,7 @@ BadgeClass="theme-danger" @bind-IsOpen="_openErrorLogs">
 							@if (entry.TriggeredRefresh)
 							{
 								<span class="badge badge-subtle theme-warning">
-									<i class="bi bi-arrow-clockwise me-1"></i>@(string.IsNullOrWhiteSpace(entry.RefreshAction) ? "Refresh triggered" : entry.RefreshAction)
+									<i class="bi bi-arrow-clockwise"></i>@(string.IsNullOrWhiteSpace(entry.RefreshAction) ? "Refresh triggered" : entry.RefreshAction)
 								</span>
 							}
 							<span class="small fg-1">@entry.CreatedAt.FormatDateTimeShort()</span>
@@ -347,12 +366,20 @@ BadgeClass="theme-danger" @bind-IsOpen="_openErrorLogs">
 }
 else
 {
+<i class="bi bi-check-lg"></i>
+<span>Save settings</span>
+}
+<span class="spinner-border spinner-sm me-1" role="status"></span>
+<span>Saving...</span>
+}
+else
+{
 <i class="bi bi-check-lg me-1"></i>
 <span>Save settings</span>
 }
 </button>
 <button type="button" class="btn-solid theme-secondary" @onclick="ReloadSettings" disabled="@_isSaving">
-<i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+<i class="bi bi-arrow-counterclockwise"></i>Reset
 </button>
 </div>
 </EditForm>

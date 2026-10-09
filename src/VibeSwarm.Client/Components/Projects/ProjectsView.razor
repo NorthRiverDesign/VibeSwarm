@@ -24,11 +24,11 @@
 			@if (GetInactiveCount() > 0)
 			{
 				<div class="btn-group btn-group-sm flex-shrink-0" role="group" aria-label="Show">
-					<button type="button" class="btn @(ActiveFilter == "active" ? "btn-solid theme-primary" : "btn-solid theme-secondary")"
+					<button type="button" class="btn @(ActiveFilter =="active" ? "btn-solid theme-primary" : "btn-solid theme-secondary")"
 							@onclick='() => SetFilter("active")' aria-pressed="@(ActiveFilter == "active" ? "true" : "false")">Active</button>
-					<button type="button" class="btn @(ActiveFilter == "inactive" ? "btn-solid theme-primary" : "btn-solid theme-secondary")"
+					<button type="button" class="btn @(ActiveFilter =="inactive" ? "btn-solid theme-primary" : "btn-solid theme-secondary")"
 							@onclick='() => SetFilter("inactive")' aria-pressed="@(ActiveFilter == "inactive" ? "true" : "false")">Inactive · @GetInactiveCount()</button>
-					<button type="button" class="btn @(ActiveFilter == "all" ? "btn-solid theme-primary" : "btn-solid theme-secondary")"
+					<button type="button" class="btn @(ActiveFilter =="all" ? "btn-solid theme-primary" : "btn-solid theme-secondary")"
 							@onclick='() => SetFilter("all")' aria-pressed="@(ActiveFilter == "all" ? "true" : "false")">All</button>
 				</div>
 			}

@@ -13,14 +13,14 @@
                     <span class="fw-semibold fg-body">@context.User.Identity?.Name</span>
                 </div>
                 <div class="d-flex align-items-center gap-5">
-                    <NotificationsPanel />
+                    <NotificationsPanel OpenUpward="true" />
                     <QueueDropdownPanel OpenUpward="true" />
                     <div>
                         <button class="btn-link fg-secondary p-0 lh-1" type="button" data-bs-toggle="menu" data-bs-placement="top-end"
                                 aria-expanded="false" title="User options">
                             <i class="bi bi-gear"></i>
                         </button>
-                        <div class="menu vs-nav-dropdown-menu" style="min-width: 16rem;">
+                        <div class="menu" style="min-width: 16rem;">
                             <ThemeSelector SelectedTheme="_selectedTheme" IsLoading="_isUpdatingTheme"
                                            OnThemeSelected="HandleThemeSelected" />
                             <hr class="menu-divider">
@@ -38,11 +38,11 @@
 
             @* Mobile: Compact dropdown with user icon *@
 			<div class="lg:d-none mobile-header-dropdown">
-				<button class="btn-link fg-secondary p-0 fs-lg d-flex align-items-center justify-content-center lh-1 touch-manipulation mobile-header-icon" type="button"
+				<button class="btn-link fg-secondary p-0 fs-lg d-flex lh-1 touch-manipulation mobile-header-icon" type="button"
 						data-bs-toggle="menu" data-bs-placement="bottom-end" data-bs-display="static" aria-expanded="false" title="User menu" aria-label="User menu">
 					<i class="bi bi-person-circle"></i>
 				</button>
-                <div class="menu vs-nav-dropdown-menu" style="min-width: 16rem;">
+                <div class="menu" style="min-width: 16rem;">
                     <div class="menu-header">
                         <span class="fw-semibold">@context.User.Identity?.Name</span>
                     </div>

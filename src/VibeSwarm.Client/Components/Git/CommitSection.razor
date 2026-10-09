@@ -9,17 +9,17 @@
 			@if (!string.IsNullOrEmpty(BranchName))
 			{
 				<span class="badge font-monospace">
-					<i class="bi bi-diagram-2 me-1"></i>@BranchName
+					<i class="bi bi-diagram-2"></i>@BranchName
 				</span>
 			}
 			@if (!string.IsNullOrEmpty(TargetBranch))
 			{
 				<span class="badge font-monospace">
-					<i class="bi bi-signpost-split me-1"></i>@TargetBranch
+					<i class="bi bi-signpost-split"></i>@TargetBranch
 				</span>
 			}
 			<span class="badge @(DeliveryMode == GitChangeDeliveryMode.PullRequest ? "bg-primary" : "bg-secondary")">
-				<i class="bi @(DeliveryMode == GitChangeDeliveryMode.PullRequest ? "bi-github" : "bi-git") me-1"></i>
+				<i class="bi @(DeliveryMode == GitChangeDeliveryMode.PullRequest ? "bi-github" : "bi-git")"></i>
 				@(DeliveryMode == GitChangeDeliveryMode.PullRequest ? "Pull Request" : "Branch")
 			</span>
 		</div>
@@ -40,7 +40,7 @@
 				else if (HasAISummary)
 				{
 					<span class="badge theme-info">
-						<i class="bi bi-robot me-1"></i>AI Generated
+						<i class="bi bi-robot"></i>AI Generated
 					</span>
 				}
 			</label>
@@ -84,6 +84,15 @@
 				}
 				else
 				{
+					<i class="bi bi-cloud-upload"></i>
+					<span>Commit & Push</span>
+				}
+			<span class="spinner-border spinner-sm me-1" role="status"></span>
+					<span class="d-none sm:d-inline">@PushStatus</span>
+					<span class="sm:d-none">Pushing...</span>
+				}
+				else
+				{
 					<i class="bi bi-cloud-upload me-1"></i>
 					<span>Commit & Push</span>
 				}
@@ -95,6 +104,14 @@
 					@if (IsCreatingPullRequest)
 					{
 						<span class="spinner-border spinner-sm me-1" role="status"></span>
+						<span>Creating PR...</span>
+					}
+					else
+					{
+						<i class="bi bi-github"></i>
+						<span>Create Pull Request</span>
+					}
+				<span class="spinner-border spinner-sm me-1" role="status"></span>
 						<span>Creating PR...</span>
 					}
 					else
@@ -111,6 +128,14 @@
 					@if (IsMergingBranch)
 					{
 						<span class="spinner-border spinner-sm me-1" role="status"></span>
+						<span>Merging...</span>
+					}
+					else
+					{
+						<i class="bi bi-arrow-left-right"></i>
+						<span>Merge into @TargetBranch</span>
+					}
+				<span class="spinner-border spinner-sm me-1" role="status"></span>
 						<span>Merging...</span>
 					}
 					else
@@ -134,13 +159,13 @@
 				@if (!string.IsNullOrEmpty(PushedCommitHash))
 				{
 					<span class="badge font-monospace">
-						<i class="bi bi-git me-1"></i>@PushedCommitHash[..Math.Min(7, PushedCommitHash.Length)]
+						<i class="bi bi-git"></i>@PushedCommitHash[..Math.Min(7, PushedCommitHash.Length)]
 					</span>
 				}
 				@if (!string.IsNullOrEmpty(PullRequestUrl))
 				{
 					<a class="btn-sm btn-solid theme-secondary" href="@PullRequestUrl" target="_blank" rel="noreferrer">
-						<i class="bi bi-github me-1"></i>
+						<i class="bi bi-github"></i>
 						<span>Open PR@(PullRequestNumber.HasValue ? $" #{PullRequestNumber.Value}" : string.Empty)</span>
 					</a>
 				}
@@ -164,6 +189,14 @@
 							}
 							else
 							{
+								<i class="bi bi-github"></i>
+								<span>Create Pull Request</span>
+							}
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
+								<span>Creating PR...</span>
+							}
+							else
+							{
 								<i class="bi bi-github me-1"></i>
 								<span>Create Pull Request</span>
 							}
@@ -173,6 +206,14 @@
 						@if (IsMergingBranch)
 						{
 							<span class="spinner-border spinner-sm me-1" role="status"></span>
+							<span>Merging...</span>
+						}
+						else
+						{
+							<i class="bi bi-arrow-left-right"></i>
+							<span>Merge into @TargetBranch</span>
+						}
+					<span class="spinner-border spinner-sm me-1" role="status"></span>
 							<span>Merging...</span>
 						}
 						else
@@ -190,6 +231,14 @@
 						@if (IsCreatingPullRequest)
 						{
 							<span class="spinner-border spinner-sm me-1" role="status"></span>
+							<span>Creating PR...</span>
+						}
+						else
+						{
+							<i class="bi bi-github"></i>
+							<span>Create Pull Request</span>
+						}
+					<span class="spinner-border spinner-sm me-1" role="status"></span>
 							<span>Creating PR...</span>
 						}
 						else

@@ -467,7 +467,6 @@ public sealed class QueueDropdownPanelTests
 		Assert.Equal("static", toggle.GetAttribute("data-bs-display"));
 		Assert.Contains("mobile-header-dropdown", menu.ParentElement!.ClassList);
 		Assert.NotNull(wrapper);
-		Assert.Contains("vs-nav-dropdown-menu", menu.ClassList);
 	}
 
 	[Fact]

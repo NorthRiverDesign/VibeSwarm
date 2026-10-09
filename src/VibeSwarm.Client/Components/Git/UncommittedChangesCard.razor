@@ -8,15 +8,16 @@
 				<strong>Working Directory Changes</strong>
 				@if (HasChanges && DiffFiles.Count > 0)
 				{
-					<span class="badge theme-warning ">@DiffFiles.Count file(s)</span>
+					<span class="badge theme-warning">@DiffFiles.Count file(s)</span>
 				}
 			</div>
 			@if (!IsChecking)
 			{
 				<button class="btn-sm btn-solid theme-secondary" @onclick="OnRefresh"
 					title="Check for changes in working directory">
-					<i class="bi bi-arrow-repeat me-1"></i>
+					<i class="bi bi-arrow-repeat"></i>
 					<span class="d-none sm:d-inline">Refresh</span>
+				<span class="d-none sm:d-inline">Refresh</span>
 				</button>
 			}
 		</div>
@@ -42,7 +43,7 @@
 					working directory.
 				</p>
 				<button class="btn-solid theme-primary" @onclick="OnCheck">
-					<i class="bi bi-search me-1"></i>Check for Changes
+					<i class="bi bi-search"></i>Check for Changes
 				</button>
 			</div>
 		}
@@ -187,13 +188,21 @@
 					}
 					else
 					{
+						<i class="bi bi-check-circle"></i>
+						<span>Keep Changes</span>
+					}
+				<span class="spinner-border spinner-sm me-1" role="status"></span>
+						<span>Committing...</span>
+					}
+					else
+					{
 						<i class="bi bi-check-circle me-1"></i>
 						<span>Keep Changes</span>
 					}
 				</button>
 				<button class="btn-solid theme-danger" @onclick="() => _showDiscardConfirmation = true"
 					disabled="@(IsCommitting || IsDiscarding || _showDiscardConfirmation)">
-					<i class="bi bi-trash me-1"></i>
+					<i class="bi bi-trash"></i>
 					<span>Discard Changes</span>
 				</button>
 			</div>

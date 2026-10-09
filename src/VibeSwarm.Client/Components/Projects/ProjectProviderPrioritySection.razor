@@ -123,7 +123,7 @@ else
 @foreach (var provider in AvailableProviders)
 {
 var isSelected = IsProviderSelected(provider.Id);
-<button type="button" class="btn-outline theme-secondary d-flex align-items-center justify-content-between gap-3 text-start flex-wrap py-3"
+<button type="button" class="btn-outline theme-secondary d-flex justify-content-between gap-3 text-start flex-wrap py-3"
 @onclick="() => OnAdd.InvokeAsync(provider)" disabled="@isSelected">
 <span class="text-start min-w-0">
 <span class="fw-semibold">@provider.Name</span>

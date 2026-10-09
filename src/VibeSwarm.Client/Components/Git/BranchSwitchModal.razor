@@ -19,7 +19,7 @@
 
             @if (HasUncommittedChanges)
             {
-                <div class="alert theme-warning py-3 mb-5 align-items-start">
+                <div class="alert theme-warning py-3 mb-5">
                     <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
                     <div>
                         <strong>Uncommitted changes detected!</strong>
@@ -71,6 +71,19 @@
             @if (IsSwitching)
             {
                 <span class="spinner-border spinner-sm me-1" role="status"></span>
+                <span>Switching...</span>
+            }
+            else if (_commitBeforeSwitch && HasUncommittedChanges)
+            {
+                <i class="bi bi-check-lg"></i>
+                <span>Commit & Switch</span>
+            }
+            else
+            {
+                <i class="bi bi-arrow-left-right"></i>
+                <span>Switch Branch</span>
+            }
+        <span class="spinner-border spinner-sm me-1" role="status"></span>
                 <span>Switching...</span>
             }
             else if (_commitBeforeSwitch && HasUncommittedChanges)

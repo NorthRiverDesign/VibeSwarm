@@ -53,13 +53,13 @@
 			else
 			{
 				<button type="button" class="btn-sm btn-link text-decoration-none px-0 align-self-start" @onclick="HandleMakeDefault">
-					<i class="bi bi-star me-1"></i>Make default for new jobs
+					<i class="bi bi-star"></i>Make default for new jobs
 				</button>
 			}
 		</div>
 
 		<div class="d-flex flex-column gap-1">
-			<button type="button" class="btn-link text-decoration-none fg-body p-0 d-flex align-items-center gap-3 text-start"
+			<button type="button" class="btn-link text-decoration-none fg-body p-0 d-flex gap-3 text-start"
 					@onclick="HandleShowSelectDefaultModel">
 				<span class="small fg-1 flex-shrink-0">Default model</span>
 				<span class="small text-truncate ms-auto">@(defaultModel?.DisplayName ?? defaultModel?.ModelId ?? "Choose")</span>
@@ -75,7 +75,7 @@
 
 		<div class="d-flex flex-column gap-3">
 			<div class="d-flex align-items-center gap-3">
-				<button type="button" class="btn-sm btn-link text-decoration-none px-0 d-inline-flex align-items-center gap-1"
+				<button type="button" class="btn-sm btn-link text-decoration-none px-0"
 						@onclick="ToggleModels" disabled="@(availableModels.Count == 0)">
 					<i class="bi bi-chevron-@(_showModels ? "down" : "right") small"></i>
 					@availableModels.Count model@(availableModels.Count == 1 ? string.Empty : "s")
@@ -86,7 +86,7 @@
 				}
 				<button type="button" class="btn-sm btn-link text-decoration-none px-0 ms-auto flex-shrink-0"
 						@onclick="HandleRefreshModels" disabled="@IsRefreshingModels">
-					<i class="bi bi-arrow-repeat me-1 @(IsRefreshingModels ? "spin" : "")"></i>Refresh
+					<i class="bi bi-arrow-repeat @(IsRefreshingModels ? "spinner-rotate" : "")"></i>Refresh
 				</button>
 			</div>
 			@if (!string.IsNullOrEmpty(RefreshModelsError))
@@ -133,7 +133,7 @@
 						<button type="button" class="btn-sm btn-link text-decoration-none px-0"
 								title="Runs one tiny request to read your current limits"
 								@onclick="HandleRefreshUsage" disabled="@IsRefreshingUsage">
-							<i class="bi bi-arrow-repeat me-1 @(IsRefreshingUsage ? "spin" : "")"></i>Check usage
+							<i class="bi bi-arrow-repeat @(IsRefreshingUsage ? "spinner-rotate" : "")"></i>Check usage
 						</button>
 					}
 				</div>
@@ -184,7 +184,7 @@
 				}
 			</RowActionsDropdown>
 			<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 ms-auto" @onclick="HandleDeleteProvider">
-				<i class="bi bi-trash me-1"></i>Delete
+				<i class="bi bi-trash"></i>Delete
 			</button>
 		</div>
 	</div>

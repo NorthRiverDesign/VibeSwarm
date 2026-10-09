@@ -5,7 +5,7 @@
 	<div class="d-flex align-items-center gap-5 px-1">
 		<h2 class="text-eyebrow mb-0 me-auto">Tools on this host</h2>
 		<button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="DetectTools" disabled="@(_isLoading || _isInstalling != null)">
-			<i class="bi bi-arrow-clockwise me-1 @(_isLoading ? "spin" : "")"></i>Check again
+			<i class="bi bi-arrow-clockwise @(_isLoading ? "spinner-rotate" : "")"></i>Check again
 		</button>
 	</div>
 	<div class="border rounded-9 p-5">
@@ -26,13 +26,13 @@
 					@if (_gitAvailable)
 					{
 						<span class="badge badge-subtle theme-success">
-							<i class="bi bi-check-circle me-1"></i>Available
+							<i class="bi bi-check-circle"></i>Available
 						</span>
 					}
 					else
 					{
 						<span class="badge badge-subtle theme-danger me-1">
-							<i class="bi bi-x-circle me-1"></i>Not Found
+							<i class="bi bi-x-circle"></i>Not Found
 						</span>
 						<button type="button" class="btn-sm btn-solid theme-primary"
 								@onclick='() => InstallTool("git")'
@@ -40,6 +40,14 @@
 							@if (_isInstalling == "git")
 							{
 								<span class="spinner-border spinner-sm me-1" role="status"></span>
+								<span>Installing...</span>
+							}
+							else
+							{
+								<i class="bi bi-download"></i>
+								<span>Install</span>
+							}
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
 								<span>Installing...</span>
 							}
 							else
@@ -58,13 +66,13 @@
 					@if (_ghAvailable)
 					{
 						<span class="badge badge-subtle theme-success">
-							<i class="bi bi-check-circle me-1"></i>Available
+							<i class="bi bi-check-circle"></i>Available
 						</span>
 					}
 					else
 					{
 						<span class="badge badge-subtle theme-danger me-1">
-							<i class="bi bi-x-circle me-1"></i>Not Found
+							<i class="bi bi-x-circle"></i>Not Found
 						</span>
 						<button type="button" class="btn-sm btn-solid theme-primary"
 								@onclick='() => InstallTool("gh")'
@@ -72,6 +80,14 @@
 							@if (_isInstalling == "gh")
 							{
 								<span class="spinner-border spinner-sm me-1" role="status"></span>
+								<span>Installing...</span>
+							}
+							else
+							{
+								<i class="bi bi-download"></i>
+								<span>Install</span>
+							}
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
 								<span>Installing...</span>
 							}
 							else
@@ -92,13 +108,13 @@
 						@if (_ghAuthenticated)
 						{
 							<span class="badge badge-subtle theme-success">
-								<i class="bi bi-check-circle me-1"></i>Authenticated
+								<i class="bi bi-check-circle"></i>Authenticated
 							</span>
 						}
 						else
 						{
 							<span class="badge badge-subtle theme-warning">
-								<i class="bi bi-exclamation-triangle me-1"></i>Not Authenticated
+								<i class="bi bi-exclamation-triangle"></i>Not Authenticated
 							</span>
 						}
 					</li>
@@ -120,13 +136,13 @@
 					@if (_nodeAvailable)
 					{
 						<span class="badge badge-subtle theme-success">
-							<i class="bi bi-check-circle me-1"></i>@(_nodeVersion ?? "Available")
+							<i class="bi bi-check-circle"></i>@(_nodeVersion ?? "Available")
 						</span>
 					}
 					else
 					{
 						<span class="badge badge-subtle theme-secondary me-1">
-							<i class="bi bi-dash-circle me-1"></i>Not Found
+							<i class="bi bi-dash-circle"></i>Not Found
 						</span>
 						<button type="button" class="btn-sm btn-solid theme-secondary"
 								@onclick='() => InstallTool("nodejs")'
@@ -134,6 +150,14 @@
 							@if (_isInstalling == "nodejs")
 							{
 								<span class="spinner-border spinner-sm me-1" role="status"></span>
+								<span>Installing...</span>
+							}
+							else
+							{
+								<i class="bi bi-download"></i>
+								<span>Install</span>
+							}
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
 								<span>Installing...</span>
 							}
 							else
@@ -152,19 +176,19 @@
 					@if (_playwrightInstalled)
 					{
 						<span class="badge badge-subtle theme-success">
-							<i class="bi bi-check-circle me-1"></i>Installed
+							<i class="bi bi-check-circle"></i>Installed
 						</span>
 					}
 					else if (!_nodeAvailable)
 					{
 						<span class="badge badge-subtle theme-secondary">
-							<i class="bi bi-dash-circle me-1"></i>Requires Node.js
+							<i class="bi bi-dash-circle"></i>Requires Node.js
 						</span>
 					}
 					else
 					{
 						<span class="badge badge-subtle theme-secondary me-1">
-							<i class="bi bi-dash-circle me-1"></i>Not Installed
+							<i class="bi bi-dash-circle"></i>Not Installed
 						</span>
 						<button type="button" class="btn-sm btn-solid theme-secondary"
 								@onclick='() => InstallTool("playwright")'
@@ -172,6 +196,14 @@
 							@if (_isInstalling == "playwright")
 							{
 								<span class="spinner-border spinner-sm me-1" role="status"></span>
+								<span>Installing...</span>
+							}
+							else
+							{
+								<i class="bi bi-download"></i>
+								<span>Install</span>
+							}
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
 								<span>Installing...</span>
 							}
 							else
@@ -211,11 +243,11 @@
 					</div>
 					@if (!string.IsNullOrWhiteSpace(_installResult.Output))
 					{
-						<pre class="mb-0 fg-body white-space-pre-wrap text-caption @(_installResult.Success ? "fg-emphasis-success" : "fg-emphasis-danger")" style="max-height: 200px; overflow-y: auto;">@_installResult.Output</pre>
+						<pre class="mb-0 fg-body white-space-pre-wrap text-xs @(_installResult.Success ? "fg-emphasis-success" : "fg-emphasis-danger")" style="max-height: 200px; overflow-y: auto;">@_installResult.Output</pre>
 					}
 					@if (!_installResult.Success && !string.IsNullOrWhiteSpace(_installResult.Error))
 					{
-						<pre class="mb-0 fg-emphasis-danger white-space-pre-wrap text-caption" style="max-height: 200px; overflow-y: auto;">@_installResult.Error</pre>
+						<pre class="mb-0 fg-emphasis-danger white-space-pre-wrap text-xs" style="max-height: 200px; overflow-y: auto;">@_installResult.Error</pre>
 					}
 				</div>
 			}

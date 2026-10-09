@@ -1,9 +1,14 @@
+@* Notification bell with the notification history in a Bootstrap menu. Opening it marks
+   everything read. *@
 @inject NotificationService NotificationService
+@inject NavigationManager NavigationManager
 @implements IDisposable
 
-<div class="position-relative">
-    <button class="btn-link fg-secondary p-0 fs-lg d-flex align-items-center justify-content-center position-relative touch-manipulation @(Compact ? "mobile-header-icon" : string.Empty)"
-            type="button" @onclick="NotificationService.TogglePanel" title="Notifications" aria-label="Notifications">
+<div class="@(Compact ? "mobile-header-dropdown" : "position-relative")">
+    <button class="btn-link fg-secondary p-0 fs-lg d-flex position-relative touch-manipulation @(Compact ? "mobile-header-icon" : string.Empty)"
+            type="button" data-bs-toggle="menu" data-bs-placement="@(OpenUpward ? "top-start" : "bottom-end")"
+            data-bs-display="@(Compact ? "static" : null)" aria-expanded="false"
+            @onclick="NotificationService.MarkAllRead" title="Notifications" aria-label="Notifications">
         <i class="bi bi-bell@(_unreadCount > 0 ? "-fill" : "")"></i>
         @if (_unreadCount > 0)
         {
@@ -13,28 +18,93 @@
             </span>
         }
     </button>
+    <div class="menu p-0 overflow-hidden" style="width: min(22rem, 92vw); --bs-menu-max-height: min(60vh, 32rem);">
+        <div class="d-flex align-items-center justify-content-between gap-3 px-5 py-3 border-bottom bg-1">
+            <span class="fw-semibold"><i class="bi bi-bell fg-secondary me-3"></i>Notifications</span>
+            @if (_history.Count > 0)
+            {
+                <button class="btn-link btn-sm fg-secondary p-0 text-decoration-none" @onclick="NotificationService.ClearHistory">
+                    Clear all
+                </button>
+            }
+        </div>
+        @if (_history.Count == 0)
+        {
+            <div class="d-flex flex-column align-items-center p-7 fg-secondary">
+                <i class="bi bi-bell-slash mb-3 fs-3xl opacity-50"></i>
+                <span class="small">No notifications yet</span>
+            </div>
+        }
+        else
+        {
+            <div class="overflow-y-auto overscroll-contain divide-y">
+                @foreach (var notification in _history)
+                {
+                    <button type="button" class="menu-item notification-history-item align-items-start text-wrap rounded-0 px-5 py-3"
+                            @onclick="() => OpenNotification(notification)">
+                        <i class="@notification.IconClass mt-1 small"></i>
+                        <span class="flex-grow-1 min-w-0">
+                            <span class="d-flex align-items-baseline justify-content-between gap-3">
+                                <span class="fw-medium small text-truncate">@notification.Title</span>
+                                <span class="fg-secondary flex-shrink-0 text-xs">@notification.CreatedAt.FormatRelativeToNow()</span>
+                            </span>
+                            <span class="d-block small fg-secondary text-break">@notification.Message</span>
+                            @if (notification.HasAction)
+                            {
+                                <span class="d-block small mt-1 fg-primary fw-medium">@notification.ActionLabel</span>
+                            }
+                        </span>
+                    </button>
+                }
+            </div>
+        }
+    </div>
 </div>
 
 @code {
     private int _unreadCount;
+    private IReadOnlyList<ToastNotification> _history = Array.Empty<ToastNotification>();
+    private Timer? _refreshTimer;
 
     [Parameter]
     public bool Compact { get; set; }
 
+    /// <summary>Opens the menu above the bell, for the bell at the bottom of the sidebar.</summary>
+    [Parameter]
+    public bool OpenUpward { get; set; }
+
     protected override void OnInitialized()
     {
         NotificationService.OnChange += OnNotificationChange;
-        _unreadCount = NotificationService.UnreadCount;
+        RefreshState();
+
+        // Keep the "time ago" labels current.
+        _refreshTimer = new Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
 
     private void OnNotificationChange()
     {
-        _unreadCount = NotificationService.UnreadCount;
+        RefreshState();
         InvokeAsync(StateHasChanged);
+    }
+
+    private void RefreshState()
+    {
+        _unreadCount = NotificationService.UnreadCount;
+        _history = NotificationService.NotificationHistory;
+    }
+
+    private void OpenNotification(ToastNotification notification)
+    {
+        if (notification.HasAction && !string.IsNullOrWhiteSpace(notification.ActionUrl))
+        {
+            NavigationManager.NavigateTo(notification.ActionUrl);
+        }
     }
 
     public void Dispose()
     {
         NotificationService.OnChange -= OnNotificationChange;
+        _refreshTimer?.Dispose();
     }
 }

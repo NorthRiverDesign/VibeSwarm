@@ -135,11 +135,14 @@ disabled="@IsDatabaseMigrationDisabled()">
 {
 <span class="spinner-border spinner-sm me-1" role="status"></span>
 }
+<i class="bi bi-arrow-left-right"></i>Migrate Database
+<span class="spinner-border spinner-sm me-1" role="status"></span>
+}
 <i class="bi bi-arrow-left-right me-1"></i>Migrate Database
 </button>
 <button type="button" class="btn-solid theme-secondary btn-sm" @onclick="RefreshDatabaseConfiguration"
 disabled="@_isLoadingDatabaseConfiguration">
-<i class="bi bi-arrow-clockwise me-1"></i>Refresh Config
+<i class="bi bi-arrow-clockwise"></i>Refresh Config
 </button>
 </div>
 </div>
@@ -173,7 +176,7 @@ Size: @FormatBytes(_databaseMaintenanceResult.SizeBeforeBytes) -> @FormatBytes(_
 <div class="small fg-1">Prune crash logs now using the retention settings configured on this page.</div>
 </div>
 <button type="button" class="btn-solid theme-secondary btn-sm" @onclick='() => OpenDatabaseMaintenanceModal(DatabaseMaintenanceOperation.ApplyCriticalErrorLogRetention)' disabled="@_isRunningDatabaseMaintenance">
-<i class="bi bi-filter-circle me-1"></i>Run Cleanup
+<i class="bi bi-filter-circle"></i>Run Cleanup
 </button>
 </div>
 
@@ -183,7 +186,7 @@ Size: @FormatBytes(_databaseMaintenanceResult.SizeBeforeBytes) -> @FormatBytes(_
 <div class="small fg-1">Removes old completed jobs and their stored transcript rows. Current candidates: @(DatabaseSummary?.CompletedJobsOlderThanRetentionCount ?? 0).</div>
 </div>
 <button type="button" class="btn-solid theme-danger btn-sm" @onclick='() => OpenDatabaseMaintenanceModal(DatabaseMaintenanceOperation.DeleteCompletedJobsOlderThanRetention)' disabled="@_isRunningDatabaseMaintenance">
-<i class="bi bi-trash3 me-1"></i>Delete Old Jobs
+<i class="bi bi-trash3"></i>Delete Old Jobs
 </button>
 </div>
 
@@ -193,7 +196,7 @@ Size: @FormatBytes(_databaseMaintenanceResult.SizeBeforeBytes) -> @FormatBytes(_
 <div class="small fg-1">Clears historical provider usage snapshots that are no longer recent. Current candidates: @(DatabaseSummary?.ProviderUsageRecordsOlderThanRetentionCount ?? 0).</div>
 </div>
 <button type="button" class="btn-solid theme-danger btn-sm" @onclick='() => OpenDatabaseMaintenanceModal(DatabaseMaintenanceOperation.DeleteProviderUsageOlderThanRetention)' disabled="@_isRunningDatabaseMaintenance">
-<i class="bi bi-trash3 me-1"></i>Delete Old Usage
+<i class="bi bi-trash3"></i>Delete Old Usage
 </button>
 </div>
 
@@ -203,7 +206,7 @@ Size: @FormatBytes(_databaseMaintenanceResult.SizeBeforeBytes) -> @FormatBytes(_
 <div class="small fg-1">Runs SQLite compaction to reclaim unused space after cleanup. This is only available for SQLite databases.</div>
 </div>
 <button type="button" class="btn-solid theme-primary btn-sm" @onclick='() => OpenDatabaseMaintenanceModal(DatabaseMaintenanceOperation.CompactDatabase)' disabled="@(_isRunningDatabaseMaintenance || DatabaseSummary?.SupportsCompaction != true)">
-<i class="bi bi-arrows-collapse me-1"></i>Compact
+<i class="bi bi-arrows-collapse"></i>Compact
 </button>
 </div>
 </div>
@@ -217,7 +220,7 @@ Download a JSON backup of your configuration including projects, ideas, skills, 
 and schedules. Provider credentials and job history are not included.
 </p>
 <a href="/api/database/export" class="btn-solid theme-primary">
-<i class="bi bi-download me-3"></i>Download Export
+<i class="bi bi-download"></i>Download Export
 </a>
 </div>
 </div>
@@ -239,7 +242,7 @@ to avoid duplicates. New ideas will be added to existing projects.
 
 @if (_importParseError != null)
 {
-<div class="alert theme-danger align-items-start mb-5">
+<div class="alert theme-danger mb-5">
 <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
 <div>@_importParseError</div>
 </div>
@@ -280,7 +283,7 @@ Exported @_importPreview.ExportedAt.ToString("g") UTC
 </div>
 
 <button class="btn-solid theme-primary" @onclick="ConfirmImport">
-<i class="bi bi-check-lg me-1"></i>Import
+<i class="bi bi-check-lg"></i>Import
 </button>
 }
 }
@@ -353,7 +356,7 @@ else if (_importResult != null)
 }
 
 <button class="btn-solid theme-secondary btn-sm" @onclick="ResetImport">
-<i class="bi bi-arrow-counterclockwise me-1"></i>Import another file
+<i class="bi bi-arrow-counterclockwise"></i>Import another file
 </button>
 }
 </div>

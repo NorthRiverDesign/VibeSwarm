@@ -3,7 +3,7 @@
 <div class="flex-shrink-0">
 	@if (IconOnly)
 	{
-		<button class="btn-solid theme-secondary rounded-circle d-inline-flex align-items-center justify-content-center p-0 icon-button-round" type="button"
+		<button class="btn-solid theme-secondary rounded-circle p-0 icon-button-round" type="button"
 				data-bs-toggle="menu" data-bs-placement="bottom-end" aria-expanded="false" title="Project actions" aria-label="Options">
 			<i class="bi bi-three-dots"></i>
 		</button>
@@ -27,7 +27,7 @@
 		@if (OnEdit.HasDelegate)
 		{
 				<button class="menu-item" @onclick="OnEdit">
-					<i class="bi bi-pencil me-3 fg-primary"></i>Edit Project
+					<i class="bi bi-pencil fg-primary"></i>Edit Project
 				</button>
 		}
 		@if (OnToggleActive.HasDelegate)
@@ -35,12 +35,12 @@
 				<button class="menu-item" @onclick="OnToggleActive">
 					@if (IsActive)
 					{
-						<i class="bi bi-pause-circle me-3 fg-secondary"></i>
+						<i class="bi bi-pause-circle fg-secondary"></i>
 						@:Deactivate
 					}
 					else
 					{
-						<i class="bi bi-play-circle me-3 fg-success"></i>
+						<i class="bi bi-play-circle fg-success"></i>
 						@:Activate
 					}
 				</button>
@@ -53,6 +53,13 @@
 					@if (IsStartingIdeaQueue)
 					{
 						<span class="spinner-border spinner-sm me-3" role="status"></span>
+					}
+					else
+					{
+						<i class="bi bi-play-fill fg-success"></i>
+					}
+					@StartIdeaQueueLabel
+				<span class="spinner-border spinner-sm me-3" role="status"></span>
 					}
 					else
 					{
@@ -81,6 +88,13 @@
 						}
 						else
 						{
+							<i class="bi bi-arrow-repeat fg-success"></i>
+						}
+						@SyncLabel
+					<span class="spinner-border spinner-sm me-3" role="status"></span>
+						}
+						else
+						{
 							<i class="bi bi-arrow-repeat me-3 fg-success"></i>
 						}
 						@SyncLabel
@@ -89,7 +103,7 @@
 		@if (ShowCreateBranchAction)
 		{
 				<button class="menu-item" @onclick="OnCreateBranch" disabled="@AreGitActionsBusy">
-					<i class="bi bi-plus-lg me-3 fg-primary"></i>New Branch
+					<i class="bi bi-plus-lg fg-primary"></i>New Branch
 				</button>
 		}
 		@if (ShowMergeBranchAction)
@@ -98,6 +112,13 @@
 					@if (IsMerging)
 					{
 						<span class="spinner-border spinner-sm me-3" role="status"></span>
+					}
+					else
+					{
+						<i class="bi bi-arrow-left-right fg-success"></i>
+					}
+					Merge Branch...
+				<span class="spinner-border spinner-sm me-3" role="status"></span>
 					}
 					else
 					{
@@ -115,6 +136,13 @@
 						}
 						else
 						{
+							<i class="bi bi-scissors fg-warning"></i>
+						}
+						Prune Stale Branches
+					<span class="spinner-border spinner-sm me-3" role="status"></span>
+						}
+						else
+						{
 							<i class="bi bi-scissors me-3 fg-warning"></i>
 						}
 						Prune Stale Branches
@@ -123,7 +151,7 @@
 			@if (ShowRefreshAction)
 			{
 					<button class="menu-item" @onclick="OnRefresh" disabled="@AreGitActionsBusy">
-						<i class="bi bi-arrow-clockwise me-3 @(IsRefreshing ? "spin" : string.Empty)"></i>
+						<i class="bi bi-arrow-clockwise @(IsRefreshing ? "spinner-rotate" : string.Empty)"></i>
 						Refresh Branches
 					</button>
 			}

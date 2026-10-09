@@ -49,7 +49,7 @@
 						 style="width:@FormatPixels(YAxisLabelWidth); min-width:@FormatPixels(YAxisLabelWidth); height:@FormatPixels(ChartHeight);">
 						@foreach (var axisTick in YAxisTicks)
 						{
-							<div class="position-absolute end-0 translate-middle-y fg-1 text-end text-caption"
+							<div class="position-absolute end-0 translate-middle-y fg-1 text-end text-xs"
 								 style="top:@FormatPixels(axisTick.Y);">
 								@axisTick.Label
 							</div>
@@ -114,7 +114,7 @@
 								@for (var index = 0; index < Points.Count; index++)
 								{
 									var point = Points[index];
-									<div class="fg-1 text-center px-1 text-caption"
+									<div class="fg-1 text-center px-1 text-xs"
 										 style="min-width:0;">
 										@foreach (var segment in GetLabelSegments(point.Label))
 										{

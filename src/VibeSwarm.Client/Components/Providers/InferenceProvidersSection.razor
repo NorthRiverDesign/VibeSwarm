@@ -43,7 +43,7 @@ else
 					<div class="d-flex flex-wrap align-items-center gap-3">
 						<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => OnRefreshModels.InvokeAsync(provider)"
 								disabled="@RefreshingModelsProviderId.HasValue">
-							<i class="bi bi-arrow-repeat me-1 @(RefreshingModelsProviderId == provider.Id ? "spin" : "")"></i>Refresh models
+							<i class="bi bi-arrow-repeat @(RefreshingModelsProviderId == provider.Id ? "spinner-rotate" : "")"></i>Refresh models
 						</button>
 						<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => OnEditProvider.InvokeAsync(provider)">Edit</button>
 						@if (Providers.Count > 1)
@@ -60,7 +60,7 @@ else
 							</div>
 						}
 						<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDeleteProvider.InvokeAsync(provider)">
-							<i class="bi bi-trash me-1"></i>Delete
+							<i class="bi bi-trash"></i>Delete
 						</button>
 					</div>
 				</ChildContent>

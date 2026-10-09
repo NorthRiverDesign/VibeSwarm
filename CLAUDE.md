@@ -54,6 +54,7 @@ When Bootstrap doesn't have a utility, add a single-property class to Section 2 
 5. **Mobile overflow**: test on iPhone SE (375px). No horizontal scroll on dialogs/forms/pages
 6. **No hardcoded widths** in flex children unless paired with `flex-shrink` / `min-width: 0`
 7. **v6 components are flex or grid containers**: `.alert`, `.card-body` and `.card-header` lay their children out as flex items. Wrap mixed text and inline tags in one element, and add `flex-row` to a card header or body meant as a row
+8. **Don't restate what a component does**: buttons, badges, `.menu-item` and `.nav-link` are already flex rows that centre their content and space it with a gap. Don't add `d-inline-flex align-items-center`, `gap-1`, `cursor-pointer`, or `me-*` on an icon inside them
 
 ## Design Tokens
 
@@ -71,7 +72,7 @@ Every page draws on one set of tokens, defined in section 1 of `site.css`. Don't
 | `--vs-text-heading` | 17px | `<h2>`–`<h5>`, dialog and card titles |
 | `--vs-text-body` | 16px | default text, list rows, `<h6>` |
 | `--vs-text-small` | 14px | `.small`: second lines, meta, subtitles |
-| `--vs-text-caption` | 12px | `.text-eyebrow` section labels, `.text-caption`, badges |
+| `--vs-text-caption` | 12px | `.text-eyebrow` section labels, Bootstrap's `.text-xs`, badges |
 
 - Pick a size with the element or class above. `fs-*` (`fs-lg`, `fs-2xl`, …) is only for icon glyphs and spinners, which Bootstrap 6 sizes in `em`.
 - Pick the heading level that fits the outline; its size is already set, so don't add size classes.

@@ -22,13 +22,13 @@
 							@if (!string.IsNullOrWhiteSpace(cs.GitCommitHash))
 							{
 								<span class="badge font-monospace d-none sm:d-inline">
-									<i class="bi bi-git me-1 opacity-75"></i>@cs.GitCommitHash[..Math.Min(7, cs.GitCommitHash.Length)]
+									<i class="bi bi-git opacity-75"></i>@cs.GitCommitHash[..Math.Min(7, cs.GitCommitHash.Length)]
 								</span>
 							}
 							@if (cs.ChangedFilesCount.HasValue)
 							{
 								<span class="badge d-none sm:d-inline">
-									<i class="bi bi-files me-1 opacity-75"></i>@cs.ChangedFilesCount
+									<i class="bi bi-files opacity-75"></i>@cs.ChangedFilesCount
 								</span>
 							}
 							@if (cs.CompletedAt.HasValue)
@@ -42,48 +42,50 @@
 								@if (!string.IsNullOrWhiteSpace(cs.GitCommitHash))
 								{
 									<span class="badge font-monospace">
-										<i class="bi bi-git me-1 opacity-75"></i>@cs.GitCommitHash[..Math.Min(7, cs.GitCommitHash.Length)]
+										<i class="bi bi-git opacity-75"></i>@cs.GitCommitHash[..Math.Min(7, cs.GitCommitHash.Length)]
 									</span>
 								}
 								@if (cs.ChangedFilesCount.HasValue)
 								{
 									<span class="badge">
-										<i class="bi bi-files me-1 opacity-75"></i>@cs.ChangedFilesCount @(cs.ChangedFilesCount == 1 ? "file" : "files") changed
+										<i class="bi bi-files opacity-75"></i>@cs.ChangedFilesCount @(cs.ChangedFilesCount == 1 ? "file" : "files") changed
 									</span>
 								}
 								@if (!string.IsNullOrWhiteSpace(cs.WorkSnapshotCommit))
 								{
 									<span class="badge" title="Saved so later runs of this job build on it">
-										<i class="bi bi-shield-check me-1 opacity-75"></i>Work saved
+										<i class="bi bi-shield-check opacity-75"></i>Work saved
 									</span>
 								}
 								@if (cs.BuildVerified == true)
 								{
 									<span class="badge badge-subtle theme-success">
-										<i class="bi bi-check-circle me-1"></i>Build verified
+										<i class="bi bi-check-circle"></i>Build verified
 									</span>
 								}
 								else if (cs.BuildVerified == false)
 								{
 									<span class="badge badge-subtle theme-danger">
-										<i class="bi bi-x-circle me-1"></i>Build failed
+										<i class="bi bi-x-circle"></i>Build failed
 									</span>
 								}
 								@if (!string.IsNullOrWhiteSpace(cs.PullRequestUrl))
 								{
 									<a href="@cs.PullRequestUrl" target="_blank" rel="noreferrer"
 									   class="badge text-decoration-none">
-										<i class="bi bi-github me-1 opacity-75"></i>PR@(cs.PullRequestNumber.HasValue ? $" #{cs.PullRequestNumber.Value}" : string.Empty)
+										<i class="bi bi-github opacity-75"></i>PR@(cs.PullRequestNumber.HasValue ? $" #{cs.PullRequestNumber.Value}" : string.Empty)
 										@if (cs.MergedAt.HasValue)
 										{
 											<span class="ms-1 fg-success">(merged)</span>
+										}
+									<span class="ms-1 fg-success">(merged)</span>
 										}
 									</a>
 								}
 								@if (!string.IsNullOrWhiteSpace(cs.ModelUsed))
 								{
 									<span class="badge">
-										<i class="bi bi-cpu me-1 opacity-75"></i>@cs.ModelUsed
+										<i class="bi bi-cpu opacity-75"></i>@cs.ModelUsed
 									</span>
 								}
 							</div>

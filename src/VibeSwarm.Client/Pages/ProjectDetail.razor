@@ -55,7 +55,7 @@ else
                     @onclick='@(() => SetActiveTab("environments"))' role="tab">Environments</button>
         </li>
         <li class="nav-item">
-            <button type="button" class="nav-link rounded-pill px-5 d-inline-flex align-items-center gap-3 @(IsActiveTab("autopilot") ? "active" : "")"
+            <button type="button" class="nav-link rounded-pill px-5 d-inline-flex @(IsActiveTab("autopilot") ? "active" : "")"
                     @onclick='@(() => SetActiveTab("autopilot"))' role="tab">
                 Auto-Pilot
                 @if (IsAutoPilotRunning)

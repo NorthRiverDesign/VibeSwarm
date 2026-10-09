@@ -3,7 +3,7 @@
 @if (Branches.Any())
 {
 	<div class="git-branch-dropdown">
-		<button class="@(Subtle ? "btn-link btn-sm fg-1 text-decoration-none px-0 d-inline-flex align-items-center gap-1" : "btn btn-sm bg-2 border d-flex align-items-center gap-3")" type="button"
+		<button class="@(Subtle ? "btn-link btn-sm fg-1 text-decoration-none px-0" : "btn btn-sm bg-2 border d-flex gap-3")" type="button"
 			data-bs-toggle="menu" data-bs-placement="@(Subtle ? "bottom-start" : "bottom-end")" aria-expanded="false" disabled="@(IsDisabled || !Branches.Any())"
 			title="Current branch">
 			<i class="bi bi-git @(Subtle ? "" : "fg-danger")"></i>
@@ -51,7 +51,7 @@
 }
 else if (!string.IsNullOrEmpty(CurrentBranch))
 {
-	<span class="badge d-flex align-items-center gap-1">
+	<span class="badge d-flex">
 		<i class="bi bi-git fg-danger"></i>
 		@CurrentBranch
 	</span>

@@ -16,7 +16,7 @@
 			{
 				var id = $"project-source-{option.Mode}";
 				<div class="flex-fill">
-					<label class="btn-check btn-outline theme-secondary w-100 d-flex align-items-center justify-content-center gap-3 py-3">
+					<label class="btn-check btn-outline theme-secondary w-100 d-flex gap-3 py-3">
 						<input type="radio" name="projectSourceMode" id="@id"
 							   checked="@(FormModel.CreationMode == option.Mode)"
 							   @onchange="() => SelectSourceMode(option.Mode)" />
@@ -71,7 +71,7 @@
 	<label for="modal-workingPath" class="form-label fw-semibold">Working folder</label>
 	<div class="input-group">
 		<input id="modal-workingPath" type="text" class="form-control font-monospace"
-			   value="@FormModel.WorkingPath" @oninput="HandleWorkingPathInput"
+			   @bind="FormModel.WorkingPath" @bind:event="oninput" @bind:after="() => ScheduleInspection(FormModel.WorkingPath)"
 			   placeholder="@WorkingPathPlaceholder" maxlength="@ValidationLimits.ProjectWorkingPathMaxLength" />
 		<button type="button" class="btn-solid theme-secondary" @onclick="HandleBrowseWorkingPath"
 				title="Browse folders" aria-label="Browse folders">
@@ -329,12 +329,6 @@
 			_isScanning = false;
 			StateHasChanged();
 		}
-	}
-
-	private void HandleWorkingPathInput(ChangeEventArgs e)
-	{
-		FormModel.WorkingPath = e.Value?.ToString() ?? string.Empty;
-		ScheduleInspection(FormModel.WorkingPath);
 	}
 
 	private void ScheduleInspection(string path)

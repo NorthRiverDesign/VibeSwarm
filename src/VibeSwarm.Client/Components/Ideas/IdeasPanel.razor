@@ -33,7 +33,7 @@
 		<div class="card rounded-9">
 			<div class="d-flex align-items-end gap-3 p-3">
 				<div class="flex-shrink-0">
-					<button type="button" class="btn-link fg-1 rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
+					<button type="button" class="btn-link fg-1 rounded-circle p-0 icon-button-round"
 							data-bs-toggle="menu" data-bs-placement="bottom-start" aria-expanded="false" title="Attach, suggest or create a job" aria-label="More ways to add work">
 						@if (IsSuggestingIdeas)
 						{
@@ -45,35 +45,33 @@
 						}
 					</button>
 					<div class="menu">
-							<label class="menu-item m-0 cursor-pointer @(_attachmentInteropAvailable ? "" : "disabled")"
-								   for="@_fileInputId" title="@GetAttachmentButtonTooltip()">
-								<i class="bi bi-paperclip me-3"></i>Attach files
-							</label>
+						<label class="menu-item m-0" for="@_fileInputId" title="Attach files from the host filesystem">
+							<i class="bi bi-paperclip"></i>Attach files
+						</label>
 						@if (CanSuggestIdeas)
 						{
-								<button type="button" class="menu-item" @onclick="OpenSuggestIdeasModal"
-										disabled="@(IsSuggestingIdeas || IsProcessingActive)" title="Suggest ideas from the codebase">
-									<i class="bi bi-stars"></i>Suggest ideas
-								</button>
+							<button type="button" class="menu-item" @onclick="OpenSuggestIdeasModal"
+									disabled="@(IsSuggestingIdeas || IsProcessingActive)" title="Suggest ideas from the codebase">
+								<i class="bi bi-stars"></i>Suggest ideas
+							</button>
 						}
 						@if (OnCreateJob.HasDelegate)
 						{
 							<hr class="menu-divider">
-								<button type="button" class="menu-item" @onclick="OnCreateJob"
-										title="@(HasActiveJobs ? "Create a job with its own provider, model and branch. It will be queued behind the current run." : "Create a job with its own provider, model and branch")">
-									<i class="bi bi-sliders"></i>New job with options…
-								</button>
+							<button type="button" class="menu-item" @onclick="OnCreateJob"
+									title="@(HasActiveJobs ? "Create a job with its own provider, model and branch. It will be queued behind the current run." : "Create a job with its own provider, model and branch")">
+								<i class="bi bi-sliders"></i>New job with options…
+							</button>
 						}
 					</div>
 				</div>
-				<input id="@_fileInputId" class="d-none" type="file" multiple @onchange="HandleFileSelection"
-					   disabled="@(!_attachmentInteropAvailable)" />
+				<InputFile id="@_fileInputId" class="d-none" multiple OnChange="HandleFileSelection" />
 				<textarea class="form-control border-0 shadow-none bg-transparent px-1" id="@_textareaId" rows="2"
 						  placeholder="Add an idea…" aria-label="New idea"
-						  value="@NewIdeaDescription" @oninput="HandleNewIdeaInput" @onblur="FlushDraftSyncAsync" @onkeypress="HandleKeyPress"
+						  @bind="NewIdeaDescription" @bind:event="oninput" @bind:after="ScheduleDraftSync" @onblur="FlushDraftSyncAsync" @onkeypress="HandleKeyPress"
 						  @ref="_newIdeaTextarea"
 						  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"></textarea>
-				<button type="button" class="btn-solid theme-primary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center flex-shrink-0"
+				<button type="button" class="btn-solid theme-primary rounded-circle p-0 icon-button-round flex-shrink-0"
 						@onclick="AddIdea" disabled="@(!CanAddIdea)" title="Add idea" aria-label="Add idea">
 					@if (IsAddingIdea)
 					{
@@ -92,7 +90,7 @@
 				@foreach (var attachment in _pendingAttachments.Select((item, index) => (item, index)))
 				{
 					var attachmentIndex = attachment.index;
-					<span class="badge theme-secondary d-inline-flex align-items-center gap-3 p-1">
+					<span class="badge theme-secondary gap-3 p-1">
 						@if (TryGetAttachmentPreviewDataUrl(attachment.item, out var previewDataUrl))
 						{
 							<img src="@previewDataUrl" alt="@attachment.item.FileName" class="rounded object-fit-cover attachment-thumb-sm" />
@@ -127,7 +125,7 @@
 		@if (!HasDefaultProvider)
 		{
 			<a class="btn-sm btn-solid theme-warning" href="/providers">
-				<i class="bi bi-plug me-1"></i>Set default provider
+				<i class="bi bi-plug"></i>Set default provider
 			</a>
 		}
 	</div>
@@ -281,6 +279,9 @@
 					@if (IsTogglingProcessing)
 					{
 						<span class="spinner-border spinner-sm me-1" role="status"></span>
+					}
+					<i class="bi bi-play-fill"></i>Start All
+				<span class="spinner-border spinner-sm me-1" role="status"></span>
 					}
 					<i class="bi bi-play-fill me-1"></i>Start All
 				</button>
@@ -479,12 +480,6 @@
 		{
 			await AddIdea();
 		}
-	}
-
-	private async Task HandleNewIdeaInput(ChangeEventArgs e)
-	{
-		NewIdeaDescription = e.Value?.ToString() ?? string.Empty;
-		ScheduleDraftSync();
 	}
 
 	private bool _isSubmitting;
@@ -925,50 +920,22 @@
 		return null;
 	}
 
-	private async Task HandleFileSelection(ChangeEventArgs _)
+	private async Task HandleFileSelection(InputFileChangeEventArgs e)
 	{
-		if (!_attachmentInteropAvailable)
-		{
-			ShowAttachmentInteropUnavailableWarning();
-			return;
-		}
-
 		try
 		{
-			var uploads = await InvokeIdeasInteropAsync<List<ClipboardAttachmentDto>>("vibeSwarmIdeas.consumeSelectedFiles", _fileInputId);
-			if (uploads == null)
+			// Count and size limits are reported with the pending attachments, so take every file.
+			foreach (var file in e.GetMultipleFiles(e.FileCount))
 			{
-				return;
+				using var content = new MemoryStream();
+				await file.OpenReadStream(ValidationLimits.IdeaAttachmentMaxTotalBytes).CopyToAsync(content);
+				_pendingAttachments.Add(new IdeaAttachmentUpload
+				{
+					FileName = file.Name,
+					ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? null : file.ContentType,
+					Content = content.ToArray()
+				});
 			}
-
-			foreach (var upload in uploads)
-			{
-				AddPendingAttachment(upload);
-			}
-		}
-		catch (JSException ex) when (IsMissingIdeasInteropException(ex))
-		{
-			DisableAttachmentInterop();
-		}
-		catch (JSException ex)
-		{
-			LogIdeasInteropFailure("read selected attachments", ex);
-			DisableAttachmentInterop();
-		}
-		catch (InvalidOperationException ex)
-		{
-			LogIdeasInteropFailure("read selected attachments", ex);
-			DisableAttachmentInterop();
-		}
-		catch (OperationCanceledException ex)
-		{
-			LogIdeasInteropFailure("read selected attachments", ex);
-			DisableAttachmentInterop();
-		}
-		catch (TimeoutException ex)
-		{
-			LogIdeasInteropFailure("read selected attachments", ex);
-			DisableAttachmentInterop();
 		}
 		catch (Exception ex)
 		{
@@ -1071,37 +1038,15 @@
 			await InvokeIdeasInteropVoidAsync("vibeSwarmIdeas.registerPasteTarget", _textareaId, _newIdeaTextarea, _dotNetReference);
 			_pasteTargetRegistered = true;
 		}
-		catch (JSException ex) when (IsMissingIdeasInteropException(ex))
+		catch (Exception ex) when (ex is JSException or InvalidOperationException or OperationCanceledException or TimeoutException)
 		{
-			DisableAttachmentInterop();
-		}
-		catch (JSException ex)
-		{
-			LogIdeasInteropFailure("initialize attachment interop", ex);
-			DisableAttachmentInterop();
-		}
-		catch (InvalidOperationException ex)
-		{
-			LogIdeasInteropFailure("initialize attachment interop", ex);
-			DisableAttachmentInterop();
-		}
-		catch (OperationCanceledException ex)
-		{
-			LogIdeasInteropFailure("initialize attachment interop", ex);
-			DisableAttachmentInterop();
-		}
-		catch (TimeoutException ex)
-		{
-			LogIdeasInteropFailure("initialize attachment interop", ex);
-			DisableAttachmentInterop();
-		}
-	}
+			if (!ex.Message.Contains("vibeSwarmIdeas", StringComparison.OrdinalIgnoreCase))
+			{
+				LogIdeasInteropFailure("initialize clipboard paste", ex);
+			}
 
-	private string GetAttachmentButtonTooltip()
-	{
-		return _attachmentInteropAvailable
-			? "Attach files from the host filesystem"
-			: "Attachments are temporarily unavailable. Refresh the page to restore them.";
+			DisableAttachmentInterop();
+		}
 	}
 
 	private void DisableAttachmentInterop()
@@ -1122,8 +1067,8 @@
 	private void ShowAttachmentInteropUnavailableWarning()
 	{
 		NotificationService.ShowWarning(
-			"Idea attachments and clipboard image paste are temporarily unavailable on this page. Refresh the page to restore them.",
-			"Attachments unavailable");
+			"Pasting images is temporarily unavailable on this page. Refresh the page to restore it.",
+			"Image paste unavailable");
 	}
 
 	private static void LogIdeasInteropFailure(string action, Exception exception)
@@ -1136,18 +1081,6 @@
 		await JSRuntime.InvokeVoidAsync(identifier, args).AsTask().WaitAsync(IdeasInteropTimeout);
 	}
 
-	private async Task<T?> InvokeIdeasInteropAsync<T>(string identifier, params object?[] args)
-	{
-		return await JSRuntime.InvokeAsync<T>(identifier, args).AsTask().WaitAsync(IdeasInteropTimeout);
-	}
-
-	private static bool IsMissingIdeasInteropException(JSException exception)
-	{
-		return exception.Message.Contains("vibeSwarmIdeas", StringComparison.OrdinalIgnoreCase) ||
-			exception.Message.Contains("registerPasteTarget", StringComparison.OrdinalIgnoreCase) ||
-			exception.Message.Contains("consumeSelectedFiles", StringComparison.OrdinalIgnoreCase) ||
-			exception.Message.Contains("readImageFromClipboard", StringComparison.OrdinalIgnoreCase);
-	}
 
 	private string GetDraftStorageKey()
 	{

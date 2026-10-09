@@ -30,7 +30,7 @@
 						<i class="bi bi-stars me-1"></i>AI is expanding your idea into a detailed specification...
 					</div>
 					<button type="button" class="btn-solid theme-danger btn-sm mt-3" @onclick="RequestCancel">
-						<i class="bi bi-x-circle me-1"></i>Cancel Expansion
+						<i class="bi bi-x-circle"></i>Cancel Expansion
 					</button>
 				</div>
 			}
@@ -49,7 +49,7 @@
 
 				<div class="d-flex gap-3 mt-5">
 					<button type="button" class="btn-solid theme-primary" @onclick="RequestExpansion" disabled="@IsExpanding">
-						<i class="bi bi-arrow-clockwise me-1"></i>Try Again
+						<i class="bi bi-arrow-clockwise"></i>Try Again
 					</button>
 					<button type="button" class="btn-solid theme-secondary" @onclick="HandleClose">
 						Cancel
@@ -114,16 +114,23 @@
 							}
 							else
 							{
+								<i class="bi bi-check-lg"></i>
+							}
+							Approve & Use
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
+							}
+							else
+							{
 								<i class="bi bi-check-lg me-1"></i>
 							}
 							Approve & Use
 						</button>
 					}
 					<button type="button" class="btn-solid theme-primary" @onclick="RequestExpansion" disabled="@IsExpanding">
-						<i class="bi bi-arrow-clockwise me-1"></i>Re-generate
+						<i class="bi bi-arrow-clockwise"></i>Re-generate
 					</button>
 					<button type="button" class="btn-solid theme-danger" @onclick="RejectExpansion" disabled="@IsProcessing">
-						<i class="bi bi-x-lg me-1"></i>Discard
+						<i class="bi bi-x-lg"></i>Discard
 					</button>
 					<button type="button" class="btn-solid theme-secondary ms-auto" @onclick="HandleClose">
 						Close
@@ -153,6 +160,13 @@
 						@if (IsExpanding)
 						{
 							<span class="spinner-border spinner-sm me-1" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-magic"></i>
+						}
+						Expand with AI
+					<span class="spinner-border spinner-sm me-1" role="status"></span>
 						}
 						else
 						{

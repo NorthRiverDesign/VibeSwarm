@@ -111,7 +111,7 @@ else if (_changesTabDiffFiles != null && _changesTabDiffFiles.Any())
                     {
                         <button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="GenerateCommitMessage"
                                 title="Write a commit message from the job summaries">
-                            <i class="bi bi-magic me-1"></i>Write one for me
+                            <i class="bi bi-magic"></i>Write one for me
                         </button>
                     }
                 </div>
@@ -137,6 +137,14 @@ else if (_changesTabDiffFiles != null && _changesTabDiffFiles.Any())
                             @if (_isCommitting && !_isCommitOnly)
                             {
                                 <span class="spinner-border spinner-sm me-1" role="status"></span>
+                                <span>Pushing...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-cloud-arrow-up"></i>
+                                <span>Commit & Push</span>
+                            }
+                        <span class="spinner-border spinner-sm me-1" role="status"></span>
                                 <span>Pushing...</span>
                             }
                             else
@@ -179,7 +187,7 @@ else if (_changesTabDiffFiles != null && _changesTabDiffFiles.Any())
                 <div class="text-center">
                     <button type="button" class="btn-sm btn-link fg-danger text-decoration-none" @onclick="@(() => _showDiscardConfirm = true)"
                             disabled="@(_isCommitting || _isDiscarding)">
-                        <i class="bi bi-trash me-1"></i>Discard all changes…
+                        <i class="bi bi-trash"></i>Discard all changes…
                     </button>
                 </div>
             }

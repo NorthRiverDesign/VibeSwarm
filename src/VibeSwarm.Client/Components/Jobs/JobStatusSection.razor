@@ -27,7 +27,7 @@
                             <span class="small fw-medium lh-sm text-truncate px-1">@step.Name</span>
                             @if (!string.IsNullOrEmpty(step.Sub))
                             {
-                                <span class="text-caption fg-1 text-truncate px-1 @(step.Mono ? "font-monospace" : "")">@step.Sub</span>
+                                <span class="text-xs fg-1 text-truncate px-1 @(step.Mono ? "font-monospace" : "")">@step.Sub</span>
                             }
                         </div>
                     </li>
@@ -39,7 +39,7 @@
 
 @if (isTerminal)
 {
-    <div class="alert theme-@variant align-items-start gap-5 mb-5">
+    <div class="alert theme-@variant gap-5 mb-5">
         <i class="bi @BannerIcon fs-lg"></i>
         <div class="flex-grow-1 min-w-0">
             <div class="fw-semibold">@BannerHeadline</div>

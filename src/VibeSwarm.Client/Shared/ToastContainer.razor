@@ -11,9 +11,9 @@
 		<div class="toast show @GetToastClass(notification.Type)" role="alert" aria-live="assertive"
 			aria-atomic="true">
 			<div class="toast-header gap-3">
-				<i class="@GetIconClass(notification.Type)"></i>
+				<i class="@notification.IconClass"></i>
 				<strong class="me-auto">@notification.Title</strong>
-				<small class="fg-1">@GetTimeAgo(notification.CreatedAt)</small>
+				<small class="fg-1">@notification.CreatedAt.FormatRelativeToNow()</small>
 				<button type="button" class="btn-close" aria-label="Close"
 					@onclick="() => Dismiss(notification.Id)"></button>
 			</div>
@@ -26,7 +26,7 @@
 						<button type="button"
 								class="btn-solid theme-primary btn-sm"
 								@onclick="() => HandleAction(notification)">
-							<i class="bi bi-box-arrow-up-right me-1"></i>@notification.ActionLabel
+							<i class="bi bi-box-arrow-up-right"></i>@notification.ActionLabel
 						</button>
 					</div>
 				}
@@ -99,32 +99,6 @@
 			NotificationType.Info => "theme-info",
 			_ => ""
 		};
-	}
-
-	private string GetIconClass(NotificationType type)
-	{
-		// Using Unicode characters as Bootstrap doesn't include icons by default
-		// You could replace these with Bootstrap Icons if you add that library
-		return type switch
-		{
-			NotificationType.Success => "bi bi-check-circle-fill fg-success",
-			NotificationType.Error => "bi bi-x-circle-fill fg-danger",
-			NotificationType.Warning => "bi bi-exclamation-triangle-fill fg-warning",
-			NotificationType.Info => "bi bi-info-circle-fill fg-info",
-			_ => "bi bi-bell-fill"
-		};
-	}
-
-	private string GetTimeAgo(DateTime createdAt)
-	{
-		var elapsed = DateTime.UtcNow - createdAt;
-		if (elapsed.TotalSeconds < 5)
-			return "just now";
-		if (elapsed.TotalSeconds < 60)
-			return $"{(int)elapsed.TotalSeconds}s ago";
-		if (elapsed.TotalMinutes < 60)
-			return $"{(int)elapsed.TotalMinutes}m ago";
-		return $"{(int)elapsed.TotalHours}h ago";
 	}
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)

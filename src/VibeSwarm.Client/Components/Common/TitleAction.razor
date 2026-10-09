@@ -4,7 +4,7 @@
 <button type="button"
 		class="btn-icon @(Primary ? "btn-solid theme-primary" : "btn-solid theme-secondary") rounded-circle p-0 icon-button-round flex-shrink-0"
 		@onclick="OnClick" disabled="@(Disabled || IsLoading)" title="@Label" aria-label="@Label">
-	<i class="bi bi-@Icon @(IsLoading ? "spin" : "")"></i>
+	<i class="bi bi-@Icon @(IsLoading ? "spinner-rotate" : "")"></i>
 </button>
 
 @code {

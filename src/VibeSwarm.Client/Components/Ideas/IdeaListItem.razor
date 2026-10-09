@@ -64,7 +64,7 @@
 			}
 			else if (!IsRunningIdea())
 			{
-				<button type="button" class="btn-link fg-success p-0 icon-button-round d-inline-flex align-items-center justify-content-center flex-shrink-0"
+				<button type="button" class="btn-link fg-success p-0 icon-button-round flex-shrink-0"
 						@onclick="HandleStart" disabled="@(!HasDefaultProvider || IsStarting || Idea.JobId.HasValue)"
 						title="@(HasActiveJobs ? "Queue this idea after the current job" : "Start this idea")" aria-label="Start this idea">
 					@if (IsStarting)
@@ -87,11 +87,11 @@
 					<div class="d-flex flex-wrap gap-3">
 						@if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved)
 						{
-							<MetaChip Variant="ai" Icon="bi-stars" Text="Expanded" />
+							<span class="badge theme-primary"><i class="bi bi-stars"></i>Expanded</span>
 						}
 						else
 						{
-							<MetaChip Icon="bi-eye" Text="Review" />
+							<span class="badge theme-secondary"><i class="bi bi-eye"></i>Review</span>
 						}
 					</div>
 				}
@@ -121,21 +121,21 @@
 				}
 				<div class="d-flex flex-wrap align-items-center gap-3">
 					<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="StartEdit" disabled="@IsRunningIdea()">
-						<i class="bi bi-pencil me-1"></i>Edit
+						<i class="bi bi-pencil"></i>Edit
 					</button>
 					<RowActionsDropdown Label="More" Placement="bottom-start">
 						@if (IsRunningIdea() && Idea.JobId.HasValue)
 						{
 							<RowActionsItem Icon="stop-fill" Text="Stop Job" Warning="true" OnClick="HandleStopJob" />
-							<RowActionsDivider />
+							<hr class="menu-divider">
 						}
 						<RowActionsItem Icon="magic" Text="Expand with AI" OnClick="HandleExpand"
 										Disabled="@(Idea.JobId.HasValue || Idea.ExpansionStatus == IdeaExpansionStatus.Expanding)" />
-						<RowActionsDivider />
+						<hr class="menu-divider">
 						<RowActionsItem Icon="copy" Text="Copy to Project" OnClick="HandleCopy" />
 						<RowActionsItem Icon="box-arrow-right" Text="Move to Project" OnClick="HandleMove"
 										Disabled="@(IsRunningIdea() || IsQueuedIdea() || Idea.JobId.HasValue)" />
-						<RowActionsDivider />
+						<hr class="menu-divider">
 						<RowActionsItem Icon="trash" Text="Delete" Danger="true"
 										OnClick="HandleDelete" Disabled="@IsRunningIdea()" />
 					</RowActionsDropdown>

@@ -22,7 +22,7 @@ public sealed class MobileTabBarTests
 	{
 		var layoutMarkup = ReadMainLayout();
 		var moreMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Pages", "More.razor"));
-		var sidebarHrefs = Regex.Matches(layoutMarkup, @"<NavLink class=""nav-item"" href=""([^""]+)""")
+		var sidebarHrefs = Regex.Matches(layoutMarkup, @"<NavLink class=""nav-link"" href=""([^""]+)""")
 			.Select(match => match.Groups[1].Value)
 			.ToList();
 

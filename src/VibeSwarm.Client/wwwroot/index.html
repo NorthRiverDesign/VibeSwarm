@@ -232,20 +232,6 @@
                     var extension = (contentType || 'image/png').split('/')[1] || 'png';
                     return 'pasted-image-' + new Date().toISOString().replace(/[:.]/g, '-') + '.' + extension;
                 },
-                consumeSelectedFiles: async function (inputId) {
-                    var input = document.getElementById(inputId);
-                    if (!input || !input.files || input.files.length === 0) {
-                        return [];
-                    }
-
-                    var files = Array.from(input.files);
-                    var uploads = await Promise.all(files.map(function (file) {
-                        return window.vibeSwarmIdeas.readAttachmentAsDataUrl(file, file.name);
-                    }));
-
-                    input.value = '';
-                    return uploads;
-                },
                 registerPasteTarget: function (targetId, element, dotNetRef) {
                     if (!element || !dotNetRef) {
                         return;
@@ -296,26 +282,6 @@
 
                     entry.element.removeEventListener('paste', entry.handler);
                     delete window.vibeSwarmIdeas._pasteTargets[targetId];
-                },
-                readImageFromClipboard: async function (targetId) {
-                    if (!navigator.clipboard || !navigator.clipboard.read) {
-                        throw new Error('Clipboard image paste is not supported by this browser.');
-                    }
-
-                    var items = await navigator.clipboard.read();
-                    for (var i = 0; i < items.length; i++) {
-                        var item = items[i];
-                        var imageType = item.types.find(function (type) { return type.indexOf('image/') === 0; });
-                        if (!imageType) {
-                            continue;
-                        }
-
-                        var blob = await item.getType(imageType);
-                        blob.name = window.vibeSwarmIdeas.createPastedImageFileName(imageType);
-                        return await window.vibeSwarmIdeas.readAttachmentAsDataUrl(blob, blob.name);
-                    }
-
-                    return null;
                 }
             };
 

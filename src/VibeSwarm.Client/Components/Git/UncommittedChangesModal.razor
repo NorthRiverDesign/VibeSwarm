@@ -26,7 +26,7 @@
                             @foreach (var job in PendingJobs.Take(5))
                             {
                                 <span class="badge badge-subtle theme-success border border-subtle-success">
-                                    <i class="bi bi-check-circle me-1"></i>@TruncateTitle(job.Title ?? job.GoalPrompt, 40)
+                                    <i class="bi bi-check-circle"></i>@TruncateTitle(job.Title ?? job.GoalPrompt, 40)
                                 </span>
                             }
                             @if (PendingJobs.Count > 5)
@@ -132,7 +132,7 @@
                     {
                         <button type="button" class="btn-sm btn-solid theme-primary" @onclick="GenerateCommitMessage"
                                 title="Generate commit message from job summaries">
-                            <i class="bi bi-magic me-1"></i>Generate
+                            <i class="bi bi-magic"></i>Generate
                         </button>
                     }
                 </div>
@@ -156,7 +156,7 @@
                     {
                         <button type="button" class="btn-sm btn-solid theme-danger flex-shrink-0" @onclick="HandleRetryPush"
                                 disabled="@IsCommitting">
-                            <i class="bi bi-arrow-repeat me-1"></i>Retry Push
+                            <i class="bi bi-arrow-repeat"></i>Retry Push
                         </button>
                     }
                 </div>
@@ -199,7 +199,7 @@
             <div class="d-flex flex-column sm:flex-row justify-content-between w-100 gap-3">
                 <button type="button" class="btn-solid theme-danger" @onclick="HandleShowDiscard"
                         disabled="@(IsCommitting || IsDiscarding)">
-                    <i class="bi bi-trash me-1"></i>
+                    <i class="bi bi-trash"></i>
                     <span>Discard All</span>
                 </button>
                 <div class="d-flex gap-3">
@@ -216,6 +216,14 @@
                         }
                         else
                         {
+                            <i class="bi bi-check-circle"></i>
+                            <span>Commit</span>
+                        }
+                    <span class="spinner-border spinner-sm me-1" role="status"></span>
+                            <span>Committing...</span>
+                        }
+                        else
+                        {
                             <i class="bi bi-check-circle me-1"></i>
                             <span>Commit</span>
                         }
@@ -225,6 +233,14 @@
                         @if (IsCommitting && !_isCommitOnly)
                         {
                             <span class="spinner-border spinner-sm me-1" role="status"></span>
+                            <span>@(string.IsNullOrEmpty(CommitProgress) ? "Committing..." : CommitProgress)</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-cloud-arrow-up"></i>
+                            <span>Commit & Push</span>
+                        }
+                    <span class="spinner-border spinner-sm me-1" role="status"></span>
                             <span>@(string.IsNullOrEmpty(CommitProgress) ? "Committing..." : CommitProgress)</span>
                         }
                         else

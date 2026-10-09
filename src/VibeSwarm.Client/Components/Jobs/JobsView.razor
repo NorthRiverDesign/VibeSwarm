@@ -34,7 +34,7 @@
 				@foreach (var project in VisibleProjects)
 				{
 					<li class="nav-item">
-						<button type="button" class="nav-link rounded-pill px-5 d-inline-flex align-items-center gap-3 @(_selectedProjectId == project.Id ? "active" : "") @(project.IsActive ? "" : "opacity-75")"
+						<button type="button" class="nav-link rounded-pill px-5 d-inline-flex @(_selectedProjectId == project.Id ? "active" : "") @(project.IsActive ? "" : "opacity-75")"
 								aria-pressed="@(_selectedProjectId == project.Id ? "true" : "false")" @onclick="() => SelectProject(project.Id)">
 							@project.Name
 							@if (GetActiveCountForProject(project.Id) > 0)

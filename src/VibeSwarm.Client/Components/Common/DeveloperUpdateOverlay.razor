@@ -1,6 +1,5 @@
 @inject DeveloperUpdateOverlayService DeveloperUpdateOverlayService
 @inject IDeveloperModeService DeveloperModeService
-@inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
 @implements IDisposable
 @implements IAsyncDisposable
@@ -147,7 +146,7 @@
 				!string.Equals(_status.ServerInstanceId, status.ServerInstanceId, StringComparison.Ordinal))
 			{
 				DeveloperUpdateOverlayService.SetStatus(status);
-				await ReloadPageAsync();
+				ReloadPage();
 				return;
 			}
 
@@ -162,18 +161,10 @@
 		}
 	}
 
-	private async Task ReloadPageAsync()
+	private void ReloadPage()
 	{
 		DeveloperUpdateOverlayService.Clear();
-
-		try
-		{
-			await JSRuntime.InvokeVoidAsync("location.reload", true);
-		}
-		catch
-		{
-			NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
-		}
+		NavigationManager.Refresh(forceReload: true);
 	}
 
 	private void DismissFailure()
