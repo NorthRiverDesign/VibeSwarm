@@ -6,8 +6,8 @@
 @* Projects list: a large title, one search field, and one row per project. Everything a project
    can do lives on its own page, so the list stays a list. *@
 
-<div class="d-flex flex-column gap-3">
-	<div class="d-flex align-items-center gap-2">
+<div class="d-flex flex-column gap-5">
+	<div class="d-flex align-items-center gap-3">
 		<h1 class="mb-0 me-auto">Projects</h1>
 		<TitleAction Icon="folder-symlink" Label="Import folders already on this host" OnClick="ShowScanModal" />
 		<TitleAction Icon="plus-lg" Label="New project" Primary="true" OnClick="ShowAddModal" />
@@ -15,20 +15,20 @@
 
 	@if (ProjectsWithInfo.Any())
 	{
-		<div class="d-flex flex-column flex-sm-row gap-2">
+		<div class="d-flex flex-column sm:flex-row gap-3">
 			<div class="position-relative flex-grow-1" role="search">
-				<i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-body-tertiary pe-none"></i>
-				<input type="search" class="form-control rounded-pill bg-body-tertiary border-0 ps-5" placeholder="Search projects"
+				<i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-5 fg-2 pe-none"></i>
+				<input type="search" class="form-control rounded-pill bg-2 border-0 ps-12" placeholder="Search projects"
 					   aria-label="Search projects" @bind="_projectSearchQuery" @bind:event="oninput" />
 			</div>
 			@if (GetInactiveCount() > 0)
 			{
 				<div class="btn-group btn-group-sm flex-shrink-0" role="group" aria-label="Show">
-					<button type="button" class="btn @(ActiveFilter == "active" ? "btn-primary" : "btn-secondary")"
+					<button type="button" class="btn @(ActiveFilter == "active" ? "btn-solid theme-primary" : "btn-solid theme-secondary")"
 							@onclick='() => SetFilter("active")' aria-pressed="@(ActiveFilter == "active" ? "true" : "false")">Active</button>
-					<button type="button" class="btn @(ActiveFilter == "inactive" ? "btn-primary" : "btn-secondary")"
+					<button type="button" class="btn @(ActiveFilter == "inactive" ? "btn-solid theme-primary" : "btn-solid theme-secondary")"
 							@onclick='() => SetFilter("inactive")' aria-pressed="@(ActiveFilter == "inactive" ? "true" : "false")">Inactive · @GetInactiveCount()</button>
-					<button type="button" class="btn @(ActiveFilter == "all" ? "btn-primary" : "btn-secondary")"
+					<button type="button" class="btn @(ActiveFilter == "all" ? "btn-solid theme-primary" : "btn-solid theme-secondary")"
 							@onclick='() => SetFilter("all")' aria-pressed="@(ActiveFilter == "all" ? "true" : "false")">All</button>
 				</div>
 			}
@@ -63,7 +63,7 @@
 	}
 	else
 	{
-		<div class="list-group rounded-4">
+		<div class="list-group rounded-9">
 			@foreach (var projectInfo in GetFilteredProjects())
 			{
 				var project = projectInfo.Project;

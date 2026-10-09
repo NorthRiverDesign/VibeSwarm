@@ -1,53 +1,44 @@
 @* Git actions dropdown menu component *@
 
-<div class="dropdown flex-shrink-0">
-	<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+<div class="flex-shrink-0">
+	<button class="btn-sm btn-solid theme-secondary" type="button" data-bs-toggle="menu" data-bs-placement="bottom-end"
 		aria-expanded="false" disabled="@IsDisabled" title="Git actions">
 		<i class="bi bi-git"></i>
-		<span class="d-none d-sm-inline ms-1">Git</span>
+		<span class="d-none sm:d-inline ms-1">Git</span>
+		<i class="bi bi-chevron-down small opacity-75"></i>
 	</button>
-	<ul class="dropdown-menu dropdown-menu-end">
-		<li>
-			<button class="dropdown-item" @onclick="OnCreateBranch" disabled="@IsDisabled">
-				<i class="bi bi-plus-lg me-2 text-primary"></i>New Branch
+	<div class="menu">
+			<button class="menu-item" @onclick="OnCreateBranch" disabled="@IsDisabled">
+				<i class="bi bi-plus-lg me-3 fg-primary"></i>New Branch
 			</button>
-		</li>
-		<li>
-			<button class="dropdown-item" @onclick="OnSync" disabled="@IsDisabled">
+			<button class="menu-item" @onclick="OnSync" disabled="@IsDisabled">
 				@if (IsSyncing)
 				{
-					<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+					<span class="spinner-border spinner-sm me-3" role="status"></span>
 				}
 				else
 				{
-					<i class="bi bi-cloud-download me-2 text-success"></i>
+					<i class="bi bi-cloud-download me-3 fg-success"></i>
 				}
 				Sync with Origin
 			</button>
-		</li>
-		<li>
-			<button class="dropdown-item" @onclick="OnPruneBranches" disabled="@(IsDisabled || IsPruning)">
+			<button class="menu-item" @onclick="OnPruneBranches" disabled="@(IsDisabled || IsPruning)">
 				@if (IsPruning)
 				{
-					<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+					<span class="spinner-border spinner-sm me-3" role="status"></span>
 				}
 				else
 				{
-					<i class="bi bi-scissors me-2 text-warning"></i>
+					<i class="bi bi-scissors me-3 fg-warning"></i>
 				}
 				Prune Stale Branches
 			</button>
-		</li>
-		<li>
-			<hr class="dropdown-divider">
-		</li>
-		<li>
-			<button class="dropdown-item" @onclick="OnRefresh" disabled="@IsDisabled">
-				<i class="bi bi-arrow-clockwise me-2 @(IsRefreshing ? "spin" : "")"></i>
+			<hr class="menu-divider">
+			<button class="menu-item" @onclick="OnRefresh" disabled="@IsDisabled">
+				<i class="bi bi-arrow-clockwise me-3 @(IsRefreshing ? "spin" : "")"></i>
 				Refresh Branches
 			</button>
-		</li>
-	</ul>
+	</div>
 </div>
 
 @code {

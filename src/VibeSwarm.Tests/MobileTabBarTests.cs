@@ -11,8 +11,8 @@ public sealed class MobileTabBarTests
 	{
 		var layoutMarkup = ReadMainLayout();
 
-		Assert.Contains("app-tab-bar d-flex d-lg-none", layoutMarkup, StringComparison.Ordinal);
-		Assert.Contains("app-sidebar position-fixed d-none d-lg-flex", layoutMarkup, StringComparison.Ordinal);
+		Assert.Contains("app-tab-bar d-flex lg:d-none", layoutMarkup, StringComparison.Ordinal);
+		Assert.Contains("app-sidebar position-fixed d-none lg:d-flex", layoutMarkup, StringComparison.Ordinal);
 		Assert.DoesNotContain("mobile-menu-toggle", layoutMarkup, StringComparison.Ordinal);
 		Assert.Equal(TabPaths, GetTabBarHrefs(layoutMarkup));
 	}

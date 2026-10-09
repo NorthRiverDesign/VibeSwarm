@@ -10,13 +10,13 @@
 	<ChildContent>
 		@if (_errorMessage != null)
 		{
-			<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mb-3" />
+			<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mb-5" />
 		}
 
 		@if (_showTokenHint)
 		{
-			<Alert Type="Alert.AlertType.Info" Class="mb-3">
-				<div class="d-flex flex-column flex-md-row align-items-md-center gap-2">
+			<Alert Type="Alert.AlertType.Info" Class="mb-5">
+				<div class="d-flex flex-column md:flex-row md:align-items-center gap-3">
 					<div class="flex-grow-1 small">
 						<i class="bi bi-info-circle me-1"></i>
 						No GitHub token is configured. Anonymous GitHub requests are rate-limited to 60/hour per IP —
@@ -29,7 +29,7 @@
 			</Alert>
 		}
 
-		<div class="d-flex flex-column flex-md-row align-items-md-center gap-2 mb-3">
+		<div class="d-flex flex-column md:flex-row md:align-items-center gap-3 mb-5">
 			<div class="flex-grow-1">
 				<input type="text" class="form-control" placeholder="Filter skills by name or description..."
 					   @bind="_filterText" @bind:event="oninput" />
@@ -53,19 +53,19 @@
 			<div class="list-group">
 				@foreach (var entry in _filteredCatalog)
 				{
-					<div class="list-group-item d-flex flex-column flex-md-row gap-2 gap-md-3 p-3">
-						<div class="flex-grow-1 min-width-0">
-							<div class="d-flex align-items-center gap-2 flex-wrap">
+					<div class="list-group-item d-flex flex-column md:flex-row gap-3 md:gap-5 p-5">
+						<div class="flex-grow-1 min-w-0">
+							<div class="d-flex align-items-center gap-3 flex-wrap">
 								<span class="fw-semibold font-monospace">@entry.Name</span>
-								<code class="small text-body-secondary">@entry.Slug</code>
+								<code class="small fg-1">@entry.Slug</code>
 							</div>
 							@if (!string.IsNullOrWhiteSpace(entry.Description))
 							{
-								<div class="small text-body-secondary mt-1">@entry.Description</div>
+								<div class="small fg-1 mt-1">@entry.Description</div>
 							}
 							@if (!string.IsNullOrWhiteSpace(entry.AllowedTools))
 							{
-								<div class="small text-body-secondary mt-1 font-monospace">
+								<div class="small fg-1 mt-1 font-monospace">
 									<i class="bi bi-shield-lock opacity-75 me-1"></i>
 									allowed-tools: @entry.AllowedTools
 								</div>

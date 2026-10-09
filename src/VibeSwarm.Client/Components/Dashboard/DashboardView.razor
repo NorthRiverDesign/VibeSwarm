@@ -10,7 +10,7 @@
 
 <PageHeader Title="Dashboard" Subtitle="What is running right now, and where your projects stand." />
 
-<div class="d-flex flex-column gap-4">
+<div class="d-flex flex-column gap-7">
     @if (RunningDashboardJobs.Any())
     {
         <DashboardRunningJobsSection Items="@RunningDashboardJobs" />
@@ -19,19 +19,19 @@
     @if (IdeasStatus is not null &&
         (IdeasStatus.TotalQueueIdeas > 0 || IdeasStatus.ProjectsCurrentlyProcessing > 0))
     {
-        <section class="d-flex flex-column gap-2" aria-label="Ideas">
+        <section class="d-flex flex-column gap-3" aria-label="Ideas">
             <SectionHeader Title="Ideas">
                 <Actions>
                     @if (IdeasStatus.ProjectsCurrentlyProcessing > 0)
                     {
-                        <button type="button" class="btn btn-sm btn-link text-danger text-decoration-none px-0"
+                        <button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0"
                                 disabled="@IsStoppingAll" @onclick="OnStopAllProcessing">
                             <i class="bi bi-stop-fill me-1"></i>@(IsStoppingAll ? "Stopping..." : "Stop all")
                         </button>
                     }
                     else if (IdeasStatus.TotalUnprocessedIdeas > 0 && !IsStartingAll)
                     {
-                        <button type="button" class="btn btn-sm btn-link text-decoration-none px-0" @onclick="() => ShowStartAllModal = true">
+                        <button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="() => ShowStartAllModal = true">
                             <i class="bi bi-play-fill me-1"></i>Start all
                         </button>
                     }
@@ -45,7 +45,7 @@
                 </Alert>
             }
 
-            <div class="list-group rounded-4">
+            <div class="list-group rounded-9">
                 @foreach (var project in IdeasStatus.Projects.Where(p => p.TotalQueueIdeas > 0 || p.IsProcessing))
                 {
                     <ListRow @key="project.ProjectId" Icon="lightbulb" Title="@project.ProjectName"
@@ -54,15 +54,15 @@
                         <Trailing>
                             @if (project.HasRunningJob)
                             {
-                                <span class="small text-success flex-shrink-0 d-inline-flex align-items-center gap-1"><span class="live-dot"></span>Running</span>
+                                <span class="small fg-success flex-shrink-0 d-inline-flex align-items-center gap-1"><span class="live-dot"></span>Running</span>
                             }
                             else if (project.IsProcessing || project.QueuedIdeas > 0)
                             {
-                                <span class="small text-body-secondary flex-shrink-0">Queued</span>
+                                <span class="small fg-1 flex-shrink-0">Queued</span>
                             }
                             else
                             {
-                                <span class="small text-body-tertiary flex-shrink-0">Waiting</span>
+                                <span class="small fg-2 flex-shrink-0">Waiting</span>
                             }
                         </Trailing>
                     </ListRow>
@@ -73,15 +73,15 @@
 
     <DashboardJobAnalyticsSection />
 
-    <section class="d-flex flex-column gap-2" aria-label="Active projects">
+    <section class="d-flex flex-column gap-3" aria-label="Active projects">
         <SectionHeader Title="Active projects">
             <Actions>
                 <InputSelect id="dashboardProjectSort" @bind-Value="SelectedProjectSort" aria-label="Sort by"
-                             class="form-select form-select-sm">
+                             class="form-control form-control-sm">
                     <option value="@DashboardProjectSortOption.LastRan">Last ran</option>
                     <option value="@DashboardProjectSortOption.Name">Name</option>
                 </InputSelect>
-                <a href="/projects" class="btn btn-sm btn-link text-decoration-none px-0 flex-shrink-0">All</a>
+                <a href="/projects" class="btn-sm btn-link text-decoration-none px-0 flex-shrink-0">All</a>
             </Actions>
         </SectionHeader>
 
@@ -100,7 +100,7 @@
         }
         else
         {
-            <div class="list-group rounded-4">
+            <div class="list-group rounded-9">
                 @foreach (var item in SortedDashboardProjects)
                 {
                     <ListRow @key="item.Project.Id" Icon="folder" Title="@item.Project.Name"
@@ -112,24 +112,24 @@
         }
     </section>
 
-    <section class="d-flex flex-column gap-2" aria-label="Providers">
+    <section class="d-flex flex-column gap-3" aria-label="Providers">
         <SectionHeader Title="Providers">
             <Actions>
                 @if (!IsLoading && VisibleProviders.Any())
                 {
-                    <button type="button" class="btn btn-sm btn-link text-decoration-none px-0"
+                    <button type="button" class="btn-sm btn-link text-decoration-none px-0"
                             title="Reload usage. Connections that report limits on demand run one tiny request each."
                             @onclick="RefreshProviderUsageAsync" disabled="@IsRefreshingUsage">
                         <i class="bi bi-arrow-repeat me-1 @(IsRefreshingUsage ? "spin" : "")"></i>Refresh usage
                     </button>
                 }
-                <a href="/providers" class="btn btn-sm btn-link text-decoration-none px-0">Manage</a>
+                <a href="/providers" class="btn-sm btn-link text-decoration-none px-0">Manage</a>
             </Actions>
         </SectionHeader>
 
         @if (!string.IsNullOrWhiteSpace(UsageReloadError))
         {
-            <div class="small text-warning-emphasis px-1">@UsageReloadError</div>
+            <div class="small fg-emphasis-warning px-1">@UsageReloadError</div>
         }
 
         @if (IsLoading)
@@ -147,7 +147,7 @@
         }
         else
         {
-            <div class="list-group rounded-4">
+            <div class="list-group rounded-9">
                 @foreach (var provider in VisibleProviders)
                 {
                     <DashboardProviderRow @key="provider.Id" Name="@provider.Name" ProviderType="@provider.Type.ToString()"
@@ -168,11 +168,11 @@
             project@(IdeasStatus?.Projects.Count(p => p.UnprocessedIdeas > 0) != 1 ? "s" : "")
             (<strong>@(IdeasStatus?.TotalUnprocessedIdeas ?? 0)</strong> total idea@(IdeasStatus?.TotalUnprocessedIdeas != 1 ? "s" : "")).
         </p>
-        <p class="text-body-secondary small mb-0">
+        <p class="fg-1 small mb-0">
             Each idea will be converted to a job and queued for execution. You can stop processing at any time.
         </p>
         <FormCheck @bind-Value="StartAllAutoCommit" Icon="git" Id="dashboardAutoCommit"
-                  Text="Auto-commit changes when jobs complete" Class="mt-3" />
+                  Text="Auto-commit changes when jobs complete" Class="mt-5" />
     </ChildContent>
     <FooterContent>
         <ActionButton Text="Cancel" OnClick="() => ShowStartAllModal = false" Disabled="IsStartingAll" />

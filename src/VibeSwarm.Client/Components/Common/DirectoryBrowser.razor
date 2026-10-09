@@ -1,162 +1,153 @@
 @inject IFileSystemService FileSystemService
 
-<div class="modal fade @(_isVisible ? "show d-block" : "")" tabindex="-1">
-	<div class="modal-dialog modal-lg modal-dialog-scrollable">
-		<div class="modal-content">
-			<div class="modal-header">
-				<h5 class="modal-title">
-					<i class="bi bi-folder2-open me-2"></i>Select Directory
-				</h5>
-				<button type="button" class="btn-close" @onclick="Close" aria-label="Close"></button>
+<ModalDialog IsVisible="_isVisible" Title="Select Directory" Icon="folder2-open" Size="ModalDialog.ModalSize.Large"
+			 BodyClass="p-0" OnClose="Close">
+	<ChildContent>
+		@* Path input and navigation *@
+		<div class="border-bottom p-5 bg-1">
+			<div class="input-group">
+				<button class="btn-solid theme-secondary" @onclick="GoUp" disabled="@(_directoryResult?.IsRoot ?? true)"
+						title="Go up">
+					<i class="bi bi-arrow-up"></i>
+				</button>
+				<button class="btn-solid theme-secondary" @onclick="GoHome" title="Go to root/drives">
+					<i class="bi bi-house"></i>
+				</button>
+				<input type="text" class="form-control font-monospace" @bind="_currentPath"
+					   @bind:event="oninput" placeholder="Enter path..." @onkeydown="HandlePathKeydown" />
+				<button class="btn-solid theme-primary" @onclick="NavigateToPath" title="Go to path">
+					<i class="bi bi-arrow-right"></i>
+				</button>
 			</div>
-			<div class="modal-body p-0">
-				@* Path input and navigation *@
-				<div class="border-bottom p-3 bg-body-secondary">
-					<div class="input-group">
-						<button class="btn btn-secondary" @onclick="GoUp" disabled="@(_directoryResult?.IsRoot ?? true)"
-								title="Go up">
-							<i class="bi bi-arrow-up"></i>
-						</button>
-						<button class="btn btn-secondary" @onclick="GoHome" title="Go to root/drives">
-							<i class="bi bi-house"></i>
-						</button>
-						<input type="text" class="form-control font-monospace" @bind="_currentPath"
-							   @bind:event="oninput" placeholder="Enter path..." @onkeydown="HandlePathKeydown" />
-						<button class="btn btn-primary" @onclick="NavigateToPath" title="Go to path">
-							<i class="bi bi-arrow-right"></i>
-						</button>
-					</div>
+		</div>
+
+		@* Error message *@
+		@if (!string.IsNullOrEmpty(_directoryResult?.Error))
+		{
+			<Alert Type="Alert.AlertType.Warning" Class="m-5 mb-0">@_directoryResult.Error</Alert>
+		}
+
+		@* Loading state *@
+		@if (_isLoading)
+		{
+			<div class="d-flex justify-content-center align-items-center py-12">
+				<div class="spinner-border fs-2xl fg-primary" role="status">
+					<span class="visually-hidden">Loading...</span>
 				</div>
-
-				@* Error message *@
-				@if (!string.IsNullOrEmpty(_directoryResult?.Error))
+			</div>
+		}
+		else
+		{
+			<div class="directory-list">
+				@* Drives (Windows) *@
+				@if (_directoryResult?.Drives.Any() == true && string.IsNullOrEmpty(_directoryResult.CurrentPath))
 				{
-					<Alert Type="Alert.AlertType.Warning" Class="m-3 mb-0">@_directoryResult.Error</Alert>
-				}
-
-				@* Loading state *@
-				@if (_isLoading)
-				{
-					<div class="d-flex justify-content-center align-items-center py-5">
-						<div class="spinner-border text-primary" role="status">
-							<span class="visually-hidden">Loading...</span>
-						</div>
-					</div>
-				}
-				else
-				{
-					<div class="directory-list">
-						@* Drives (Windows) *@
-						@if (_directoryResult?.Drives.Any() == true && string.IsNullOrEmpty(_directoryResult.CurrentPath))
+					<div class="list-group list-group-flush">
+						@foreach (var drive in _directoryResult.Drives)
 						{
-							<div class="list-group list-group-flush">
-								@foreach (var drive in _directoryResult.Drives)
-								{
-									<button type="button"
-											class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3"
-											@onclick="@(() => NavigateTo(drive.RootPath))">
-										<i class="bi bi-hdd text-muted fs-5"></i>
-										<div class="flex-grow-1">
-											<div class="fw-medium">@drive.Name</div>
-											<small class="text-muted">
-												@drive.Label
-												@if (drive.FreeSpace.HasValue && drive.TotalSize.HasValue)
-												{
-													<span class="ms-2">(@FormatBytes(drive.FreeSpace.Value) free of
-														@FormatBytes(drive.TotalSize.Value))</span>
-													}
-												</small>
-											</div>
-										</button>
-									}
-								</div>
-							}
-
-							@* Directory entries *@
-							@if (_directoryResult?.Entries.Any() == true)
-							{
-								<div class="list-group list-group-flush">
-									@foreach (var entry in _directoryResult.Entries.Where(e => e.IsDirectory))
-									{
-										<button type="button"
-												class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3 @(entry.FullPath == _selectedPath ? "active" : "")"
-												@onclick="@(() => SelectDirectory(entry))"
-												@ondblclick="@(() => NavigateTo(entry.FullPath))">
-											<i class="bi bi-@(entry.IsGitRepository ? "git" : "folder-fill") @(entry.IsGitRepository ? "text-body-secondary" : "text-warning") fs-5"></i>
-											<div class="flex-grow-1 min-width-0">
-												<div class="text-truncate">@entry.Name</div>
-											</div>
-											@if (entry.IsGitRepository)
-											{
-												<span class="badge text-bg-secondary flex-shrink-0">Git</span>
+							<button type="button"
+									class="list-group-item list-group-item-action d-flex align-items-center gap-5 py-5"
+									@onclick="@(() => NavigateTo(drive.RootPath))">
+								<i class="bi bi-hdd fg-1 fs-lg"></i>
+								<div class="flex-grow-1">
+									<div class="fw-medium">@drive.Name</div>
+									<small class="fg-1">
+										@drive.Label
+										@if (drive.FreeSpace.HasValue && drive.TotalSize.HasValue)
+										{
+											<span class="ms-3">(@FormatBytes(drive.FreeSpace.Value) free of
+												@FormatBytes(drive.TotalSize.Value))</span>
 											}
-											<i class="bi bi-chevron-right text-muted small"></i>
-										</button>
-									}
-								</div>
-							}
-
-							@* Empty state *@
-							@if (_directoryResult?.Entries.All(e => !e.IsDirectory) == true &&
-												!string.IsNullOrEmpty(_directoryResult.CurrentPath))
-							{
-								<div class="text-center py-5 text-muted">
-									<i class="bi bi-folder-x fs-1"></i>
-									<p class="mt-2 mb-0">No subdirectories found</p>
-								</div>
-							}
-
-							@* Create Directory inline form *@
-							@if (_isCreatingDirectory && !string.IsNullOrEmpty(_directoryResult?.CurrentPath))
-							{
-								<div class="border-top p-3 bg-body-tertiary">
-									<div class="d-flex align-items-center gap-2">
-										<i class="bi bi-folder-plus text-success"></i>
-										<input type="text" class="form-control form-control-sm" @bind="_newDirectoryName"
-											   @bind:event="oninput" @onkeydown="HandleCreateDirectoryKeydown"
-											   placeholder="New folder name..." />
-										<button type="button" class="btn btn-success btn-sm" @onclick="CreateDirectory"
-												disabled="@(string.IsNullOrWhiteSpace(_newDirectoryName))">
-											<i class="bi bi-check-lg"></i>
-										</button>
-										<button type="button" class="btn btn-secondary btn-sm" @onclick="CancelCreateDirectory">
-											<i class="bi bi-x-lg"></i>
-										</button>
+										</small>
 									</div>
-									@if (!string.IsNullOrEmpty(_createDirectoryError))
+								</button>
+							}
+						</div>
+					}
+
+					@* Directory entries *@
+					@if (_directoryResult?.Entries.Any() == true)
+					{
+						<div class="list-group list-group-flush">
+							@foreach (var entry in _directoryResult.Entries.Where(e => e.IsDirectory))
+							{
+								<button type="button"
+										class="list-group-item list-group-item-action d-flex align-items-center gap-5 py-5 @(entry.FullPath == _selectedPath ? "active" : "")"
+										@onclick="@(() => SelectDirectory(entry))"
+										@ondblclick="@(() => NavigateTo(entry.FullPath))">
+									<i class="bi bi-@(entry.IsGitRepository ? "git" : "folder-fill") @(entry.IsGitRepository ? "fg-1" : "fg-warning") fs-lg"></i>
+									<div class="flex-grow-1 min-w-0">
+										<div class="text-truncate">@entry.Name</div>
+									</div>
+									@if (entry.IsGitRepository)
 									{
-										<div class="text-danger small mt-2">
-											<i class="bi bi-exclamation-circle me-1"></i>@_createDirectoryError
-										</div>
+										<span class="badge theme-secondary flex-shrink-0">Git</span>
 									}
+									<i class="bi bi-chevron-right fg-1 small"></i>
+								</button>
+							}
+						</div>
+					}
+
+					@* Empty state *@
+					@if (_directoryResult?.Entries.All(e => !e.IsDirectory) == true &&
+										!string.IsNullOrEmpty(_directoryResult.CurrentPath))
+					{
+						<div class="text-center py-12 fg-1">
+							<i class="bi bi-folder-x fs-4xl"></i>
+							<p class="mt-3 mb-0">No subdirectories found</p>
+						</div>
+					}
+
+					@* Create Directory inline form *@
+					@if (_isCreatingDirectory && !string.IsNullOrEmpty(_directoryResult?.CurrentPath))
+					{
+						<div class="border-top p-5 bg-2">
+							<div class="d-flex align-items-center gap-3">
+								<i class="bi bi-folder-plus fg-success"></i>
+								<input type="text" class="form-control form-control-sm" @bind="_newDirectoryName"
+									   @bind:event="oninput" @onkeydown="HandleCreateDirectoryKeydown"
+									   placeholder="New folder name..." />
+								<button type="button" class="btn-solid theme-success btn-sm" @onclick="CreateDirectory"
+										disabled="@(string.IsNullOrWhiteSpace(_newDirectoryName))">
+									<i class="bi bi-check-lg"></i>
+								</button>
+								<button type="button" class="btn-solid theme-secondary btn-sm" @onclick="CancelCreateDirectory">
+									<i class="bi bi-x-lg"></i>
+								</button>
+							</div>
+							@if (!string.IsNullOrEmpty(_createDirectoryError))
+							{
+								<div class="fg-danger small mt-3">
+									<i class="bi bi-exclamation-circle me-1"></i>@_createDirectoryError
 								</div>
 							}
 						</div>
 					}
 				</div>
-				<div class="modal-footer">
-					<div class="flex-grow-1 me-3">
-						@if (!string.IsNullOrEmpty(_selectedPath))
-						{
-							<small class="text-muted font-monospace text-break">Selected: @_selectedPath</small>
-						}
-						else
-						{
-							<button type="button" class="btn btn-success btn-sm" @onclick="ShowCreateDirectoryInput"
-									disabled="@(_isCreatingDirectory || string.IsNullOrEmpty(_directoryResult?.CurrentPath))">
-								<i class="bi bi-folder-plus me-1"></i>Create Directory
-							</button>
-						}
-					</div>
-					<button type="button" class="btn btn-secondary" @onclick="Close">Cancel</button>
-					<button type="button" class="btn btn-primary" @onclick="SelectCurrentDirectory"
-							disabled="@(string.IsNullOrEmpty(_selectedPath) && string.IsNullOrEmpty(_directoryResult?.CurrentPath))">
-						<i class="bi bi-check-lg me-1"></i>Select
-					</button>
-				</div>
-			</div>
+			}
+	</ChildContent>
+	<FooterContent>
+		<div class="flex-grow-1 me-5">
+			@if (!string.IsNullOrEmpty(_selectedPath))
+			{
+				<small class="fg-1 font-monospace text-break">Selected: @_selectedPath</small>
+			}
+			else
+			{
+				<button type="button" class="btn-solid theme-success btn-sm" @onclick="ShowCreateDirectoryInput"
+						disabled="@(_isCreatingDirectory || string.IsNullOrEmpty(_directoryResult?.CurrentPath))">
+					<i class="bi bi-folder-plus me-1"></i>Create Directory
+				</button>
+			}
 		</div>
-	</div>
+		<button type="button" class="btn-solid theme-secondary" @onclick="Close">Cancel</button>
+		<button type="button" class="btn-solid theme-primary" @onclick="SelectCurrentDirectory"
+				disabled="@(string.IsNullOrEmpty(_selectedPath) && string.IsNullOrEmpty(_directoryResult?.CurrentPath))">
+			<i class="bi bi-check-lg me-1"></i>Select
+		</button>
+	</FooterContent>
+</ModalDialog>
 
 @code {
 	[Parameter]

@@ -4,17 +4,17 @@
 			 Title="Browse GitHub Repositories" Icon="github"
 			 Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
 	<ChildContent>
-		<div class="d-flex flex-column gap-3">
-			<div class="small text-body-secondary">
+		<div class="d-flex flex-column gap-5">
+			<div class="small fg-1">
 				Browse repositories available to the authenticated GitHub CLI account on this host. You can still paste any <code>owner/repo</code> manually.
 			</div>
 
 			@* Filters stay above the list's own scroll area so they remain reachable
 			   however far down a long repository list you are. *@
-			<div class="d-flex flex-column flex-sm-row gap-2">
+			<div class="d-flex flex-column sm:flex-row gap-3">
 				@if (OwnerCounts.Count > 1)
 				{
-					<select id="githubRepositoryBrowserOwner" class="form-select flex-shrink-0" @bind="_selectedOwner"
+					<select id="githubRepositoryBrowserOwner" class="form-control flex-shrink-0" @bind="_selectedOwner"
 							aria-label="Filter by organization">
 						<option value="">All organizations (@_repositories.Count)</option>
 						@foreach (var owner in OwnerCounts)
@@ -32,7 +32,7 @@
 						   autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search" />
 					@if (!string.IsNullOrEmpty(_searchText))
 					{
-						<button type="button" class="btn btn-secondary" @onclick="ClearSearch" aria-label="Clear search">
+						<button type="button" class="btn-solid theme-secondary" @onclick="ClearSearch" aria-label="Clear search">
 							<i class="bi bi-x-lg"></i>
 						</button>
 					}
@@ -41,7 +41,7 @@
 
 			@if (_isLoading)
 			{
-				<div class="py-4">
+				<div class="py-7">
 					<LoadingSpinner Text="Loading GitHub repositories..." />
 				</div>
 			}
@@ -54,11 +54,11 @@
 			else if (FilteredRepositories.Count == 0)
 			{
 				<Alert Type="Alert.AlertType.Info" Class="mb-0">
-					<div class="d-flex flex-column align-items-start gap-2">
+					<div class="d-flex flex-column align-items-start gap-3">
 						<span>No repositories matched the current filter.</span>
 						@if (HasActiveFilter)
 						{
-							<button type="button" class="btn btn-sm btn-secondary" @onclick="ClearFilters">
+							<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="ClearFilters">
 								<i class="bi bi-x-circle me-1"></i>Clear filters
 							</button>
 						}
@@ -67,7 +67,7 @@
 			}
 			else
 			{
-				<div class="small text-body-secondary">
+				<div class="small fg-1">
 					Showing @FilteredRepositories.Count of @_repositories.Count repositories from GitHub.
 				</div>
 
@@ -79,14 +79,14 @@
 						var isSelected = string.Equals(_selectedRepository, repository.NameWithOwner, StringComparison.OrdinalIgnoreCase);
 
 						<button type="button"
-								class="list-group-item list-group-item-action flex-shrink-0 text-start d-flex align-items-center gap-2 @(isSelected ? "active" : string.Empty)"
+								class="list-group-item list-group-item-action flex-shrink-0 text-start d-flex align-items-center gap-3 @(isSelected ? "active" : string.Empty)"
 								@onclick="() => SelectRepository(repository)">
-							<span class="d-flex flex-column min-width-0 flex-grow-1">
-								<span class="text-truncate"><span class="@(isSelected ? "text-white-50" : "text-body-secondary")">@OwnerOf(repository)/</span><span class="fw-semibold">@NameOf(repository)</span></span>
-								<span class="small text-truncate @(isSelected ? "text-white-50" : "text-body-secondary")">
+							<span class="d-flex flex-column min-w-0 flex-grow-1">
+								<span class="text-truncate"><span class="@(isSelected ? "opacity-75" : "fg-1")">@OwnerOf(repository)/</span><span class="fw-semibold">@NameOf(repository)</span></span>
+								<span class="small text-truncate @(isSelected ? "opacity-75" : "fg-1")">
 									@if (repository.IsPrivate)
 									{
-										<i class="bi bi-lock-fill me-1"></i><span class="me-2">Private</span>
+										<i class="bi bi-lock-fill me-1"></i><span class="me-3">Private</span>
 									}
 									@if (repository.UpdatedAt.HasValue)
 									{
@@ -94,13 +94,13 @@
 									}
 									@if (!string.IsNullOrWhiteSpace(repository.Description))
 									{
-										<span class="d-none d-sm-inline"> · @repository.Description</span>
+										<span class="d-none sm:d-inline"> · @repository.Description</span>
 									}
 								</span>
 							</span>
 							@if (isSelected)
 							{
-								<i class="bi bi-check-lg fs-5 flex-shrink-0"></i>
+								<i class="bi bi-check-lg fs-lg flex-shrink-0"></i>
 							}
 						</button>
 					}
@@ -109,8 +109,8 @@
 		</div>
 	</ChildContent>
 	<FooterContent>
-		<button type="button" class="btn btn-secondary" @onclick="HandleClose">Cancel</button>
-		<button type="button" class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(_selectedRepository)" @onclick="UseSelectedRepository">
+		<button type="button" class="btn-solid theme-secondary" @onclick="HandleClose">Cancel</button>
+		<button type="button" class="btn-solid theme-primary" disabled="@string.IsNullOrWhiteSpace(_selectedRepository)" @onclick="UseSelectedRepository">
 			Use Repository
 		</button>
 	</FooterContent>

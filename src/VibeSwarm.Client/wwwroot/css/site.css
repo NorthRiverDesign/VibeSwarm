@@ -2,48 +2,54 @@
    VibeSwarm - Application Styles (Utility-First)
    ============================================
 
-   This file contains ONLY styles that Bootstrap 5.3 utility classes
-   cannot express. All layout, spacing, typography, overflow, flexbox,
-   and display properties MUST use Bootstrap utility classes directly
-   in Razor/HTML markup.
+   Built on Bootstrap 6. This file holds ONLY what Bootstrap's utilities,
+   components and tokens cannot express. All layout, spacing, typography,
+   overflow, flexbox and display properties MUST use Bootstrap utility
+   classes directly in Razor/HTML markup.
 
    Custom CSS is limited to:
-   - CSS custom properties (variables)
+   - Design tokens (the app palette mapped onto Bootstrap's --bs-* tokens)
    - calc() with CSS variables (safe areas, layout dimensions)
    - Hover / active / focus states
    - Transitions and animations (@keyframes)
    - Pseudo-elements (::before, ::after)
    - Specialized colors and backgrounds
    - Complex or contextual selectors
-   - Properties Bootstrap 5.3 lacks utilities for
+   - Properties Bootstrap 6 lacks utilities for
+
+   Cascade layers: Bootstrap declares
+   colors, config, root, reboot, layout, content, forms, components, custom, helpers, utilities.
+   Section 1 (tokens) stays unlayered, because Bootstrap emits its root tokens unlayered.
+   Section 2 goes in `utilities`; everything else in `custom`, so Bootstrap's utilities in
+   markup still win over these component styles, as they did with v5's !important.
 
    Organization:
-   1. CSS Variables
+   1. Design Tokens
    2. Single-Property Utilities (Bootstrap gaps)
    3. App Layout Shell (calc + safe areas only)
    4. Navigation (hover/active states only)
    5. Interactive Utilities (hover states, transitions)
    6. Console/Terminal Output (specialized colors/fonts)
    7. Chat/Message Bubbles (specialized radii/colors)
-   8. Toggle Switch (custom form control)
-   9. Card Tabs (underline tabs inside cards)
-   10. Modal System (z-index, safe areas, pointer-events)
-   11. Toast Container (safe area calc)
-   12. Notifications Panel
-   13. Responsive Overrides (media queries)
-   14. PWA Standalone Mode
-   15. Design System — minimal Bootstrap extensions
-   16. Touch Targets
+   8. Dialogs (safe areas, sizes, backdrop)
+   9. Toast Container (safe area calc)
+   10. Notifications Panel
+   11. Responsive Overrides (media queries)
+   12. PWA Standalone Mode
+   13. Design System — minimal Bootstrap extensions
+   14. Touch Targets
 
 ============================================ */
 
 /* ============================================
-   1. CSS VARIABLES — Design Tokens
-   Palette split across :root, [data-theme="dark"], [data-theme="light"].
-   Dark is the default. Bootstrap's native --bs-* variables are also
-   overridden so form controls, dropdowns, modals pick up the new palette.
+   1. DESIGN TOKENS
+   The app palette, written onto Bootstrap's own tokens. Each value is a
+   light-dark() pair: Bootstrap sets color-scheme from data-bs-theme on <html>,
+   so one declaration serves both themes and every component and utility
+   (fg-*, bg-*, theme-*, btn-solid, badge, …) picks the palette up.
 ============================================ */
-:root {
+:root,
+:host {
 	/* Layout dimensions */
 	--vs-sidebar-width: 212px;
 	--vs-header-height: 56px;
@@ -58,207 +64,207 @@
 	--vs-safe-area-right: env(safe-area-inset-right, 0px);
 
 	/* Typography — system stack only (no webfont flicker) */
-	--bs-font-sans-serif:
+	--bs-body-font-family:
 		system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
 		"Noto Sans", sans-serif;
-	--bs-font-monospace:
+	--bs-font-mono:
 		ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
 		monospace;
 
 	/* Type scale — the only five text sizes the app uses. h1–h6 and .small map onto
-	   it (section 15), so markup picks a size with an element or .small/.text-caption,
+	   it (section 13), so markup picks a size with an element or .small/.text-caption,
 	   never with fs-* (fs-* is for icons) or a new font-size. */
 	--vs-text-title: 1.75rem;     /* page titles: h1 */
-	--vs-text-heading: 1.0625rem; /* section, card and modal titles: h2–h5 */
+	--vs-text-heading: 1.0625rem; /* section, card and dialog titles: h2–h5 */
 	--vs-text-body: 1rem;         /* body copy, list rows, h6 */
 	--vs-text-small: 0.875rem;    /* second lines, meta, .small */
 	--vs-text-caption: 0.75rem;   /* eyebrows, badges, timestamps, .text-caption */
 
-	/* Accent colors — shared across themes */
-	--bs-primary: #5b7cfa;
-	--bs-primary-rgb: 91, 124, 250;
-	--bs-success: #37c08a;
-	--bs-success-rgb: 55, 192, 138;
-	--bs-warning: #e8b558;
-	--bs-warning-rgb: 232, 181, 88;
-	--bs-danger: #ef6a6a;
-	--bs-danger-rgb: 239, 106, 106;
-	--bs-info: #5ec6d3;
-	--bs-info-rgb: 94, 198, 211;
+	/* Neutral surfaces and text (bg-body → bg-4, fg-body → fg-4) */
+	--bs-bg-body: light-dark(#f7f8fa, #0d1117);
+	--bs-bg-1: light-dark(#eef1f5, #161b24);
+	--bs-bg-2: light-dark(#e8ecf2, #1d232e);
+	--bs-bg-3: light-dark(#e3e6ec, #242a35);
+	--bs-bg-4: light-dark(#cfd4dd, #2e3543);
+	--bs-fg-body: light-dark(#1c212b, #e7ecf3);
+	--bs-fg-1: light-dark(#3b4252, #c2c9d4);
+	--bs-fg-2: light-dark(#6b7384, #8d95a3);
+	--bs-fg-3: light-dark(#8a93a3, #656d7b);
+	--bs-fg-4: light-dark(#a9b0bd, #4b5260);
+	--bs-border-color: light-dark(#e3e6ec, #242a35);
+	--bs-border-color-translucent: light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.08));
+	--bs-border-subtle: var(--bs-border-color);
+	--bs-border-muted: var(--bs-border-color);
+	--bs-border-body: var(--bs-border-color);
+	--bs-border-emphasized: light-dark(#cfd4dd, #2e3543);
+	--bs-link-color: light-dark(#4a6ad9, #7ea1ff);
+	--bs-link-hover-color: light-dark(#3051c2, #a4bcff);
 
-	/* Status-chip backgrounds (token-style helpers used across components) */
-	--chip-primary-bg: rgba(91, 124, 250, 0.15);
-	--chip-primary-bg-strong: rgba(91, 124, 250, 0.18);
-	--chip-success-bg: rgba(55, 192, 138, 0.15);
-	--chip-warning-bg: rgba(232, 181, 88, 0.15);
-	--chip-danger-bg: rgba(239, 106, 106, 0.15);
-	--chip-info-bg: rgba(94, 198, 211, 0.15);
-	--chip-ai-fg: #c9b8f5;
-	--chip-ai-bg: rgba(164, 137, 245, 0.08);
-	--chip-ai-border: rgba(164, 137, 245, 0.35);
+	/* Theme colours. Each theme sets its base; the tints Bootstrap uses for subtle
+	   backgrounds, emphasis text and borders are mixed from it, so they stay in the
+	   app's hue rather than Bootstrap's stock blue, green, red… */
+	--bs-primary-base: light-dark(#4a6ad9, #5b7cfa);
+	--bs-success-base: light-dark(#2a9e6f, #37c08a);
+	--bs-warning-base: light-dark(#c99028, #e8b558);
+	--bs-danger-base: light-dark(#d74e4e, #ef6a6a);
+	--bs-info-base: light-dark(#3ca7b5, #5ec6d3);
+
+	--bs-primary-bg: var(--bs-primary-base);
+	--bs-primary-fg: var(--bs-primary-base);
+	--bs-primary-fg-emphasis: color-mix(in oklch, var(--bs-primary-base) 60%, var(--bs-fg-body));
+	--bs-primary-bg-subtle: color-mix(in oklch, var(--bs-primary-base) 15%, var(--bs-bg-body));
+	--bs-primary-bg-muted: color-mix(in oklch, var(--bs-primary-base) 28%, var(--bs-bg-body));
+	--bs-primary-border: color-mix(in oklch, var(--bs-primary-base) 45%, var(--bs-bg-body));
+	--bs-primary-focus-ring: color-mix(in oklch, var(--bs-primary-base) 50%, transparent);
+	--bs-primary-contrast: #fff;
+
+	--bs-success-bg: var(--bs-success-base);
+	--bs-success-fg: var(--bs-success-base);
+	--bs-success-fg-emphasis: color-mix(in oklch, var(--bs-success-base) 60%, var(--bs-fg-body));
+	--bs-success-bg-subtle: color-mix(in oklch, var(--bs-success-base) 15%, var(--bs-bg-body));
+	--bs-success-bg-muted: color-mix(in oklch, var(--bs-success-base) 28%, var(--bs-bg-body));
+	--bs-success-border: color-mix(in oklch, var(--bs-success-base) 45%, var(--bs-bg-body));
+	--bs-success-focus-ring: color-mix(in oklch, var(--bs-success-base) 50%, transparent);
+	--bs-success-contrast: #fff;
+
+	--bs-warning-bg: var(--bs-warning-base);
+	--bs-warning-fg: var(--bs-warning-base);
+	--bs-warning-fg-emphasis: color-mix(in oklch, var(--bs-warning-base) 60%, var(--bs-fg-body));
+	--bs-warning-bg-subtle: color-mix(in oklch, var(--bs-warning-base) 15%, var(--bs-bg-body));
+	--bs-warning-bg-muted: color-mix(in oklch, var(--bs-warning-base) 28%, var(--bs-bg-body));
+	--bs-warning-border: color-mix(in oklch, var(--bs-warning-base) 45%, var(--bs-bg-body));
+	--bs-warning-focus-ring: color-mix(in oklch, var(--bs-warning-base) 50%, transparent);
+	--bs-warning-contrast: #1c212b;
+
+	--bs-danger-bg: var(--bs-danger-base);
+	--bs-danger-fg: var(--bs-danger-base);
+	--bs-danger-fg-emphasis: color-mix(in oklch, var(--bs-danger-base) 60%, var(--bs-fg-body));
+	--bs-danger-bg-subtle: color-mix(in oklch, var(--bs-danger-base) 15%, var(--bs-bg-body));
+	--bs-danger-bg-muted: color-mix(in oklch, var(--bs-danger-base) 28%, var(--bs-bg-body));
+	--bs-danger-border: color-mix(in oklch, var(--bs-danger-base) 45%, var(--bs-bg-body));
+	--bs-danger-focus-ring: color-mix(in oklch, var(--bs-danger-base) 50%, transparent);
+	--bs-danger-contrast: #fff;
+
+	--bs-info-bg: var(--bs-info-base);
+	--bs-info-fg: var(--bs-info-base);
+	--bs-info-fg-emphasis: color-mix(in oklch, var(--bs-info-base) 60%, var(--bs-fg-body));
+	--bs-info-bg-subtle: color-mix(in oklch, var(--bs-info-base) 15%, var(--bs-bg-body));
+	--bs-info-bg-muted: color-mix(in oklch, var(--bs-info-base) 28%, var(--bs-bg-body));
+	--bs-info-border: color-mix(in oklch, var(--bs-info-base) 45%, var(--bs-bg-body));
+	--bs-info-focus-ring: color-mix(in oklch, var(--bs-info-base) 50%, transparent);
+	--bs-info-contrast: #1c212b;
+
+	/* Secondary is the quiet neutral: a secondary button is a grey key, so the one
+	   primary action on a surface stands out. */
+	--bs-secondary-base: var(--bs-bg-2);
+	--bs-secondary-bg: var(--bs-bg-2);
+	--bs-secondary-fg: var(--bs-fg-3);
+	--bs-secondary-fg-emphasis: var(--bs-fg-1);
+	--bs-secondary-bg-subtle: var(--bs-bg-1);
+	--bs-secondary-bg-muted: var(--bs-bg-3);
+	--bs-secondary-border: var(--bs-border-emphasized);
+	--bs-secondary-focus-ring: color-mix(in oklch, var(--bs-fg-3) 50%, transparent);
+	--bs-secondary-contrast: var(--bs-fg-body);
+
+	/* The shell scrolls inside .app-main, not the page, so the page needs no gutter. */
+	scrollbar-gutter: auto;
 }
 
-/* Dark theme (default when no data-theme is set, or explicitly dark) */
-:root,
-[data-theme="dark"] {
-	--surface-0: #0d1117;
-	--surface-1: #11151c;
-	--surface-2: #161b24;
-	--surface-3: #1d232e;
-	--surface-hover: #1f2631;
-	--line: #242a35;
-	--line-strong: #2e3543;
-	--fg-0: #e7ecf3;
-	--fg-1: #c2c9d4;
-	--fg-2: #8d95a3;
-	--fg-3: #656d7b;
-	--kbd-bg: #161b24;
-	--banner-success-bg: rgba(55, 192, 138, 0.1);
-	--banner-success-border: rgba(55, 192, 138, 0.35);
-	--banner-primary-bg: rgba(91, 124, 250, 0.1);
-	--banner-primary-border: rgba(91, 124, 250, 0.35);
-	--banner-warning-bg: rgba(232, 181, 88, 0.08);
-	--banner-warning-border: rgba(232, 181, 88, 0.3);
-	--banner-danger-bg: rgba(239, 106, 106, 0.08);
-	--banner-danger-border: rgba(239, 106, 106, 0.3);
-	--diff-add: rgba(55, 192, 138, 0.14);
-	--diff-del: rgba(239, 106, 106, 0.12);
-
-	/* Bootstrap overrides — dark */
-	--bs-body-bg: #0d1117;
-	--bs-body-color: #e7ecf3;
-	--bs-body-color-rgb: 231, 236, 243;
-	--bs-border-color: #242a35;
-	--bs-border-color-translucent: rgba(255, 255, 255, 0.08);
-	--bs-secondary-bg: #161b24;
-	--bs-tertiary-bg: #1d232e;
-	--bs-secondary-color: #c2c9d4;
-	--bs-secondary-color-rgb: 194, 201, 212;
-	--bs-tertiary-color: #8d95a3;
-	--bs-emphasis-color: #ffffff;
-	--bs-link-color: #7ea1ff;
-	--bs-link-hover-color: #a4bcff;
+/* Root overrides by viewport. They stay unlayered with the tokens above; a layered
+   :root rule would lose to Bootstrap's unlayered ones. */
+@media (width < 576px) {
+	:root {
+		--vs-header-height: 52px;
+	}
 }
-
-/* Light theme */
-[data-theme="light"] {
-	--surface-0: #f7f8fa;
-	--surface-1: #ffffff;
-	--surface-2: #f1f3f7;
-	--surface-3: #e8ecf2;
-	--surface-hover: #eef1f6;
-	--line: #e3e6ec;
-	--line-strong: #cfd4dd;
-	--fg-0: #1c212b;
-	--fg-1: #3b4252;
-	--fg-2: #6b7384;
-	--fg-3: #8a93a3;
-	--kbd-bg: #ffffff;
-	--banner-success-bg: rgba(55, 160, 110, 0.08);
-	--banner-success-border: rgba(55, 160, 110, 0.35);
-	--banner-primary-bg: rgba(74, 106, 217, 0.08);
-	--banner-primary-border: rgba(74, 106, 217, 0.35);
-	--banner-warning-bg: rgba(201, 144, 40, 0.08);
-	--banner-warning-border: rgba(201, 144, 40, 0.3);
-	--banner-danger-bg: rgba(215, 78, 78, 0.08);
-	--banner-danger-border: rgba(215, 78, 78, 0.3);
-	--diff-add: rgba(55, 160, 110, 0.1);
-	--diff-del: rgba(215, 78, 78, 0.1);
-
-	/* Accent overrides for light (slightly darker for AA contrast) */
-	--bs-primary: #4a6ad9;
-	--bs-primary-rgb: 74, 106, 217;
-	--bs-success: #2a9e6f;
-	--bs-success-rgb: 42, 158, 111;
-	--bs-warning: #c99028;
-	--bs-warning-rgb: 201, 144, 40;
-	--bs-danger: #d74e4e;
-	--bs-danger-rgb: 215, 78, 78;
-	--bs-info: #3ca7b5;
-
-	/* Bootstrap overrides — light */
-	--bs-body-bg: #f7f8fa;
-	--bs-body-color: #1c212b;
-	--bs-body-color-rgb: 28, 33, 43;
-	--bs-border-color: #e3e6ec;
-	--bs-border-color-translucent: rgba(0, 0, 0, 0.08);
-	--bs-secondary-bg: #eef1f5;
-	--bs-tertiary-bg: #f1f3f7;
-	--bs-secondary-color: #3b4252;
-	--bs-secondary-color-rgb: 59, 66, 82;
-	--bs-tertiary-color: #6b7384;
-	--bs-emphasis-color: #0b1020;
-	--bs-link-color: #4a6ad9;
-	--bs-link-hover-color: #3051c2;
-
-	--chip-ai-fg: #6c52c2;
-	--chip-ai-bg: rgba(108, 82, 194, 0.08);
-	--chip-ai-border: rgba(108, 82, 194, 0.35);
+@media (height <= 500px) and (orientation: landscape) {
+	:root {
+		--vs-header-height: 44px;
+	}
+}
+@media (pointer: coarse) {
+	:root {
+		/* Small buttons and inputs share one set of tokens in Bootstrap 6: grow them to a
+		   44px-class target, and keep their text at 16px, as iOS zooms the page into any
+		   field set smaller than that when it takes focus. */
+		--bs-btn-input-sm-min-height: 2.5rem;
+		--bs-btn-input-sm-padding-y: 0.5rem;
+		--bs-btn-input-sm-padding-x: 0.75rem;
+		--bs-btn-input-sm-font-size: var(--vs-text-body);
+	}
 }
 
 /* ============================================
    2. SINGLE-PROPERTY UTILITIES (Bootstrap gaps)
    Use these in markup like Bootstrap utilities.
 ============================================ */
-.cursor-pointer {
-	cursor: pointer;
-}
-.cursor-grab {
-	cursor: grab;
-}
-.min-width-0 {
-	min-width: 0;
-}
-.overscroll-contain {
-	overscroll-behavior: contain;
-}
-.white-space-pre-wrap {
-	white-space: pre-wrap;
-}
-.inset-0 {
-	inset: 0;
-}
-.touch-manipulation {
-	touch-action: manipulation;
-}
-.drag-drop-item.drag-drop-over {
-	box-shadow: 0 -2px 0 0 var(--bs-primary);
-}
-.max-height-50dvh {
-	max-height: 50dvh;
-}
-.text-truncate-lines-2 {
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-}
-/* Bootstrap has no responsive width utilities; this is the one we need. */
-@media (min-width: 992px) {
-	.w-lg-auto {
-		width: auto !important;
+@layer utilities {
+	.cursor-pointer {
+		cursor: pointer;
+	}
+	.cursor-grab {
+		cursor: grab;
+	}
+	.overscroll-contain {
+		overscroll-behavior: contain;
+	}
+	.white-space-pre-wrap {
+		white-space: pre-wrap;
+	}
+	.inset-0 {
+		inset: 0;
+	}
+	.touch-manipulation {
+		touch-action: manipulation;
+	}
+	.max-height-50dvh {
+		max-height: 50dvh;
+	}
+	.text-truncate-lines-2 {
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+	/* Bootstrap has no responsive width utilities; this is the one we need. */
+	@media (width >= 1024px) {
+		.lg\:w-auto {
+			width: auto;
+		}
+	}
+	/* Caption-size text where no element or .small fits (kbd hints, chart labels, logs).
+	   The other sizes come from h1–h6 and .small; see the type scale in section 1. */
+	.text-caption {
+		font-size: var(--vs-text-caption);
+		line-height: 1.35;
+	}
+	/* Title-size text that is not the page heading, such as a headline number. */
+	.text-title {
+		font-size: var(--vs-text-title);
+		line-height: 1.15;
+	}
+	.progress-xs {
+		--bs-progress-height: 4px;
+	}
+	.progress-sm {
+		--bs-progress-height: 6px;
 	}
 }
-/* Caption-size text where no element or .small fits (kbd hints, chart labels, logs).
-   The other sizes come from h1–h6 and .small; see the type scale in section 1. */
-.text-caption {
-	font-size: var(--vs-text-caption);
-	line-height: 1.35;
-}
-/* Title-size text that is not the page heading, such as a headline number. */
-.text-title {
-	font-size: var(--vs-text-title);
-	line-height: 1.15;
+
+@layer custom {
+
+.drag-drop-item.drag-drop-over {
+	box-shadow: 0 -2px 0 0 var(--bs-primary-base);
 }
 .textarea-editable {
 	min-height: 150px;
 	resize: vertical;
 }
-.progress-xs {
-	height: 4px;
-}
-.progress-sm {
-	height: 6px;
+
+/* Bootstrap 6 spaces help text through .form-field's grid; help text that follows a
+   control directly keeps the small gap it had. */
+:not(.form-field, .form-field-content) > .form-text {
+	margin-top: 0.25rem;
 }
 
 /* Prevent textareas from expanding too large (50-row max ~75rem) */
@@ -284,7 +290,7 @@ textarea.form-control {
 	display: inline-block;
 	width: 8px;
 	height: 8px;
-	background: var(--bs-success);
+	background: var(--bs-success-base);
 	border-radius: 50%;
 	animation: pulse-live 1.5s ease-in-out infinite;
 }
@@ -300,18 +306,9 @@ textarea.form-control {
 	}
 }
 
-/* Alert accent borders */
-.alert-danger {
-	border-left: 3px solid var(--bs-danger);
-}
-.alert-success {
-	border-left: 3px solid var(--bs-success);
-}
-.alert-warning {
-	border-left: 3px solid var(--bs-warning);
-}
-.alert-info {
-	border-left: 3px solid var(--bs-primary);
+/* Alert accent border, in the alert's theme colour */
+.alert[class*="theme-"] {
+	border-inline-start: 3px solid var(--bs-theme-base);
 }
 
 /* ============================================
@@ -328,11 +325,10 @@ html {
 	height: 100%;
 	height: 100dvh;
 	overflow-x: clip;
-	background-color: var(--bs-body-bg);
+	background-color: var(--bs-bg-body);
 }
 
 body {
-	font-family: var(--bs-font-sans-serif);
 	padding-left: var(--vs-safe-area-left);
 	padding-right: var(--vs-safe-area-right);
 	min-height: 100%;
@@ -358,23 +354,21 @@ body:has(.app-layout) {
 	height: 100dvh;
 }
 
-/* Safe area calc — markup uses sticky-top d-flex align-items-center gap-3 flex-shrink-0 bg-body-secondary border-bottom */
+/* Safe area calc — markup uses sticky-top d-flex align-items-center gap-3 flex-shrink-0 border-bottom */
 .app-header {
 	height: calc(var(--vs-header-height) + var(--vs-safe-area-top));
 	padding: var(--vs-safe-area-top) 1rem 0 1rem;
 	padding-left: calc(1rem + var(--vs-safe-area-left));
 	padding-right: calc(1rem + var(--vs-safe-area-right));
+	background: var(--bs-bg-body);
 	z-index: 1000;
 }
 
-/* Brand — markup uses d-flex align-items-center gap-2 text-decoration-none fw-semibold */
+/* Brand — markup uses d-flex align-items-center gap-3 text-decoration-none fw-semibold */
 .app-brand {
-	color: var(--bs-body-color);
+	color: var(--bs-fg-body);
 	font-size: var(--vs-text-heading);
 	min-width: 0;
-}
-.app-brand:hover {
-	color: var(--bs-emphasis-color);
 }
 
 .mobile-header-icon {
@@ -382,14 +376,14 @@ body:has(.app-layout) {
 	height: 44px;
 }
 
-/* Sidebar (desktop only) — markup uses position-fixed d-none d-lg-flex flex-column */
+/* Sidebar (desktop only) — markup uses position-fixed d-none lg:d-flex flex-column */
 .app-sidebar {
 	top: 0;
 	left: 0;
 	bottom: 0;
 	width: var(--vs-sidebar-width);
-	background: var(--surface-1);
-	border-right: 1px solid var(--line);
+	background: var(--bs-bg-body);
+	border-right: 1px solid var(--bs-border-color);
 	z-index: 999;
 	padding-top: var(--vs-safe-area-top);
 	padding-bottom: var(--vs-safe-area-bottom);
@@ -401,14 +395,14 @@ body:has(.app-layout) {
 	overscroll-behavior-y: contain;
 }
 
-/* Tab bar (phones and tablets) — markup uses d-flex d-lg-none flex-shrink-0 border-top.
+/* Tab bar (phones and tablets) — markup uses d-flex lg:d-none flex-shrink-0 border-top.
    It is the screen's bottom band, so it alone clears the home indicator. */
 .app-tab-bar {
 	height: calc(var(--vs-tab-bar-height) + var(--vs-safe-area-bottom));
 	padding-bottom: var(--vs-safe-area-bottom);
 	padding-left: var(--vs-safe-area-left);
 	padding-right: var(--vs-safe-area-right);
-	background: var(--bs-body-bg);
+	background: var(--bs-bg-body);
 	z-index: 1000;
 	-webkit-touch-callout: none;
 }
@@ -416,11 +410,11 @@ body:has(.app-layout) {
 .app-tab {
 	flex: 1 1 0;
 	min-width: 0;
-	color: var(--fg-3);
+	color: var(--bs-fg-3);
 	transition: opacity var(--vs-transition);
 }
 .app-tab.active {
-	color: var(--bs-primary);
+	color: var(--bs-primary-base);
 }
 .app-tab:active {
 	opacity: 0.6;
@@ -442,7 +436,7 @@ body:has(.app-layout) {
 }
 
 /* Desktop layout */
-@media (min-width: 992px) {
+@media (width >= 1024px) {
 	.app-main {
 		margin-left: var(--vs-sidebar-width);
 		min-height: 100vh;
@@ -457,19 +451,17 @@ body:has(.app-layout) {
 }
 
 /* Sticky tab bar on mobile — pins to the top of .app-main (the scroll container) */
-@media (max-width: 991.98px) {
+@media (width < 1024px) {
 	.app-main {
 		scroll-padding-top: calc(
 			var(--vs-header-height) + var(--vs-safe-area-top) + 0.75rem
 		);
 	}
 
-	.app-header .mobile-header-dropdown {
-		position: static;
-	}
-
-	.app-header .mobile-header-dropdown > .dropdown-menu {
-		position: fixed;
+	/* Header menus drop from the header's centre, clear of the safe area, rather than
+	   hanging off the icon that opened them. */
+	.app-header .mobile-header-dropdown > .menu {
+		position: fixed !important;
 		top: calc(
 			var(--vs-header-height) + var(--vs-safe-area-top) + 0.5rem
 		) !important;
@@ -496,7 +488,7 @@ body:has(.app-layout) {
 		position: sticky;
 		top: 0;
 		z-index: 100;
-		background: var(--bs-body-bg);
+		background: var(--bs-bg-body);
 		margin-left: -1rem;
 		margin-right: -1rem;
 		padding-left: 1rem;
@@ -504,7 +496,7 @@ body:has(.app-layout) {
 		padding-top: 0.25rem;
 	}
 }
-@media (max-width: 575.98px) {
+@media (width < 576px) {
 	.project-detail-tabs {
 		margin-left: -0.75rem;
 		margin-right: -0.75rem;
@@ -515,20 +507,11 @@ body:has(.app-layout) {
 
 /* ============================================
    4. NAVIGATION
-   New sidebar uses the .vs-side-nav component class (§18).
-   Keep shadow helper for dropdowns only.
+   New sidebar uses the .vs-side-nav component class (§13).
+   Keep shadow helper for header menus only.
 ============================================ */
 .vs-nav-dropdown-menu {
-	box-shadow: var(--vs-nav-popout-shadow) !important;
-}
-
-/* Quiet pills (the project page tabs, the jobs page project picker): the selected
-   pill reads as selected without competing with the page's one primary button. */
-.nav-pills-quiet {
-	--bs-nav-pills-link-active-bg: var(--bs-tertiary-bg);
-	--bs-nav-pills-link-active-color: var(--bs-emphasis-color);
-	--bs-nav-link-color: var(--bs-secondary-color);
-	--bs-nav-link-hover-color: var(--bs-emphasis-color);
+	--bs-menu-box-shadow: var(--vs-nav-popout-shadow);
 }
 
 /* A tab strip that scrolls sideways keeps every tab on one line; without this the
@@ -543,18 +526,11 @@ body:has(.app-layout) {
 /* ============================================
    5. INTERACTIVE UTILITIES (hover states, transitions)
 ============================================ */
-.project-card-hover {
-	transition: all var(--vs-transition);
-}
-.project-card-hover:hover {
-	transform: translateY(-2px);
-	box-shadow: var(--bs-box-shadow);
-}
 .hover-bg-tertiary:hover {
-	background: var(--bs-tertiary-bg);
+	background: var(--bs-bg-2);
 }
 .hover-underline:hover {
-	text-decoration: underline !important;
+	text-decoration: underline;
 }
 details[open] > summary .details-chevron {
 	transform: rotate(90deg);
@@ -571,7 +547,7 @@ details[open] > summary .details-chevron {
 .terminal-output {
 	background: #0d1117;
 	color: #e6edf3;
-	font-family: var(--bs-font-monospace);
+	font-family: var(--bs-font-mono);
 }
 .output-line:hover {
 	background: rgba(255, 255, 255, 0.05);
@@ -580,7 +556,7 @@ details[open] > summary .details-chevron {
 	color: #8b949e;
 }
 .output-error .output-text {
-	color: var(--bs-danger);
+	color: var(--bs-danger-base);
 }
 .diff-context {
 	color: #8b949e;
@@ -590,10 +566,10 @@ details[open] > summary .details-chevron {
 	font-style: italic;
 }
 .diff-file-name {
-	font-family: var(--bs-font-monospace);
+	font-family: var(--bs-font-mono);
 }
 .diff-stats {
-	font-family: var(--bs-font-monospace);
+	font-family: var(--bs-font-mono);
 }
 .diff-line-nums {
 	width: 3.5rem;
@@ -637,7 +613,7 @@ details[open] > summary .details-chevron {
 	border-radius: 1.25rem;
 }
 .chat-message-user .chat-bubble {
-	background: var(--bs-primary);
+	background: var(--bs-primary-base);
 	border-bottom-right-radius: 0.25rem;
 }
 .chat-message-assistant .chat-bubble {
@@ -662,14 +638,14 @@ details[open] > summary .details-chevron {
 /* Tool code — markup uses white-space-pre-wrap + Bootstrap utilities */
 .chat-tool-code {
 	background: rgba(0, 0, 0, 0.2);
-	font-family: var(--bs-font-monospace);
+	font-family: var(--bs-font-mono);
 }
 
 /* Typing indicator dots (iMessage style) */
 .typing-dot {
 	width: 8px;
 	height: 8px;
-	background: var(--bs-secondary-color);
+	background: var(--bs-fg-1);
 	border-radius: 50%;
 	animation: typing-bounce 1.4s ease-in-out infinite;
 }
@@ -693,157 +669,77 @@ details[open] > summary .details-chevron {
 }
 
 /* ============================================
-   8. TOGGLE SWITCH (custom form control)
+   8. DIALOGS
+   Bootstrap's native <dialog> handles the backdrop, focus trap, scroll lock and
+   stacking. CSS only for the app's widths, safe areas and sticky actions.
+   Phones get a full-screen sheet (sm-down:dialog-fullscreen in ModalDialog).
 ============================================ */
-.toggle-switch {
-	position: relative;
-	display: inline-block;
-	width: 44px;
-	height: 24px;
-	cursor: pointer;
-}
-.toggle-switch input {
-	opacity: 0;
-	width: 0;
-	height: 0;
-}
-.toggle-slider {
-	position: absolute;
-	cursor: pointer;
-	inset: 0;
-	background: var(--bs-tertiary-bg);
-	border-radius: 24px;
-	transition: var(--vs-transition);
-}
-.toggle-slider::before {
-	content: "";
-	position: absolute;
-	width: 18px;
-	height: 18px;
-	left: 3px;
-	bottom: 3px;
-	background: var(--bs-body-bg);
-	border-radius: 50%;
-	transition: var(--vs-transition);
-}
-.toggle-switch input:checked + .toggle-slider {
-	background: var(--bs-success);
-}
-.toggle-switch input:checked + .toggle-slider::before {
-	transform: translateX(20px);
-}
-
-/* ============================================
-   9. CARD TABS (underline tabs inside cards)
-============================================ */
-.nav-tabs-card .nav-link {
-	border: none;
-	border-bottom: 2px solid transparent;
-	opacity: 0.7;
-	transition:
-		opacity var(--vs-transition),
-		border-color var(--vs-transition);
-}
-.nav-tabs-card .nav-link:hover {
-	opacity: 1;
-}
-.nav-tabs-card .nav-link.active {
-	border-bottom-color: var(--bs-primary);
-	opacity: 1;
-}
-
-/* ============================================
-   10. MODAL SYSTEM
-   Markup uses position-fixed inset-0 d-flex pe-none pe-auto mw-100 overflow-x-hidden etc.
-   CSS only for z-index, safe areas, pointer-events reset, and backdrop-filter.
-============================================ */
-body.vs-modal-open {
-	overflow: hidden !important;
-	width: 100%;
-	overscroll-behavior: contain;
-}
-
-body.vs-modal-open .app-main {
-	overflow: hidden !important;
-}
-
-.vs-modal-container {
-	z-index: 1055 !important;
-	padding: var(--vs-safe-area-top) var(--vs-safe-area-right)
-		var(--vs-safe-area-bottom) var(--vs-safe-area-left) !important;
-}
-
-.vs-modal-backdrop {
-	background: rgba(0, 0, 0, 0.75) !important;
-	backdrop-filter: blur(40px);
-	-webkit-backdrop-filter: blur(40px);
-	z-index: 1050 !important;
-}
-
-/* A backdrop rendered inside its own modal container belongs to that container's
-   stacking context, so it only has to sit behind that modal's dialog. Everything
-   below — including a modal this one was opened from — is dimmed by it. */
-.vs-modal-container > .vs-modal-backdrop {
-	z-index: 0 !important;
-}
-
-.vs-modal-dialog {
-	width: min(
-		100%,
-		calc(100vw - var(--vs-safe-area-left) - var(--vs-safe-area-right))
-	);
-	min-width: 0;
-	z-index: 1;
-}
-
-.vs-modal-content {
+.dialog {
+	/* A heavy frosted-glass backdrop on phones; lighter on desktop, below. */
+	--bs-dialog-backdrop-bg: rgba(0, 0, 0, 0.75);
+	--bs-dialog-backdrop-blur: 40px;
 	min-width: 0;
 	overflow-x: clip;
 }
+/* A little wider than Bootstrap's defaults, so forms breathe on desktop. This layer
+   outranks Bootstrap's components layer, so name the sizes it must leave alone. */
+.dialog:not(.dialog-sm, .dialog-lg, .dialog-xl) {
+	--bs-dialog-width: 640px;
+}
+.dialog.dialog-sm {
+	--bs-dialog-width: 520px;
+}
 
-/* Flexbox overflow fix for all modal children */
-.vs-modal-body .form-control,
-.vs-modal-body .form-select,
-.vs-modal-body .input-group,
-.vs-modal-body .btn-group,
-.vs-modal-body .dropdown-menu,
-.vs-modal-body pre,
-.vs-modal-body code {
+/* Flexbox overflow fix for all dialog children */
+.vs-dialog-body .form-control,
+.vs-dialog-body .input-group,
+.vs-dialog-body .btn-group,
+.vs-dialog-body .menu,
+.vs-dialog-body pre,
+.vs-dialog-body code {
 	max-width: 100%;
 }
-.vs-modal-body .input-group > .form-control,
-.vs-modal-body .input-group > .form-select {
+.vs-dialog-body .input-group > .form-control {
 	min-width: 0;
 }
-.vs-modal-body .text-break,
-.vs-modal-body code,
-.vs-modal-body pre {
+.vs-dialog-body .text-break,
+.vs-dialog-body code,
+.vs-dialog-body pre {
 	overflow-wrap: anywhere;
 	word-break: break-word;
 }
 
-@media (min-width: 992px) {
-	.vs-modal-dialog-wide-lg {
-		max-width: min(
-			960px,
-			calc(100vw - var(--vs-safe-area-left) - var(--vs-safe-area-right) - 3rem)
-		);
+@media (width >= 1024px) {
+	.vs-dialog-wide-lg {
+		--bs-dialog-width: 960px;
+	}
+	/* Frosted-glass backdrop on desktop — lower opacity lets the blur be visible */
+	.dialog {
+		--bs-dialog-backdrop-bg: rgba(0, 0, 0, 0.5);
+		--bs-dialog-backdrop-blur: 64px;
 	}
 }
 
-/* Actions pinned to the bottom of a scrolling modal body, clear of the home
+/* Actions pinned to the bottom of a scrolling dialog body, clear of the home
    indicator. Long forms stay submittable without scrolling to the end. */
-.vs-modal-body {
-	--vs-modal-end-padding: var(--bs-modal-padding, 1rem);
+.vs-dialog-body {
+	--vs-dialog-end-padding: var(--bs-dialog-padding, 1rem);
 }
-.vs-modal-sticky-actions {
-	background: var(--bs-modal-bg, var(--bs-body-bg));
-	/* The bar sticks to the modal body's content edge, which leaves the body's own
+.vs-dialog-sticky-actions {
+	background: var(--bs-dialog-bg, var(--bs-bg-body));
+	/* The bar sticks to the dialog body's content edge, which leaves the body's own
 	   bottom padding as a strip the form scrolls through. Offset the bar over that
 	   strip and pad the buttons back up, clear of the home indicator. */
-	bottom: calc(-1 * var(--vs-modal-end-padding));
-	padding-bottom: var(--vs-modal-end-padding);
-	margin-bottom: calc(-1 * var(--vs-modal-end-padding));
+	bottom: calc(-1 * var(--vs-dialog-end-padding));
+	padding-bottom: var(--vs-dialog-end-padding);
+	margin-bottom: calc(-1 * var(--vs-dialog-end-padding));
+}
+
+/* The search palette drops from near the top, like Spotlight, so results grow downward. */
+.dialog.vs-search-dialog {
+	--bs-dialog-width: 680px;
+	margin-block-start: min(80px, 10vh);
+	max-height: calc(100dvh - min(80px, 10vh) - 2rem);
 }
 
 .directory-list {
@@ -854,37 +750,26 @@ body.vs-modal-open .app-main {
 .app-floating-banner {
 	bottom: var(--vs-safe-area-bottom);
 }
-@media (max-width: 991.98px) {
+@media (width < 1024px) {
 	.app-floating-banner {
 		bottom: calc(var(--vs-tab-bar-height) + var(--vs-safe-area-bottom));
 	}
 }
 
-@keyframes vsSheetUp {
-	from {
-		transform: translateY(100%);
-	}
-	to {
-		transform: translateY(0);
-	}
-}
-
-@keyframes modalFadeIn {
-	from {
-		opacity: 0;
-		transform: scale(0.95) translateY(-10px);
-	}
-	to {
-		opacity: 1;
-		transform: scale(1) translateY(0);
-	}
-}
-
 /* ============================================
-   11. TOAST CONTAINER (safe area calc)
+   9. TOAST CONTAINER (safe area calc)
+   The container is a manual popover so it sits in the top layer, above any
+   open dialog (ToastContainer raises it each time a dialog opens).
 ============================================ */
+.toast-container[popover] {
+	inset: 0 0 auto auto;
+	margin: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	overflow: visible;
+}
 .toast-container {
-	z-index: 1100;
 	padding-top: calc(1rem + var(--vs-safe-area-top)) !important;
 	padding-bottom: calc(1rem + var(--vs-safe-area-bottom)) !important;
 	padding-right: calc(1rem + var(--vs-safe-area-right)) !important;
@@ -917,26 +802,25 @@ body.vs-modal-open .app-main {
 }
 
 /* ============================================
-   12. NOTIFICATIONS PANEL
+   10. NOTIFICATIONS PANEL
 ============================================ */
 /* Anchored to the glyph's top-right corner (measured from the button's centre),
-   not the corner of the 44px touch target, which left it floating in space.
-   Two classes, to outrank Bootstrap's `.btn .badge { top: -1px }`. */
-.btn .notification-bell-badge {
+   not the corner of the 44px touch target, which left it floating in space. */
+.btn-link .notification-bell-badge {
 	font-size: var(--vs-text-caption);
 	top: calc(50% - 0.875rem);
 	left: calc(50% + 0.25rem);
 	min-width: 1rem;
 	line-height: 1rem;
 	padding: 0 0.25rem;
-	box-shadow: 0 0 0 2px var(--bs-body-bg);
+	box-shadow: 0 0 0 2px var(--bs-bg-body);
 }
 
 /* Backdrop — subtle overlay so the panel feels modal-like on mobile */
 .notifications-backdrop {
 	background: rgba(0, 0, 0, 0.15);
 }
-@media (min-width: 992px) {
+@media (width >= 1024px) {
 	.notifications-backdrop {
 		background: transparent;
 	}
@@ -976,11 +860,11 @@ body.vs-modal-open .app-main {
 	border-bottom: none !important;
 }
 .notification-history-item:hover {
-	background: var(--bs-tertiary-bg);
+	background: var(--bs-bg-2);
 }
 
 /* Desktop: panel appears to the right of the sidebar, anchored near the bottom */
-@media (min-width: 992px) {
+@media (width >= 1024px) {
 	.notifications-panel {
 		top: auto;
 		bottom: 60px;
@@ -992,15 +876,11 @@ body.vs-modal-open .app-main {
 }
 
 /* ============================================
-   13. RESPONSIVE OVERRIDES
+   11. RESPONSIVE OVERRIDES
 ============================================ */
 
 /* Extra Small (< 576px) */
-@media (max-width: 575.98px) {
-	:root {
-		--vs-header-height: 52px;
-	}
-
+@media (width < 576px) {
 	/* The 44px icon buttons carry their own inset, so a thin edge puts the outer
 	   glyphs in line with the page content and keeps the full name visible at 375px. */
 	.app-header {
@@ -1015,8 +895,7 @@ body.vs-modal-open .app-main {
 	}
 
 	.toast-container {
-		left: 0 !important;
-		right: 0 !important;
+		inset-inline: 0 !important;
 		padding-left: calc(1rem + var(--vs-safe-area-left)) !important;
 	}
 	.toast-container .toast {
@@ -1037,80 +916,56 @@ body.vs-modal-open .app-main {
 		max-height: 100px;
 	}
 
-	/* Fullscreen modal on mobile */
-	.vs-modal-container {
-		padding: 0 !important;
-		align-items: stretch !important;
-		justify-content: stretch !important;
+	/* A full-screen dialog slides up from the bottom, as an iOS sheet does. */
+	.dialog:not(.dialog-instant) {
+		--bs-dialog-transition-duration: 0.35s;
+		--bs-dialog-transition-timing: cubic-bezier(0.32, 0.72, 0, 1);
 	}
-	.vs-modal-dialog {
-		margin: 0 !important;
-		width: 100% !important;
-		max-width: 100% !important;
-		min-height: 100% !important;
+	.dialog:not(.dialog-instant):is(:not([open]), .hiding) {
+		transform: translateY(100%);
 	}
-	.vs-modal-dialog .modal-content {
-		min-height: 100vh !important;
-		min-height: 100dvh !important;
-		max-height: 100vh !important;
-		max-height: 100dvh !important;
-		border-radius: 0 !important;
-		border: none !important;
-	}
-	/* A full-screen modal slides up from the bottom, as an iOS sheet does. */
-	@media (prefers-reduced-motion: no-preference) {
-		.vs-modal-dialog {
-			animation: vsSheetUp 0.35s cubic-bezier(0.32, 0.72, 0, 1);
-		}
-	}
-	.vs-modal-dialog .modal-header {
+	/* Only the outermost bands of a full-screen dialog clear the notch and the home
+	   indicator; a body with a footer under it keeps its normal padding. */
+	.dialog .dialog-header {
 		padding-top: calc(0.75rem + var(--vs-safe-area-top));
 	}
-	.vs-modal-dialog .modal-body {
-		overflow-y: auto;
+	.dialog .dialog-body:last-child {
+		--vs-dialog-end-padding: max(var(--bs-dialog-padding, 1rem), var(--vs-safe-area-bottom));
+		padding-bottom: var(--vs-dialog-end-padding);
 	}
-	/* Only the bottom-most band of a full-screen modal clears the home indicator;
-	   a body with a footer under it keeps its normal padding. */
-	.vs-modal-dialog .modal-body:last-child {
-		--vs-modal-end-padding: max(var(--bs-modal-padding, 1rem), var(--vs-safe-area-bottom));
-		padding-bottom: var(--vs-modal-end-padding);
+	.dialog .dialog-footer {
+		padding-bottom: max(0.75rem, var(--vs-safe-area-bottom));
 	}
-	.vs-project-modal-body .input-group {
+	.vs-project-dialog-body .input-group {
 		flex-wrap: nowrap;
 	}
-	.vs-project-modal-body .input-group > .input-group-text {
+	.vs-project-dialog-body .input-group > .input-group-text {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		flex-shrink: 1;
 		min-width: 0;
 	}
-	.vs-project-modal-body .border {
+	.vs-project-dialog-body .border {
 		overflow-x: hidden;
 		min-width: 0;
 	}
-	.vs-project-modal-body .form-text {
+	.vs-project-dialog-body .form-text {
 		overflow-wrap: anywhere;
 		word-break: break-word;
 	}
-	.vs-project-modal-body .form-select option {
+	.vs-project-dialog-body select.form-control option {
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	.vs-modal-dialog .modal-footer {
-		padding-bottom: max(0.75rem, var(--vs-safe-area-bottom));
-	}
-	.vs-modal-dialog.modal-sm {
-		max-width: 100% !important;
-	}
 
-	.git-branch-dropdown .dropdown-menu {
+	.git-branch-dropdown .menu {
 		width: calc(100vw - 2rem);
 		max-width: none;
 	}
 
 	/* Keep mobile header panels visually centered inside the safe area */
-	.app-header .dropdown-menu {
+	.app-header .menu {
 		width: calc(
 			100vw - 1rem - env(safe-area-inset-left, 0px) -
 				env(safe-area-inset-right, 0px)
@@ -1122,36 +977,8 @@ body.vs-modal-open .app-main {
 	}
 }
 
-/* Small to Medium (576px - 991px) */
-@media (min-width: 576px) and (max-width: 991.98px) {
-	.vs-modal-container {
-		padding: 1rem !important;
-		padding-top: calc(var(--vs-safe-area-top) + 1rem) !important;
-		padding-bottom: calc(1rem + var(--vs-safe-area-bottom)) !important;
-	}
-	.vs-modal-dialog {
-		max-height: calc(
-			100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem
-		);
-		max-height: calc(
-			100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem
-		);
-	}
-	.vs-modal-dialog .modal-content {
-		max-height: calc(
-			100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem
-		);
-		max-height: calc(
-			100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem
-		);
-	}
-	.vs-modal-dialog .modal-body {
-		overflow-y: auto;
-	}
-}
-
 /* Medium (< 768px) */
-@media (max-width: 767.98px) {
+@media (width < 768px) {
 	.directory-list {
 		max-height: calc(
 			100vh - var(--vs-header-height) - var(--vs-safe-area-top) -
@@ -1161,8 +988,8 @@ body.vs-modal-open .app-main {
 	}
 }
 
-/* Medium to Large (768px - 991px) */
-@media (min-width: 768px) and (max-width: 991.98px) {
+/* Medium to Large (768px - 1023px) */
+@media (768px <= width < 1024px) {
 	.directory-list {
 		max-height: calc(
 			100vh - var(--vs-header-height) - var(--vs-safe-area-top) -
@@ -1171,57 +998,15 @@ body.vs-modal-open .app-main {
 	}
 }
 
-/* Desktop (≥ 992px) */
-@media (min-width: 992px) {
-	.vs-modal-container {
-		padding: 1.75rem !important;
-		padding-top: calc(var(--vs-safe-area-top) + 1.75rem) !important;
-	}
-	.vs-modal-dialog {
-		max-height: calc(
-			100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem
-		);
-		max-height: calc(
-			100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem
-		);
-	}
-	.vs-modal-dialog .modal-content {
-		max-height: calc(
-			100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem
-		);
-		max-height: calc(
-			100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem
-		);
-	}
-	/* Expand small modals to standard width on desktop */
-	.vs-modal-dialog.modal-sm {
-		max-width: 520px;
-	}
-	/* Expand default-size modals to slightly wider on desktop */
-	.vs-modal-dialog:not(.modal-sm):not(.modal-lg):not(.modal-xl) {
-		max-width: 640px;
-	}
-	/* Frosted-glass backdrop on desktop — lower opacity lets the blur be visible */
-	.vs-modal-backdrop {
-		background: rgba(0, 0, 0, 0.5) !important;
-		backdrop-filter: blur(64px);
-		-webkit-backdrop-filter: blur(64px);
-	}
+/* Desktop (≥ 1024px) */
+@media (width >= 1024px) {
 	.directory-list {
 		max-height: 400px;
 	}
 }
 
 /* Landscape Mobile */
-@media (max-height: 500px) and (orientation: landscape) {
-	:root {
-		--vs-header-height: 44px;
-	}
-	.vs-modal-dialog .modal-body {
-		overflow-y: auto;
-		max-height: calc(100vh - 120px);
-		max-height: calc(100dvh - 120px);
-	}
+@media (height <= 500px) and (orientation: landscape) {
 	.directory-list {
 		max-height: calc(100vh - 200px);
 		max-height: calc(100dvh - 200px);
@@ -1230,7 +1015,7 @@ body.vs-modal-open .app-main {
 }
 
 /* ============================================
-   14. PWA STANDALONE MODE
+   12. PWA STANDALONE MODE
 ============================================ */
 .main-content {
 	overscroll-behavior-x: none;
@@ -1246,7 +1031,7 @@ body.vs-modal-open .app-main {
 	padding-right: var(--vs-safe-area-right);
 }
 
-/* Mobile header dropdown touch target */
+/* Mobile header menu touch target */
 .app-header .mobile-header-dropdown > .btn,
 .app-header .mobile-header-dropdown > .btn-link {
 	width: 44px;
@@ -1268,7 +1053,7 @@ body.vs-modal-open .app-main {
 	overflow-y: auto;
 }
 
-@media (max-width: 767.98px) {
+@media (width < 768px) {
 	.mobile-icon-button {
 		width: 44px;
 		height: 44px;
@@ -1278,7 +1063,7 @@ body.vs-modal-open .app-main {
 
 @media all and (display-mode: standalone) {
 	html {
-		background: var(--bs-body-bg, #1a1d21);
+		background: var(--bs-bg-body, #1a1d21);
 		/* Prevent overscroll bounce and back-swipe navigation */
 		overscroll-behavior: none;
 	}
@@ -1286,7 +1071,7 @@ body.vs-modal-open .app-main {
 	.app-sidebar,
 	.app-tab-bar,
 	.nav-item,
-	.btn {
+	[class*="btn-"] {
 		-webkit-user-select: none;
 		user-select: none;
 	}
@@ -1294,7 +1079,6 @@ body.vs-modal-open .app-main {
 	a,
 	button,
 	.nav-item,
-	.btn,
 	[role="button"] {
 		-webkit-tap-highlight-color: transparent;
 	}
@@ -1306,7 +1090,7 @@ body.vs-modal-open .app-main {
 		right: 0;
 		height: var(--vs-safe-area-top);
 		/* Same colour as the header beneath it, so the status bar doesn't read as a separate band. */
-		background: var(--bs-body-bg);
+		background: var(--bs-bg-body);
 		z-index: 1001;
 	}
 	body {
@@ -1318,7 +1102,7 @@ body.vs-modal-open .app-main {
 	}
 }
 
-@media (max-width: 575.98px) {
+@media (width < 576px) {
 	.login-layout {
 		background-attachment: scroll !important;
 		background-position: center top !important;
@@ -1326,18 +1110,18 @@ body.vs-modal-open .app-main {
 }
 
 /* ============================================
-   15. DESIGN SYSTEM — minimal Bootstrap extensions
-   Everything below is ONLY for things Bootstrap 5.3 cannot express:
+   13. DESIGN SYSTEM — minimal Bootstrap extensions
+   Everything below is ONLY for things Bootstrap 6 cannot express:
    gradients, specific animations, tiny single-property utilities,
-   or layout primitives Bootstrap lacks (auto-fit grid, timeline).
-   Components should use Bootstrap's `card`, `nav nav-tabs`,
-   `btn`/`btn-group`, `badge text-bg-*`, `alert alert-*`, `form-control`,
-   `input-group`, `progress`, etc. directly — do not wrap them in
+   or layout primitives Bootstrap lacks.
+   Components should use Bootstrap's `card`, `nav`, `btn-solid theme-*`,
+   `badge theme-*`, `alert theme-*`, `form-control`, `switch`, `check`,
+   `menu`, `dialog`, `progress`, etc. directly — do not wrap them in
    additional custom classes.
 ============================================ */
 
 /* ── Type scale ── Headings and .small take their size from the tokens in section 1,
-   replacing Bootstrap's six heading sizes (and its responsive h1) with three. */
+   replacing Bootstrap's six heading sizes (and its fluid h1) with three. */
 h1, .h1 {
 	font-size: var(--vs-text-title);
 	font-weight: 700;
@@ -1356,8 +1140,9 @@ h6, .h6 {
 small, .small {
 	font-size: var(--vs-text-small);
 }
-
-/* ── Single-property utilities Bootstrap doesn't provide ── */
+.dialog-title {
+	font-size: var(--vs-text-heading);
+}
 
 /* Section eyebrow — caption-size uppercase tracking-wide label */
 .text-eyebrow {
@@ -1365,77 +1150,42 @@ small, .small {
 	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
-	color: var(--fg-2);
+	color: var(--bs-fg-2);
 }
 
-/* Dashed border style (Bootstrap only has solid by default) */
-.border-dashed { border-style: dashed !important; }
+/* Rows that open or link read as content, not as dimmed controls: Bootstrap 6 tints
+   action rows fg-2, which left a row's title quieter than its second line. */
+.list-group {
+	--bs-list-group-action-color: var(--bs-fg-body);
+	--bs-list-group-action-hover-color: var(--bs-fg-body);
+}
 
-/* Min-height helper — Bootstrap's min-h-* are percentages only */
-.min-height-0 { min-height: 0; }
-
-/* ── Accordion — Bootstrap's subtle palette is keyed to its stock primary,
-   so point the active state at this app's accent token instead ── */
-/* Cards round like the grouped lists (rounded-4), so the few left read as the same surface. */
+/* Cards and accordions round like the grouped lists (rounded-9), so the few left
+   read as the same surface. */
 .card {
-	--bs-card-border-radius: var(--bs-border-radius-xl);
-	--bs-card-inner-border-radius: calc(var(--bs-border-radius-xl) - var(--bs-border-width));
+	--bs-card-border-radius: var(--bs-radius-9);
 }
 .accordion {
-	/* Same rounded group as list-group rounded-4, so accordions read as grouped lists. */
-	--bs-accordion-border-radius: var(--bs-border-radius-xl);
-	--bs-accordion-inner-border-radius: calc(var(--bs-border-radius-xl) - var(--bs-border-width));
+	--bs-accordion-border-radius: var(--bs-radius-9);
 	--bs-accordion-bg: transparent;
 	--bs-accordion-btn-bg: transparent;
-	--bs-accordion-active-bg: rgba(var(--bs-primary-rgb), 0.1);
-	--bs-accordion-active-color: var(--bs-emphasis-color);
-	--bs-accordion-btn-focus-box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
+	--bs-accordion-active-bg: var(--bs-primary-bg-subtle);
 }
 
-/* ── Buttons — Bootstrap compiles button colours as literals (#0d6efd, #6c757d),
-   so the palette above never reaches them. Primary takes the app accent; secondary
-   becomes a quiet neutral, so the one primary action on a surface stands out. ── */
-.btn-primary {
-	--bs-btn-color: #fff;
-	--bs-btn-bg: var(--bs-primary);
-	--bs-btn-border-color: var(--bs-primary);
-	--bs-btn-hover-color: #fff;
-	--bs-btn-hover-bg: color-mix(in srgb, var(--bs-primary) 88%, #000);
-	--bs-btn-hover-border-color: color-mix(in srgb, var(--bs-primary) 88%, #000);
-	--bs-btn-focus-shadow-rgb: var(--bs-primary-rgb);
-	--bs-btn-active-color: #fff;
-	--bs-btn-active-bg: color-mix(in srgb, var(--bs-primary) 80%, #000);
-	--bs-btn-active-border-color: color-mix(in srgb, var(--bs-primary) 80%, #000);
-	--bs-btn-disabled-color: #fff;
-	--bs-btn-disabled-bg: var(--bs-primary);
-	--bs-btn-disabled-border-color: var(--bs-primary);
+/* ── Job status stepper — a reached step's marker shows a status glyph instead of its
+   number (Bootstrap Icons check-lg, hourglass-split, x-lg). ── */
+.stepper:has(.stepper-item-done, .stepper-item-current, .stepper-item-failed) {
+	--bs-stepper-size: 1.5rem;
 }
-.btn-secondary {
-	--bs-btn-color: var(--fg-0);
-	--bs-btn-bg: var(--surface-3);
-	--bs-btn-border-color: var(--line-strong);
-	--bs-btn-hover-color: var(--fg-0);
-	--bs-btn-hover-bg: var(--line-strong);
-	--bs-btn-hover-border-color: var(--line-strong);
-	--bs-btn-focus-shadow-rgb: var(--bs-secondary-color-rgb);
-	--bs-btn-active-color: var(--fg-0);
-	--bs-btn-active-bg: var(--line-strong);
-	--bs-btn-active-border-color: var(--line-strong);
-	--bs-btn-disabled-color: var(--fg-2);
-	--bs-btn-disabled-bg: var(--surface-3);
-	--bs-btn-disabled-border-color: var(--line-strong);
+.stepper-item-done::before,
+.stepper-item-current::before,
+.stepper-item-failed::before {
+	font-family: bootstrap-icons;
+	font-weight: normal;
 }
-
-/* Checked checkboxes, radios and switches take the app accent too; Bootstrap compiles
-   #0d6efd into these as well. */
-.form-check-input:checked {
-	background-color: var(--bs-primary);
-	border-color: var(--bs-primary);
-}
-.form-check-input:focus {
-	border-color: rgba(var(--bs-primary-rgb), 0.5);
-	box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
-}
+.stepper-item-done::before { content: "\f633"; }
+.stepper-item-current::before { content: "\f41f"; }
+.stepper-item-failed::before { content: "\f659"; }
 
 /* ── Brand / project marks (gradients — no Bootstrap equivalent) ── */
 
@@ -1446,7 +1196,7 @@ small, .small {
 .app-project-mark {
 	background: linear-gradient(135deg, #4c7fe3, #2d55a8);
 	color: #fff;
-	font-family: var(--bs-font-monospace);
+	font-family: var(--bs-font-mono);
 	font-weight: 700;
 	letter-spacing: 0.3px;
 	display: inline-grid;
@@ -1467,8 +1217,8 @@ small, .small {
 .status-disc-sm { width: 1.25rem; height: 1.25rem; font-size: 0.75rem; }
 .status-disc-md { width: 1.5rem; height: 1.5rem; font-size: 0.875rem; }
 .status-disc-lg { width: 2rem; height: 2rem; font-size: 1.125rem; }
-/* Round icon-only button (the project page's "⋯", "+" and send buttons). Bootstrap
-   sizes buttons by padding, which turns a lone icon into an oval. */
+/* Round icon-only button (the project page's "⋯", "+" and send buttons). Bootstrap's
+   .btn-icon squares it; this sets the size. */
 .icon-button-round { width: 2.25rem; height: 2.25rem; }
 
 /* Image thumbnail sizes used in attachment chips */
@@ -1482,17 +1232,16 @@ small, .small {
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
-	background: var(--bs-success);
-	box-shadow: 0 0 0 3px rgba(var(--bs-success-rgb), 0.2);
+	background: var(--bs-success-base);
+	box-shadow: 0 0 0 3px color-mix(in oklch, var(--bs-success-base) 20%, transparent);
 	animation: pulse-live 1.5s ease-in-out infinite;
 	flex: none;
 }
 
-
 /* ── Theme toggle (compact sun/moon segmented control — specialized control) ── */
 .theme-toggle {
 	display: inline-flex;
-	background: var(--bs-secondary-bg);
+	background: var(--bs-bg-1);
 	border: 1px solid var(--bs-border-color);
 	border-radius: 0.5rem;
 	padding: 2px;
@@ -1500,7 +1249,7 @@ small, .small {
 .theme-toggle button {
 	background: transparent;
 	border: 0;
-	color: var(--bs-secondary-color);
+	color: var(--bs-fg-1);
 	padding: 4px 8px;
 	border-radius: 0.375rem;
 	font-size: var(--vs-text-caption);
@@ -1510,8 +1259,8 @@ small, .small {
 	cursor: pointer;
 }
 .theme-toggle button.active {
-	background: var(--bs-body-bg);
-	color: var(--bs-emphasis-color);
+	background: var(--bs-bg-body);
+	color: var(--bs-fg-body);
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
@@ -1526,7 +1275,7 @@ small, .small {
 	min-height: 44px;
 	padding: 0.5rem 0.75rem;
 	border-radius: 0.5rem;
-	color: var(--fg-2);
+	color: var(--bs-fg-2);
 	font-size: var(--vs-text-body);
 	text-decoration: none;
 	border: 0;
@@ -1538,13 +1287,13 @@ small, .small {
 /* Group heading above a run of nav links. */
 .vs-side-nav .vs-nav-heading {
 	padding: 0.75rem 0.75rem 0.125rem;
-	color: var(--fg-3);
+	color: var(--bs-fg-3);
 }
 .vs-side-nav .vs-nav-heading:first-child {
 	padding-top: 0.25rem;
 }
 
-@media (min-width: 992px) {
+@media (width >= 1024px) {
 	.vs-side-nav .nav-item,
 	.vs-side-nav a,
 	.vs-side-nav .nav-btn {
@@ -1556,7 +1305,7 @@ small, .small {
 .vs-side-nav a > i,
 .vs-side-nav .nav-btn > i,
 .vs-side-nav .nav-item > i {
-	color: var(--fg-3);
+	color: var(--bs-fg-3);
 	font-size: 1rem;
 	width: 18px;
 	text-align: center;
@@ -1565,60 +1314,47 @@ small, .small {
 .vs-side-nav a:hover,
 .vs-side-nav .nav-btn:hover,
 .vs-side-nav .nav-item:hover {
-	background: var(--bs-tertiary-bg);
-	color: var(--bs-emphasis-color);
+	background: var(--bs-bg-2);
+	color: var(--bs-fg-body);
 }
 .vs-side-nav a.active,
 .vs-side-nav .nav-btn.active,
 .vs-side-nav .nav-item.active {
-	background: rgba(var(--bs-primary-rgb), 0.15);
-	color: var(--bs-emphasis-color);
+	background: var(--bs-primary-bg-subtle);
+	color: var(--bs-fg-body);
 }
 .vs-side-nav a.active > i,
 .vs-side-nav .nav-btn.active > i,
 .vs-side-nav .nav-item.active > i {
-	color: var(--bs-primary);
+	color: var(--bs-primary-base);
 }
 
 /* ============================================
-   16. TOUCH TARGETS
+   14. TOUCH TARGETS
    Bootstrap sizes its small controls for a mouse. On coarse pointers
    (phones, tablets) grow the hit area to the 44px iOS guideline using
-   Bootstrap's own component variables, so nothing else about the
-   component changes.
+   Bootstrap's own tokens, so nothing else about the component changes.
 ============================================ */
 @media (pointer: coarse) {
 	/* iOS zooms the page into any field set smaller than 16px when it takes focus. */
-	.form-control,
-	.form-select,
-	.input-group-sm > .form-control,
-	.input-group-sm > .form-select {
-		font-size: var(--vs-text-body);
+	.form-control {
+		--bs-control-font-size: var(--vs-text-body);
 	}
 
-	.btn-sm,
-	.btn-group-sm > .btn {
-		--bs-btn-padding-y: 0.5rem;
-		--bs-btn-padding-x: 0.75rem;
-	}
-
-	.form-control-sm,
-	.form-select-sm {
-		padding-top: 0.5rem;
-		padding-bottom: 0.5rem;
-	}
-
+	/* The close icon is a mask that scales to the button, so grow the hit area and pin
+	   the icon to its usual size. */
 	.btn-close {
-		padding: 0.75rem;
+		min-width: 2.75rem;
+		min-height: 2.75rem;
+		mask-size: var(--bs-btn-close-size);
 	}
 
-	.dropdown-item {
+	.menu-item {
 		padding-top: 0.5rem;
 		padding-bottom: 0.5rem;
 	}
 
-	.nav-tabs .nav-link,
-	.nav-pills .nav-link {
+	.nav-link {
 		padding-top: 0.625rem;
 		padding-bottom: 0.625rem;
 	}
@@ -1632,22 +1368,14 @@ small, .small {
 		height: 2.75rem;
 	}
 
-	/* Bigger checkbox/radio/switch hit area, keeping Bootstrap's own offsets aligned. */
-	.form-check {
-		padding-left: 1.75em;
-		min-height: 1.75em;
+	/* Bigger checkbox, radio and switch hit area. */
+	.check,
+	.radio {
+		--bs-check-size: 1.5rem;
+		--bs-radio-size: 1.5rem;
 	}
-	.form-check .form-check-input {
-		width: 1.25em;
-		height: 1.25em;
-		margin-left: -1.75em;
-	}
-	.form-switch {
-		padding-left: 3em;
-	}
-	.form-switch .form-check-input {
-		width: 2.5em;
-		margin-left: -3em;
+	.switch {
+		--bs-switch-height: 1.5rem;
 	}
 }
 
@@ -1660,3 +1388,5 @@ small, .small {
 		--bs-list-group-action-hover-color: var(--bs-list-group-action-color);
 	}
 }
+
+} /* @layer custom */

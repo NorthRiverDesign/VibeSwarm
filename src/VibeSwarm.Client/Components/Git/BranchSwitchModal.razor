@@ -5,21 +5,21 @@
     <ChildContent>
         @if (IsChecking)
         {
-            <div class="d-flex align-items-center gap-2 text-body-secondary">
-                <span class="spinner-border spinner-border-sm" role="status"></span>
+            <div class="d-flex align-items-center gap-3 fg-1">
+                <span class="spinner-border spinner-sm" role="status"></span>
                 <span>Checking for uncommitted changes...</span>
             </div>
         }
         else
         {
-            <p class="mb-3">
-                Switch from <strong class="text-primary">@CurrentBranch</strong> to
-                <strong class="text-success">@TargetBranch</strong>?
+            <p class="mb-5">
+                Switch from <strong class="fg-primary">@CurrentBranch</strong> to
+                <strong class="fg-success">@TargetBranch</strong>?
             </p>
 
             @if (HasUncommittedChanges)
             {
-                <div class="alert alert-warning py-2 mb-3 d-flex align-items-start gap-2">
+                <div class="alert theme-warning py-3 mb-5 align-items-start">
                     <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
                     <div>
                         <strong>Uncommitted changes detected!</strong>
@@ -30,10 +30,10 @@
                     </div>
                 </div>
 
-                <div class="mb-3">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="commitBeforeSwitch" @bind="_commitBeforeSwitch">
-                        <label class="form-check-label" for="commitBeforeSwitch">
+                <div class="mb-5">
+                    <div class="form-field">
+                        <input class="check" type="checkbox" id="commitBeforeSwitch" @bind="_commitBeforeSwitch">
+                        <label for="commitBeforeSwitch">
                             Commit changes before switching
                         </label>
                     </div>
@@ -41,7 +41,7 @@
 
                 @if (_commitBeforeSwitch)
                 {
-                    <div class="mb-3">
+                    <div class="mb-5">
                         <label for="commitMessage" class="form-label small fw-medium">Commit Message</label>
                         <input type="text" class="form-control" id="commitMessage" @bind="_commitMessage" @bind:event="oninput"
                             placeholder="e.g., WIP: Save changes before branch switch" disabled="@IsSwitching" />
@@ -50,7 +50,7 @@
             }
             else
             {
-                <div class="alert alert-info py-2 mb-0 d-flex align-items-center gap-2">
+                <div class="alert theme-info py-3 mb-0 align-items-center">
                     <i class="bi bi-check-circle"></i>
                     <span>No uncommitted changes. Safe to switch branches.</span>
                 </div>
@@ -58,19 +58,19 @@
 
             @if (!string.IsNullOrEmpty(ErrorMessage))
             {
-                <Alert Type="Alert.AlertType.Danger" Class="py-2 mt-3 mb-0">@ErrorMessage</Alert>
+                <Alert Type="Alert.AlertType.Danger" Class="py-3 mt-5 mb-0">@ErrorMessage</Alert>
             }
         }
     </ChildContent>
     <FooterContent>
-        <button type="button" class="btn btn-secondary" @onclick="HandleCancel" disabled="@IsSwitching">
+        <button type="button" class="btn-solid theme-secondary" @onclick="HandleCancel" disabled="@IsSwitching">
             Cancel
         </button>
-        <button type="button" class="btn btn-primary" @onclick="HandleSwitch"
+        <button type="button" class="btn-solid theme-primary" @onclick="HandleSwitch"
             disabled="@(IsSwitching || IsChecking || (_commitBeforeSwitch && string.IsNullOrWhiteSpace(_commitMessage)))">
             @if (IsSwitching)
             {
-                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                <span class="spinner-border spinner-sm me-1" role="status"></span>
                 <span>Switching...</span>
             }
             else if (_commitBeforeSwitch && HasUncommittedChanges)

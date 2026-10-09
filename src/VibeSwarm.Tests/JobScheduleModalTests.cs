@@ -66,8 +66,7 @@ public sealed class JobScheduleModalTests
 		};
 
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
-		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
 		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
@@ -145,8 +144,7 @@ public sealed class JobScheduleModalTests
 		};
 
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
-		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
 		context.Services.AddSingleton<IAgentService>(new FakeAgentService([firstAgent, secondAgent]));
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
@@ -193,8 +191,7 @@ public sealed class JobScheduleModalTests
 		};
 
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
-		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
 		context.Services.AddSingleton<IAgentService>(new FakeAgentService([]));
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService([]));
@@ -260,8 +257,7 @@ public sealed class JobScheduleModalTests
 		};
 
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
-		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
 		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));

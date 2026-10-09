@@ -1,16 +1,16 @@
 @* Reusable page header component with title, subtitle, and actions *@
 
-<div class="d-flex @ResolvedAlignItemsClass justify-content-between gap-2 mb-4">
-	<div class="min-width-0">
+<div class="d-flex @ResolvedAlignItemsClass justify-content-between gap-3 mb-7">
+	<div class="min-w-0">
 		<h1 class="mb-0 text-truncate">@Title</h1>
 		@if (!string.IsNullOrWhiteSpace(Subtitle))
 		{
-			<p class="small text-body-secondary mb-0 mt-1 d-none d-sm-block">@Subtitle</p>
+			<p class="small fg-1 mb-0 mt-1 d-none sm:d-block">@Subtitle</p>
 		}
 	</div>
 	@if (Actions != null)
 	{
-		<div class="d-flex align-items-center gap-2 flex-shrink-0 ms-auto">
+		<div class="d-flex align-items-center gap-3 flex-shrink-0 ms-auto">
 			@Actions
 		</div>
 	}
@@ -32,5 +32,5 @@
 	public string? AlignItemsClass { get; set; }
 
 	private string ResolvedAlignItemsClass => AlignItemsClass
-		?? (string.IsNullOrWhiteSpace(Subtitle) ? "align-items-center" : "align-items-center align-items-sm-start");
+		?? (string.IsNullOrWhiteSpace(Subtitle) ? "align-items-center" : "align-items-center sm:align-items-start");
 }

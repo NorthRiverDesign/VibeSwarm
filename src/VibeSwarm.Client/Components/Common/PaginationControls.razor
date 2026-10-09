@@ -1,17 +1,17 @@
 @if (TotalPages > 1)
 {
-	<div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 p-3 border-top">
-		<div class="small text-body-secondary">
+	<div class="d-flex flex-column sm:flex-row justify-content-between sm:align-items-center gap-3 p-5 border-top">
+		<div class="small fg-1">
 			Showing @StartItem-@EndItem of @TotalCount
 		</div>
-		<div class="d-flex align-items-center gap-2">
-			<span class="small text-body-secondary d-none d-sm-inline">Page @PageNumber of @TotalPages</span>
+		<div class="d-flex align-items-center gap-3">
+			<span class="small fg-1 d-none sm:d-inline">Page @PageNumber of @TotalPages</span>
 			<div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
-				<button type="button" class="btn btn-secondary" @onclick="OnPreviousPage"
+				<button type="button" class="btn-solid theme-secondary" @onclick="OnPreviousPage"
 						disabled="@(!HasPreviousPage || IsLoading)">
 					<i class="bi bi-chevron-left me-1"></i>Previous
 				</button>
-				<button type="button" class="btn btn-secondary" @onclick="OnNextPage"
+				<button type="button" class="btn-solid theme-secondary" @onclick="OnNextPage"
 						disabled="@(!HasNextPage || IsLoading)">
 					Next<i class="bi bi-chevron-right ms-1"></i>
 				</button>

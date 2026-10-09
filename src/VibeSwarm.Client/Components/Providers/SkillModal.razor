@@ -9,18 +9,18 @@
 	<ChildContent>
 		<EditForm Model="@Skill" OnValidSubmit="HandleValidSubmit">
 			<DataAnnotationsValidator />
-			<ValidationSummary class="text-danger mb-3" />
+			<ValidationSummary class="fg-danger mb-5" />
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="modal-name" class="form-label">Name</label>
 				<InputText id="modal-name" @bind-Value="Skill.Name" class="form-control" placeholder="my-skill-name" />
-				<ValidationMessage For="@(() => Skill.Name)" class="text-danger small" />
+				<ValidationMessage For="@(() => Skill.Name)" class="fg-danger small" />
 				<div class="form-text">
 					Used as the MCP tool identifier. Use lowercase with hyphens.
 				</div>
 			</div>
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="modal-description" class="form-label">Description</label>
 				<InputTextArea id="modal-description" @bind-Value="Skill.Description" class="form-control" rows="4"
 							   placeholder="Brief description of what this skill does..." />
@@ -29,10 +29,10 @@
 				</div>
 			</div>
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="modal-content" class="form-label d-flex align-items-center justify-content-between">
 					<span>Content (Markdown)</span>
-					<button type="button" class="btn btn-sm btn-info" @onclick="ToggleExpansionPanel"
+					<button type="button" class="btn-sm btn-solid theme-info" @onclick="ToggleExpansionPanel"
 							disabled="@(string.IsNullOrWhiteSpace(Skill.Description))">
 						<i class="bi bi-magic me-1"></i>AI Expand
 					</button>
@@ -41,12 +41,12 @@
 				@* AI Expansion Panel *@
 				@if (_showExpansionPanel)
 				{
-					<div class="card bg-body-tertiary mb-2">
-						<div class="card-body py-2">
-							<div class="row g-2 align-items-end">
-								<div class="col-12 col-md-5">
+					<div class="card bg-2 mb-3">
+						<div class="card-body py-3">
+							<div class="row g-3 align-items-end">
+								<div class="col-12 md:col-5">
 									<label class="form-label small mb-1">Provider</label>
-									<select class="form-select form-select-sm" @bind="_selectedProviderId"
+									<select class="form-control form-control-sm" @bind="_selectedProviderId"
 											@bind:after="LoadModelsForProvider">
 										<option value="">Select provider...</option>
 										@foreach (var provider in _providers.Where(p => p.IsEnabled))
@@ -55,10 +55,10 @@
 										}
 									</select>
 								</div>
-								<div class="col-12 col-md-4">
+								<div class="col-12 md:col-4">
 									<label class="form-label small mb-1">Model</label>
 									<div class="input-group input-group-sm">
-										<select class="form-select form-select-sm" @bind="_selectedModelId"
+										<select class="form-control form-control-sm" @bind="_selectedModelId"
 												disabled="@(!_models.Any())">
 											<option value="">@(_isLoadingModels ? "Loading..." : "Default")</option>
 											@foreach (var model in _models.Where(m => m.IsAvailable))
@@ -70,12 +70,12 @@
 															OnRefreshed="HandleModelsRefreshed" />
 									</div>
 								</div>
-								<div class="col-12 col-md-3">
-									<button type="button" class="btn btn-sm btn-primary w-100" @onclick="ExpandWithAI"
+								<div class="col-12 md:col-3">
+									<button type="button" class="btn-sm btn-solid theme-primary w-100" @onclick="ExpandWithAI"
 											disabled="@(_selectedProviderId == Guid.Empty || _isExpanding)">
 										@if (_isExpanding)
 										{
-											<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+											<span class="spinner-border spinner-sm me-1" role="status"></span>
 											<span>Expanding...</span>
 										}
 										else
@@ -88,7 +88,7 @@
 							</div>
 							@if (!string.IsNullOrEmpty(_expansionError))
 							{
-								<Alert Type="Alert.AlertType.Danger" Class="py-1 px-2 mt-2 mb-0 small">@_expansionError</Alert>
+								<Alert Type="Alert.AlertType.Danger" Class="py-1 px-3 mt-3 mb-0 small">@_expansionError</Alert>
 							}
 						</div>
 					</div>
@@ -97,16 +97,18 @@
 				<InputTextArea id="modal-content" @bind-Value="Skill.Content" class="form-control font-monospace"
 							   rows="10"
 							   placeholder="# Skill Instructions&#10;&#10;Provide detailed instructions for the AI agent..." />
-				<ValidationMessage For="@(() => Skill.Content)" class="text-danger small" />
+				<ValidationMessage For="@(() => Skill.Content)" class="fg-danger small" />
 				<div class="form-text">
 					Markdown content defining the skill's instructions and capabilities.
 				</div>
 			</div>
 
-			<div class="mb-3">
-				<div class="form-check form-switch">
-					<InputCheckbox id="modal-isEnabled" @bind-Value="Skill.IsEnabled" class="form-check-input" />
-					<label class="form-check-label" for="modal-isEnabled">
+			<div class="mb-5">
+				<div class="form-field">
+					<div class="switch">
+						<InputCheckbox role="switch" switch id="modal-isEnabled" @bind-Value="Skill.IsEnabled" />
+					</div>
+					<label for="modal-isEnabled">
 						Enabled
 					</label>
 				</div>
@@ -117,12 +119,12 @@
 
 			@if (!string.IsNullOrEmpty(ErrorMessage))
 			{
-				<div class="text-danger small mb-3">
+				<div class="fg-danger small mb-5">
 					<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
 				</div>
 			}
 
-			<div class="d-flex gap-2 justify-content-end">
+			<div class="d-flex gap-3 justify-content-end">
 				<ActionButton Text="Cancel" OnClick="HandleCancel" />
 				<ActionButton Type="submit" Style="ActionButton.ButtonStyle.Primary"
 							  Text="@(IsEdit ? "Update Skill" : "Add Skill")" LoadingText="Saving..."

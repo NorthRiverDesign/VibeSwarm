@@ -1,32 +1,32 @@
 @* One project in the projects list: its mark, its name and one line saying what it is doing.
    Every action lives on the project page, so the whole row is a link to it. *@
 
-<a href="/projects/@Project.Id" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3">
+<a href="/projects/@Project.Id" class="list-group-item list-group-item-action d-flex align-items-center gap-5 py-5">
 	<ProjectMark Name="@Project.Name" Size="lg" CssClass="@(Project.IsActive ? null : "opacity-50")" />
-	<span class="flex-grow-1 min-width-0">
-		<span class="d-flex align-items-baseline gap-2 min-width-0">
+	<span class="flex-grow-1 min-w-0">
+		<span class="d-flex align-items-baseline gap-3 min-w-0">
 			<span class="fw-semibold text-truncate">@Project.Name</span>
 			@if (!Project.IsActive)
 			{
-				<span class="small text-body-tertiary flex-shrink-0">Inactive</span>
+				<span class="small fg-2 flex-shrink-0">Inactive</span>
 			}
 		</span>
-		<span class="d-flex align-items-center gap-2 small text-body-secondary min-width-0">
+		<span class="d-flex align-items-center gap-3 small fg-1 min-w-0">
 			@if (ActiveJobs.FirstOrDefault() is { } activeJob)
 			{
-				<span class="spinner-border spinner-border-sm text-primary flex-shrink-0" role="status" aria-hidden="true"></span>
+				<span class="spinner-border spinner-sm fg-primary flex-shrink-0" role="status" aria-hidden="true"></span>
 				<span class="text-truncate" title="@activeJob.DisplayTitle">@activeJob.DisplayTitle</span>
 			}
 			else if (Project.IdeasProcessingActive)
 			{
-				<i class="bi bi-arrow-repeat text-info flex-shrink-0"></i>
+				<i class="bi bi-arrow-repeat fg-info flex-shrink-0"></i>
 				<span class="text-truncate">Running ideas automatically</span>
 			}
 			else if (LatestJob != null)
 			{
 				<i class="bi @GetLatestJobIcon(LatestJob.Status) flex-shrink-0" title="@LatestJob.Status.ToString()"></i>
 				<span class="text-truncate" title="@LatestJob.DisplayTitle">@LatestJob.DisplayTitle</span>
-				<span class="flex-shrink-0 text-body-tertiary">@((LatestJob.CompletedAt ?? LatestJob.CreatedAt).FormatShortAge())</span>
+				<span class="flex-shrink-0 fg-2">@((LatestJob.CompletedAt ?? LatestJob.CreatedAt).FormatShortAge())</span>
 			}
 			else if (!string.IsNullOrWhiteSpace(Project.Description))
 			{
@@ -40,12 +40,12 @@
 	</span>
 	@if (Stats.UnprocessedIdeas > 0)
 	{
-		<span class="badge rounded-pill bg-body-tertiary text-body-secondary fw-normal d-inline-flex align-items-center gap-1 flex-shrink-0"
+		<span class="badge rounded-pill bg-2 fg-1 fw-normal d-inline-flex align-items-center gap-1 flex-shrink-0"
 			  title="@($"{Stats.UnprocessedIdeas} idea{(Stats.UnprocessedIdeas == 1 ? "" : "s")} waiting")">
 			<i class="bi bi-lightbulb"></i>@Stats.UnprocessedIdeas
 		</span>
 	}
-	<i class="bi bi-chevron-right text-body-tertiary flex-shrink-0"></i>
+	<i class="bi bi-chevron-right fg-2 flex-shrink-0"></i>
 </a>
 
 @code {
@@ -56,12 +56,12 @@
 
 	private static string GetLatestJobIcon(JobStatus status) => status switch
 	{
-		JobStatus.Completed => "bi-check-circle-fill text-success",
-		JobStatus.Failed => "bi-x-circle-fill text-danger",
+		JobStatus.Completed => "bi-check-circle-fill fg-success",
+		JobStatus.Failed => "bi-x-circle-fill fg-danger",
 		JobStatus.Cancelled => "bi-slash-circle",
-		JobStatus.Stalled => "bi-exclamation-triangle-fill text-warning",
-		JobStatus.Paused => "bi-chat-dots-fill text-warning",
-		JobStatus.New or JobStatus.Pending => "bi-hourglass-split text-warning",
+		JobStatus.Stalled => "bi-exclamation-triangle-fill fg-warning",
+		JobStatus.Paused => "bi-chat-dots-fill fg-warning",
+		JobStatus.New or JobStatus.Pending => "bi-hourglass-split fg-warning",
 		_ => "bi-circle"
 	};
 }

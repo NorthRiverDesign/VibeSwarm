@@ -1,23 +1,23 @@
 @using VibeSwarm.Shared.Validation
 
-<div class="mb-3">
+<div class="mb-5">
 	<label for="modal-promptContext" class="form-label">
-		Prompt context <span class="text-body-secondary fw-normal">(optional)</span>
+		Prompt context <span class="fg-1 fw-normal">(optional)</span>
 	</label>
 	<InputTextArea id="modal-promptContext" @bind-Value="Project.PromptContext" class="form-control" rows="4"
 				   maxlength="@ValidationLimits.ProjectPromptContextMaxLength"
 				   placeholder="Coding conventions, framework preferences, anything every job should know." />
-	<ValidationMessage For="@(() => Project.PromptContext)" class="text-danger small" />
-	<div class="form-text d-flex flex-wrap justify-content-between gap-2">
+	<ValidationMessage For="@(() => Project.PromptContext)" class="fg-danger small" />
+	<div class="form-text d-flex flex-wrap justify-content-between gap-3">
 		<span>Included in every job prompt for this project.</span>
 		<span>@GetCharacterCount(Project.PromptContext, ValidationLimits.ProjectPromptContextMaxLength)</span>
 	</div>
 </div>
 
 <div>
-	<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+	<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
 		<label for="modal-projectMemory" class="form-label mb-0">
-			Project memory <span class="text-body-secondary fw-normal">(optional)</span>
+			Project memory <span class="fg-1 fw-normal">(optional)</span>
 		</label>
 
 		@if (HasProjectMemory)
@@ -31,8 +31,8 @@
 	<InputTextArea id="modal-projectMemory" @bind-Value="Project.Memory" class="form-control" rows="5"
 				   maxlength="@ValidationLimits.ProjectMemoryMaxLength"
 				   placeholder="Durable notes that keep fresh agent sessions from repeating past mistakes." />
-	<ValidationMessage For="@(() => Project.Memory)" class="text-danger small" />
-	<div class="form-text d-flex flex-wrap justify-content-between gap-2">
+	<ValidationMessage For="@(() => Project.Memory)" class="fg-danger small" />
+	<div class="form-text d-flex flex-wrap justify-content-between gap-3">
 		<span>Every agent reads this first and adds lasting lessons. It stays out of the repository.</span>
 		<span>@GetCharacterCount(Project.Memory, ValidationLimits.ProjectMemoryMaxLength)</span>
 	</div>
@@ -41,7 +41,7 @@
 <ConfirmationModal @bind-IsVisible="_showClearProjectMemoryModal" Title="Clear project memory"
 				   Message="Remove this project's stored memory?"
 				   SubMessage="Future jobs will stop receiving these durable notes until new memory is saved. Prompt context is not affected."
-				   ConfirmText="Clear memory" ButtonClass="btn-danger"
+				   ConfirmText="Clear memory" ButtonClass="btn-solid theme-danger"
 				   OnConfirm="ClearProjectMemory" OnCancel="CancelClearProjectMemory" />
 
 @code {

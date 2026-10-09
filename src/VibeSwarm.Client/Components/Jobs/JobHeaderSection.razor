@@ -1,118 +1,99 @@
 @* Job detail page header section with status, stats, command display, and action buttons *@
 
 <div
-	class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3 mb-3 mb-lg-4 pb-3 border-bottom">
-	<div class="flex-grow-1 min-width-0 w-100 w-lg-auto">
+	class="d-flex flex-column lg:flex-row justify-content-between align-items-start gap-5 mb-5 lg:mb-7 pb-5 border-bottom">
+	<div class="flex-grow-1 min-w-0 w-100 lg:w-auto">
 		@* Title row with action buttons *@
-		<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+		<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
 			<h1 class="mb-0 text-break" title="@JobTitle">@(string.IsNullOrEmpty(JobTitle) ? "Job Details" : JobTitle)</h1>
 			@* Action Buttons - integrated in header *@
-			<div class="d-flex flex-wrap gap-2 flex-shrink-0">
+			<div class="d-flex flex-wrap gap-3 flex-shrink-0">
 				@if (HasActionMenu)
 				{
-					<div class="dropdown">
-						<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+					<div>
+						<button class="btn-sm btn-solid theme-secondary" type="button" data-bs-toggle="menu" data-bs-placement="bottom-end"
 								aria-expanded="false" title="Job actions">
 							<i class="bi bi-gear me-1"></i>
 							<span>Actions</span>
+							<i class="bi bi-chevron-down small opacity-75"></i>
 						</button>
-						<ul class="dropdown-menu dropdown-menu-end">
+						<div class="menu">
 							@if (CanRetry)
 							{
-								<li>
-									<button class="dropdown-item" @onclick="OnRetry" disabled="@IsRetrying">
+									<button class="menu-item" @onclick="OnRetry" disabled="@IsRetrying">
 										@if (IsRetrying)
 										{
-											<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+											<span class="spinner-border spinner-sm me-3" role="status"></span>
 										}
 										else
 										{
-											<i class="bi bi-arrow-repeat me-2"></i>
+											<i class="bi bi-arrow-repeat me-3"></i>
 										}
 										@(IsRetrying ? "Retrying..." : "Retry Job")
 									</button>
-								</li>
 								@if (ShowRetryOptions)
 								{
-									<li>
-										<button class="dropdown-item" @onclick="OnRetryWithOptions" disabled="@IsRetrying">
-											<i class="bi bi-sliders me-2"></i>Retry with Options...
+										<button class="menu-item" @onclick="OnRetryWithOptions" disabled="@IsRetrying">
+											<i class="bi bi-sliders"></i>Retry with Options...
 										</button>
-									</li>
 								}
 							}
 							@if (CanForceReset)
 						{
 							@if (CanRetry)
 							{
-								<li>
-									<hr class="dropdown-divider">
-								</li>
+									<hr class="menu-divider">
 							}
-							<li>
-								<button class="dropdown-item text-danger" @onclick="OnForceReset" disabled="@IsForceResetting">
+								<button class="menu-item theme-danger" @onclick="OnForceReset" disabled="@IsForceResetting">
 									@if (IsForceResetting)
 									{
-										<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+										<span class="spinner-border spinner-sm me-3" role="status"></span>
 									}
 									else
 									{
-										<i class="bi bi-exclamation-triangle me-2"></i>
+										<i class="bi bi-exclamation-triangle me-3"></i>
 									}
 									@(IsForceResetting ? "Marking as Failed..." : "Mark as Failed")
 								</button>
-							</li>
 						}
 						@if (ShowGitActions)
 							{
 								@if (CanRetry)
 								{
-									<li>
-										<hr class="dropdown-divider">
-									</li>
+										<hr class="menu-divider">
 								}
-								<li>
-									<h6 class="dropdown-header">Git</h6>
-								</li>
-								<li>
-									<button class="dropdown-item" @onclick="OnCreateBranch" disabled="@AreGitActionsBusy">
-										<i class="bi bi-plus-lg me-2 text-primary"></i>New Branch
+									<h6 class="menu-header">Git</h6>
+									<button class="menu-item" @onclick="OnCreateBranch" disabled="@AreGitActionsBusy">
+										<i class="bi bi-plus-lg me-3 fg-primary"></i>New Branch
 									</button>
-								</li>
-								<li>
-									<button class="dropdown-item" @onclick="OnSync" disabled="@AreGitActionsBusy">
+									<button class="menu-item" @onclick="OnSync" disabled="@AreGitActionsBusy">
 										@if (IsGitSyncing)
 										{
-											<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+											<span class="spinner-border spinner-sm me-3" role="status"></span>
 										}
 										else
 										{
-											<i class="bi bi-cloud-download me-2 text-success"></i>
+											<i class="bi bi-cloud-download me-3 fg-success"></i>
 										}
 										Sync with Origin
 									</button>
-								</li>
-								<li>
-									<button class="dropdown-item" @onclick="OnPruneBranches" disabled="@AreGitActionsBusy">
+									<button class="menu-item" @onclick="OnPruneBranches" disabled="@AreGitActionsBusy">
 										@if (IsGitPruning)
 										{
-											<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+											<span class="spinner-border spinner-sm me-3" role="status"></span>
 										}
 										else
 										{
-											<i class="bi bi-scissors me-2 text-warning"></i>
+											<i class="bi bi-scissors me-3 fg-warning"></i>
 										}
 										Prune Stale Branches
 									</button>
-								</li>
-								<li>
-									<button class="dropdown-item" @onclick="OnRefresh" disabled="@AreGitActionsBusy">
-										<i class="bi bi-arrow-clockwise me-2 @(IsGitRefreshing ? "spin" : string.Empty)"></i>
+									<button class="menu-item" @onclick="OnRefresh" disabled="@AreGitActionsBusy">
+										<i class="bi bi-arrow-clockwise me-3 @(IsGitRefreshing ? "spin" : string.Empty)"></i>
 										Refresh Branches
 									</button>
-								</li>
 							}
-						</ul>
+						</div>
 					</div>
 				}
 				@if (CanResume)
@@ -141,7 +122,7 @@
 		</div>
 
 		@* Metadata row - keep the most important state visible without extra noise *@
-		<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+		<div class="d-flex flex-wrap align-items-center gap-3 mb-3">
 			<StatusBadge Status="@Status.ToString()" />
 			@if (CancellationRequested && IsRunning)
 			{
@@ -149,7 +130,7 @@
 			}
 			@if (!string.IsNullOrEmpty(ProviderModelDisplay))
 			{
-				<span class="d-inline-flex align-items-center gap-2 px-2 py-1 bg-body-tertiary rounded-pill small text-body-secondary"
+				<span class="d-inline-flex align-items-center gap-3 px-3 py-1 bg-2 rounded-pill small fg-1"
 					  title="Provider chain and model">
 					<i class="bi bi-cpu opacity-75"></i>
 					<span>@ProviderModelDisplay</span>
@@ -157,7 +138,7 @@
 			}
 			@if (!string.IsNullOrEmpty(BranchName))
 			{
-				<span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-body-tertiary rounded-pill small text-body-secondary">
+				<span class="d-inline-flex align-items-center gap-1 px-3 py-1 bg-2 rounded-pill small fg-1">
 					<i class="bi bi-diagram-2 opacity-75"></i>
 					<span>@BranchName</span>
 				</span>
@@ -165,7 +146,7 @@
 			@if (ProcessId.HasValue)
 			{
 				<span
-					class="d-none d-sm-inline-flex align-items-center gap-1 px-2 py-1 bg-body-tertiary rounded-pill small text-body-tertiary"
+					class="d-none sm:d-inline-flex align-items-center gap-1 px-3 py-1 bg-2 rounded-pill small fg-2"
 					title="Process ID">
 					<i class="bi bi-cpu opacity-75"></i>
 					<span>PID: @ProcessId</span>
@@ -173,7 +154,7 @@
 			}
 			@if (!string.IsNullOrEmpty(AgentName))
 			{
-				<span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-primary-subtle text-primary-emphasis rounded-pill small"
+				<span class="d-inline-flex align-items-center gap-1 px-3 py-1 bg-subtle-primary fg-emphasis-primary rounded-pill small"
 					  title="Team swarm role">
 					<i class="bi bi-diagram-3 opacity-75"></i>
 					<span>@AgentName</span>
@@ -181,24 +162,24 @@
 			}
 			@if (PlaywrightEnabled)
 			{
-				<span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-info-subtle text-info-emphasis rounded-pill small"
+				<span class="d-inline-flex align-items-center gap-1 px-3 py-1 bg-subtle-info fg-emphasis-info rounded-pill small"
 					  title="Playwright MCP enabled for browser interaction">
 					<i class="bi bi-browser-chrome opacity-75"></i>
-					<span class="d-none d-sm-inline">Playwright</span>
+					<span class="d-none sm:d-inline">Playwright</span>
 				</span>
 			}
 			@if (EnvironmentCount > 0)
 			{
-				<span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-success-subtle text-success-emphasis rounded-pill small"
+				<span class="d-inline-flex align-items-center gap-1 px-3 py-1 bg-subtle-success fg-emphasis-success rounded-pill small"
 					  title="@EnvironmentTooltip">
 					<i class="bi bi-globe opacity-75"></i>
-					<span class="d-none d-sm-inline">@EnvironmentCount env@(EnvironmentCount != 1 ? "s" : "")</span>
-					<span class="d-inline d-sm-none">@EnvironmentCount</span>
+					<span class="d-none sm:d-inline">@EnvironmentCount env@(EnvironmentCount != 1 ? "s" : "")</span>
+					<span class="d-inline sm:d-none">@EnvironmentCount</span>
 				</span>
 			}
 			@if (MaxCycles > 1)
 			{
-				<span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-body-tertiary rounded-pill small text-body-secondary"
+				<span class="d-inline-flex align-items-center gap-1 px-3 py-1 bg-2 rounded-pill small fg-1"
 					  title="@GetCycleModeTitle()">
 					<i class="bi bi-arrow-repeat opacity-75"></i>
 					<span>Cycle @CurrentCycle/@MaxCycles</span>
@@ -207,8 +188,8 @@
 		</div>
 
 		@* Timestamps row *@
-		<div class="small text-body-secondary">
-			<div class="d-flex flex-wrap gap-2 gap-sm-3">
+		<div class="small fg-1">
+			<div class="d-flex flex-wrap gap-3 sm:gap-5">
 				<span title="Created"><i
 					class="bi bi-calendar-plus me-1 opacity-75"></i>@CreatedAt.FormatDateTimeShort()</span>
 					@if (StartedAt.HasValue)
@@ -228,7 +209,7 @@
 								}
 				else if (IsRunning && StartedAt.HasValue)
 								{
-									<span title="Running Time" class="fw-medium text-info"><i
+									<span title="Running Time" class="fw-medium fg-info"><i
 										class="bi bi-stopwatch me-1 opacity-75"></i>@TokenHelper.FormatDuration(DateTime.UtcNow -
 															StartedAt.Value)</span>
 									}
@@ -238,31 +219,31 @@
 							@* Stats Row - Token usage and cost *@
 							@if (ShowStats)
 							{
-								<div class="d-flex flex-wrap gap-2 gap-sm-3 mt-2 pt-2 border-top border-secondary border-opacity-25 small">
+								<div class="d-flex flex-wrap gap-3 sm:gap-5 mt-3 pt-3 border-top border-secondary border-30 small">
 							@if (RetryCount > 0)
 							{
-										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+										<span class="d-inline-flex align-items-center px-3 py-1 bg-2 rounded-pill text-nowrap"
 											  title="Attempt Number">
 											<i class="bi bi-arrow-repeat me-1 opacity-75"></i>Attempt @(RetryCount + 1)
 										</span>
 									}
 									@if (InputTokens.HasValue && InputTokens.Value > 0)
 									{
-										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+										<span class="d-inline-flex align-items-center px-3 py-1 bg-2 rounded-pill text-nowrap"
 											  title="@(IsTokenEstimate ? "Estimated Input Tokens" : "Input Tokens")">
 											<i class="bi bi-arrow-right-circle me-1 opacity-75"></i>@(IsTokenEstimate ? "~" : "")@TokenHelper.FormatTokenCount(InputTokens.Value)
 										</span>
 									}
 									@if (OutputTokens.HasValue && OutputTokens.Value > 0)
 									{
-										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+										<span class="d-inline-flex align-items-center px-3 py-1 bg-2 rounded-pill text-nowrap"
 											  title="@(IsTokenEstimate ? "Estimated Output Tokens" : "Output Tokens")">
 											<i class="bi bi-arrow-left-circle me-1 opacity-75"></i>@(IsTokenEstimate ? "~" : "")@TokenHelper.FormatTokenCount(OutputTokens.Value)
 										</span>
 									}
 									@if (InputTokens.HasValue && InputTokens.Value > 0 && OutputTokens.HasValue && OutputTokens.Value > 0)
 									{
-										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+										<span class="d-inline-flex align-items-center px-3 py-1 bg-2 rounded-pill text-nowrap"
 											  title="@(IsTokenEstimate ? "Estimated Total Tokens" : "Total Tokens")">
 											<i class="bi bi-arrow-left-right me-1 opacity-75"></i>@(IsTokenEstimate ? "~" : "")@TokenHelper.FormatTokenCount(InputTokens.Value +
 																																											OutputTokens.Value)
@@ -270,21 +251,21 @@
 									}
 									@if (!IsTokenEstimate && TotalCostUsd.HasValue && TotalCostUsd.Value > 0)
 									{
-										<span class="d-inline-flex align-items-center px-2 py-1 bg-success-subtle rounded-pill text-nowrap text-success-emphasis fw-medium"
+										<span class="d-inline-flex align-items-center px-3 py-1 bg-subtle-success rounded-pill text-nowrap fg-emphasis-success fw-medium"
 											  title="Total Cost">
 											<i class="bi bi-currency-dollar me-1 opacity-75"></i>@TokenHelper.FormatCost(TotalCostUsd.Value)
 										</span>
 									}
 									@if (ShowPlanningBreakdown)
 									{
-										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+										<span class="d-inline-flex align-items-center px-3 py-1 bg-2 rounded-pill text-nowrap"
 											  title="Planning stage totals">
 											<i class="bi bi-diagram-3 me-1 opacity-75"></i>P @StageUsageSummary(PlanningInputTokens, PlanningOutputTokens, IsTokenEstimate ? null : PlanningCostUsd, IsTokenEstimate)
 										</span>
 									}
 									@if (ShowExecutionBreakdown)
 									{
-										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+										<span class="d-inline-flex align-items-center px-3 py-1 bg-2 rounded-pill text-nowrap"
 											  title="Execution stage totals">
 											<i class="bi bi-terminal me-1 opacity-75"></i>E @StageUsageSummary(ExecutionInputTokens, ExecutionOutputTokens, IsTokenEstimate ? null : ExecutionCostUsd, IsTokenEstimate)
 										</span>

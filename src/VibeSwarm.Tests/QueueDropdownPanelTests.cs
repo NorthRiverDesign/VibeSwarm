@@ -320,7 +320,8 @@ public sealed class QueueDropdownPanelTests
 
 		Assert.DoesNotContain("Stop queue", cut.Markup);
 		var start = cut.FindAll("button").Single(button => button.TextContent.Contains("Start queued ideas"));
-		Assert.Contains("btn-primary", start.ClassList);
+		Assert.Contains("btn-solid", start.ClassList);
+		Assert.Contains("theme-primary", start.ClassList);
 	}
 
 	[Fact]
@@ -452,18 +453,20 @@ public sealed class QueueDropdownPanelTests
 	}
 
 	[Fact]
-	public void QueueDropdownPanel_CompactMode_UsesStaticDropdownDisplay()
+	public void QueueDropdownPanel_CompactMode_UsesStaticMenuDisplay()
 	{
 		using var context = CreateContext(new FakeIdeaService());
 		var cut = context.Render<QueueDropdownPanel>(parameters => parameters
 			.Add(component => component.Compact, true));
 
 		var toggle = cut.Find("button[title='Queue']");
-		var dropdown = cut.Find("div.dropdown");
-		var menu = cut.Find("div.dropdown-menu");
+		var wrapper = cut.Find("div.mobile-header-dropdown");
+		var menu = cut.Find("div.menu");
 
+		Assert.Equal("menu", toggle.GetAttribute("data-bs-toggle"));
 		Assert.Equal("static", toggle.GetAttribute("data-bs-display"));
-		Assert.Contains("mobile-header-dropdown", dropdown.ClassList);
+		Assert.Contains("mobile-header-dropdown", menu.ParentElement!.ClassList);
+		Assert.NotNull(wrapper);
 		Assert.Contains("vs-nav-dropdown-menu", menu.ClassList);
 	}
 

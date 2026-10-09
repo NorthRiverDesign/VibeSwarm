@@ -4,7 +4,7 @@
 	Title="Create GitHub Repository" Icon="github"
 	Size="ModalDialog.ModalSize.Default">
 	<ChildContent>
-		<div class="mb-3">
+		<div class="mb-5">
 			<label for="repoName" class="form-label">Repository Name</label>
 			<input type="text" class="form-control" id="repoName" @bind="_repositoryName" @bind:event="oninput"
 				placeholder="my-project" disabled="@IsCreating" />
@@ -13,39 +13,39 @@
 			</div>
 		</div>
 
-		<div class="mb-3">
+		<div class="mb-5">
 			<label for="repoDescription" class="form-label">
-				Description <span class="text-body-secondary fw-normal">(optional)</span>
+				Description <span class="fg-1 fw-normal">(optional)</span>
 			</label>
 			<input type="text" class="form-control" id="repoDescription" @bind="_description" @bind:event="oninput"
 				placeholder="A brief description of your project" disabled="@IsCreating" />
 		</div>
 
-		<div class="mb-3">
+		<div class="mb-5">
 			<label class="form-label">Visibility</label>
-			<div class="d-flex gap-3">
-				<div class="form-check">
-					<input class="form-check-input" type="radio" name="visibility" id="visibilityPublic"
+			<div class="d-flex gap-5">
+				<div class="form-field">
+					<input class="radio" type="radio" name="visibility" id="visibilityPublic"
 						checked="@(!_isPrivate)" @onchange="() => _isPrivate = false" disabled="@IsCreating">
-					<label class="form-check-label" for="visibilityPublic">
+					<label for="visibilityPublic">
 						<i class="bi bi-globe me-1"></i>Public
 					</label>
 				</div>
-				<div class="form-check">
-					<input class="form-check-input" type="radio" name="visibility" id="visibilityPrivate"
+				<div class="form-field">
+					<input class="radio" type="radio" name="visibility" id="visibilityPrivate"
 						checked="@_isPrivate" @onchange="() => _isPrivate = true" disabled="@IsCreating">
-					<label class="form-check-label" for="visibilityPrivate">
+					<label for="visibilityPrivate">
 						<i class="bi bi-lock me-1"></i>Private
 					</label>
 				</div>
 			</div>
 		</div>
 
-		<div class="mb-3">
+		<div class="mb-5">
 			<label for="gitignoreTemplate" class="form-label">
-				.gitignore Template <span class="text-body-secondary fw-normal">(optional)</span>
+				.gitignore Template <span class="fg-1 fw-normal">(optional)</span>
 			</label>
-			<select class="form-select" id="gitignoreTemplate" @bind="_gitignoreTemplate" disabled="@IsCreating">
+			<select class="form-control" id="gitignoreTemplate" @bind="_gitignoreTemplate" disabled="@IsCreating">
 				<option value="">None</option>
 				<option value="Node">Node</option>
 				<option value="Python">Python</option>
@@ -58,11 +58,11 @@
 			</select>
 		</div>
 
-		<div class="mb-3">
+		<div class="mb-5">
 			<label for="licenseTemplate" class="form-label">
-				License <span class="text-body-secondary fw-normal">(optional)</span>
+				License <span class="fg-1 fw-normal">(optional)</span>
 			</label>
-			<select class="form-select" id="licenseTemplate" @bind="_licenseTemplate" disabled="@IsCreating">
+			<select class="form-control" id="licenseTemplate" @bind="_licenseTemplate" disabled="@IsCreating">
 				<option value="">None</option>
 				<option value="mit">MIT</option>
 				<option value="apache-2.0">Apache 2.0</option>
@@ -73,10 +73,10 @@
 			</select>
 		</div>
 
-		<div class="mb-3">
-			<div class="form-check">
-				<input class="form-check-input" type="checkbox" id="initReadme" @bind="_initializeReadme" disabled="@IsCreating">
-				<label class="form-check-label" for="initReadme">
+		<div class="mb-5">
+			<div class="form-field">
+				<input class="check" type="checkbox" id="initReadme" @bind="_initializeReadme" disabled="@IsCreating">
+				<label for="initReadme">
 					Initialize with README
 				</label>
 			</div>
@@ -84,19 +84,19 @@
 
 		@if (!string.IsNullOrEmpty(_progressMessage))
 		{
-			<Alert Type="Alert.AlertType.Info" Class="mb-0 mt-3">
-				<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+			<Alert Type="Alert.AlertType.Info" Class="mb-0 mt-5">
+				<span class="spinner-border spinner-sm me-3" role="status"></span>
 				@_progressMessage
 			</Alert>
 		}
 
 		@if (!string.IsNullOrEmpty(ErrorMessage))
 		{
-			<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mb-0 mt-3" />
+			<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mb-0 mt-5" />
 		}
 
-		<div class="alert alert-info py-2 mb-0 mt-3">
-			<i class="bi bi-lightbulb me-1"></i>
+		<div class="alert theme-info py-3 mb-0 mt-5">
+			<i class="bi bi-lightbulb"></i>
 			<small>
 				This will create a new GitHub repository and push your local code.
 				Make sure you're logged in to the GitHub CLI (<code>gh auth login</code>).
@@ -104,14 +104,14 @@
 		</div>
 	</ChildContent>
 	<FooterContent>
-		<button type="button" class="btn btn-secondary" @onclick="HandleClose" disabled="@IsCreating">
+		<button type="button" class="btn-solid theme-secondary" @onclick="HandleClose" disabled="@IsCreating">
 			Cancel
 		</button>
-		<button type="button" class="btn btn-primary" @onclick="HandleCreate"
+		<button type="button" class="btn-solid theme-primary" @onclick="HandleCreate"
 			disabled="@(IsCreating || string.IsNullOrWhiteSpace(_repositoryName))">
 			@if (IsCreating)
 			{
-				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+				<span class="spinner-border spinner-sm me-1" role="status"></span>
 				<span>Creating...</span>
 			}
 			else

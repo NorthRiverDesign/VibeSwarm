@@ -9,57 +9,57 @@ else if (Providers.Count == 0)
 }
 else
 {
-	<div class="list-group rounded-4">
+	<div class="list-group rounded-9">
 		@for (var index = 0; index < Providers.Count; index++)
 		{
 			var provider = Providers[index];
 			var position = index;
 			<ListRow @key="provider.Id"
 					 Icon="@GetProviderIcon(provider.ProviderType)"
-					 IconClass="@(provider.IsEnabled ? "text-primary" : "text-body-tertiary")"
-					 Title="@provider.Name" TitleClass="@(provider.IsEnabled ? null : "text-body-secondary")"
+					 IconClass="@(provider.IsEnabled ? "fg-primary" : "fg-2")"
+					 Title="@provider.Name" TitleClass="@(provider.IsEnabled ? null : "fg-1")"
 					 Subtitle="@GetSubtitle(provider)"
 					 InitiallyExpanded="@(provider.Id == InitiallyOpenProviderId)">
 				<Trailing>
 					@if (!provider.IsEnabled)
 					{
-						<span class="small text-body-tertiary flex-shrink-0">Off</span>
+						<span class="small fg-2 flex-shrink-0">Off</span>
 					}
 					else if (HealthChecked.Contains(provider.Id))
 					{
 						@if (HealthStatus.GetValueOrDefault(provider.Id))
 						{
-							<span class="small text-success flex-shrink-0">Connected</span>
+							<span class="small fg-success flex-shrink-0">Connected</span>
 						}
 						else
 						{
-							<span class="small text-danger-emphasis flex-shrink-0">Can't connect</span>
+							<span class="small fg-emphasis-danger flex-shrink-0">Can't connect</span>
 						}
 					}
 				</Trailing>
 				<ChildContent>
 					<InferenceTestSection Provider="provider" ModelRefreshVersion="@ModelRefreshVersions.GetValueOrDefault(provider.Id)" />
 
-					<div class="d-flex flex-wrap align-items-center gap-2">
-						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnRefreshModels.InvokeAsync(provider)"
+					<div class="d-flex flex-wrap align-items-center gap-3">
+						<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => OnRefreshModels.InvokeAsync(provider)"
 								disabled="@RefreshingModelsProviderId.HasValue">
 							<i class="bi bi-arrow-repeat me-1 @(RefreshingModelsProviderId == provider.Id ? "spin" : "")"></i>Refresh models
 						</button>
-						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnEditProvider.InvokeAsync(provider)">Edit</button>
+						<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => OnEditProvider.InvokeAsync(provider)">Edit</button>
 						@if (Providers.Count > 1)
 						{
 							<div class="btn-group btn-group-sm" role="group" aria-label="Priority">
-								<button type="button" class="btn btn-secondary" title="Move up" aria-label="Move up"
+								<button type="button" class="btn-solid theme-secondary" title="Move up" aria-label="Move up"
 										disabled="@(position == 0 || IsReordering)" @onclick="() => OnMoveProvider.InvokeAsync((provider, -1))">
 									<i class="bi bi-arrow-up"></i>
 								</button>
-								<button type="button" class="btn btn-secondary" title="Move down" aria-label="Move down"
+								<button type="button" class="btn-solid theme-secondary" title="Move down" aria-label="Move down"
 										disabled="@(position == Providers.Count - 1 || IsReordering)" @onclick="() => OnMoveProvider.InvokeAsync((provider, 1))">
 									<i class="bi bi-arrow-down"></i>
 								</button>
 							</div>
 						}
-						<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDeleteProvider.InvokeAsync(provider)">
+						<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDeleteProvider.InvokeAsync(provider)">
 							<i class="bi bi-trash me-1"></i>Delete
 						</button>
 					</div>

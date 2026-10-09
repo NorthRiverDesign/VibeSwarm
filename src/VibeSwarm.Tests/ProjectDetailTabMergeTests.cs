@@ -25,7 +25,7 @@ public sealed class ProjectDetailTabMergeTests
 
 		cut.WaitForAssertion(() =>
 		{
-			var tabLabels = cut.FindAll("ul.nav-pills button.nav-link")
+			var tabLabels = cut.FindAll("ul.nav button.nav-link")
 				.Select(button => button.TextContent.Trim())
 				.ToList();
 
@@ -93,8 +93,8 @@ public sealed class ProjectDetailTabMergeTests
 		var navigation = context.Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
 
 		var cut = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
-		cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("ul.nav-pills button.nav-link")));
-		cut.FindAll("ul.nav-pills button.nav-link").Single(button => button.TextContent.Trim() == "Environments").Click();
+		cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("ul.nav button.nav-link")));
+		cut.FindAll("ul.nav button.nav-link").Single(button => button.TextContent.Trim() == "Environments").Click();
 
 		// Providers load after the tabs appear, and the row shows its subtitle only once they have.
 		cut.WaitForAssertion(() =>

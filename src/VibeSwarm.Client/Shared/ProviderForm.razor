@@ -3,18 +3,18 @@
 
 <EditForm Model="@Provider" OnValidSubmit="HandleValidSubmit">
 	<DataAnnotationsValidator />
-	<ValidationSummary class="text-danger mb-3" />
+	<ValidationSummary class="fg-danger mb-5" />
 
-	<div class="mb-3">
+	<div class="mb-5">
 		<label for="name" class="form-label">Name</label>
 		<InputText id="name" @bind-Value="Provider.Name" class="form-control" placeholder="My OpenCode Provider" />
-		<ValidationMessage For="@(() => Provider.Name)" class="text-danger small" />
+		<ValidationMessage For="@(() => Provider.Name)" class="fg-danger small" />
 	</div>
 
-	<div class="mb-3">
+	<div class="mb-5">
 		<label for="type" class="form-label">Provider Type</label>
 		<InputSelect id="type" Value="Provider.Type" ValueExpression="@(() => Provider.Type)"
-					 ValueChanged="@((ProviderType value) => OnProviderTypeChanged(value))" class="form-select">
+					 ValueChanged="@((ProviderType value) => OnProviderTypeChanged(value))" class="form-control">
 			@foreach (var type in Enum.GetValues<ProviderType>())
 			{
 				<option value="@type">@type</option>
@@ -23,7 +23,7 @@
 		<div class="form-text">@ProviderCapabilities.GetDescription(Provider.Type)</div>
 	</div>
 
-	<div class="mb-3">
+	<div class="mb-5">
 		<label for="connectionMode" class="form-label">Connection Mode</label>
 		@{
 			var supportedModes = ProviderCapabilities.GetSupportedModes(Provider.Type);
@@ -31,14 +31,14 @@
 		@if (supportedModes.Count == 1)
 		{
 			<input type="text" class="form-control" value="@supportedModes[0]" disabled />
-			<div class="form-text text-body-secondary">
+			<div class="form-text fg-1">
 				<i class="bi bi-info-circle me-1"></i>
 				@Provider.Type only supports @supportedModes[0] mode.
 			</div>
 		}
 		else
 		{
-			<InputSelect id="connectionMode" @bind-Value="Provider.ConnectionMode" class="form-select">
+			<InputSelect id="connectionMode" @bind-Value="Provider.ConnectionMode" class="form-control">
 				@foreach (var mode in supportedModes)
 				{
 					<option value="@mode">@mode</option>
@@ -50,7 +50,7 @@
 
 	@if (Provider.ConnectionMode == ProviderConnectionMode.CLI)
 	{
-		<div class="mb-3">
+		<div class="mb-5">
 			<label for="executablePath" class="form-label">Executable Path (optional)</label>
 			<InputText id="executablePath" @bind-Value="Provider.ExecutablePath" class="form-control"
 					   placeholder="@GetExecutablePlaceholder()" />
@@ -59,30 +59,30 @@
 	}
 	else if (Provider.ConnectionMode == ProviderConnectionMode.SDK)
 	{
-		<div class="mb-3">
+		<div class="mb-5">
 			<div class="form-label">Connection Type</div>
-			<div class="form-control-plaintext py-0 small text-body-secondary">
+			<div class="form-control-plaintext py-0 small fg-1">
 				@ProviderCapabilities.GetConnectionTypeLabel(Provider)
 			</div>
 		</div>
 		@if (Provider.Type == ProviderType.Claude)
 		{
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="apiKey" class="form-label">
-					API Key <span class="text-danger">*</span>
+					API Key <span class="fg-danger">*</span>
 				</label>
 				<InputText id="apiKey" @bind-Value="Provider.ApiKey" class="form-control" type="password"
 					placeholder="sk-ant-..." />
 				<div class="form-text">Your Anthropic API key for direct SDK access.</div>
 				@if (string.IsNullOrWhiteSpace(Provider.ApiKey))
 				{
-					<div class="text-warning small mt-1">
+					<div class="fg-warning small mt-1">
 						<i class="bi bi-exclamation-triangle me-1"></i>
 						API Key is required for Claude SDK mode.
 					</div>
 				}
 			</div>
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="apiEndpoint" class="form-label">API Endpoint (optional)</label>
 				<InputText id="apiEndpoint" @bind-Value="Provider.ApiEndpoint" class="form-control"
 					placeholder="https://api.anthropic.com" />
@@ -91,18 +91,18 @@
 		}
 		@if (Provider.Type == ProviderType.Copilot)
 		{
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="apiEndpoint" class="form-label">Custom API Provider (optional, BYOK)</label>
 				<InputText id="apiEndpoint" @bind-Value="Provider.ApiEndpoint" class="form-control"
 					placeholder="https://api.openai.com/v1" />
 				<div class="form-text">Leave empty to use GitHub Copilot. Set a custom provider endpoint to run this SDK connection in BYOK mode.</div>
 			</div>
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="apiKey" class="form-label">
 					@(IsCopilotCustomProvider ? "Provider API Key" : "GitHub Token (optional)")
 					@if (IsCopilotCustomProvider)
 					{
-						<span class="text-danger"> *</span>
+						<span class="fg-danger"> *</span>
 					}
 				</label>
 				<InputText id="apiKey" @bind-Value="Provider.ApiKey" class="form-control" type="password"
@@ -118,7 +118,7 @@
 					}
 				</div>
 			</div>
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="executablePath" class="form-label">Copilot CLI Path (optional)</label>
 				<InputText id="executablePath" @bind-Value="Provider.ExecutablePath" class="form-control"
 					placeholder="copilot or /path/to/copilot" />
@@ -128,38 +128,38 @@
 	}
 	else
 	{
-		<div class="mb-3">
+		<div class="mb-5">
 			<label for="apiEndpoint" class="form-label">
-				API Endpoint <span class="text-danger">*</span>
+				API Endpoint <span class="fg-danger">*</span>
 			</label>
 			<InputText id="apiEndpoint" @bind-Value="Provider.ApiEndpoint" class="form-control"
 					   placeholder="http://localhost:8080" />
-			<ValidationMessage For="@(() => Provider.ApiEndpoint)" class="text-danger small" />
+			<ValidationMessage For="@(() => Provider.ApiEndpoint)" class="fg-danger small" />
 			@if (Provider.ConnectionMode == ProviderConnectionMode.REST && string.IsNullOrWhiteSpace(Provider.ApiEndpoint))
 			{
-				<div class="text-warning small mt-1">
+				<div class="fg-warning small mt-1">
 					<i class="bi bi-exclamation-triangle me-1"></i>
 					API Endpoint is required for REST connection mode.
 				</div>
 			}
 		</div>
 
-		<div class="mb-3">
+		<div class="mb-5">
 			<label for="apiKey" class="form-label">API Key (optional)</label>
 			<InputText id="apiKey" @bind-Value="Provider.ApiKey" class="form-control" type="password" />
 		</div>
 	}
 
-	<div class="mb-3 form-check">
-		<InputCheckbox id="isEnabled" @bind-Value="Provider.IsEnabled" class="form-check-input" />
-		<label for="isEnabled" class="form-check-label">Enabled</label>
+	<div class="mb-5 form-field">
+		<InputCheckbox id="isEnabled" @bind-Value="Provider.IsEnabled" class="check" />
+		<label for="isEnabled">Enabled</label>
 	</div>
 
 	@if (ValidationErrors.Any())
 	{
-		<Alert Type="Alert.AlertType.Warning" Class="mb-3">
+		<Alert Type="Alert.AlertType.Warning" Class="mb-5">
 			<strong>Please fix the following issues:</strong>
-			<ul class="mb-0 mt-2">
+			<ul class="mb-0 mt-3">
 				@foreach (var error in ValidationErrors)
 				{
 					<li>@error</li>
@@ -168,23 +168,23 @@
 		</Alert>
 	}
 
-	<div class="d-flex gap-2">
-		<button type="submit" class="btn btn-primary" disabled="@(IsSaving || ValidationErrors.Any())">
+	<div class="d-flex gap-3">
+		<button type="submit" class="btn-solid theme-primary" disabled="@(IsSaving || ValidationErrors.Any())">
 			@if (IsSaving)
 			{
-				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+				<span class="spinner-border spinner-sm me-1" role="status"></span>
 			}
 			@(IsSaving ? "Saving..." : (IsEdit ? "Update Provider" : "Add Provider"))
 		</button>
 		@if (IsEdit)
 		{
-			<button type="button" class="btn btn-secondary" @onclick="OnCancel">Cancel</button>
+			<button type="button" class="btn-solid theme-secondary" @onclick="OnCancel">Cancel</button>
 		}
 	</div>
 
 	@if (!string.IsNullOrEmpty(ErrorMessage))
 	{
-		<div class="text-danger small mt-3 mb-0">
+		<div class="fg-danger small mt-5 mb-0">
 			<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
 		</div>
 	}

@@ -1,50 +1,52 @@
 @* One user as a grouped-list row: name, role and last sign-in, opening in place for the account
    actions. Nobody can switch off or delete the account they are signed in with. *@
 
-<ListRow Icon="person-circle" IconClass="@(User.IsActive ? "text-primary" : "text-body-tertiary")"
-		 Title="@User.UserName" TitleClass="@(User.IsActive ? null : "text-body-secondary")"
+<ListRow Icon="person-circle" IconClass="@(User.IsActive ? "fg-primary" : "fg-2")"
+		 Title="@User.UserName" TitleClass="@(User.IsActive ? null : "fg-1")"
 		 Subtitle="@GetSummary()">
 	<TitleAdornment>
 		@if (IsCurrentUser)
 		{
-			<span class="small text-body-secondary flex-shrink-0">You</span>
+			<span class="small fg-1 flex-shrink-0">You</span>
 		}
 	</TitleAdornment>
 	<ChildContent>
-		<dl class="d-flex flex-column gap-2 small mb-0">
-			<div class="d-flex justify-content-between gap-3">
-				<dt class="fw-normal text-body-secondary">Role</dt>
+		<dl class="d-flex flex-column gap-3 small mb-0">
+			<div class="d-flex justify-content-between gap-5">
+				<dt class="fw-normal fg-1">Role</dt>
 				<dd class="mb-0">@RoleName</dd>
 			</div>
-			<div class="d-flex justify-content-between gap-3">
-				<dt class="fw-normal text-body-secondary">Added</dt>
+			<div class="d-flex justify-content-between gap-5">
+				<dt class="fw-normal fg-1">Added</dt>
 				<dd class="mb-0">@User.CreatedAt.FormatDateTimeShort()</dd>
 			</div>
-			<div class="d-flex justify-content-between gap-3">
-				<dt class="fw-normal text-body-secondary">Last signed in</dt>
+			<div class="d-flex justify-content-between gap-5">
+				<dt class="fw-normal fg-1">Last signed in</dt>
 				<dd class="mb-0">@(User.LastLoginAt?.FormatDateTimeShort() ?? "Never")</dd>
 			</div>
 		</dl>
 
-		<div class="form-check form-switch mb-0">
-			<input class="form-check-input" type="checkbox" role="switch" id="@_activeSwitchId"
-				   checked="@User.IsActive" disabled="@(IsCurrentUser && User.IsActive)"
-				   @onchange="() => OnToggleActive.InvokeAsync(User)" />
-			<label class="form-check-label" for="@_activeSwitchId">
+		<div class="form-field mb-0">
+			<div class="switch">
+				<input type="checkbox" role="switch" switch id="@_activeSwitchId"
+					   checked="@User.IsActive" disabled="@(IsCurrentUser && User.IsActive)"
+					   @onchange="() => OnToggleActive.InvokeAsync(User)" />
+			</div>
+			<label for="@_activeSwitchId">
 				Can sign in
 				@if (IsCurrentUser && User.IsActive)
 				{
-					<span class="d-block small text-body-secondary">You can't switch off your own account.</span>
+					<span class="d-block small fg-1">You can't switch off your own account.</span>
 				}
 			</label>
 		</div>
 
-		<div class="d-flex flex-wrap align-items-center gap-2">
-			<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnEditRole.InvokeAsync(User)">Change role</button>
-			<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnResetPassword.InvokeAsync(User)">Reset password</button>
+		<div class="d-flex flex-wrap align-items-center gap-3">
+			<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => OnEditRole.InvokeAsync(User)">Change role</button>
+			<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => OnResetPassword.InvokeAsync(User)">Reset password</button>
 			@if (!IsCurrentUser)
 			{
-				<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDelete.InvokeAsync(User)">
+				<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDelete.InvokeAsync(User)">
 					<i class="bi bi-trash me-1"></i>Delete
 				</button>
 			}

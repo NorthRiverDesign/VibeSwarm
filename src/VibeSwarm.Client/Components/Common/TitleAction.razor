@@ -2,7 +2,7 @@
    The label is read out and shown on hover in place of visible text; put the primary action last. *@
 
 <button type="button"
-		class="btn @(Primary ? "btn-primary" : "btn-secondary") rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center flex-shrink-0"
+		class="btn-icon @(Primary ? "btn-solid theme-primary" : "btn-solid theme-secondary") rounded-circle p-0 icon-button-round flex-shrink-0"
 		@onclick="OnClick" disabled="@(Disabled || IsLoading)" title="@Label" aria-label="@Label">
 	<i class="bi bi-@Icon @(IsLoading ? "spin" : "")"></i>
 </button>

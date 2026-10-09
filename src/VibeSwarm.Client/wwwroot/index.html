@@ -88,34 +88,36 @@
         <div id="app">
             <div class="d-flex align-items-center justify-content-center min-vh-100">
                 <div class="text-center">
-                    <div class="spinner-border text-primary mb-3" role="status">
+                    <div class="spinner-border fs-2xl fg-primary mb-5" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    <p class="text-muted" id="loading-message">Loading VibeSwarm...</p>
+                    <p class="fg-1" id="loading-message">Loading VibeSwarm...</p>
                 </div>
             </div>
         </div>
 
         <div id="blazor-error-ui"
-            style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bs-body-bg,#1a1d21);z-index:9999;padding:env(safe-area-inset-top,20px) env(safe-area-inset-right,20px) env(safe-area-inset-bottom,20px) env(safe-area-inset-left,20px);">
+            style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bs-bg-body,#1a1d21);z-index:9999;padding:env(safe-area-inset-top,20px) env(safe-area-inset-right,20px) env(safe-area-inset-bottom,20px) env(safe-area-inset-left,20px);">
             <div class="d-flex align-items-center justify-content-center min-vh-100">
-                <div class="text-center p-4" style="max-width:400px;">
-                    <div class="mb-4">
-                        <i class="bi bi-exclamation-triangle text-warning" style="font-size:3rem;"></i>
+                <div class="text-center p-7" style="max-width:400px;">
+                    <div class="mb-7">
+                        <i class="bi bi-exclamation-triangle fg-warning" style="font-size:3rem;"></i>
                     </div>
-                    <h4 class="text-body mb-3">Unable to Load Application</h4>
-                    <p class="text-muted mb-4">This may be due to a network issue or cached data. Try reloading or
+                    <h4 class="fg-body mb-5">Unable to Load Application</h4>
+                    <p class="fg-1 mb-7">This may be due to a network issue or cached data. Try reloading or
                         clearing the cache.</p>
-                    <div class="d-flex flex-column gap-2">
-                        <button type="button" onclick="location.reload()" class="btn btn-primary">Reload App</button>
-                        <button type="button" onclick="clearCacheAndReload()" class="btn btn-secondary">Clear Cache
+                    <div class="d-flex flex-column gap-3">
+                        <button type="button" onclick="location.reload()" class="btn-solid theme-primary">Reload App</button>
+                        <button type="button" onclick="clearCacheAndReload()" class="btn-solid theme-secondary">Clear Cache
                             &amp; Reload</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <script src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
+        <!-- Bootstrap 6 ships as an ES module; its data API (menus, dismiss buttons) starts on load.
+             Blazor components reach its JavaScript API through js/bootstrap-interop.js. -->
+        <script type="module" src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
 
         <!-- Error handling for iOS Safari and WebAssembly loading issues -->
         <script>
@@ -566,7 +568,7 @@
                     start = isStandalone
                         && e.touches.length === 1
                         && touch.clientX <= 24
-                        && !document.body.classList.contains('vs-modal-open')
+                        && !document.documentElement.classList.contains('dialog-open')
                         && !isInsideHorizontalScroll(e.target)
                         ? { x: touch.clientX, y: touch.clientY }
                         : null;

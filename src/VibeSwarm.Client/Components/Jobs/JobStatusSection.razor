@@ -14,56 +14,52 @@
 
 @if (isTerminal || isActive)
 {
-    @* Equal columns, disc above label, so all four steps fit one row on a phone. Each column
-       draws its own half of the connector on either side of the disc. *@
-    <div class="card mb-3">
-        <div class="card-body py-3 px-1 d-flex">
-            @foreach (var (step, i) in steps.Select((s, i) => (s, i)))
-            {
-                var isFirst = i == 0;
-                var isLast = i == steps.Count - 1;
-                <div class="col min-width-0 d-flex flex-column align-items-center gap-1 text-center">
-                    <div class="d-flex align-items-center w-100">
-                        <span class="flex-grow-1 @(isFirst ? string.Empty : ConnectorClass(steps[i - 1]))"></span>
-                        <span class="d-inline-flex align-items-center justify-content-center flex-shrink-0 rounded-circle status-disc-md mx-1 @step.BadgeClass">
-                            <i class="bi @step.Icon d-flex"></i>
-                        </span>
-                        <span class="flex-grow-1 @(isLast ? string.Empty : ConnectorClass(step))"></span>
-                    </div>
-                    <span class="small fw-medium lh-sm text-truncate mw-100 px-1">@step.Name</span>
-                    @if (!string.IsNullOrEmpty(step.Sub))
-                    {
-                        <span class="text-caption text-muted text-truncate mw-100 px-1 @(step.Mono ? "font-monospace" : "")">@step.Sub</span>
-                    }
-                </div>
-            }
+    @* Bootstrap's stepper: equal columns, marker above label, so all four steps fit one row on
+       a phone. A step's colour comes from its theme; the connector after it takes that colour
+       while the next step is reached too. *@
+    <div class="card mb-5">
+        <div class="card-body py-5 px-1">
+            <ol class="stepper stepper-horizontal w-100 mb-0">
+                @foreach (var step in steps)
+                {
+                    <li class="stepper-item @step.ItemClass" aria-current="@(step.State == State.Current ? "step" : null)">
+                        <div class="d-flex flex-column gap-1 min-w-0 w-100">
+                            <span class="small fw-medium lh-sm text-truncate px-1">@step.Name</span>
+                            @if (!string.IsNullOrEmpty(step.Sub))
+                            {
+                                <span class="text-caption fg-1 text-truncate px-1 @(step.Mono ? "font-monospace" : "")">@step.Sub</span>
+                            }
+                        </div>
+                    </li>
+                }
+            </ol>
         </div>
     </div>
 }
 
 @if (isTerminal)
 {
-    <div class="alert alert-@variant d-flex align-items-start gap-3 mb-3">
-        <i class="bi @BannerIcon fs-5"></i>
-        <div class="flex-grow-1 min-width-0">
+    <div class="alert theme-@variant align-items-start gap-5 mb-5">
+        <i class="bi @BannerIcon fs-lg"></i>
+        <div class="flex-grow-1 min-w-0">
             <div class="fw-semibold">@BannerHeadline</div>
             <div class="small">@BannerBody</div>
-            <div class="d-flex flex-wrap gap-2 align-items-center pt-2">
+            <div class="d-flex flex-wrap gap-3 align-items-center pt-3">
                 @if (Job.ChangedFilesCount > 0)
                 {
-                    <span class="badge text-bg-secondary"><i class="bi bi-file-earmark-diff"></i> @Job.ChangedFilesCount files</span>
+                    <span class="badge theme-secondary"><i class="bi bi-file-earmark-diff"></i> @Job.ChangedFilesCount files</span>
                 }
                 @if (shortSha is not null)
                 {
-                    <span class="badge text-bg-secondary font-monospace"><i class="bi bi-git"></i> @shortSha</span>
+                    <span class="badge theme-secondary font-monospace"><i class="bi bi-git"></i> @shortSha</span>
                 }
                 @if (IsPushed)
                 {
-                    <span class="badge text-bg-success"><i class="bi bi-cloud-check"></i> Pushed</span>
+                    <span class="badge theme-success"><i class="bi bi-cloud-check"></i> Pushed</span>
                 }
                 @if (Job.Project?.BuildVerificationEnabled == true && Job.BuildVerified == true)
                 {
-                    <span class="badge text-bg-success"><i class="bi bi-shield-check"></i> Verified</span>
+                    <span class="badge theme-success"><i class="bi bi-shield-check"></i> Verified</span>
                 }
             </div>
         </div>
@@ -136,24 +132,17 @@
     }
 
     private enum State { Pending, Current, Done, Failed }
-    private static string ConnectorClass(Step from) => from.Done ? "border-top border-success" : "border-top";
 
     private record Step(string Name, string? Sub, State State, bool Mono = false)
     {
-        public bool Done => State == State.Done;
-        public string BadgeClass => State switch
+        // A reached step is "active" in its theme colour; site.css swaps the step number in
+        // its marker for a status glyph.
+        public string ItemClass => State switch
         {
-            State.Done => "text-bg-success",
-            State.Current => "text-bg-primary",
-            State.Failed => "text-bg-danger",
-            _ => "bg-body-tertiary text-body-tertiary border"
-        };
-        public string Icon => State switch
-        {
-            State.Done => "bi-check-lg",
-            State.Current => "bi-hourglass-split",
-            State.Failed => "bi-x-lg",
-            _ => "bi-dot"
+            State.Done => "active theme-success stepper-item-done",
+            State.Current => "active theme-primary stepper-item-current",
+            State.Failed => "active theme-danger stepper-item-failed",
+            _ => string.Empty
         };
     }
 }

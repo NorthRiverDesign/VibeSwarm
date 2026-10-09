@@ -29,7 +29,7 @@
 
 <ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete Provider"
 				   Message="@($"Are you sure you want to remove {_providerToDelete?.Name}?")" SubMessage="This action cannot be undone."
-				   ConfirmText="Delete" ButtonClass="btn-danger" IsProcessing="_isDeleting" OnConfirm="ConfirmDelete"
+				   ConfirmText="Delete" ButtonClass="btn-solid theme-danger" IsProcessing="_isDeleting" OnConfirm="ConfirmDelete"
 				   OnCancel="CancelDelete" />
 
 @code {

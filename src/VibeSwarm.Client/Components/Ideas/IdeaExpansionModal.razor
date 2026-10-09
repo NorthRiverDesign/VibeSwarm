@@ -6,30 +6,30 @@
 	<ChildContent>
 		@if (Idea == null)
 		{
-			<div class="text-center py-4">
-				<span class="spinner-border spinner-border-sm" role="status"></span>
-				<span class="ms-2">Loading...</span>
+			<div class="text-center py-7">
+				<span class="spinner-border spinner-sm" role="status"></span>
+				<span class="ms-3">Loading...</span>
 			</div>
 		}
 		else
 		{
-			<div class="mb-4">
+			<div class="mb-7">
 				<label class="form-label fw-semibold">
-					<i class="bi bi-lightbulb text-warning me-1"></i>Original Idea
+					<i class="bi bi-lightbulb fg-warning me-1"></i>Original Idea
 				</label>
-				<div class="p-3 bg-body-tertiary rounded text-break" style="white-space: pre-wrap;">@Idea.Description</div>
+				<div class="p-5 bg-2 rounded text-break" style="white-space: pre-wrap;">@Idea.Description</div>
 			</div>
 
 			@if (IsExpanding)
 			{
-				<div class="d-flex flex-column align-items-center justify-content-center py-5 gap-3">
-					<div class="spinner-border text-primary" role="status">
+				<div class="d-flex flex-column align-items-center justify-content-center py-12 gap-5">
+					<div class="spinner-border fs-2xl fg-primary" role="status">
 						<span class="visually-hidden">Expanding...</span>
 					</div>
-					<div class="text-body-secondary">
+					<div class="fg-1">
 						<i class="bi bi-stars me-1"></i>AI is expanding your idea into a detailed specification...
 					</div>
-					<button type="button" class="btn btn-danger btn-sm mt-2" @onclick="RequestCancel">
+					<button type="button" class="btn-solid theme-danger btn-sm mt-3" @onclick="RequestCancel">
 						<i class="bi bi-x-circle me-1"></i>Cancel Expansion
 					</button>
 				</div>
@@ -47,11 +47,11 @@
 										HasInference="@HasInference" AvailableProviders="@AvailableProviders"
 										SelectedProviderId="@_selectedProviderId" SelectedProviderIdChanged="@((v) => _selectedProviderId = v)" />
 
-				<div class="d-flex gap-2 mt-3">
-					<button type="button" class="btn btn-primary" @onclick="RequestExpansion" disabled="@IsExpanding">
+				<div class="d-flex gap-3 mt-5">
+					<button type="button" class="btn-solid theme-primary" @onclick="RequestExpansion" disabled="@IsExpanding">
 						<i class="bi bi-arrow-clockwise me-1"></i>Try Again
 					</button>
-					<button type="button" class="btn btn-secondary" @onclick="HandleClose">
+					<button type="button" class="btn-solid theme-secondary" @onclick="HandleClose">
 						Cancel
 					</button>
 				</div>
@@ -60,20 +60,20 @@
 			Idea.ExpansionStatus == IdeaExpansionStatus.Approved ||
 			!string.IsNullOrWhiteSpace(EditedDescription))
 			{
-				<div class="mb-3">
+				<div class="mb-5">
 					<label class="form-label fw-semibold d-flex align-items-center justify-content-between">
 						<span>
 							<i class="bi bi-file-text me-1"></i>Expanded Specification
 							@if (Idea.ExpansionStatus == IdeaExpansionStatus.PendingReview)
 							{
-								<span class="badge bg-warning text-dark ms-2">Pending Review</span>
+								<span class="badge theme-warning ms-3">Pending Review</span>
 							}
 							else if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved)
 							{
-								<span class="badge bg-success ms-2">Approved</span>
+								<span class="badge theme-success ms-3">Approved</span>
 							}
 						</span>
-						<button type="button" class="btn btn-sm btn-secondary" @onclick="ToggleEditMode"
+						<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="ToggleEditMode"
 								title="@(IsEditMode ? "View mode" : "Edit mode")">
 							<i class="bi @(IsEditMode ? "bi-eye" : "bi-pencil")"></i>
 						</button>
@@ -86,31 +86,31 @@
 								  placeholder="Edit the expanded specification..."></textarea>
 						<div class="form-text">
 							Edit the specification to better match your requirements before approving.
-							<span class="ms-2">@GetExpandedLengthSummary()</span>
+							<span class="ms-3">@GetExpandedLengthSummary()</span>
 						</div>
 						@if (!string.IsNullOrWhiteSpace(EditedDescriptionValidationMessage))
 						{
-							<div class="text-danger small mt-2">
+							<div class="fg-danger small mt-3">
 								<i class="bi bi-exclamation-circle me-1"></i>@EditedDescriptionValidationMessage
 							</div>
 						}
 					}
 					else
 					{
-						<div class="p-3 bg-body-tertiary rounded overflow-auto" style="max-height: 400px; white-space: pre-wrap;">
+						<div class="p-5 bg-2 rounded overflow-auto" style="max-height: 400px; white-space: pre-wrap;">
 							@(EditedDescription ?? Idea.ExpandedDescription)
 						</div>
 					}
 				</div>
 
-				<div class="d-flex flex-wrap gap-2">
+				<div class="d-flex flex-wrap gap-3">
 					@if (Idea.ExpansionStatus != IdeaExpansionStatus.Approved)
 					{
-						<button type="button" class="btn btn-success" @onclick="ApproveExpansion"
+						<button type="button" class="btn-solid theme-success" @onclick="ApproveExpansion"
 								disabled="@(IsProcessing || !CanApproveExpansion)">
 							@if (IsProcessing)
 							{
-								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+								<span class="spinner-border spinner-sm me-1" role="status"></span>
 							}
 							else
 							{
@@ -119,13 +119,13 @@
 							Approve & Use
 						</button>
 					}
-					<button type="button" class="btn btn-primary" @onclick="RequestExpansion" disabled="@IsExpanding">
+					<button type="button" class="btn-solid theme-primary" @onclick="RequestExpansion" disabled="@IsExpanding">
 						<i class="bi bi-arrow-clockwise me-1"></i>Re-generate
 					</button>
-					<button type="button" class="btn btn-danger" @onclick="RejectExpansion" disabled="@IsProcessing">
+					<button type="button" class="btn-solid theme-danger" @onclick="RejectExpansion" disabled="@IsProcessing">
 						<i class="bi bi-x-lg me-1"></i>Discard
 					</button>
-					<button type="button" class="btn btn-secondary ms-auto" @onclick="HandleClose">
+					<button type="button" class="btn-solid theme-secondary ms-auto" @onclick="HandleClose">
 						Close
 					</button>
 				</div>
@@ -133,9 +133,9 @@
 			else
 			{
 				@* Initial state - not expanded yet *@
-				<div class="text-center py-4">
-					<p class="text-body-secondary mb-4">
-						<i class="bi bi-stars text-primary fs-3 d-block mb-2"></i>
+				<div class="text-center py-7">
+					<p class="fg-1 mb-7">
+						<i class="bi bi-stars fg-primary fs-2xl d-block mb-3"></i>
 						Use AI to expand this brief idea into a detailed implementation specification.
 						You'll be able to review and edit before using it.
 					</p>
@@ -148,11 +148,11 @@
 											SelectedProviderId="@_selectedProviderId"
 											SelectedProviderIdChanged="@((v) => _selectedProviderId = v)" />
 
-					<button type="button" class="btn btn-primary btn-lg mt-3" @onclick="RequestExpansion"
+					<button type="button" class="btn-solid theme-primary btn-lg mt-5" @onclick="RequestExpansion"
 							disabled="@IsExpanding">
 						@if (IsExpanding)
 						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							<span class="spinner-border spinner-sm me-1" role="status"></span>
 						}
 						else
 						{

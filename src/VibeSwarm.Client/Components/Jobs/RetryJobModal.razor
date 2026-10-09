@@ -7,11 +7,11 @@
 		<div>
 			@if (IsLoading)
 			{
-				<div class="text-center py-4">
-					<div class="spinner-border text-primary" role="status">
+				<div class="text-center py-7">
+					<div class="spinner-border fs-2xl fg-primary" role="status">
 						<span class="visually-hidden">Loading...</span>
 					</div>
-					<p class="text-body-secondary mt-2 mb-0">Loading providers...</p>
+					<p class="fg-1 mt-3 mb-0">Loading providers...</p>
 				</div>
 			}
 			else if (Providers.Count == 0)
@@ -24,14 +24,14 @@
 			{
 				@if (Job != null && Job.RetryCount > 0)
 				{
-					<Alert Type="Alert.AlertType.Info" Class="d-flex align-items-center mb-3 py-2">
+					<Alert Type="Alert.AlertType.Info" Class="d-flex align-items-center mb-5 py-3">
 						<span>This job has been attempted <strong>@(Job.RetryCount + 1)</strong> time(s)</span>
 					</Alert>
 				}
 
-				<div class="mb-3">
+				<div class="mb-5">
 					<label for="retryProvider" class="form-label">Provider</label>
-					<select id="retryProvider" class="form-select" @bind="SelectedProviderId"
+					<select id="retryProvider" class="form-control" @bind="SelectedProviderId"
 						@bind:after="OnProviderChanged">
 						@foreach (var provider in Providers)
 						{
@@ -47,26 +47,26 @@
 					<div class="form-text">Select the provider to use for this retry attempt.</div>
 				</div>
 
-				<div class="mb-3">
+				<div class="mb-5">
 					<label for="retryModel" class="form-label">Model</label>
 					@if (IsLoadingModels)
 					{
-						<div class="d-flex align-items-center gap-2 py-2">
-							<div class="spinner-border spinner-border-sm text-secondary" role="status">
+						<div class="d-flex align-items-center gap-3 py-3">
+							<div class="spinner-border spinner-sm fg-secondary" role="status">
 								<span class="visually-hidden">Loading models...</span>
 							</div>
-							<span class="text-body-secondary small">Loading available models...</span>
+							<span class="fg-1 small">Loading available models...</span>
 						</div>
 					}
 					else if (AvailableModels.Count == 0)
 					{
 						<div class="input-group">
-							<select id="retryModel" class="form-select" disabled>
+							<select id="retryModel" class="form-control" disabled>
 								<option value="">Default (provider decides)</option>
 							</select>
 							<ModelRefreshButton ProviderId="@SelectedProviderId" OnRefreshed="HandleModelsRefreshed" />
 						</div>
-						<div class="form-text text-warning">
+						<div class="form-text fg-warning">
 							<i class="bi bi-exclamation-triangle me-1"></i>
 							No models loaded for this provider. The provider's default model will be used.
 						</div>
@@ -74,7 +74,7 @@
 					else
 					{
 						<div class="input-group">
-							<select id="retryModel" class="form-select" @bind="SelectedModelId">
+							<select id="retryModel" class="form-control" @bind="SelectedModelId">
 								<option value="">Default (provider decides)</option>
 								@foreach (var model in AvailableModels.Where(m => m.IsAvailable))
 								{
@@ -101,9 +101,9 @@
 					}
 				</div>
 
-				<div class="mb-3">
+				<div class="mb-5">
 					<label for="retryReasoning" class="form-label">Reasoning</label>
-					<select id="retryReasoning" class="form-select" @bind="SelectedReasoningEffort" disabled="@(!ReasoningOptions.Any())">
+					<select id="retryReasoning" class="form-control" @bind="SelectedReasoningEffort" disabled="@(!ReasoningOptions.Any())">
 						<option value="">Default (provider decides)</option>
 						@foreach (var reasoning in ReasoningOptions)
 						{
@@ -124,20 +124,20 @@
 
 				@if (!string.IsNullOrEmpty(ErrorMessage))
 				{
-					<Alert Type="Alert.AlertType.Danger" Class="py-2 mb-0">@ErrorMessage</Alert>
+					<Alert Type="Alert.AlertType.Danger" Class="py-3 mb-0">@ErrorMessage</Alert>
 				}
 			}
 		</div>
 	</ChildContent>
 	<FooterContent>
-		<button type="button" class="btn btn-secondary" @onclick="Close" disabled="@IsSubmitting">
+		<button type="button" class="btn-solid theme-secondary" @onclick="Close" disabled="@IsSubmitting">
 			Cancel
 		</button>
-		<button type="button" class="btn btn-primary" @onclick="Submit"
+		<button type="button" class="btn-solid theme-primary" @onclick="Submit"
 			disabled="@(IsLoading || Providers.Count == 0 || IsSubmitting || IsLoadingModels)">
 			@if (IsSubmitting)
 			{
-				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+				<span class="spinner-border spinner-sm me-1" role="status"></span>
 				<span>Retrying...</span>
 			}
 			else

@@ -1,17 +1,17 @@
 @* One grouped list per provider: its CLI on this host first, then the connections jobs run
    through. Everything is on one page, so whether a provider is ready shows without tapping. *@
 
-<div class="d-flex flex-column gap-4">
+<div class="d-flex flex-column gap-7">
 	@foreach (var status in Statuses)
 	{
 		var connections = GetConnections(status.ProviderType);
 
-		<section class="d-flex flex-column gap-2" aria-label="@status.DisplayName" @key="status.ProviderType">
-			<div class="d-flex align-items-center gap-3 px-1">
+		<section class="d-flex flex-column gap-3" aria-label="@status.DisplayName" @key="status.ProviderType">
+			<div class="d-flex align-items-center gap-5 px-1">
 				<h2 class="text-eyebrow mb-0 me-auto">@status.DisplayName</h2>
 				@if (connections.Count > 0)
 				{
-					<button type="button" class="btn btn-sm btn-link text-decoration-none px-0"
+					<button type="button" class="btn-sm btn-link text-decoration-none px-0"
 							title="@($"Add a {status.DisplayName} connection")"
 							@onclick="() => OnAddConnection.InvokeAsync(status.ProviderType)">
 						<i class="bi bi-plus-lg me-1"></i>Add
@@ -19,7 +19,7 @@
 				}
 			</div>
 
-			<div class="list-group rounded-4">
+			<div class="list-group rounded-9">
 				<ProviderHostRow Status="status"
 								 IsInstalling="@(InstallingProviderType == status.ProviderType)"
 								 IsSavingAuthentication="@(SavingAuthenticationProviderType == status.ProviderType)"
@@ -53,12 +53,12 @@
 
 				@if (connections.Count == 0)
 				{
-					<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-3 text-primary"
+					<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-5 fg-primary"
 							@onclick="() => OnAddConnection.InvokeAsync(status.ProviderType)">
 						<i class="bi bi-plus-circle flex-shrink-0"></i>
-						<span class="flex-grow-1 min-width-0 text-start">
+						<span class="flex-grow-1 min-w-0 text-start">
 							<span class="d-block fw-medium">Add a connection</span>
-							<span class="d-block small text-body-secondary">Jobs can't use @status.DisplayName until it has one.</span>
+							<span class="d-block small fg-1">Jobs can't use @status.DisplayName until it has one.</span>
 						</span>
 					</button>
 				}

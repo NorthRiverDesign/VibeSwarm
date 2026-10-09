@@ -6,28 +6,28 @@
 	<ChildContent>
 		@if (string.IsNullOrWhiteSpace(CurrentBranch))
 		{
-			<div class="alert alert-warning py-2 mb-0 d-flex align-items-center gap-2">
-				<i class="bi bi-exclamation-triangle-fill"></i>
+			<div class="alert theme-warning py-3 mb-0 align-items-center">
+				<i class="bi flex-shrink-0 bi-exclamation-triangle-fill"></i>
 				<span>A current branch is required before merging.</span>
 			</div>
 		}
 		else if (TargetBranches.Count == 0)
 		{
-			<div class="alert alert-warning py-2 mb-0 d-flex align-items-center gap-2">
-				<i class="bi bi-signpost-split-fill"></i>
+			<div class="alert theme-warning py-3 mb-0 align-items-center">
+				<i class="bi flex-shrink-0 bi-signpost-split-fill"></i>
 				<span>No other local branches are available to merge into.</span>
 			</div>
 		}
 		else
 		{
-			<p class="mb-3">
-				Merge the current working branch <strong class="text-primary">@CurrentBranch</strong>
+			<p class="mb-5">
+				Merge the current working branch <strong class="fg-primary">@CurrentBranch</strong>
 				into another branch.
 			</p>
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="mergeTargetBranch" class="form-label small fw-medium">Target Branch</label>
-				<select id="mergeTargetBranch" class="form-select" value="@SelectedTargetBranch"
+				<select id="mergeTargetBranch" class="form-control" value="@SelectedTargetBranch"
 					@onchange="HandleTargetBranchChanged" disabled="@(IsCheckingPreview || IsOperationInProgress)">
 					@foreach (var branch in TargetBranches)
 					{
@@ -39,32 +39,32 @@
 				</div>
 			</div>
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label class="form-label small fw-medium">Action</label>
-				<div class="d-flex flex-column gap-2">
-					<div class="form-check">
-						<input id="actionMerge" class="form-check-input" type="radio" name="mergeAction"
+				<div class="d-flex flex-column gap-3">
+					<div class="form-field">
+						<input id="actionMerge" class="radio" type="radio" name="mergeAction"
 							checked="@(!CreatePullRequest)" @onchange="() => HandleCreatePullRequestChanged(false)"
 							disabled="@IsOperationInProgress" />
-						<label class="form-check-label" for="actionMerge">
+						<label for="actionMerge">
 							<i class="bi bi-arrow-left-right me-1"></i>
 							Merge locally
 						</label>
 					</div>
-					<div class="form-check">
-						<input id="actionPullRequest" class="form-check-input" type="radio" name="mergeAction"
+					<div class="form-field">
+						<input id="actionPullRequest" class="radio" type="radio" name="mergeAction"
 							checked="@CreatePullRequest" @onchange="() => HandleCreatePullRequestChanged(true)"
 							disabled="@(IsOperationInProgress || !IsGitHubCliAvailable || ConflictFiles.Count > 0)" />
-						<label class="form-check-label @(!IsGitHubCliAvailable ? "text-body-tertiary" : "")" for="actionPullRequest">
+						<label class="@(!IsGitHubCliAvailable ? "fg-2" : "")" for="actionPullRequest">
 							<i class="bi bi-github me-1"></i>
 							Create pull request
 							@if (!IsGitHubCliAvailable)
 							{
-								<span class="text-body-tertiary small ms-1">(GitHub CLI not available)</span>
+								<span class="fg-2 small ms-1">(GitHub CLI not available)</span>
 							}
 							else if (ConflictFiles.Count > 0)
 							{
-								<span class="text-body-tertiary small ms-1">(Resolve conflicts locally first)</span>
+								<span class="fg-2 small ms-1">(Resolve conflicts locally first)</span>
 							}
 						</label>
 					</div>
@@ -73,7 +73,7 @@
 
 			@if (CreatePullRequest)
 			{
-				<div class="mb-3">
+				<div class="mb-5">
 					<label for="prTitle" class="form-label small fw-medium">Pull Request Title</label>
 					<input id="prTitle" type="text" class="form-control" value="@PullRequestTitle"
 						@oninput="HandlePrTitleChanged" disabled="@IsOperationInProgress"
@@ -82,10 +82,10 @@
 			}
 			else
 			{
-				<div class="form-check mb-3">
-					<input id="pushAfterMerge" class="form-check-input" type="checkbox" checked="@PushAfterMerge"
+				<div class="form-field mb-5">
+					<input id="pushAfterMerge" class="check" type="checkbox" checked="@PushAfterMerge"
 						@onchange="HandlePushAfterMergeChanged" disabled="@IsOperationInProgress" />
-					<label class="form-check-label" for="pushAfterMerge">
+					<label for="pushAfterMerge">
 						Push target branch after merging
 					</label>
 				</div>
@@ -93,21 +93,21 @@
 
 			@if (IsCheckingPreview)
 			{
-				<div class="alert alert-info py-2 mb-0 d-flex align-items-center gap-2">
-					<span class="spinner-border spinner-border-sm" role="status"></span>
+				<div class="alert theme-info py-3 mb-0 align-items-center">
+					<span class="spinner-border spinner-sm flex-shrink-0" role="status"></span>
 					<span>Checking whether the merge can be applied cleanly...</span>
 				</div>
 			}
 			else if (ConflictFiles.Count > 0)
 			{
-				<div class="alert alert-warning py-2 mb-3 d-flex align-items-start gap-2">
+				<div class="alert theme-warning py-3 mb-5 align-items-start">
 					<i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
 					<div>
 						<div class="fw-semibold">This merge needs manual conflict resolution.</div>
 						<div>@(PreviewError ?? "Resolve each conflicted file below, remove all conflict markers, then complete the merge.")</div>
 						@if (HasUnresolvedConflictMarkers)
 						{
-							<div class="small mt-2">Remove all <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code> markers before continuing.</div>
+							<div class="small mt-3">Remove all <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code> markers before continuing.</div>
 						}
 					</div>
 				</div>
@@ -115,7 +115,7 @@
 				<GitDiffViewer DiffFiles="@ConflictDiffFiles" Title="Conflicted Files" Icon="exclamation-triangle"
 					ShowVerificationStatus="false">
 					<FileFooterTemplate Context="diffFile">
-						<div class="d-flex flex-column gap-2">
+						<div class="d-flex flex-column gap-3">
 							<label class="form-label small fw-medium mb-0" for="@GetConflictEditorId(diffFile.FileName)">Resolved content</label>
 							<textarea id="@GetConflictEditorId(diffFile.FileName)" class="form-control font-monospace"
 								rows="14"
@@ -123,7 +123,7 @@
 								disabled="@IsOperationInProgress">@GetConflictContent(diffFile.FileName)</textarea>
 							@if (ContainsConflictMarkers(GetConflictContent(diffFile.FileName)))
 							{
-								<div class="small text-warning-emphasis">
+								<div class="small fg-emphasis-warning">
 									<i class="bi bi-exclamation-circle me-1"></i>
 									Conflict markers are still present in this file.
 								</div>
@@ -134,21 +134,21 @@
 			}
 			else if (!string.IsNullOrWhiteSpace(PreviewError))
 			{
-				<div class="alert alert-danger py-2 mb-0 d-flex align-items-start gap-2">
+				<div class="alert theme-danger py-3 mb-0 align-items-start">
 					<i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
 					<div>@PreviewError</div>
 				</div>
 			}
 			else if (IsAlreadyUpToDate && !string.IsNullOrWhiteSpace(PreviewMessage))
 			{
-				<div class="alert alert-warning py-2 mb-0 d-flex align-items-start gap-2">
+				<div class="alert theme-warning py-3 mb-0 align-items-start">
 					<i class="bi bi-check2-all mt-1 flex-shrink-0"></i>
 					<div>@PreviewMessage</div>
 				</div>
 			}
 			else if (!string.IsNullOrWhiteSpace(PreviewMessage))
 			{
-				<div class="alert alert-success py-2 mb-0 d-flex align-items-start gap-2">
+				<div class="alert theme-success py-3 mb-0 align-items-start">
 					<i class="bi bi-check-circle-fill mt-1 flex-shrink-0"></i>
 					<div>@PreviewMessage</div>
 				</div>
@@ -156,16 +156,16 @@
 		}
 	</ChildContent>
 	<FooterContent>
-		<button type="button" class="btn btn-secondary" @onclick="HandleCancel" disabled="@IsOperationInProgress">
+		<button type="button" class="btn-solid theme-secondary" @onclick="HandleCancel" disabled="@IsOperationInProgress">
 			Cancel
 		</button>
 		@if (CreatePullRequest)
 		{
-			<button type="button" class="btn btn-primary" @onclick="HandleCreatePullRequest"
+			<button type="button" class="btn-solid theme-primary" @onclick="HandleCreatePullRequest"
 				disabled="@(IsOperationInProgress || IsCheckingPreview || IsAlreadyUpToDate || string.IsNullOrWhiteSpace(CurrentBranch) || TargetBranches.Count == 0 || string.IsNullOrWhiteSpace(SelectedTargetBranch) || !string.IsNullOrWhiteSpace(PreviewError))">
 				@if (IsCreatingPullRequest)
 				{
-					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					<span class="spinner-border spinner-sm me-1" role="status"></span>
 					<span>Creating PR...</span>
 				}
 				else
@@ -177,11 +177,11 @@
 		}
 		else
 		{
-			<button type="button" class="btn btn-primary" @onclick="HandleMerge"
+			<button type="button" class="btn-solid theme-primary" @onclick="HandleMerge"
 				disabled="@(IsOperationInProgress || IsCheckingPreview || IsAlreadyUpToDate || string.IsNullOrWhiteSpace(CurrentBranch) || TargetBranches.Count == 0 || string.IsNullOrWhiteSpace(SelectedTargetBranch) || (!string.IsNullOrWhiteSpace(PreviewError) && ConflictFiles.Count == 0) || (ConflictFiles.Count > 0 && HasUnresolvedConflictMarkers))">
 				@if (IsMerging)
 				{
-					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					<span class="spinner-border spinner-sm me-1" role="status"></span>
 					<span>Merging...</span>
 				}
 				else if (ConflictFiles.Count > 0 && PushAfterMerge)

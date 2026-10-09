@@ -42,7 +42,7 @@ public async Task RenderedLocalInferencePage_ShowsSetupAction_WhenNoProviderConf
 	Assert.Contains("No inference connections yet", html);
 	Assert.Contains("Ollama", html);
 	Assert.DoesNotContain("nav-tabs", html);
-	Assert.Contains("justify-content-between gap-2 mb-4", html);
+	Assert.Contains("justify-content-between gap-3 mb-7", html);
 	Assert.DoesNotContain("App Settings", html);
 }
 
@@ -282,7 +282,7 @@ public void InferenceProvidersSection_OpenRowShowsEditDeleteAndRefreshModels()
 	Assert.Contains("Refresh models", cut.Markup);
 	Assert.Contains("Edit", cut.Markup);
 	Assert.Contains("Delete", cut.Markup);
-	Assert.DoesNotContain("btn-danger", cut.Markup);
+	Assert.DoesNotContain("btn-solid theme-danger", cut.Markup);
 }
 
 [Fact]

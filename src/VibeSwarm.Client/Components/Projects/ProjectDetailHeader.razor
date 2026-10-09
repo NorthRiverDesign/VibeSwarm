@@ -3,26 +3,26 @@
 @* Breadcrumb Navigation *@
 <Breadcrumb Items="@_breadcrumbItems" />
 
-<div class="card mb-3 mb-lg-4 border-0 shadow-sm rounded-3">
-	<div class="card-body bg-body-secondary p-3 p-md-4 rounded-3">
+<div class="card mb-5 lg:mb-7 border-0 shadow-sm rounded-5">
+	<div class="card-body bg-1 p-5 md:p-7 rounded-5">
 		@* Top Row: Title, Actions *@
-		<div class="d-flex flex-wrap align-items-start gap-2 gap-md-3 mb-3">
-			<div class="flex-grow-1 min-width-0">
-				<div class="d-flex align-items-center gap-2 flex-wrap">
+		<div class="d-flex flex-wrap align-items-start gap-3 md:gap-5 mb-5">
+			<div class="flex-grow-1 min-w-0">
+				<div class="d-flex align-items-center gap-3 flex-wrap">
 					<h1 class="mb-0 text-truncate">@Name</h1>
 					@if (IsGitRepository && !string.IsNullOrEmpty(GitHubRepository))
 					{
 						<a href="https://github.com/@GitHubRepository" target="_blank"
-							class="d-flex align-items-center gap-1 text-body-secondary text-decoration-none small hover-underline"
+							class="d-flex align-items-center gap-1 fg-1 text-decoration-none small hover-underline"
 							title="View on GitHub">
 							<i class="bi bi-github"></i>
-							<span class="d-none d-md-inline">@GitHubRepository</span>
+							<span class="d-none md:d-inline">@GitHubRepository</span>
 						</a>
 					}
 				</div>
 				@if (!string.IsNullOrEmpty(Description))
 				{
-					<p class="text-body-secondary mb-0 mt-1 small d-none d-sm-block">@Description</p>
+					<p class="fg-1 mb-0 mt-1 small d-none sm:d-block">@Description</p>
 				}
 			</div>
 
@@ -36,13 +36,13 @@
 		</div>
 
 		@* Second Row: Path, Branch Selector, Stats *@
-		<div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 pt-3 border-top">
+		<div class="d-flex flex-wrap align-items-center gap-3 md:gap-5 pt-5 border-top">
 			@* Working Path (hidden when GitHub repo is connected) *@
 			@if (string.IsNullOrEmpty(GitHubRepository))
 			{
-				<div class="d-flex align-items-center gap-1 text-body-secondary small">
+				<div class="d-flex align-items-center gap-1 fg-1 small">
 					<i class="bi bi-folder opacity-75"></i>
-					<code class="bg-body-tertiary px-2 py-1 rounded-1 text-truncate d-inline-block"
+					<code class="bg-2 px-3 py-1 rounded-3 text-truncate d-inline-block"
 						style="max-width: min(240px, 50vw);" title="@WorkingPath">@WorkingPath</code>
 				</div>
 			}
@@ -58,8 +58,8 @@
 			}
 			else if (IsGitRepository && !string.IsNullOrEmpty(CurrentBranch))
 			{
-				<span class="badge bg-body-tertiary text-body d-flex align-items-center gap-1">
-					<i class="bi bi-git text-danger"></i>
+				<span class="badge d-flex align-items-center gap-1">
+					<i class="bi bi-git fg-danger"></i>
 					@CurrentBranch
 				</span>
 			}
@@ -76,7 +76,7 @@
 			@* Token Stats (when data exists) *@
 			@if (HasTokenData && (TotalInputTokens > 0 || TotalOutputTokens > 0))
 			{
-				<div class="d-flex align-items-center gap-1 small text-body-secondary"
+				<div class="d-flex align-items-center gap-1 small fg-1"
 					title="Total tokens (input / output)">
 					<i class="bi bi-braces opacity-75"></i>
 					<span>@TokenHelper.FormatTokenCount(TotalInputTokens) /

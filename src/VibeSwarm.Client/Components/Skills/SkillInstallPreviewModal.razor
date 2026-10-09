@@ -11,14 +11,14 @@
 		}
 		else
 		{
-			<div class="d-flex flex-column gap-3">
-				<div class="d-flex flex-wrap gap-3">
-					<div class="flex-grow-1 min-width-0">
-						<div class="small text-body-secondary mb-1">Name</div>
+			<div class="d-flex flex-column gap-5">
+				<div class="d-flex flex-wrap gap-5">
+					<div class="flex-grow-1 min-w-0">
+						<div class="small fg-1 mb-1">Name</div>
 						<div class="fw-semibold font-monospace">@Preview.Name</div>
 					</div>
-					<div class="flex-grow-1 min-width-0">
-						<div class="small text-body-secondary mb-1">Source</div>
+					<div class="flex-grow-1 min-w-0">
+						<div class="small fg-1 mb-1">Source</div>
 						<div class="font-monospace small text-break">@FormatSource(Preview)</div>
 					</div>
 				</div>
@@ -26,12 +26,12 @@
 				@if (!string.IsNullOrWhiteSpace(Preview.Description))
 				{
 					<div>
-						<div class="small text-body-secondary mb-1">Description</div>
+						<div class="small fg-1 mb-1">Description</div>
 						<div>@Preview.Description</div>
 					</div>
 				}
 
-				<div class="d-flex flex-wrap gap-3 small text-body-secondary">
+				<div class="d-flex flex-wrap gap-5 small fg-1">
 					<span class="d-flex align-items-center gap-1">
 						<i class="bi bi-file-text opacity-75"></i>
 						@Preview.Content.Length chars
@@ -42,14 +42,14 @@
 					</span>
 					@if (Preview.HasScripts)
 					{
-						<span class="d-flex align-items-center gap-1 text-warning fw-semibold">
+						<span class="d-flex align-items-center gap-1 fg-warning fw-semibold">
 							<i class="bi bi-terminal"></i>
 							Contains executable scripts
 						</span>
 					}
 					@if (Preview.NameExists)
 					{
-						<span class="d-flex align-items-center gap-1 text-warning">
+						<span class="d-flex align-items-center gap-1 fg-warning">
 							<i class="bi bi-exclamation-circle"></i>
 							Skill already exists — install will be skipped.
 						</span>
@@ -57,12 +57,12 @@
 				</div>
 
 				<div>
-					<div class="small text-body-secondary mb-1">
+					<div class="small fg-1 mb-1">
 						<i class="bi bi-shield-lock opacity-75 me-1"></i>allowed-tools
 					</div>
 					@if (string.IsNullOrWhiteSpace(Preview.AllowedTools))
 					{
-						<div class="text-warning small">
+						<div class="fg-warning small">
 							Not declared — this skill can request any tool the agent has access to.
 						</div>
 					}
@@ -75,8 +75,8 @@
 				@if (Preview.Warnings.Count > 0)
 				{
 					<Alert Type="Alert.AlertType.Warning" Class="mb-0">
-						<div class="fw-semibold mb-2">Warnings</div>
-						<ul class="mb-0 ps-3">
+						<div class="fw-semibold mb-3">Warnings</div>
+						<ul class="mb-0 ps-5">
 							@foreach (var warning in Preview.Warnings)
 							{
 								<li>@warning</li>
@@ -86,15 +86,15 @@
 				}
 
 				<div>
-					<div class="small text-body-secondary mb-1">Files to install</div>
-					<div class="border rounded p-2" style="max-height: 280px; overflow-y: auto;">
+					<div class="small fg-1 mb-1">Files to install</div>
+					<div class="border rounded p-3" style="max-height: 280px; overflow-y: auto;">
 						@if (Preview.Files.Count == 0)
 						{
-							<div class="small text-body-secondary">No files listed.</div>
+							<div class="small fg-1">No files listed.</div>
 						}
 						else
 						{
-							<div class="d-flex flex-column gap-2">
+							<div class="d-flex flex-column gap-3">
 								@foreach (var group in GroupFiles(Preview.Files))
 								{
 									@if (group.IsRoot)
@@ -102,36 +102,36 @@
 										@* Root-level files render flat without a collapsible header so SKILL.md is always visible. *@
 										@foreach (var file in group.Files)
 										{
-											<div class="d-flex align-items-center gap-2 small font-monospace">
-												<i class="bi @(file.IsExecutable ? "bi-terminal text-warning" : "bi-file-earmark")"></i>
+											<div class="d-flex align-items-center gap-3 small font-monospace">
+												<i class="bi @(file.IsExecutable ? "bi-terminal fg-warning" : "bi-file-earmark")"></i>
 												<span class="flex-grow-1 text-truncate">@file.RelativePath</span>
-												<span class="text-body-secondary">@FormatSize(file.Size)</span>
+												<span class="fg-1">@FormatSize(file.Size)</span>
 											</div>
 										}
 									}
 									else
 									{
 										<details open>
-											<summary class="cursor-pointer small fw-semibold d-flex align-items-center gap-2">
+											<summary class="cursor-pointer small fw-semibold d-flex align-items-center gap-3">
 												<i class="bi bi-folder2"></i>
 												<span class="font-monospace">@group.Name/</span>
-												<span class="text-body-secondary fw-normal">
+												<span class="fg-1 fw-normal">
 													@group.Files.Count file@(group.Files.Count == 1 ? "" : "s") · @FormatSize(group.TotalSize)
 												</span>
 												@if (group.HasExecutables)
 												{
-													<span class="badge bg-warning-subtle text-warning-emphasis">
+													<span class="badge badge-subtle theme-warning">
 														<i class="bi bi-terminal me-1"></i>executable
 													</span>
 												}
 											</summary>
-											<div class="d-flex flex-column gap-1 ps-4 mt-1">
+											<div class="d-flex flex-column gap-1 ps-7 mt-1">
 												@foreach (var file in group.Files)
 												{
-													<div class="d-flex align-items-center gap-2 small font-monospace">
-														<i class="bi @(file.IsExecutable ? "bi-terminal text-warning" : "bi-file-earmark")"></i>
+													<div class="d-flex align-items-center gap-3 small font-monospace">
+														<i class="bi @(file.IsExecutable ? "bi-terminal fg-warning" : "bi-file-earmark")"></i>
 														<span class="flex-grow-1 text-truncate">@StripGroupPrefix(group, file)</span>
-														<span class="text-body-secondary">@FormatSize(file.Size)</span>
+														<span class="fg-1">@FormatSize(file.Size)</span>
 													</div>
 												}
 											</div>
@@ -145,9 +145,9 @@
 
 				@if (RequiresAcknowledgement(Preview))
 				{
-					<div class="form-check">
-						<input class="form-check-input" type="checkbox" id="skill-install-ack" @bind="_acknowledged" />
-						<label class="form-check-label small" for="skill-install-ack">
+					<div class="form-field">
+						<input class="check" type="checkbox" id="skill-install-ack" @bind="_acknowledged" />
+						<label class="small" for="skill-install-ack">
 							I reviewed the warnings above and want to install this skill anyway.
 						</label>
 					</div>

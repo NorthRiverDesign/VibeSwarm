@@ -3,31 +3,31 @@
 @* One connection as a one-line row that opens in place. The collapsed row says how it connects
    and which model it uses; it only turns red or amber when something needs attention. *@
 
-<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-3"
+<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-5"
 		@onclick="ToggleExpanded" aria-expanded="@(_isExpanded ? "true" : "false")">
-	<i class="bi bi-@GetConnectionModeIcon(Provider.ConnectionMode) flex-shrink-0 @(Provider.IsEnabled ? "text-primary" : "text-body-tertiary")"></i>
-	<span class="flex-grow-1 min-width-0 text-start">
-		<span class="d-flex align-items-center gap-2 min-width-0">
-			<span class="fw-medium text-truncate @(Provider.IsEnabled ? "" : "text-body-secondary")">@Provider.Name</span>
+	<i class="bi bi-@GetConnectionModeIcon(Provider.ConnectionMode) flex-shrink-0 @(Provider.IsEnabled ? "fg-primary" : "fg-2")"></i>
+	<span class="flex-grow-1 min-w-0 text-start">
+		<span class="d-flex align-items-center gap-3 min-w-0">
+			<span class="fw-medium text-truncate @(Provider.IsEnabled ? "" : "fg-1")">@Provider.Name</span>
 			@if (Provider.IsDefault)
 			{
-				<i class="bi bi-star-fill text-warning small flex-shrink-0" title="Default connection" aria-label="Default connection"></i>
+				<i class="bi bi-star-fill fg-warning small flex-shrink-0" title="Default connection" aria-label="Default connection"></i>
 			}
 		</span>
 		@if (GetAttentionLine() is { } attention)
 		{
-			<span class="d-block small text-danger-emphasis text-truncate">@attention</span>
+			<span class="d-block small fg-emphasis-danger text-truncate">@attention</span>
 		}
 		else
 		{
-			<span class="d-block small text-body-secondary text-truncate">@GetSummaryLine()</span>
+			<span class="d-block small fg-1 text-truncate">@GetSummaryLine()</span>
 		}
 	</span>
 	@if (!Provider.IsEnabled)
 	{
-		<span class="small text-body-tertiary flex-shrink-0">Off</span>
+		<span class="small fg-2 flex-shrink-0">Off</span>
 	}
-	<i class="bi @(_isExpanded ? "bi-chevron-up" : "bi-chevron-down") text-body-tertiary flex-shrink-0"></i>
+	<i class="bi @(_isExpanded ? "bi-chevron-up" : "bi-chevron-down") fg-2 flex-shrink-0"></i>
 </button>
 @if (_isExpanded)
 {
@@ -35,86 +35,88 @@
 	var defaultModel = availableModels.FirstOrDefault(model => model.IsDefault);
 	var unavailableDefaultModel = GetUnavailableDefaultModel();
 
-	<div class="list-group-item d-flex flex-column gap-3 py-3">
-		<div class="d-flex flex-column gap-2">
-			<div class="form-check form-switch mb-0">
-				<input class="form-check-input" type="checkbox" role="switch" id="@_enabledSwitchId"
-					   checked="@Provider.IsEnabled" @onchange="HandleToggleEnabled" />
-				<label class="form-check-label" for="@_enabledSwitchId">Use for jobs</label>
+	<div class="list-group-item d-flex flex-column gap-5 py-5">
+		<div class="d-flex flex-column gap-3">
+			<div class="form-field mb-0">
+				<div class="switch">
+					<input type="checkbox" role="switch" switch id="@_enabledSwitchId"
+						   checked="@Provider.IsEnabled" @onchange="HandleToggleEnabled" />
+				</div>
+				<label for="@_enabledSwitchId">Use for jobs</label>
 			</div>
 			@if (Provider.IsDefault)
 			{
-				<div class="small text-body-secondary">
-					<i class="bi bi-star-fill text-warning me-1"></i>New jobs use this connection unless they pick another.
+				<div class="small fg-1">
+					<i class="bi bi-star-fill fg-warning me-1"></i>New jobs use this connection unless they pick another.
 				</div>
 			}
 			else
 			{
-				<button type="button" class="btn btn-sm btn-link text-decoration-none px-0 align-self-start" @onclick="HandleMakeDefault">
+				<button type="button" class="btn-sm btn-link text-decoration-none px-0 align-self-start" @onclick="HandleMakeDefault">
 					<i class="bi bi-star me-1"></i>Make default for new jobs
 				</button>
 			}
 		</div>
 
 		<div class="d-flex flex-column gap-1">
-			<button type="button" class="btn btn-link text-decoration-none text-body p-0 d-flex align-items-center gap-2 text-start"
+			<button type="button" class="btn-link text-decoration-none fg-body p-0 d-flex align-items-center gap-3 text-start"
 					@onclick="HandleShowSelectDefaultModel">
-				<span class="small text-body-secondary flex-shrink-0">Default model</span>
+				<span class="small fg-1 flex-shrink-0">Default model</span>
 				<span class="small text-truncate ms-auto">@(defaultModel?.DisplayName ?? defaultModel?.ModelId ?? "Choose")</span>
-				<i class="bi bi-chevron-right small text-body-tertiary flex-shrink-0"></i>
+				<i class="bi bi-chevron-right small fg-2 flex-shrink-0"></i>
 			</button>
 			@if (unavailableDefaultModel != null)
 			{
-				<div class="small text-warning-emphasis">
+				<div class="small fg-emphasis-warning">
 					@(unavailableDefaultModel.DisplayName ?? unavailableDefaultModel.ModelId) is no longer available. Choose another default model.
 				</div>
 			}
 		</div>
 
-		<div class="d-flex flex-column gap-2">
-			<div class="d-flex align-items-center gap-2">
-				<button type="button" class="btn btn-sm btn-link text-decoration-none px-0 d-inline-flex align-items-center gap-1"
+		<div class="d-flex flex-column gap-3">
+			<div class="d-flex align-items-center gap-3">
+				<button type="button" class="btn-sm btn-link text-decoration-none px-0 d-inline-flex align-items-center gap-1"
 						@onclick="ToggleModels" disabled="@(availableModels.Count == 0)">
 					<i class="bi bi-chevron-@(_showModels ? "down" : "right") small"></i>
 					@availableModels.Count model@(availableModels.Count == 1 ? string.Empty : "s")
 				</button>
 				@if (Provider.LastModelsRefreshAt.HasValue)
 				{
-					<span class="small text-body-tertiary text-truncate">updated @Provider.LastModelsRefreshAt.Value.FormatDateTimeShort()</span>
+					<span class="small fg-2 text-truncate">updated @Provider.LastModelsRefreshAt.Value.FormatDateTimeShort()</span>
 				}
-				<button type="button" class="btn btn-sm btn-link text-decoration-none px-0 ms-auto flex-shrink-0"
+				<button type="button" class="btn-sm btn-link text-decoration-none px-0 ms-auto flex-shrink-0"
 						@onclick="HandleRefreshModels" disabled="@IsRefreshingModels">
 					<i class="bi bi-arrow-repeat me-1 @(IsRefreshingModels ? "spin" : "")"></i>Refresh
 				</button>
 			</div>
 			@if (!string.IsNullOrEmpty(RefreshModelsError))
 			{
-				<div class="small text-warning-emphasis">@RefreshModelsError</div>
+				<div class="small fg-emphasis-warning">@RefreshModelsError</div>
 			}
 			@if (_showModels && availableModels.Count > 0)
 			{
 				<div class="list-group list-group-flush">
 					@foreach (var model in availableModels)
 					{
-						<div class="list-group-item px-0 py-2 d-flex align-items-start justify-content-between gap-3 small">
-							<span class="min-width-0">
-								<span class="d-flex align-items-center gap-2 flex-wrap">
+						<div class="list-group-item px-0 py-3 d-flex align-items-start justify-content-between gap-5 small">
+							<span class="min-w-0">
+								<span class="d-flex align-items-center gap-3 flex-wrap">
 									<span class="text-break">@(model.DisplayName ?? model.ModelId)</span>
 									@if (model.IsDefault)
 									{
-										<span class="badge text-bg-primary">Default</span>
+										<span class="badge theme-primary">Default</span>
 									}
 									@if (model.RetiresOn.HasValue)
 									{
-										<span class="badge bg-warning-subtle text-warning-emphasis">Retires @model.RetiresOn.Value:yyyy-MM-dd</span>
+										<span class="badge badge-subtle theme-warning">Retires @model.RetiresOn.Value:yyyy-MM-dd</span>
 									}
 								</span>
 								@if (!string.Equals(model.DisplayName, model.ModelId, StringComparison.Ordinal))
 								{
-									<span class="d-block text-body-secondary font-monospace text-break">@model.ModelId</span>
+									<span class="d-block fg-1 font-monospace text-break">@model.ModelId</span>
 								}
 							</span>
-							<span class="text-body-secondary flex-shrink-0">@FormatPriceMultiplier(model.PriceMultiplier)</span>
+							<span class="fg-1 flex-shrink-0">@FormatPriceMultiplier(model.PriceMultiplier)</span>
 						</div>
 					}
 				</div>
@@ -123,12 +125,12 @@
 
 		@if (SupportsUsageRefresh || UsageSummary?.LimitWindows.Count > 0 || UsageSummary?.EffectiveMaxUsage > 0)
 		{
-			<div class="d-flex flex-column gap-2">
-				<div class="d-flex align-items-center gap-2">
+			<div class="d-flex flex-column gap-3">
+				<div class="d-flex align-items-center gap-3">
 					<span class="text-eyebrow me-auto">Usage</span>
 					@if (SupportsUsageRefresh)
 					{
-						<button type="button" class="btn btn-sm btn-link text-decoration-none px-0"
+						<button type="button" class="btn-sm btn-link text-decoration-none px-0"
 								title="Runs one tiny request to read your current limits"
 								@onclick="HandleRefreshUsage" disabled="@IsRefreshingUsage">
 							<i class="bi bi-arrow-repeat me-1 @(IsRefreshingUsage ? "spin" : "")"></i>Check usage
@@ -140,23 +142,23 @@
 					<UsageMeter UsageSummary="UsageSummary" ShowResetTime="true" />
 					@if (UsageSummary?.LastUpdatedAt is { } updatedAt)
 					{
-						<div class="small text-body-tertiary">Checked @updatedAt.FormatDateTimeShort()</div>
+						<div class="small fg-2">Checked @updatedAt.FormatDateTimeShort()</div>
 					}
 				}
 				else
 				{
-					<div class="small text-body-secondary">No usage recorded yet. Check usage, or run a job and it fills in on its own.</div>
+					<div class="small fg-1">No usage recorded yet. Check usage, or run a job and it fills in on its own.</div>
 				}
 				@if (!string.IsNullOrWhiteSpace(UsageRefreshError))
 				{
-					<div class="small text-warning-emphasis">@UsageRefreshError</div>
+					<div class="small fg-emphasis-warning">@UsageRefreshError</div>
 				}
 			</div>
 		}
 
 		@if (TestResult != null)
 		{
-			<div class="small rounded-3 p-2 @(TestResult.IsConnected ? "text-success-emphasis bg-success-subtle" : "text-danger-emphasis bg-danger-subtle")">
+			<div class="small rounded-5 p-3 @(TestResult.IsConnected ? "fg-emphasis-success bg-subtle-success" : "fg-emphasis-danger bg-subtle-danger")">
 				<i class="bi @(TestResult.IsConnected ? "bi-check-circle" : "bi-x-circle") me-1"></i>@(TestResult.IsConnected ? "Connected" : "Connection failed")
 				@if (!TestResult.IsConnected && !string.IsNullOrEmpty(TestResult.ErrorMessage))
 				{
@@ -165,15 +167,15 @@
 			</div>
 		}
 
-		<div class="d-flex align-items-center gap-2">
-			<button type="button" class="btn btn-sm btn-secondary" @onclick="HandleTestConnection" disabled="@IsTesting">
+		<div class="d-flex align-items-center gap-3">
+			<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="HandleTestConnection" disabled="@IsTesting">
 				@if (IsTesting)
 				{
-					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					<span class="spinner-border spinner-sm me-1" role="status"></span>
 				}
 				Test connection
 			</button>
-			<RowActionsDropdown AriaLabel="More connection actions" MenuAlignClass="dropdown-menu-start">
+			<RowActionsDropdown AriaLabel="More connection actions" Placement="bottom-start">
 				<RowActionsItem Icon="pencil" Text="Edit" OnClick="HandleEditProvider" />
 				@if (Provider.ConnectionMode == ProviderConnectionMode.CLI)
 				{
@@ -181,7 +183,7 @@
 									OnClick="HandleUpdateCli" Disabled="@IsUpdatingCli" />
 				}
 			</RowActionsDropdown>
-			<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none px-0 ms-auto" @onclick="HandleDeleteProvider">
+			<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 ms-auto" @onclick="HandleDeleteProvider">
 				<i class="bi bi-trash me-1"></i>Delete
 			</button>
 		</div>

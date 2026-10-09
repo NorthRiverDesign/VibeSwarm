@@ -1,24 +1,21 @@
 @inject HttpSearchService SearchService
 @inject NavigationManager NavigationManager
-@inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
-@if (IsVisible)
-{
-    <div class="modal-backdrop fade show vs-modal-backdrop position-fixed inset-0" @onclick="Close"></div>
-    <div class="position-fixed inset-0 d-flex justify-content-center pe-none" style="z-index: 1055; padding-top: 80px; align-items: flex-start;">
-        <div class="bg-body border rounded shadow-lg pe-auto overflow-hidden d-flex flex-column" style="width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 120px);">
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="IsVisibleChanged" Title="Search" ShowHeader="false" FullscreenOnPhones="false"
+             DialogClass="vs-search-dialog" BodyClass="p-0 d-flex flex-column">
             @* Search Input *@
-            <div class="d-flex align-items-center gap-2 px-3 border-bottom" style="min-height: 52px;">
+            <div class="d-flex align-items-center gap-3 px-5 border-bottom" style="min-height: 52px;">
                 @if (_isLoading)
                 {
-                    <span class="spinner-border spinner-border-sm text-secondary flex-shrink-0" role="status"></span>
+                    <span class="spinner-border spinner-sm fg-secondary flex-shrink-0" role="status"></span>
                 }
                 else
                 {
-                    <i class="bi bi-search text-secondary flex-shrink-0"></i>
+                    <i class="bi bi-search fg-secondary flex-shrink-0"></i>
                 }
                 <input @ref="_inputRef"
+                       autofocus
                        type="text"
                        class="form-control border-0 shadow-none ps-0 bg-transparent"
                        placeholder="Search projects, jobs, ideas..."
@@ -29,11 +26,11 @@
                        spellcheck="false" />
                 @if (!string.IsNullOrEmpty(_query))
                 {
-                    <button class="btn btn-link p-0 text-secondary flex-shrink-0" @onclick="ClearQuery" tabindex="-1" aria-label="Clear">
+                    <button class="btn-link p-0 fg-secondary flex-shrink-0" @onclick="ClearQuery" tabindex="-1" aria-label="Clear">
                         <i class="bi bi-x-lg"></i>
                     </button>
                 }
-                <kbd class="border rounded px-1 text-secondary flex-shrink-0 d-none d-sm-inline text-caption">Esc</kbd>
+                <kbd class="border rounded px-1 fg-secondary bg-transparent flex-shrink-0 d-none sm:d-inline text-caption">Esc</kbd>
             </div>
 
             @* Results *@
@@ -49,21 +46,21 @@
 
                         @if (projectItems.Count > 0)
                         {
-                            <div class="px-3 pt-2 pb-1">
-                                <small class="text-secondary fw-semibold text-uppercase text-eyebrow">Projects</small>
+                            <div class="px-5 pt-3 pb-1">
+                                <small class="fg-secondary fw-semibold text-uppercase text-eyebrow">Projects</small>
                             </div>
                             @foreach (var item in projectItems)
                             {
                                 var flatIndex = allItems.IndexOf(item);
-                                <button class="w-100 text-start border-0 bg-transparent d-flex align-items-center gap-3 px-3 py-2 hover-bg-tertiary @(_selectedIndex == flatIndex ? "bg-body-secondary" : "")"
+                                <button class="w-100 text-start border-0 bg-transparent d-flex align-items-center gap-5 px-5 py-3 hover-bg-tertiary @(_selectedIndex == flatIndex ? "bg-1" : "")"
                                         @onclick="() => NavigateTo(item)"
                                         @onmouseover="() => _selectedIndex = flatIndex">
-                                    <i class="bi bi-folder text-primary flex-shrink-0"></i>
-                                    <div class="min-width-0 flex-grow-1">
+                                    <i class="bi bi-folder fg-primary flex-shrink-0"></i>
+                                    <div class="min-w-0 flex-grow-1">
                                         <div class="fw-medium text-truncate">@item.Title</div>
                                         @if (!string.IsNullOrEmpty(item.Subtitle))
                                         {
-                                            <div class="small text-secondary text-truncate">@item.Subtitle</div>
+                                            <div class="small fg-secondary text-truncate">@item.Subtitle</div>
                                         }
                                     </div>
                                 </button>
@@ -72,22 +69,22 @@
 
                         @if (jobItems.Count > 0)
                         {
-                            <div class="px-3 pt-2 pb-1 @(projectItems.Count > 0 ? "border-top mt-1" : "")">
-                                <small class="text-secondary fw-semibold text-uppercase text-eyebrow">Jobs</small>
+                            <div class="px-5 pt-3 pb-1 @(projectItems.Count > 0 ? "border-top mt-1" : "")">
+                                <small class="fg-secondary fw-semibold text-uppercase text-eyebrow">Jobs</small>
                             </div>
                             @foreach (var item in jobItems)
                             {
                                 var flatIndex = allItems.IndexOf(item);
-                                <button class="w-100 text-start border-0 bg-transparent d-flex align-items-center gap-3 px-3 py-2 hover-bg-tertiary @(_selectedIndex == flatIndex ? "bg-body-secondary" : "")"
+                                <button class="w-100 text-start border-0 bg-transparent d-flex align-items-center gap-5 px-5 py-3 hover-bg-tertiary @(_selectedIndex == flatIndex ? "bg-1" : "")"
                                         @onclick="() => NavigateTo(item)"
                                         @onmouseover="() => _selectedIndex = flatIndex">
-                                    <i class="bi bi-list-check text-info flex-shrink-0"></i>
-                                    <div class="min-width-0 flex-grow-1">
+                                    <i class="bi bi-list-check fg-info flex-shrink-0"></i>
+                                    <div class="min-w-0 flex-grow-1">
                                         <div class="fw-medium text-truncate">@TruncateTitle(item.Title)</div>
-                                        <div class="d-flex align-items-center gap-2">
+                                        <div class="d-flex align-items-center gap-3">
                                             @if (!string.IsNullOrEmpty(item.Subtitle))
                                             {
-                                                <span class="small text-secondary text-truncate">@item.Subtitle</span>
+                                                <span class="small fg-secondary text-truncate">@item.Subtitle</span>
                                             }
                                             @if (!string.IsNullOrEmpty(item.StatusLabel))
                                             {
@@ -101,63 +98,61 @@
 
                         @if (ideaItems.Count > 0)
                         {
-                            <div class="px-3 pt-2 pb-1 @((projectItems.Count > 0 || jobItems.Count > 0) ? "border-top mt-1" : "")">
-                                <small class="text-secondary fw-semibold text-uppercase text-eyebrow">Ideas</small>
+                            <div class="px-5 pt-3 pb-1 @((projectItems.Count > 0 || jobItems.Count > 0) ? "border-top mt-1" : "")">
+                                <small class="fg-secondary fw-semibold text-uppercase text-eyebrow">Ideas</small>
                             </div>
                             @foreach (var item in ideaItems)
                             {
                                 var flatIndex = allItems.IndexOf(item);
-                                <button class="w-100 text-start border-0 bg-transparent d-flex align-items-center gap-3 px-3 py-2 hover-bg-tertiary @(_selectedIndex == flatIndex ? "bg-body-secondary" : "")"
+                                <button class="w-100 text-start border-0 bg-transparent d-flex align-items-center gap-5 px-5 py-3 hover-bg-tertiary @(_selectedIndex == flatIndex ? "bg-1" : "")"
                                         @onclick="() => NavigateTo(item)"
                                         @onmouseover="() => _selectedIndex = flatIndex">
-                                    <i class="bi bi-lightbulb text-warning flex-shrink-0"></i>
-                                    <div class="min-width-0 flex-grow-1">
+                                    <i class="bi bi-lightbulb fg-warning flex-shrink-0"></i>
+                                    <div class="min-w-0 flex-grow-1">
                                         <div class="fw-medium text-truncate">@TruncateTitle(item.Title)</div>
                                         @if (!string.IsNullOrEmpty(item.Subtitle))
                                         {
-                                            <div class="small text-secondary text-truncate">@item.Subtitle</div>
+                                            <div class="small fg-secondary text-truncate">@item.Subtitle</div>
                                         }
                                     </div>
                                 </button>
                             }
                         }
 
-                        <div class="px-3 py-2 border-top">
-                            <small class="text-secondary">@_result.TotalCount result@(_result.TotalCount == 1 ? "" : "s")</small>
+                        <div class="px-5 py-3 border-top">
+                            <small class="fg-secondary">@_result.TotalCount result@(_result.TotalCount == 1 ? "" : "s")</small>
                         </div>
                     }
                     else if (!_isLoading && _result != null)
                     {
-                        <div class="d-flex flex-column align-items-center justify-content-center p-5 text-secondary">
-                            <i class="bi bi-search mb-2 fs-4"></i>
+                        <div class="d-flex flex-column align-items-center justify-content-center p-12 fg-secondary">
+                            <i class="bi bi-search mb-3 fs-xl"></i>
                             <div>No results for "<strong>@_query</strong>"</div>
                         </div>
                     }
                 }
                 else if (string.IsNullOrWhiteSpace(_query))
                 {
-                    <div class="d-flex flex-column align-items-center justify-content-center p-5 text-secondary">
-                        <i class="bi bi-search mb-2 fs-4"></i>
+                    <div class="d-flex flex-column align-items-center justify-content-center p-12 fg-secondary">
+                        <i class="bi bi-search mb-3 fs-xl"></i>
                         <div class="small">Search projects, jobs, and ideas</div>
                     </div>
                 }
             </div>
 
             @* Footer hints *@
-            <div class="px-3 py-2 border-top d-flex align-items-center gap-3 bg-body-secondary">
-                <span class="small text-secondary d-flex align-items-center gap-1">
+            <div class="px-5 py-3 border-top d-flex align-items-center gap-5 bg-1">
+                <span class="small fg-secondary d-flex align-items-center gap-1">
                     <kbd class="border rounded px-1 text-caption">↑↓</kbd> navigate
                 </span>
-                <span class="small text-secondary d-flex align-items-center gap-1">
+                <span class="small fg-secondary d-flex align-items-center gap-1">
                     <kbd class="border rounded px-1 text-caption">↵</kbd> open
                 </span>
-                <span class="small text-secondary d-flex align-items-center gap-1">
+                <span class="small fg-secondary d-flex align-items-center gap-1">
                     <kbd class="border rounded px-1 text-caption">Esc</kbd> close
                 </span>
             </div>
-        </div>
-    </div>
-}
+</ModalDialog>
 
 @code {
     [Parameter]
@@ -173,37 +168,19 @@
     private ElementReference _inputRef;
     private CancellationTokenSource? _debounceCts;
 
-    protected override async Task OnParametersSetAsync()
+    private bool _wasVisible;
+
+    protected override void OnParametersSet()
     {
-        if (IsVisible)
+        // Each opening starts from an empty search.
+        if (IsVisible && !_wasVisible)
         {
             _query = string.Empty;
             _result = null;
             _selectedIndex = -1;
-            await Task.Yield();
-            try { await JSRuntime.InvokeVoidAsync("eval", "setTimeout(() => { var el = document.querySelector('.vs-global-search-input'); if (el) el.focus(); }, 50)"); } catch { }
-        }
-    }
-
-    private bool _wasVisible;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (IsVisible && !_wasVisible)
-        {
-            await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.add('vs-modal-open')");
-            _wasVisible = true;
-        }
-        else if (!IsVisible && _wasVisible)
-        {
-            await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.remove('vs-modal-open')");
-            _wasVisible = false;
         }
 
-        if (IsVisible && string.IsNullOrEmpty(_query))
-        {
-            try { await _inputRef.FocusAsync(); } catch { }
-        }
+        _wasVisible = IsVisible;
     }
 
     private async Task OnQueryChanged(ChangeEventArgs e)
@@ -257,12 +234,6 @@
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape")
-        {
-            await Close();
-            return;
-        }
-
         if (_result == null || _result.Items.Count == 0) return;
 
         if (e.Key == "ArrowDown")
@@ -307,12 +278,9 @@
         return title.Length <= maxLength ? title : title[..(maxLength - 3)] + "...";
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (_wasVisible)
-        {
-            try { await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.remove('vs-modal-open')"); } catch { }
-            _wasVisible = false;
-        }
+        _debounceCts?.Cancel();
+        return ValueTask.CompletedTask;
     }
 }

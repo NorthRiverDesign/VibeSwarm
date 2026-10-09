@@ -10,27 +10,27 @@ Size="ModalDialog.ModalSize.Large" OnClose="Close">
 <ChildContent>
 <EditForm id="@_formId" Model="@FormModel" OnValidSubmit="HandleSubmit" OnInvalidSubmit="HandleInvalidSubmit">
 <DataAnnotationsValidator />
-<ValidationSummary class="text-danger mb-3" />
+<ValidationSummary class="fg-danger mb-5" />
 
-<div class="mb-4">
-<label for="jobTemplate" class="form-label">Template Library <span class="text-body-secondary fw-normal">(optional)</span></label>
+<div class="mb-7">
+<label for="jobTemplate" class="form-label">Template Library <span class="fg-1 fw-normal">(optional)</span></label>
 <div class="input-group">
-<InputSelect TValue="Guid?" id="jobTemplate" @bind-Value="_selectedTemplateId" @bind-Value:after="HandleTemplateSelectionChanged" class="form-select" disabled="@_isApplyingTemplate">
+<InputSelect TValue="Guid?" id="jobTemplate" @bind-Value="_selectedTemplateId" @bind-Value:after="HandleTemplateSelectionChanged" class="form-control" disabled="@_isApplyingTemplate">
 <option value="">Start from scratch...</option>
 @foreach (var template in TemplateLibrary)
 {
 <option value="@template.Id">@template.Name</option>
 }
 </InputSelect>
-<button type="button" class="btn btn-secondary" @onclick="RefreshTemplatesAsync"
+<button type="button" class="btn-solid theme-secondary" @onclick="RefreshTemplatesAsync"
 disabled="@(_isApplyingTemplate || _isSavingTemplate)" title="Refresh templates" aria-label="Refresh templates">
 <i class="bi bi-arrow-clockwise"></i>
 </button>
-<button type="button" class="btn btn-secondary" @onclick="SaveAsTemplateAsync"
+<button type="button" class="btn-solid theme-secondary" @onclick="SaveAsTemplateAsync"
 disabled="@(_isApplyingTemplate || _isSavingTemplate)" title="Save as Template" aria-label="Save as Template">
 @if (_isSavingTemplate)
 {
-<span class="spinner-border spinner-border-sm" role="status"></span>
+<span class="spinner-border spinner-sm" role="status"></span>
 }
 else
 {
@@ -44,7 +44,7 @@ else
 }
 </div>
 
-<div class="mb-3">
+<div class="mb-5">
 <label for="goalPrompt" class="form-label">@GetGoalPromptLabel()</label>
 <InputTextArea id="goalPrompt" @bind-Value="FormModel.GoalPrompt" class="form-control" rows="5"
 placeholder="@GetGoalPromptPlaceholder()" />
@@ -52,18 +52,18 @@ placeholder="@GetGoalPromptPlaceholder()" />
 {
 <div class="form-text">@GetGoalPromptHelpText()</div>
 }
-<ValidationMessage For="@(() => FormModel.GoalPrompt)" class="text-danger small" />
+<ValidationMessage For="@(() => FormModel.GoalPrompt)" class="fg-danger small" />
 </div>
 
 @if (AvailableAgents.Any())
 {
-<div class="mb-3">
+<div class="mb-5">
 <label for="agentPreset" class="form-label">Run as Agent</label>
 <InputSelect TValue="Guid?" id="agentPreset"
 			 Value="FormModel.AgentId"
 			 ValueChanged="HandleAgentChanged"
 			 ValueExpression="@(() => FormModel.AgentId)"
-			 class="form-select">
+			 class="form-control">
 <option value="">Choose provider manually</option>
 @foreach (var agent in AvailableAgents)
 {
@@ -76,93 +76,93 @@ placeholder="@GetGoalPromptPlaceholder()" />
 
 @if (SelectedAgent != null)
 {
-<div class="border rounded p-3 mb-3 bg-body-tertiary">
-<div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
-<div class="min-width-0 flex-grow-1">
+<div class="border rounded p-5 mb-5 bg-2">
+<div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+<div class="min-w-0 flex-grow-1">
 <div class="fw-semibold">@GetSelectedAgentName()</div>
 @if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent?.Description))
 {
-<div class="small text-body-secondary mt-1">@SelectedAgent.Agent!.Description</div>
+<div class="small fg-1 mt-1">@SelectedAgent.Agent!.Description</div>
 }
 </div>
-<span class="badge bg-primary-subtle text-primary-emphasis">Agent Preset</span>
+<span class="badge badge-subtle theme-primary">Agent Preset</span>
 </div>
 @if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent?.Responsibilities))
 {
-<div class="small white-space-pre-wrap mt-2">@SelectedAgent.Agent!.Responsibilities</div>
+<div class="small white-space-pre-wrap mt-3">@SelectedAgent.Agent!.Responsibilities</div>
 }
-<div class="row g-3 mt-1">
-<div class="col-12 col-md-6">
-<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Provider</div>
+<div class="row g-5 mt-1">
+<div class="col-12 md:col-6">
+<div class="small fg-1 text-uppercase fw-semibold mb-1">Provider</div>
 <div>@GetSelectedAgentProviderDisplayText()</div>
 </div>
-<div class="col-12 col-md-6">
-<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Model</div>
+<div class="col-12 md:col-6">
+<div class="small fg-1 text-uppercase fw-semibold mb-1">Model</div>
 <div>@GetSelectedAgentModelDisplayText()</div>
 </div>
-<div class="col-12 col-md-6">
-<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Reasoning</div>
+<div class="col-12 md:col-6">
+<div class="small fg-1 text-uppercase fw-semibold mb-1">Reasoning</div>
 <div>@GetSelectedAgentReasoningDisplayText()</div>
 </div>
-<div class="col-12 col-md-6">
-<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Execution</div>
+<div class="col-12 md:col-6">
+<div class="small fg-1 text-uppercase fw-semibold mb-1">Execution</div>
 <div>@GetSelectedAgentExecutionDisplayText()</div>
 </div>
 @if (FormModel.CycleMode != CycleMode.SingleCycle)
 {
-<div class="col-12 col-md-6">
-<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Session</div>
+<div class="col-12 md:col-6">
+<div class="small fg-1 text-uppercase fw-semibold mb-1">Session</div>
 <div>@GetCycleSessionModeDisplayText(FormModel.CycleSessionMode)</div>
 </div>
 }
 </div>
 @if (!string.IsNullOrWhiteSpace(FormModel.CycleReviewPrompt))
 {
-<div class="mt-3">
-<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Cycle Review Prompt</div>
+<div class="mt-5">
+<div class="small fg-1 text-uppercase fw-semibold mb-1">Cycle Review Prompt</div>
 <div class="small white-space-pre-wrap">@FormModel.CycleReviewPrompt</div>
 </div>
 }
-<div class="form-text mt-3">Remove the agent selection to choose provider, model, reasoning, or cycle behavior manually for this one job.</div>
+<div class="form-text mt-5">Remove the agent selection to choose provider, model, reasoning, or cycle behavior manually for this one job.</div>
 </div>
 }
 
 @if (SelectedAgent == null)
 {
-<div class="mb-3">
+<div class="mb-5">
 <label for="provider" class="form-label">Provider</label>
 @if (!string.IsNullOrEmpty(ProviderHint))
 {
-<div class="form-text mb-2">@ProviderHint</div>
+<div class="form-text mb-3">@ProviderHint</div>
 }
 <InputSelect TValue="Guid?" id="provider" @bind-Value="FormModel.ProviderId"
-@bind-Value:after="HandleProviderChanged" class="form-select">
+@bind-Value:after="HandleProviderChanged" class="form-control">
 <option value="">Select a provider...</option>
 @foreach (var provider in Providers.Where(p => p.IsEnabled))
 {
 <option value="@provider.Id">@GetProviderDisplayText(provider)</option>
 }
 </InputSelect>
-<ValidationMessage For="@(() => FormModel.ProviderId)" class="text-danger small" />
+<ValidationMessage For="@(() => FormModel.ProviderId)" class="fg-danger small" />
 @if (!Providers.Any(p => p.IsEnabled))
 {
-<div class="form-text text-warning">
+<div class="form-text fg-warning">
 No enabled providers. <a href="/providers">Configure one</a> first.
 </div>
 }
 </div>
 }
 
-<div class="accordion mb-3">
+<div class="accordion mb-5">
 @if (SelectedAgent == null)
 {
 <AccordionSection Title="Model and reasoning" Icon="cpu"
 Summary="Defaults come from the project and provider"
 Badge="@ModelSummary" @bind-IsOpen="_openModelSection">
-<div class="mb-3">
+<div class="mb-5">
 <label for="model" class="form-label">Model</label>
 <div class="input-group">
-<InputSelect id="model" @bind-Value="SelectedModelId" class="form-select"
+<InputSelect id="model" @bind-Value="SelectedModelId" class="form-control"
 disabled="@(!FormModel.ProviderId.HasValue || IsLoadingModels)">
 @if (IsLoadingModels)
 {
@@ -186,9 +186,9 @@ else
 <div class="form-text">Leave empty to use the project's default model, or the provider default when no project override is set.</div>
 </div>
 
-<div class="mb-3">
+<div class="mb-5">
 <label for="reasoning" class="form-label">Reasoning</label>
-<InputSelect id="reasoning" @bind-Value="FormModel.ReasoningEffort" class="form-select"
+<InputSelect id="reasoning" @bind-Value="FormModel.ReasoningEffort" class="form-control"
 disabled="@(!FormModel.ProviderId.HasValue || !ReasoningOptions.Any())">
 <option value="">Use project/provider default</option>
 @foreach (var reasoning in ReasoningOptions)
@@ -215,9 +215,9 @@ Summary="Where the job works and where the changes land"
 Badge="@DeliverySummary" @bind-IsOpen="_openDeliverySection">
 @if (ShowBranchSelector && Branches.Any())
 {
-<div class="mb-3">
+<div class="mb-5">
 <label for="branch" class="form-label">Branch</label>
-<InputSelect id="branch" @bind-Value="FormModel.Branch" class="form-select">
+<InputSelect id="branch" @bind-Value="FormModel.Branch" class="form-control">
 @foreach (var branch in Branches.Where(b => !b.IsRemote).OrderByDescending(b => b.Name == CurrentBranch))
 {
 <option value="@branch.Name">
@@ -229,9 +229,9 @@ Badge="@DeliverySummary" @bind-IsOpen="_openDeliverySection">
 </div>
 }
 
-<div class="mb-3">
+<div class="mb-5">
 <label for="gitChangeDeliveryMode" class="form-label">Result Delivery</label>
-<InputSelect id="gitChangeDeliveryMode" @bind-Value="FormModel.GitChangeDeliveryMode" class="form-select">
+<InputSelect id="gitChangeDeliveryMode" @bind-Value="FormModel.GitChangeDeliveryMode" class="form-control">
 <option value="@GitChangeDeliveryMode.CommitToBranch">Commit to the selected branch</option>
 <option value="@GitChangeDeliveryMode.PullRequest">Create a pull request</option>
 </InputSelect>
@@ -240,11 +240,11 @@ Badge="@DeliverySummary" @bind-IsOpen="_openDeliverySection">
 
 @if (FormModel.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
 {
-<div class="mb-3">
+<div class="mb-5">
 <label for="targetBranch" class="form-label">Target Branch</label>
 @if (Branches.Any(b => !b.IsRemote))
 {
-<InputSelect id="targetBranch" @bind-Value="FormModel.TargetBranch" class="form-select">
+<InputSelect id="targetBranch" @bind-Value="FormModel.TargetBranch" class="form-control">
 @foreach (var branch in Branches.Where(b => !b.IsRemote).OrderByDescending(b => b.Name == CurrentBranch))
 {
 <option value="@branch.Name">
@@ -257,7 +257,7 @@ else
 {
 <InputText id="targetBranch" @bind-Value="FormModel.TargetBranch" class="form-control" placeholder="develop" />
 }
-<ValidationMessage For="@(() => FormModel.TargetBranch)" class="text-danger small" />
+<ValidationMessage For="@(() => FormModel.TargetBranch)" class="fg-danger small" />
 <div class="form-text">Completed work will be proposed from the source branch into this branch.</div>
 </div>
 }
@@ -269,9 +269,9 @@ else
 <AccordionSection Title="Cycles" Icon="arrow-repeat"
 Summary="Run the agent more than once"
 Badge="@CycleSummary" @bind-IsOpen="ShowAdvancedOptions">
-<div class="mb-3">
+<div class="mb-5">
 <label for="cycleMode" class="form-label">Cycle Mode</label>
-<InputSelect id="cycleMode" @bind-Value="FormModel.CycleMode" class="form-select">
+<InputSelect id="cycleMode" @bind-Value="FormModel.CycleMode" class="form-control">
 <option value="@CycleMode.SingleCycle">Single Cycle (default)</option>
 <option value="@CycleMode.FixedCount">Fixed Count</option>
 <option value="@CycleMode.Autonomous">Autonomous</option>
@@ -294,16 +294,16 @@ break;
 
 @if (FormModel.CycleMode != CycleMode.SingleCycle)
 {
-<div class="mb-3">
+<div class="mb-5">
 <label for="maxCycles" class="form-label">Max Cycles</label>
 <InputNumber id="maxCycles" @bind-Value="FormModel.MaxCycles" class="form-control" min="1" max="100" />
-<ValidationMessage For="@(() => FormModel.MaxCycles)" class="text-danger small" />
+<ValidationMessage For="@(() => FormModel.MaxCycles)" class="fg-danger small" />
 <div class="form-text">Maximum number of execution cycles (1-100).</div>
 </div>
 
-<div class="mb-3">
+<div class="mb-5">
 <label for="cycleSessionMode" class="form-label">Session Mode</label>
-<InputSelect id="cycleSessionMode" @bind-Value="FormModel.CycleSessionMode" class="form-select">
+<InputSelect id="cycleSessionMode" @bind-Value="FormModel.CycleSessionMode" class="form-control">
 <option value="@CycleSessionMode.ContinueSession">Continue Session</option>
 <option value="@CycleSessionMode.FreshSession">Fresh Session</option>
 </InputSelect>
@@ -319,7 +319,7 @@ else
 </div>
 </div>
 
-<div class="mb-3">
+<div class="mb-5">
 <label for="cycleReviewPrompt" class="form-label">Cycle Review Prompt (Optional)</label>
 <InputTextArea id="cycleReviewPrompt" @bind-Value="FormModel.CycleReviewPrompt" class="form-control"
 rows="4" placeholder="Instructions for reviewing progress between cycles..." />

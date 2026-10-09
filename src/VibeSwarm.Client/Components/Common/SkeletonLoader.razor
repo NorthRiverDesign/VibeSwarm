@@ -1,10 +1,10 @@
-@* Skeleton placeholder using Bootstrap 5.3 placeholder-wave utility *@
+@* Skeleton placeholder using Bootstrap's placeholder-wave shimmer *@
 
 <div class="placeholder-wave" aria-hidden="true">
     @for (var i = 0; i < Lines; i++)
     {
         var widthClass = i == Lines - 1 && Lines > 1 ? "col-8" : "col-12";
-        <span class="placeholder @widthClass bg-body-secondary rounded mb-2 d-block" style="height: @($"{LineHeight}px")"></span>
+        <span class="placeholder @widthClass bg-1 rounded mb-3 d-block" style="height: @($"{LineHeight}px")"></span>
     }
 </div>
 

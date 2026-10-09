@@ -1,19 +1,19 @@
 @* Git diff viewer accordion component *@
 @using System.Net
 
-<div class="card mb-3 mb-lg-4">
-	<div class="card-header bg-body-secondary">
-		<div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-			<div class="d-flex align-items-center flex-wrap gap-2">
+<div class="card mb-5 lg:mb-7">
+	<div class="card-header">
+		<div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+			<div class="d-flex align-items-center flex-wrap gap-3">
 				<div class="d-flex align-items-center">
-					<i class="bi bi-@Icon me-2 opacity-75"></i>
+					<i class="bi bi-@Icon me-3 opacity-75"></i>
 					<strong>@Title</strong>
-					<span class="badge bg-secondary ms-2">@DiffFiles.Count</span>
+					<span class="badge theme-secondary ms-3">@DiffFiles.Count</span>
 				</div>
 				@if (IsVerifying)
 				{
-					<span class="badge bg-info d-inline-flex align-items-center gap-1">
-						<span class="spinner-border spinner-border-sm" style="width: 0.75rem; height: 0.75rem;"></span>
+					<span class="badge theme-info d-inline-flex align-items-center gap-1">
+						<span class="spinner-border spinner-sm" style="width: 0.75rem; height: 0.75rem;"></span>
 						Verifying...
 					</span>
 				}
@@ -21,37 +21,37 @@
 				{
 					@if (IsVerified)
 					{
-						<span class="badge bg-success d-inline-flex align-items-center gap-1"
+						<span class="badge theme-success d-inline-flex align-items-center gap-1"
 							  title="Working copy matches job changes">
 							<i class="bi bi-check-circle"></i>
-							<span class="d-none d-sm-inline">Verified</span>
+							<span class="d-none sm:d-inline">Verified</span>
 						</span>
 					}
 					else if (IsDiverged)
 					{
-						<span class="badge bg-warning text-dark d-inline-flex align-items-center gap-1"
+						<span class="badge theme-warning d-inline-flex align-items-center gap-1"
 							  title="Working copy has diverged from job changes">
 							<i class="bi bi-exclamation-triangle"></i>
-							<span class="d-none d-sm-inline">Diverged</span>
+							<span class="d-none sm:d-inline">Diverged</span>
 						</span>
 					}
 				}
 				@if (IsCommitted)
 				{
-					<span class="badge bg-success d-inline-flex align-items-center gap-1"
+					<span class="badge theme-success d-inline-flex align-items-center gap-1"
 						  title="Changes have been committed">
 						<i class="bi bi-check-circle"></i>
-						<span class="d-none d-sm-inline">Committed</span>
+						<span class="d-none sm:d-inline">Committed</span>
 					</span>
 				}
 			</div>
-			<div class="d-flex gap-1 gap-sm-2">
-				<div class="btn-group d-none d-sm-inline-flex" role="group" aria-label="Expand/Collapse all files">
-					<button type="button" class="btn btn-sm @(AllExpanded ? "btn-secondary" : "btn-secondary")"
+			<div class="d-flex gap-1 sm:gap-3">
+				<div class="btn-group d-none sm:d-inline-flex" role="group" aria-label="Expand/Collapse all files">
+					<button type="button" class="btn btn-sm @(AllExpanded ? "btn-solid theme-secondary" : "btn-solid theme-secondary")"
 							@onclick="ExpandAll" title="Expand all files" disabled="@AllExpanded">
 						<i class="bi bi-arrows-expand"></i>
 					</button>
-					<button type="button" class="btn btn-sm @(AllCollapsed ? "btn-secondary" : "btn-secondary")"
+					<button type="button" class="btn btn-sm @(AllCollapsed ? "btn-solid theme-secondary" : "btn-solid theme-secondary")"
 							@onclick="CollapseAll" title="Collapse all files" disabled="@AllCollapsed">
 						<i class="bi bi-arrows-collapse"></i>
 					</button>
@@ -65,7 +65,7 @@
 	@* Divergence warning *@
 	@if (IsDiverged && ShowVerificationStatus)
 	{
-		<Alert Type="Alert.AlertType.Warning" ShowIcon="true" Class="mb-0 rounded-0 border-start-0 border-end-0 py-2 px-3">
+		<Alert Type="Alert.AlertType.Warning" ShowIcon="true" Class="mb-0 rounded-0 border-start-0 border-end-0 py-3 px-5">
 			<div class="flex-grow-1">
 				<strong>Working copy has diverged from job changes</strong>
 				<div class="small mt-1">
@@ -74,32 +74,32 @@
 				</div>
 				@if (MissingFiles.Any() || ExtraFiles.Any() || ModifiedFiles.Any())
 				{
-					<div class="mt-2 small">
+					<div class="mt-3 small">
 						@if (MissingFiles.Any())
 						{
-							<div class="text-danger">
+							<div class="fg-danger">
 								<i class="bi bi-dash-circle me-1"></i>Missing from working copy: @string.Join(", ",
 																					MissingFiles.Take(5))@(MissingFiles.Count > 5 ? $" (+{MissingFiles.Count - 5} more)" : "")
 							</div>
 						}
 						@if (ExtraFiles.Any())
 						{
-							<div class="text-success">
+							<div class="fg-success">
 								<i class="bi bi-plus-circle me-1"></i>Extra in working copy: @string.Join(", ",
 																					ExtraFiles.Take(5))@(ExtraFiles.Count > 5 ? $" (+{ExtraFiles.Count - 5} more)" : "")
 							</div>
 						}
 						@if (ModifiedFiles.Any())
 						{
-							<div class="text-warning">
+							<div class="fg-warning">
 								<i class="bi bi-pencil me-1"></i>Different content: @string.Join(", ",
 																					ModifiedFiles.Take(5))@(ModifiedFiles.Count > 5 ? $" (+{ModifiedFiles.Count - 5} more)" : "")
 							</div>
 						}
 					</div>
 				}
-				<div class="mt-2">
-					<button class="btn btn-sm btn-warning" @onclick="OnRecheck" disabled="@IsVerifying">
+				<div class="mt-3">
+					<button class="btn-sm btn-solid theme-warning" @onclick="OnRecheck" disabled="@IsVerifying">
 						<i class="bi bi-arrow-repeat me-1"></i>Re-check
 					</button>
 				</div>
@@ -116,52 +116,48 @@
 					var collapseId = $"diffCollapse{index}";
 					var headerId = $"diffHeader{index}";
 					var isExpanded = _expandedFiles.Contains(index);
-					<div class="accordion-item">
-						<h2 class="accordion-header" id="@headerId">
-							<button class="accordion-button @(isExpanded ? "" : "collapsed")" type="button"
-									@onclick="() => ToggleFile(index)">
-								<span class="me-2">
-									@if (file.IsNew)
-									{
-										<i class="bi bi-file-earmark-plus text-success" title="New file"></i>
-									}
-									else if (file.IsDeleted)
-									{
-										<i class="bi bi-file-earmark-minus text-danger" title="Deleted file"></i>
-									}
-									else
-									{
-										<i class="bi bi-file-earmark-diff text-warning" title="Modified file"></i>
-									}
-								</span>
-								<span
-								class="diff-file-name flex-grow-1 text-truncate fw-medium text-break min-width-0">@file.FileName</span>
-								<span class="diff-stats ms-2 flex-shrink-0 small">
-									@if (file.Additions > 0)
-									{
-										<span class="text-success fw-medium">+@file.Additions</span>
-									}
-									@if (file.Deletions > 0)
-									{
-										<span class="text-danger fw-medium ms-1">-@file.Deletions</span>
-									}
-								</span>
-							</button>
-						</h2>
-						<div id="@collapseId" class="accordion-collapse @(isExpanded ? "show" : "collapse")">
-							<div class="accordion-body p-0">
-								<div class="terminal-output overscroll-contain white-space-pre-wrap overflow-auto p-2 small" style="max-height: 350px;">
-									@((MarkupString)FormatDiff(file.DiffContent))
-								</div>
-								@if (FileFooterTemplate is not null)
+					<details class="accordion-item" open="@isExpanded">
+						<summary class="accordion-header" " : "collapsed")" @onclick="() => ToggleFile(index)" @onclick:preventDefault="true">
+							<span class="me-3">
+								@if (file.IsNew)
 								{
-									<div class="border-top p-3">
-										@FileFooterTemplate(file)
-									</div>
+									<i class="bi bi-file-earmark-plus fg-success" title="New file"></i>
 								}
+								else if (file.IsDeleted)
+								{
+									<i class="bi bi-file-earmark-minus fg-danger" title="Deleted file"></i>
+								}
+								else
+								{
+									<i class="bi bi-file-earmark-diff fg-warning" title="Modified file"></i>
+								}
+							</span>
+							<span
+							class="diff-file-name flex-grow-1 text-truncate fw-medium text-break min-w-0">@file.FileName</span>
+							<span class="diff-stats ms-3 flex-shrink-0 small">
+								@if (file.Additions > 0)
+								{
+									<span class="fg-success fw-medium">+@file.Additions</span>
+								}
+								@if (file.Deletions > 0)
+								{
+									<span class="fg-danger fw-medium ms-1">-@file.Deletions</span>
+								}
+							</span>
+							<AccordionIcon />
+						</summary>
+						<div class="accordion-body p-0">
+							<div class="terminal-output overscroll-contain white-space-pre-wrap overflow-auto p-3 small" style="max-height: 350px;">
+								@((MarkupString)FormatDiff(file.DiffContent))
 							</div>
+							@if (FileFooterTemplate is not null)
+							{
+								<div class="border-top p-5">
+									@FileFooterTemplate(file)
+								</div>
+							}
 						</div>
-					</div>
+					</details>
 				}
 			</div>
 		</div>
@@ -255,7 +251,7 @@
 	private static MarkupString FormatDiff(string diffContent)
 	{
 		if (string.IsNullOrWhiteSpace(diffContent))
-			return new MarkupString("<span class=\"text-muted\">No changes</span>");
+			return new MarkupString("<span class=\"fg-1\">No changes</span>");
 
 		return new MarkupString(GitDiffParser.FormatDiffHtml(diffContent));
 	}

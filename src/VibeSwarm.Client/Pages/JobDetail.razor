@@ -61,8 +61,8 @@ else
 	<JobStatusSection Job="@Job" IsPushed="@_changesPushed" BranchName="@_branchName" />
 
     @* Main Content - Column Layout *@
-    <div class="row g-3 g-lg-4">
-        <div id="job-changes-section" class="col-12 col-xl-5 order-2 order-xl-1 @(ShowSidebarContent ? string.Empty : "d-none")">
+    <div class="row g-5 lg:g-7">
+        <div id="job-changes-section" class="col-12 xl:col-5 order-2 xl:order-1 @(ShowSidebarContent ? string.Empty : "d-none")">
             @* User Interaction Section - shown when job is paused waiting for input *@
             @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
             {
@@ -75,18 +75,18 @@ else
             @* Git Diff Loading State *@
             @if (_isGitRepository && _isLoadingGitDiff)
             {
-                <div class="card mb-3 mb-lg-4">
-                    <div class="card-header bg-body-secondary">
+                <div class="card mb-5 lg:mb-7">
+                    <div class="card-header">
                         <div class="d-flex align-items-center">
-                            <i class="bi bi-git me-2 opacity-75"></i>
+                            <i class="bi bi-git me-3 opacity-75"></i>
                             <strong>Git Changes</strong>
                         </div>
                     </div>
-                    <div class="card-body text-center py-4">
-                        <div class="spinner-border text-primary mb-3" role="status">
+                    <div class="card-body text-center py-7">
+                        <div class="spinner-border fs-2xl fg-primary mb-5" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
-                        <p class="text-body-secondary mb-0">
+                        <p class="fg-1 mb-0">
                             <i class="bi bi-hourglass-split me-1"></i>Analyzing git changes...
                         </p>
                     </div>
@@ -124,21 +124,21 @@ else
             string.IsNullOrEmpty(Job.GitDiff))
             {
                 @* No changes detected placeholder *@
-                <div class="card mb-3 mb-lg-4">
-                    <div class="card-header bg-body-secondary">
+                <div class="card mb-5 lg:mb-7">
+                    <div class="card-header">
                         <div class="d-flex align-items-center">
-                            <i class="bi bi-git me-2 opacity-75"></i>
+                            <i class="bi bi-git me-3 opacity-75"></i>
                             <strong>Git Changes</strong>
                         </div>
                     </div>
                     <div class="card-body text-center">
-                        <p class="text-body-secondary mb-3">
-                            <i class="bi bi-info-circle me-2 opacity-75"></i>No file changes detected.
+                        <p class="fg-1 mb-5">
+                            <i class="bi bi-info-circle me-3 opacity-75"></i>No file changes detected.
                         </p>
-                        <button class="btn btn-secondary btn-sm" @onclick="CheckGitDiffAsync" disabled="@_isCheckingGitDiff">
+                        <button class="btn-solid theme-secondary btn-sm" @onclick="CheckGitDiffAsync" disabled="@_isCheckingGitDiff">
                             @if (_isCheckingGitDiff)
                             {
-                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                <span class="spinner-border spinner-sm me-1" role="status"></span>
                                 <span>Checking...</span>
                             }
                             else
@@ -170,7 +170,7 @@ else
         </div>
 
         @* Right Column - Session Panel (Live Output, Console, Command, Conversation) *@
-        <div id="job-messages-section" class="col-12 @(ShowSidebarContent ? "col-xl-7 order-1 order-xl-2" : string.Empty) d-flex flex-column">
+        <div id="job-messages-section" class="col-12 @(ShowSidebarContent ? "xl:col-7 order-1 xl:order-2" : string.Empty) d-flex flex-column">
             <JobSessionPanel Messages="@(Job!.Messages.ToList())" Status="@Job.Status" IsJobActive="@IsJobActive"
                               RunStartedAt="@Job.StartedAt"
                               TotalMessageCount="@Job.TotalMessageCount"

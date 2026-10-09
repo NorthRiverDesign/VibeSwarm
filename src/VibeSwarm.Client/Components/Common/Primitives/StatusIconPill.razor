@@ -18,11 +18,11 @@
 
 	private string TextBgClass => Normalized switch
 	{
-		"success" => "text-bg-success",
-		"warning" => "text-bg-warning",
-		"danger" => "text-bg-danger",
-		"info" => "text-bg-info",
-		_ => "text-bg-primary"
+		"success" => "bg-success fg-contrast-success",
+		"warning" => "bg-warning fg-contrast-warning",
+		"danger" => "bg-danger fg-contrast-danger",
+		"info" => "bg-info fg-contrast-info",
+		_ => "bg-primary fg-contrast-primary"
 	};
 
 	private string SizeClass => Size switch

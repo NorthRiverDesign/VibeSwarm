@@ -18,7 +18,7 @@ public sealed class ProviderHostRowTests
 		Assert.Contains("Not installed", cut.Markup);
 		Assert.Contains("aria-expanded=\"true\"", cut.Markup);
 		var install = cut.FindAll("button").Single(button => button.TextContent.Trim() == "Install");
-		Assert.Contains("btn-primary", install.ClassName);
+		Assert.Contains("btn-solid theme-primary", install.ClassName);
 		Assert.Contains("ripgrep", cut.Markup);
 		Assert.Contains("fd / fdfind", cut.Markup);
 	}

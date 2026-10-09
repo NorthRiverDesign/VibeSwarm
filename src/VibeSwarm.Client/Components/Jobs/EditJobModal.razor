@@ -6,11 +6,11 @@
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged" Title="Edit Job" Icon="pencil-square">
 	<ChildContent>
-		<div class="d-flex flex-column gap-3">
+		<div class="d-flex flex-column gap-5">
 			@if (IsLocked)
 			{
 				<Alert Type="Alert.AlertType.Warning" Class="d-flex align-items-start mb-0">
-					<div class="d-flex flex-column gap-2 min-width-0">
+					<div class="d-flex flex-column gap-3 min-w-0">
 						<span>@LockedMessage</span>
 						@if (CanStop)
 						{
@@ -26,7 +26,7 @@
 			else if (_queueState?.IsProjectPaused == true)
 			{
 				<Alert Type="Alert.AlertType.Info" Class="d-flex align-items-start mb-0">
-					<div class="d-flex flex-column gap-2 min-width-0">
+					<div class="d-flex flex-column gap-3 min-w-0">
 						<span>This project's queue is paused while you edit. It resumes when you close this editor.</span>
 						<div>
 							<ActionButton Icon="play-circle" Text="Resume now" Size="ActionButton.ButtonSize.Small"
@@ -44,7 +44,7 @@
 			else if (_queueState != null)
 			{
 				<Alert Type="Alert.AlertType.Warning" Class="d-flex align-items-start mb-0">
-					<div class="d-flex flex-column gap-2 min-width-0">
+					<div class="d-flex flex-column gap-3 min-w-0">
 						<span>@QueueRunningMessage</span>
 						<div>
 							<ActionButton Icon="pause-circle" Text="Pause this project while editing"
@@ -57,14 +57,14 @@
 
 			<div>
 				<label for="edit-job-prompt" class="form-label">Goal prompt</label>
-				<textarea id="edit-job-prompt" class="form-control lh-base" rows="8"
+				<textarea id="edit-job-prompt" class="form-control lh-md" rows="8"
 						  @bind="_editedPrompt" @bind:event="oninput" disabled="@(IsLocked || _isSaving)"
 						  placeholder="Enter the goal prompt for the AI agent..."></textarea>
 			</div>
 
 			@if (!string.IsNullOrEmpty(_errorMessage))
 			{
-				<Alert Type="Alert.AlertType.Danger" Class="py-2 mb-0">@_errorMessage</Alert>
+				<Alert Type="Alert.AlertType.Danger" Class="py-3 mb-0">@_errorMessage</Alert>
 			}
 		</div>
 	</ChildContent>

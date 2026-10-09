@@ -18,41 +18,41 @@ else
 
 @if (_developerModeStatus?.IsEnabled == true)
 {
-<h2 class="text-eyebrow mb-2 px-1">Developer mode</h2>
+<h2 class="text-eyebrow mb-3 px-1">Developer mode</h2>
 
-<div class="border rounded-3 p-3 bg-body-tertiary mb-4 d-flex flex-column gap-3">
-<div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
-<div class="d-flex flex-column gap-2">
-<div class="d-flex align-items-center gap-2 flex-wrap">
+<div class="border rounded-5 p-5 bg-2 mb-7 d-flex flex-column gap-5">
+<div class="d-flex flex-column lg:flex-row justify-content-between gap-5">
+<div class="d-flex flex-column gap-3">
+<div class="d-flex align-items-center gap-3 flex-wrap">
 <span class="@GetDeveloperModeBadgeClass()">@GetDeveloperModeBadgeText()</span>
-<span class="small text-body-secondary">@_developerModeStatus.StatusMessage</span>
+<span class="small fg-1">@_developerModeStatus.StatusMessage</span>
 </div>
 @if (!string.IsNullOrWhiteSpace(_developerModeStatus.WorkingDirectory))
 {
-<div class="small text-body-secondary text-break">
+<div class="small fg-1 text-break">
 <i class="bi bi-folder2-open me-1"></i>@_developerModeStatus.WorkingDirectory
 </div>
 }
 @if (!string.IsNullOrWhiteSpace(_developerModeStatus.BuildCommandSummary))
 {
 <div class="small">
-<div class="text-body-secondary fw-semibold mb-1">Build command</div>
+<div class="fg-1 fw-semibold mb-1">Build command</div>
 <code class="text-break white-space-pre-wrap">@_developerModeStatus.BuildCommandSummary</code>
 </div>
 }
 @if (!string.IsNullOrWhiteSpace(_developerModeStatus.RestartCommandSummary))
 {
 <div class="small">
-<div class="text-body-secondary fw-semibold mb-1">Restart command</div>
+<div class="fg-1 fw-semibold mb-1">Restart command</div>
 <code class="text-break white-space-pre-wrap">@_developerModeStatus.RestartCommandSummary</code>
 </div>
 }
 </div>
-<div class="d-flex flex-column gap-2">
-<button type="button" class="btn btn-primary" @onclick="StartSelfUpdate" disabled="@(_isStartingSelfUpdate || !_developerModeStatus.CanStartUpdate)">
+<div class="d-flex flex-column gap-3">
+<button type="button" class="btn-solid theme-primary" @onclick="StartSelfUpdate" disabled="@(_isStartingSelfUpdate || !_developerModeStatus.CanStartUpdate)">
 @if (_isStartingSelfUpdate)
 {
-<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+<span class="spinner-border spinner-sm me-1" role="status"></span>
 <span>Starting...</span>
 }
 else if (_developerModeStatus.IsUpdateInProgress)
@@ -68,32 +68,32 @@ else
 </button>
 @if (!_developerModeStatus.SupportsSelfUpdate)
 {
-<div class="small text-warning-emphasis">
+<div class="small fg-emphasis-warning">
 Set <code>DeveloperMode__BuildCommand</code> and either <code>DeveloperMode__RestartCommand</code> or <code>DeveloperMode__ServiceName</code> in <code>.env</code>.
 </div>
 }
 </div>
 </div>
-<div class="small text-body-secondary">
+<div class="small fg-1">
 This starts a local rebuild and launches the configured restart command. The app will show a full-screen updating state and refresh automatically after the service comes back online.
 </div>
 </div>
 
-<hr class="my-4" />
+<hr class="my-7" />
 }
 
-<div class="accordion mb-4">
+<div class="accordion mb-7">
 <AccordionSection Title="Project defaults" Icon="folder"
 Summary="Where new projects live and which clock the app runs on"
 @bind-IsOpen="_openProjectDefaults">
 
-<div class="mb-3">
+<div class="mb-5">
 <label for="defaultProjectsDirectory" class="form-label">Default Projects Directory</label>
 <div class="input-group">
 <input type="text" id="defaultProjectsDirectory" class="form-control font-monospace"
    @bind="_settings.DefaultProjectsDirectory" @bind:after="CheckDirectoryExists"
    placeholder="@_placeholder" />
-<button type="button" class="btn btn-secondary" @onclick="OpenDirectoryBrowser"
+<button type="button" class="btn-solid theme-secondary" @onclick="OpenDirectoryBrowser"
 title="Browse directories">
 <i class="bi bi-folder2-open"></i>
 </button>
@@ -108,19 +108,19 @@ the working path will default to
 
 @if (!string.IsNullOrEmpty(_settings.DefaultProjectsDirectory))
 {
-<div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+<div class="mt-3 d-flex flex-wrap align-items-center gap-3">
 @if (_directoryExists)
 {
-<span class="badge bg-success-subtle text-success-emphasis">
+<span class="badge badge-subtle theme-success">
 <i class="bi bi-check-circle me-1"></i>Directory exists
 </span>
-<button type="button" class="btn btn-primary btn-sm" @onclick="OpenScanProjectsModal">
+<button type="button" class="btn-solid theme-primary btn-sm" @onclick="OpenScanProjectsModal">
 <i class="bi bi-folder-symlink me-1"></i>Import projects
 </button>
 }
 else
 {
-<span class="badge bg-warning-subtle text-warning-emphasis">
+<span class="badge badge-subtle theme-warning">
 <i class="bi bi-exclamation-triangle me-1"></i>Directory does not exist
 </span>
 }
@@ -128,9 +128,9 @@ else
 }
 </div>
 
-<div class="mb-3">
+<div class="mb-5">
 <label for="timeZoneId" class="form-label">Timezone</label>
-<select id="timeZoneId" class="form-select" @bind="_settings.TimeZoneId">
+<select id="timeZoneId" class="form-control" @bind="_settings.TimeZoneId">
 	@foreach (var option in _timeZoneOptions)
 	{
 		<option value="@option.Zone.Id">@option.Label</option>
@@ -148,11 +148,13 @@ clock time when you change it.
 Summary="What every agent prompt includes"
 @bind-IsOpen="_openAgentQuality">
 
-<div class="mb-3">
-<div class="form-check form-switch">
-<input class="form-check-input" type="checkbox" id="enablePromptStructuring"
-   @bind="_settings.EnablePromptStructuring" />
-<label class="form-check-label" for="enablePromptStructuring">
+<div class="mb-5">
+<div class="form-field">
+<div class="switch">
+	<input role="switch" switch type="checkbox" id="enablePromptStructuring"
+	   @bind="_settings.EnablePromptStructuring" />
+</div>
+<label for="enablePromptStructuring">
 Structure job prompts with XML tags
 </label>
 </div>
@@ -162,11 +164,13 @@ instructions.
 </div>
 </div>
 
-<div class="mb-3">
-<div class="form-check form-switch">
-<input class="form-check-input" type="checkbox" id="injectRepoMap"
-   @bind="_settings.InjectRepoMap" />
-<label class="form-check-label" for="injectRepoMap">
+<div class="mb-5">
+<div class="form-field">
+<div class="switch">
+	<input role="switch" switch type="checkbox" id="injectRepoMap"
+	   @bind="_settings.InjectRepoMap" />
+</div>
+<label for="injectRepoMap">
 Inject repo map into system prompt
 </label>
 </div>
@@ -176,11 +180,13 @@ faster codebase navigation.
 </div>
 </div>
 
-<div class="mb-3">
-<div class="form-check form-switch">
-<input class="form-check-input" type="checkbox" id="injectEfficiencyRules"
-   @bind="_settings.InjectEfficiencyRules" />
-<label class="form-check-label" for="injectEfficiencyRules">
+<div class="mb-5">
+<div class="form-field">
+<div class="switch">
+	<input role="switch" switch type="checkbox" id="injectEfficiencyRules"
+	   @bind="_settings.InjectEfficiencyRules" />
+</div>
+<label for="injectEfficiencyRules">
 Inject efficiency rules into system prompt
 </label>
 </div>
@@ -190,11 +196,13 @@ refactoring beyond the task.
 </div>
 </div>
 
-<div class="mb-3">
-<div class="form-check form-switch">
-<input class="form-check-input" type="checkbox" id="enableCommitAttribution"
-   @bind="_settings.EnableCommitAttribution" />
-<label class="form-check-label" for="enableCommitAttribution">
+<div class="mb-5">
+<div class="form-field">
+<div class="switch">
+	<input role="switch" switch type="checkbox" id="enableCommitAttribution"
+	   @bind="_settings.EnableCommitAttribution" />
+</div>
+<label for="enableCommitAttribution">
 Enable provider commit attribution
 </label>
 </div>
@@ -218,11 +226,11 @@ Summary="GitHub token for browsing published skills"
 @bind-IsOpen="_openMarketplace">
 
 <div class="mb-0">
-	<label for="githubToken" class="form-label">GitHub token <span class="text-body-secondary">(optional)</span></label>
+	<label for="githubToken" class="form-label">GitHub token <span class="fg-1">(optional)</span></label>
 	<div class="input-group">
 		<input type="@(_showGitHubToken ? "text" : "password")" id="githubToken" class="form-control font-monospace"
 			   @bind="_settings.GitHubToken" placeholder="ghp_..." autocomplete="off" />
-		<button type="button" class="btn btn-secondary" @onclick="ToggleGitHubTokenVisibility"
+		<button type="button" class="btn-solid theme-secondary" @onclick="ToggleGitHubTokenVisibility"
 				title="@(_showGitHubToken ? "Hide token" : "Show token")">
 			<i class="bi @(_showGitHubToken ? "bi-eye-slash" : "bi-eye")"></i>
 		</button>
@@ -233,56 +241,56 @@ Summary="GitHub token for browsing published skills"
 		read-only personal access token lifts that to 5000/hour. The token is never sent to
 		CLI agents.
 	</div>
-	<ValidationMessage For="@(() => _settings.GitHubToken)" class="text-danger small" />
+	<ValidationMessage For="@(() => _settings.GitHubToken)" class="fg-danger small" />
 </div>
 </AccordionSection>
 
 <AccordionSection Title="Critical error logs" Icon="exclamation-octagon"
 Summary="Crash reports captured from this browser"
 Badge="@(_criticalErrorLogs.Count > 0 ? _criticalErrorLogs.Count.ToString() : null)"
-BadgeClass="text-bg-danger" @bind-IsOpen="_openErrorLogs">
+BadgeClass="theme-danger" @bind-IsOpen="_openErrorLogs">
 
-<div class="row g-3">
-	<div class="col-12 col-md-6">
+<div class="row g-5">
+	<div class="col-12 md:col-6">
 		<label for="criticalErrorLogRetentionDays" class="form-label">Retention (days)</label>
 		<InputNumber id="criticalErrorLogRetentionDays" @bind-Value="_settings.CriticalErrorLogRetentionDays" class="form-control" />
 		<div class="form-text">
 			Keep critical crash logs for between @AppSettings.MinCriticalErrorLogRetentionDays and @AppSettings.MaxCriticalErrorLogRetentionDays days.
 		</div>
-		<ValidationMessage For="@(() => _settings.CriticalErrorLogRetentionDays)" class="text-danger small" />
+		<ValidationMessage For="@(() => _settings.CriticalErrorLogRetentionDays)" class="fg-danger small" />
 	</div>
-	<div class="col-12 col-md-6">
+	<div class="col-12 md:col-6">
 		<label for="criticalErrorLogMaxEntries" class="form-label">Maximum stored entries</label>
 		<InputNumber id="criticalErrorLogMaxEntries" @bind-Value="_settings.CriticalErrorLogMaxEntries" class="form-control" />
 		<div class="form-text">
 			Once this cap is reached, the oldest critical logs are removed automatically.
 		</div>
-		<ValidationMessage For="@(() => _settings.CriticalErrorLogMaxEntries)" class="text-danger small" />
+		<ValidationMessage For="@(() => _settings.CriticalErrorLogMaxEntries)" class="fg-danger small" />
 	</div>
 </div>
 
-<div class="mt-3 d-flex flex-wrap gap-2">
-	<button type="button" class="btn btn-secondary btn-sm" @onclick="RefreshCriticalErrorLogs" disabled="@_isLoadingCriticalErrorLogs">
+<div class="mt-5 d-flex flex-wrap gap-3">
+	<button type="button" class="btn-solid theme-secondary btn-sm" @onclick="RefreshCriticalErrorLogs" disabled="@_isLoadingCriticalErrorLogs">
 		@if (_isLoadingCriticalErrorLogs)
 		{
-			<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+			<span class="spinner-border spinner-sm me-1" role="status"></span>
 		}
 		<i class="bi bi-arrow-clockwise me-1"></i>Refresh Logs
 	</button>
-	<button type="button" class="btn btn-secondary btn-sm" @onclick="PruneCriticalErrorLogs" disabled="@_isPruningCriticalErrorLogs">
+	<button type="button" class="btn-solid theme-secondary btn-sm" @onclick="PruneCriticalErrorLogs" disabled="@_isPruningCriticalErrorLogs">
 		@if (_isPruningCriticalErrorLogs)
 		{
-			<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+			<span class="spinner-border spinner-sm me-1" role="status"></span>
 		}
 		<i class="bi bi-trash3 me-1"></i>Apply Retention Now
 	</button>
 </div>
 
-<div class="mt-3 border rounded-3">
+<div class="mt-5 border rounded-5">
 	<div class="list-group list-group-flush">
 		@if (_criticalErrorLogs.Count == 0)
 		{
-			<div class="list-group-item text-body-secondary small">
+			<div class="list-group-item fg-1 small">
 				No critical errors have been recorded yet.
 			</div>
 		}
@@ -291,34 +299,34 @@ BadgeClass="text-bg-danger" @bind-IsOpen="_openErrorLogs">
 			@foreach (var entry in _criticalErrorLogs)
 			{
 				<div class="list-group-item">
-					<div class="d-flex flex-column gap-2">
-						<div class="d-flex flex-wrap align-items-center gap-2">
-							<span class="badge bg-danger-subtle text-danger-emphasis text-uppercase">@entry.Source</span>
-							<span class="badge bg-body-secondary text-body-secondary text-uppercase">@entry.Category</span>
+					<div class="d-flex flex-column gap-3">
+						<div class="d-flex flex-wrap align-items-center gap-3">
+							<span class="badge badge-subtle theme-danger text-uppercase">@entry.Source</span>
+							<span class="badge text-uppercase">@entry.Category</span>
 							@if (entry.TriggeredRefresh)
 							{
-								<span class="badge bg-warning-subtle text-warning-emphasis">
+								<span class="badge badge-subtle theme-warning">
 									<i class="bi bi-arrow-clockwise me-1"></i>@(string.IsNullOrWhiteSpace(entry.RefreshAction) ? "Refresh triggered" : entry.RefreshAction)
 								</span>
 							}
-							<span class="small text-body-secondary">@entry.CreatedAt.FormatDateTimeShort()</span>
+							<span class="small fg-1">@entry.CreatedAt.FormatDateTimeShort()</span>
 						</div>
 						<div class="fw-semibold text-break">@entry.Message</div>
 						@if (!string.IsNullOrWhiteSpace(entry.Url))
 						{
-							<div class="small text-body-secondary text-break">
+							<div class="small fg-1 text-break">
 								<i class="bi bi-link-45deg me-1"></i>@entry.Url
 							</div>
 						}
 						@if (!string.IsNullOrWhiteSpace(entry.TraceId))
 						{
-							<div class="small text-body-secondary font-monospace text-break">Trace: @entry.TraceId</div>
+							<div class="small fg-1 font-monospace text-break">Trace: @entry.TraceId</div>
 						}
 						@if (!string.IsNullOrWhiteSpace(entry.Details))
 						{
 							<details class="small">
 								<summary class="cursor-pointer">Show details</summary>
-								<pre class="mb-0 mt-2 p-2 bg-body-tertiary rounded small font-monospace white-space-pre-wrap">@entry.Details</pre>
+								<pre class="mb-0 mt-3 p-3 bg-2 rounded small font-monospace white-space-pre-wrap">@entry.Details</pre>
 							</details>
 						}
 					</div>
@@ -330,11 +338,11 @@ BadgeClass="text-bg-danger" @bind-IsOpen="_openErrorLogs">
 </AccordionSection>
 </div>
 
-<div class="d-grid d-sm-flex gap-2">
-<button type="submit" class="btn btn-primary" disabled="@_isSaving">
+<div class="d-grid sm:d-flex gap-3">
+<button type="submit" class="btn-solid theme-primary" disabled="@_isSaving">
 @if (_isSaving)
 {
-<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+<span class="spinner-border spinner-sm me-1" role="status"></span>
 <span>Saving...</span>
 }
 else
@@ -343,7 +351,7 @@ else
 <span>Save settings</span>
 }
 </button>
-<button type="button" class="btn btn-secondary" @onclick="ReloadSettings" disabled="@_isSaving">
+<button type="button" class="btn-solid theme-secondary" @onclick="ReloadSettings" disabled="@_isSaving">
 <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
 </button>
 </div>
@@ -576,11 +584,11 @@ else
 	{
 		return _developerModeStatus?.Stage switch
 		{
-			DeveloperUpdateStage.Building => "badge bg-primary-subtle text-primary-emphasis",
-			DeveloperUpdateStage.Restarting => "badge bg-primary-subtle text-primary-emphasis",
-			DeveloperUpdateStage.Failed => "badge bg-danger-subtle text-danger-emphasis",
-			_ when _developerModeStatus?.SupportsSelfUpdate == true => "badge bg-success-subtle text-success-emphasis",
-			_ => "badge bg-warning-subtle text-warning-emphasis"
+			DeveloperUpdateStage.Building => "badge badge-subtle theme-primary",
+			DeveloperUpdateStage.Restarting => "badge badge-subtle theme-primary",
+			DeveloperUpdateStage.Failed => "badge badge-subtle theme-danger",
+			_ when _developerModeStatus?.SupportsSelfUpdate == true => "badge badge-subtle theme-success",
+			_ => "badge badge-subtle theme-warning"
 		};
 	}
 

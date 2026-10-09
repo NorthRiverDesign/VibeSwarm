@@ -2,27 +2,25 @@
 
 @if (Branches.Any())
 {
-	<div class="dropdown git-branch-dropdown">
-		<button class="@(Subtle ? "btn btn-sm btn-link text-body-secondary text-decoration-none px-0 d-inline-flex align-items-center gap-1 dropdown-toggle" : "btn btn-sm bg-body-tertiary border d-flex align-items-center gap-2 dropdown-toggle")" type="button"
-			data-bs-toggle="dropdown" aria-expanded="false" disabled="@(IsDisabled || !Branches.Any())"
+	<div class="git-branch-dropdown">
+		<button class="@(Subtle ? "btn-link btn-sm fg-1 text-decoration-none px-0 d-inline-flex align-items-center gap-1" : "btn btn-sm bg-2 border d-flex align-items-center gap-3")" type="button"
+			data-bs-toggle="menu" data-bs-placement="@(Subtle ? "bottom-start" : "bottom-end")" aria-expanded="false" disabled="@(IsDisabled || !Branches.Any())"
 			title="Current branch">
-			<i class="bi bi-git @(Subtle ? "" : "text-danger")"></i>
+			<i class="bi bi-git @(Subtle ? "" : "fg-danger")"></i>
 			<span class="fw-medium text-truncate" style="max-width: 120px;">@(CurrentBranch ?? "No branch")</span>
 			@if (!Subtle && !string.IsNullOrEmpty(CurrentCommitHash))
 			{
-				<span class="font-monospace text-body-secondary small d-none d-md-inline">@CurrentCommitHash[..Math.Min(7,
+				<span class="font-monospace fg-1 small d-none md:d-inline">@CurrentCommitHash[..Math.Min(7,
 								CurrentCommitHash.Length)]</span>
 				}
+			<i class="bi bi-chevron-down small opacity-75"></i>
 		</button>
-		<ul class="dropdown-menu @(Subtle ? "" : "dropdown-menu-end") overflow-y-auto" style="max-height: 300px;">
-			<li>
-				<h6 class="dropdown-header">Local Branches</h6>
-			</li>
+		<div class="menu menu-scrollable" style="--bs-menu-max-height: 300px;">
+				<h6 class="menu-header">Local Branches</h6>
 			@foreach (var branch in Branches.Where(b => !b.IsRemote))
 			{
 				var isCurrentBranch = branch.Name == CurrentBranch;
-				<li>
-					<button class="dropdown-item d-flex align-items-center gap-2 @(isCurrentBranch ? "active" : "")"
+					<button class="menu-item @(isCurrentBranch ? "active" : "")"
 						@onclick="@(() => OnBranchSelected.InvokeAsync(branch.Name))" disabled="@isCurrentBranch">
 						@if (isCurrentBranch)
 						{
@@ -34,34 +32,27 @@
 						}
 						<span>@branch.Name</span>
 					</button>
-				</li>
 			}
 			@if (Branches.Any(b => b.IsRemote))
 			{
-				<li>
-					<hr class="dropdown-divider">
-				</li>
-				<li>
-					<h6 class="dropdown-header">Remote Branches</h6>
-				</li>
+					<hr class="menu-divider">
+					<h6 class="menu-header">Remote Branches</h6>
 				@foreach (var branch in Branches.Where(b => b.IsRemote))
 				{
-					<li>
-						<button class="dropdown-item d-flex align-items-center gap-2"
+						<button class="menu-item"
 							@onclick="@(() => OnBranchSelected.InvokeAsync(branch.ShortName))">
 							<i class="bi bi-cloud opacity-50"></i>
 							<span>@branch.Name</span>
 						</button>
-					</li>
 				}
 			}
-		</ul>
+		</div>
 	</div>
 }
 else if (!string.IsNullOrEmpty(CurrentBranch))
 {
-	<span class="badge bg-body-tertiary text-body d-flex align-items-center gap-1">
-		<i class="bi bi-git text-danger"></i>
+	<span class="badge d-flex align-items-center gap-1">
+		<i class="bi bi-git fg-danger"></i>
 		@CurrentBranch
 	</span>
 }

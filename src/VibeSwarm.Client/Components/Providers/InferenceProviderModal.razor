@@ -8,20 +8,20 @@
 	<ChildContent>
 		<EditForm Model="@Provider" OnValidSubmit="HandleValidSubmit">
 			<DataAnnotationsValidator />
-			<ValidationSummary class="text-danger mb-3" />
+			<ValidationSummary class="fg-danger mb-5" />
 
-			<div class="row g-3 mb-3">
-				<div class="col-12 col-md-6">
+			<div class="row g-5 mb-5">
+				<div class="col-12 md:col-6">
 					<label for="inference-name" class="form-label">Name</label>
 					<InputText id="inference-name" @bind-Value="Provider.Name" class="form-control"
 							   placeholder="Local Ollama" />
-					<ValidationMessage For="@(() => Provider.Name)" class="text-danger small" />
+					<ValidationMessage For="@(() => Provider.Name)" class="fg-danger small" />
 				</div>
-				<div class="col-12 col-md-6">
+				<div class="col-12 md:col-6">
 					<label for="inference-type" class="form-label">Provider Type</label>
 					<InputSelect id="inference-type" Value="Provider.ProviderType"
 								 ValueExpression="@(() => Provider.ProviderType)"
-								 ValueChanged="@((InferenceProviderType value) => OnProviderTypeChanged(value))" class="form-select">
+								 ValueChanged="@((InferenceProviderType value) => OnProviderTypeChanged(value))" class="form-control">
 						@foreach (var type in Enum.GetValues<InferenceProviderType>())
 						{
 							<option value="@type">@type</option>
@@ -30,32 +30,32 @@
 				</div>
 			</div>
 
-			<div class="row g-3 mb-3">
-				<div class="col-12 col-md-6">
+			<div class="row g-5 mb-5">
+				<div class="col-12 md:col-6">
 					<label for="inference-apikey" class="form-label">
 						API Key
 						@if (Provider.ProviderType == InferenceProviderType.Grok)
 						{
-							<span class="text-danger">*</span>
+							<span class="fg-danger">*</span>
 						}
 					</label>
 					<input type="password" id="inference-apikey" class="form-control font-monospace"
 						   @bind="Provider.ApiKey" @bind:event="oninput"
 						   placeholder="@(Provider.ProviderType == InferenceProviderType.Grok ? "xai-..." : "(optional)")" />
 				</div>
-				<div class="col-12 col-md-6">
+				<div class="col-12 md:col-6">
 					<label for="inference-endpoint" class="form-label">Endpoint URL</label>
 					<div class="input-group">
 						<input type="url" id="inference-endpoint" class="form-control font-monospace"
 							   @bind="Provider.Endpoint" @bind:event="oninput"
 							   placeholder="@GetEndpointPlaceholder(Provider.ProviderType)" />
-						<button type="button" class="btn btn-secondary"
+						<button type="button" class="btn-solid theme-secondary"
 								@onclick="TestConnection"
 								disabled="@_isTesting"
 								title="Test Connection">
 							@if (_isTesting)
 							{
-								<span class="spinner-border spinner-border-sm" role="status"></span>
+								<span class="spinner-border spinner-sm" role="status"></span>
 							}
 							else
 							{
@@ -66,11 +66,11 @@
 				</div>
 			</div>
 
-			<div class="row g-3 mb-3">
-				<div class="col-12 col-md-8">
+			<div class="row g-5 mb-5">
+				<div class="col-12 md:col-8">
 					<label for="inference-model" class="form-label">Default Model</label>
 					<div class="input-group">
-						<select id="inference-model" class="form-select" @bind="_selectedModelId">
+						<select id="inference-model" class="form-control" @bind="_selectedModelId">
 							<option value="">-- Select a model --</option>
 							@foreach (var model in _models.Where(m => m.IsAvailable))
 							{
@@ -83,13 +83,13 @@
 								</option>
 							}
 						</select>
-						<button type="button" class="btn btn-secondary"
+						<button type="button" class="btn-solid theme-secondary"
 								@onclick="RefreshModels"
 								disabled="@(_isRefreshingModels || !CanRefreshModels)"
 								title="@RefreshModelsTitle">
 							@if (_isRefreshingModels)
 							{
-								<span class="spinner-border spinner-border-sm" role="status"></span>
+								<span class="spinner-border spinner-sm" role="status"></span>
 							}
 							else
 							{
@@ -99,36 +99,38 @@
 					</div>
 					@if (!CanRefreshModels)
 					{
-						<div class="form-text text-warning">@RefreshBlockedReason</div>
+						<div class="form-text fg-warning">@RefreshBlockedReason</div>
 					}
 					else if (!_models.Any() && !_isRefreshingModels)
 					{
-						<div class="form-text text-warning">
+						<div class="form-text fg-warning">
 							No models found. Click refresh to discover models from the provider.
 						</div>
 					}
 				</div>
-				<div class="col-12 col-md-4 d-flex align-items-end">
-					<div class="form-check form-switch">
-						<InputCheckbox id="inference-enabled" @bind-Value="Provider.IsEnabled" class="form-check-input" />
-						<label class="form-check-label" for="inference-enabled">Enabled</label>
+				<div class="col-12 md:col-4 d-flex align-items-end">
+					<div class="form-field">
+						<div class="switch">
+							<InputCheckbox role="switch" switch id="inference-enabled" @bind-Value="Provider.IsEnabled" />
+						</div>
+						<label for="inference-enabled">Enabled</label>
 					</div>
 				</div>
 			</div>
 
 			@if (!string.IsNullOrEmpty(_errorMessage))
 			{
-				<div class="text-danger small mb-3">
+				<div class="fg-danger small mb-5">
 					<i class="bi bi-exclamation-circle me-1"></i>@_errorMessage
 				</div>
 			}
 
-			<div class="d-flex gap-2 justify-content-end">
-				<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
-				<button type="submit" class="btn btn-primary" disabled="@_isSaving">
+			<div class="d-flex gap-3 justify-content-end">
+				<button type="button" class="btn-solid theme-secondary" @onclick="HandleCancel">Cancel</button>
+				<button type="submit" class="btn-solid theme-primary" disabled="@_isSaving">
 					@if (_isSaving)
 					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
 					}
 					@(_isSaving ? "Saving..." : (IsEdit ? "Save" : "Add Provider"))
 				</button>

@@ -3,19 +3,19 @@
 @inject NavigationManager NavigationManager
 @inject NotificationService NotificationService
 
-<div class="d-flex flex-column gap-4">
+<div class="d-flex flex-column gap-7">
 	@if (_isLoading)
 	{
-		<div class="d-flex align-items-center gap-2 text-body-secondary">
-			<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+		<div class="d-flex align-items-center gap-3 fg-1">
+			<span class="spinner-border spinner-sm" role="status" aria-hidden="true"></span>
 			<span>Loading auto-pilot status...</span>
 		</div>
 	}
 	else if (_loop == null || IsTerminal(_loop.Status))
 	{
 		@* IDLE / STOPPED STATE — the settings, grouped like the rest of the project page *@
-		<div class="d-flex flex-column gap-2 px-1">
-			<p class="small text-body-secondary mb-0">
+		<div class="d-flex flex-column gap-3 px-1">
+			<p class="small fg-1 mb-0">
 				Auto-Pilot reads the code, picks an improvement, builds it, and repeats until it reaches one of the limits below.
 			</p>
 			@if (_loop != null && (_loop.CompletedIterations > 0 || !string.IsNullOrEmpty(_loop.LastStopReason)))
@@ -24,9 +24,9 @@
 					<i class="bi @GetStatusIcon(_loop.Status) me-1"></i>Last run @_loop.Status.ToString().ToLowerInvariant()
 					@if (!string.IsNullOrEmpty(_loop.LastStopReason))
 					{
-						<span class="text-body-secondary">: @_loop.LastStopReason</span>
+						<span class="fg-1">: @_loop.LastStopReason</span>
 					}
-					<span class="text-body-secondary">
+					<span class="fg-1">
 						· @_loop.CompletedIterations iteration@(_loop.CompletedIterations == 1 ? "" : "s") · $@_loop.TotalCostUsd.ToString("F2")
 					</span>
 				</p>
@@ -38,13 +38,13 @@
 			<Alert Type="Alert.AlertType.Danger" Class="mb-0">@_error</Alert>
 		}
 
-		<section class="d-flex flex-column gap-2" aria-label="Ideas">
+		<section class="d-flex flex-column gap-3" aria-label="Ideas">
 			<h2 class="text-eyebrow mb-0 px-1">Ideas</h2>
-			<div class="list-group rounded-4">
-				<div class="list-group-item d-flex flex-column gap-3 py-3">
+			<div class="list-group rounded-9">
+				<div class="list-group-item d-flex flex-column gap-5 py-5">
 					<div>
-						<label for="ap-inference-provider" class="form-label small text-body-secondary mb-1">Come up with ideas using</label>
-						<select id="ap-inference-provider" class="form-select" @bind="_config.InferenceProviderId">
+						<label for="ap-inference-provider" class="form-label small fg-1 mb-1">Come up with ideas using</label>
+						<select id="ap-inference-provider" class="form-control" @bind="_config.InferenceProviderId">
 							<option value="">The coding provider</option>
 							@foreach (var provider in AvailableInferenceProviders)
 							{
@@ -53,9 +53,9 @@
 						</select>
 					</div>
 					<div>
-						<label for="ap-inference-model" class="form-label small text-body-secondary mb-1">Model</label>
+						<label for="ap-inference-model" class="form-label small fg-1 mb-1">Model</label>
 						<div class="input-group">
-							<select id="ap-inference-model" class="form-select" @bind="_config.InferenceModelId">
+							<select id="ap-inference-model" class="form-control" @bind="_config.InferenceModelId">
 								<option value="">Provider default</option>
 								@foreach (var model in GetInferenceModelsForSelectedProvider())
 								{
@@ -70,13 +70,13 @@
 			</div>
 		</section>
 
-		<section class="d-flex flex-column gap-2" aria-label="Coding">
+		<section class="d-flex flex-column gap-3" aria-label="Coding">
 			<h2 class="text-eyebrow mb-0 px-1">Coding</h2>
-			<div class="list-group rounded-4">
-				<div class="list-group-item d-flex flex-column gap-3 py-3">
+			<div class="list-group rounded-9">
+				<div class="list-group-item d-flex flex-column gap-5 py-5">
 					<div>
-						<label for="ap-coding-provider" class="form-label small text-body-secondary mb-1">Build each idea with</label>
-						<select id="ap-coding-provider" class="form-select" @bind="_config.ProviderId">
+						<label for="ap-coding-provider" class="form-label small fg-1 mb-1">Build each idea with</label>
+						<select id="ap-coding-provider" class="form-control" @bind="_config.ProviderId">
 							<option value="">Project default</option>
 							@foreach (var provider in AvailableProviders)
 							{
@@ -85,9 +85,9 @@
 						</select>
 					</div>
 					<div>
-						<label for="ap-coding-model" class="form-label small text-body-secondary mb-1">Model</label>
+						<label for="ap-coding-model" class="form-label small fg-1 mb-1">Model</label>
 						<div class="input-group">
-							<select id="ap-coding-model" class="form-select" @bind="_config.ModelId">
+							<select id="ap-coding-model" class="form-control" @bind="_config.ModelId">
 								<option value="">Provider default</option>
 								@foreach (var model in GetCodingModelsForSelectedProvider())
 								{
@@ -101,26 +101,26 @@
 			</div>
 		</section>
 
-		<section class="d-flex flex-column gap-2" aria-label="Limits">
+		<section class="d-flex flex-column gap-3" aria-label="Limits">
 			<h2 class="text-eyebrow mb-0 px-1">Limits</h2>
-			<div class="list-group rounded-4">
-				<div class="list-group-item py-3">
-					<div class="row g-3">
+			<div class="list-group rounded-9">
+				<div class="list-group-item py-5">
+					<div class="row g-5">
 						<div class="col-6">
-							<label for="ap-max-iterations" class="form-label small text-body-secondary mb-1">Iterations</label>
+							<label for="ap-max-iterations" class="form-label small fg-1 mb-1">Iterations</label>
 							<input id="ap-max-iterations" type="number" class="form-control" @bind="_config.MaxIterations" min="0" max="1000" />
 							<div class="form-text">0 = no limit</div>
 						</div>
 						<div class="col-6">
-							<label for="ap-max-cost" class="form-label small text-body-secondary mb-1">Spend up to ($)</label>
+							<label for="ap-max-cost" class="form-label small fg-1 mb-1">Spend up to ($)</label>
 							<input id="ap-max-cost" type="number" class="form-control" @bind="_config.MaxTotalCostUsd" min="0" step="1" placeholder="No limit" />
 						</div>
 						<div class="col-6">
-							<label for="ap-max-failures" class="form-label small text-body-secondary mb-1">Failures in a row</label>
+							<label for="ap-max-failures" class="form-label small fg-1 mb-1">Failures in a row</label>
 							<input id="ap-max-failures" type="number" class="form-control" @bind="_config.MaxConsecutiveFailures" min="1" max="20" />
 						</div>
 						<div class="col-6">
-							<label for="ap-cooldown" class="form-label small text-body-secondary mb-1">Pause between (sec)</label>
+							<label for="ap-cooldown" class="form-label small fg-1 mb-1">Pause between (sec)</label>
 							<input id="ap-cooldown" type="number" class="form-control" @bind="_config.CooldownSeconds" min="10" max="3600" />
 						</div>
 					</div>
@@ -128,29 +128,29 @@
 			</div>
 		</section>
 
-		<section class="d-flex flex-column gap-2" aria-label="After each change">
+		<section class="d-flex flex-column gap-3" aria-label="After each change">
 			<h2 class="text-eyebrow mb-0 px-1">After each change</h2>
-			<div class="list-group rounded-4">
-				<label class="list-group-item d-flex align-items-center justify-content-between gap-3 py-3 cursor-pointer" for="ap-autocommit">
+			<div class="list-group rounded-9">
+				<label class="list-group-item d-flex align-items-center justify-content-between gap-5 py-5 cursor-pointer" for="ap-autocommit">
 					<span>Commit it</span>
-					<span class="form-check form-switch mb-0">
-						<input type="checkbox" role="switch" class="form-check-input" id="ap-autocommit" @bind="_config.AutoCommit" />
+					<span class="switch">
+						<input type="checkbox" role="switch" switch id="ap-autocommit" @bind="_config.AutoCommit" />
 					</span>
 				</label>
-				<label class="list-group-item d-flex align-items-center justify-content-between gap-3 py-3 cursor-pointer" for="ap-autopush">
+				<label class="list-group-item d-flex align-items-center justify-content-between gap-5 py-5 cursor-pointer" for="ap-autopush">
 					<span>Push the commit</span>
-					<span class="form-check form-switch mb-0">
-						<input type="checkbox" role="switch" class="form-check-input" id="ap-autopush" @bind="_config.AutoPush" />
+					<span class="switch">
+						<input type="checkbox" role="switch" switch id="ap-autopush" @bind="_config.AutoPush" />
 					</span>
 				</label>
 			</div>
 		</section>
 
-		<div class="d-grid d-sm-flex justify-content-sm-end">
-			<button type="button" class="btn btn-primary" @onclick="StartAutoPilot" disabled="@_isStarting">
+		<div class="d-grid sm:d-flex sm:justify-content-end">
+			<button type="button" class="btn-solid theme-primary" @onclick="StartAutoPilot" disabled="@_isStarting">
 				@if (_isStarting)
 				{
-					<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+					<span class="spinner-border spinner-sm me-1" role="status" aria-hidden="true"></span>
 				}
 				else
 				{
@@ -163,37 +163,37 @@
 	else
 	{
 		@* RUNNING / PAUSED / STOPPING STATE — one status card *@
-		<section class="d-flex flex-column gap-2" aria-label="Auto-Pilot status">
+		<section class="d-flex flex-column gap-3" aria-label="Auto-Pilot status">
 			<h2 class="text-eyebrow mb-0 px-1">Auto-Pilot</h2>
-			<div class="list-group rounded-4">
-				<div class="list-group-item d-flex align-items-center gap-3 py-3">
+			<div class="list-group rounded-9">
+				<div class="list-group-item d-flex align-items-center gap-5 py-5">
 					@if (_loop.Status == IterationLoopStatus.Paused)
 					{
-						<i class="bi bi-pause-circle-fill text-warning fs-5 flex-shrink-0"></i>
+						<i class="bi bi-pause-circle-fill fg-warning fs-lg flex-shrink-0"></i>
 					}
 					else
 					{
-						<span class="spinner-border spinner-border-sm @(_loop.Status == IterationLoopStatus.Stopping ? "text-warning" : "text-primary") flex-shrink-0"
+						<span class="spinner-border spinner-sm @(_loop.Status == IterationLoopStatus.Stopping ? "fg-warning" : "fg-primary") flex-shrink-0"
 							  role="status" aria-hidden="true"></span>
 					}
-					<div class="flex-grow-1 min-width-0">
+					<div class="flex-grow-1 min-w-0">
 						<div class="fw-medium">@GetStatusHeadline(_loop.Status)</div>
-						<div class="small text-body-secondary text-truncate">@GetProgressSummary(_loop)</div>
+						<div class="small fg-1 text-truncate">@GetProgressSummary(_loop)</div>
 					</div>
 					@if (_loop.Status == IterationLoopStatus.Running)
 					{
-						<button type="button" class="btn btn-sm btn-outline-warning rounded-pill flex-shrink-0" @onclick="PauseAutoPilot" disabled="@_isToggling">Pause</button>
-						<button type="button" class="btn btn-sm btn-outline-danger rounded-pill flex-shrink-0" @onclick="StopAutoPilot" disabled="@_isToggling">Stop</button>
+						<button type="button" class="btn-sm btn-outline theme-warning rounded-pill flex-shrink-0" @onclick="PauseAutoPilot" disabled="@_isToggling">Pause</button>
+						<button type="button" class="btn-sm btn-outline theme-danger rounded-pill flex-shrink-0" @onclick="StopAutoPilot" disabled="@_isToggling">Stop</button>
 					}
 					else if (_loop.Status == IterationLoopStatus.Paused)
 					{
-						<button type="button" class="btn btn-sm btn-outline-success rounded-pill flex-shrink-0" @onclick="ResumeAutoPilot" disabled="@_isToggling">Resume</button>
-						<button type="button" class="btn btn-sm btn-outline-danger rounded-pill flex-shrink-0" @onclick="StopAutoPilot" disabled="@_isToggling">Stop</button>
+						<button type="button" class="btn-sm btn-outline theme-success rounded-pill flex-shrink-0" @onclick="ResumeAutoPilot" disabled="@_isToggling">Resume</button>
+						<button type="button" class="btn-sm btn-outline theme-danger rounded-pill flex-shrink-0" @onclick="StopAutoPilot" disabled="@_isToggling">Stop</button>
 					}
 				</div>
 				@if (_loop.MaxIterations > 0)
 				{
-					<div class="list-group-item py-2">
+					<div class="list-group-item py-3">
 						<div class="progress progress-xs" role="progressbar" aria-label="Iterations done"
 							 aria-valuenow="@_loop.CompletedIterations" aria-valuemin="0" aria-valuemax="@_loop.MaxIterations">
 							<div class="progress-bar" style="width: @(Math.Min(100, _loop.CompletedIterations * 100 / _loop.MaxIterations))%"></div>
@@ -202,19 +202,19 @@
 				}
 				@if (_loop.CurrentJobId.HasValue)
 				{
-					<a href="/jobs/view/@_loop.CurrentJobId" class="list-group-item list-group-item-action d-flex align-items-center gap-3">
-						<i class="bi bi-terminal text-body-secondary flex-shrink-0"></i>
+					<a href="/jobs/view/@_loop.CurrentJobId" class="list-group-item list-group-item-action d-flex align-items-center gap-5">
+						<i class="bi bi-terminal fg-1 flex-shrink-0"></i>
 						<span class="flex-grow-1">Current job</span>
-						<i class="bi bi-chevron-right text-body-tertiary flex-shrink-0"></i>
+						<i class="bi bi-chevron-right fg-2 flex-shrink-0"></i>
 					</a>
 				}
 				else if (_loop.Status == IterationLoopStatus.Running && _loop.NextIterationAt.HasValue)
 				{
-					<div class="list-group-item small text-body-secondary">Waiting before the next iteration</div>
+					<div class="list-group-item small fg-1">Waiting before the next iteration</div>
 				}
 				@if (_loop.ConsecutiveFailures > 0)
 				{
-					<div class="list-group-item small text-warning">
+					<div class="list-group-item small fg-warning">
 						<i class="bi bi-exclamation-triangle me-1"></i>@_loop.ConsecutiveFailures failed in a row · stops at @_loop.MaxConsecutiveFailures
 					</div>
 				}
@@ -406,9 +406,9 @@
 
 	private static string GetLastRunTextClass(IterationLoopStatus status) => status switch
 	{
-		IterationLoopStatus.Failed => "text-danger",
-		IterationLoopStatus.Exhausted => "text-info",
-		_ => "text-body-secondary"
+		IterationLoopStatus.Failed => "fg-danger",
+		IterationLoopStatus.Exhausted => "fg-info",
+		_ => "fg-1"
 	};
 
 	private static string GetStatusHeadline(IterationLoopStatus status) => status switch

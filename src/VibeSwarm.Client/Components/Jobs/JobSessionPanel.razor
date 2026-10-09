@@ -4,13 +4,13 @@
 @implements IDisposable
 
 <div class="card d-flex flex-column">
-    <div class="card-header bg-body-secondary p-0">
+    <div class="card-header p-0">
         <div
-            class="d-flex align-items-center justify-content-between flex-wrap gap-2 border-bottom border-secondary border-opacity-25">
+            class="d-flex align-items-center justify-content-between flex-wrap gap-3 border-bottom border-secondary border-30">
             @* Tabs *@
-            <ul class="nav nav-tabs nav-tabs-card border-0 flex-grow-1 flex-nowrap" role="tablist">
+            <ul class="nav nav-underline flex-grow-1 flex-nowrap" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button type="button" class="nav-link px-3 px-sm-3 @(_activeTab == "session" ? "active" : "")"
+                    <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab == "session" ? "active" : "")"
                             @onclick="@(() => _activeTab = "session")" role="tab">
                         @if (IsJobActive)
                         {
@@ -26,18 +26,18 @@
                 @if (!string.IsNullOrEmpty(ConsoleOutput) && !IsJobActive)
                 {
                     <li class="nav-item" role="presentation">
-                        <button type="button" class="nav-link px-3 px-sm-3 @(_activeTab == "console" ? "active" : "")"
+                        <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab == "console" ? "active" : "")"
                                 @onclick="@(() => _activeTab = "console")" role="tab">
                             <i class="bi bi-terminal me-1 opacity-75"></i>
-                            <span class="d-none d-sm-inline">Console Output</span>
-                            <span class="d-sm-none">Console</span>
+                            <span class="d-none sm:d-inline">Console Output</span>
+                            <span class="sm:d-none">Console</span>
                         </button>
                     </li>
                 }
                 @if (HasCommandTab)
                 {
                     <li class="nav-item" role="presentation">
-                        <button type="button" class="nav-link px-3 px-sm-3 @(_activeTab == "command" ? "active" : "")"
+                        <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab == "command" ? "active" : "")"
                                 @onclick="@(() => _activeTab = "command")" role="tab">
                             <i class="bi bi-terminal-fill me-1 opacity-75"></i>
                             <span>Command</span>
@@ -46,7 +46,7 @@
                 }
             </ul>
             @* Actions *@
-            <div class="d-flex align-items-center gap-1 px-2">
+            <div class="d-flex align-items-center gap-1 px-3">
                 @if (IsJobActive && LiveOutputLines.Any())
                 {
                     <ActionButton Icon="trash" Text="Clear" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
@@ -59,9 +59,9 @@
     @* Error Alert - inside the card when job has an error *@
     @if (!string.IsNullOrEmpty(ErrorMessage) && _activeTab == "session")
     {
-        <div class="alert alert-danger d-flex align-items-start gap-2 m-2 mb-0" role="alert">
+        <div class="alert theme-danger align-items-start m-3 mb-0" role="alert">
             <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
-            <div class="flex-grow-1 min-width-0">
+            <div class="flex-grow-1 min-w-0">
                 <strong class="d-block mb-1">Error</strong>
                 <pre class="mb-0 small font-monospace overflow-auto"
                      style="white-space: pre-wrap; max-height: 150px;">@ErrorMessage</pre>
@@ -72,129 +72,113 @@
     <div class="card-body p-0 flex-grow-1 d-flex flex-column" style="min-height: 300px;">
         @if (_activeTab == "session")
         {
-            <div class="flex-grow-1 overflow-auto p-2 p-sm-3">
+            <div class="flex-grow-1 overflow-auto p-3 sm:p-5">
                 @if (VisibleMessageCount > 0)
                 {
-                    <div class="d-flex justify-content-end align-items-center gap-2 mb-2">
+                    <div class="d-flex justify-content-end align-items-center gap-3 mb-3">
                         @if (!IsJobActive && _displayedMessages.Any())
                         {
-                            <div class="dropdown">
-                                <button class="btn btn-sm btn-secondary d-inline-flex align-items-center gap-1"
-                                        type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                            <div>
+                                <button class="btn-sm btn-solid theme-secondary d-inline-flex align-items-center gap-1"
+                                        type="button" data-bs-toggle="menu" data-bs-placement="bottom-end" data-bs-auto-close="outside"
                                         aria-expanded="false">
                                     <i class="bi bi-funnel"></i>
-                                    <span class="d-none d-sm-inline">Filter</span>
+                                    <span class="d-none sm:d-inline">Filter</span>
                                     @if (HiddenFilterCount > 0)
                                     {
-                                        <span class="badge bg-light text-dark rounded-pill ms-1">@HiddenFilterCount</span>
+                                        <span class="badge theme-inverse rounded-pill ms-1">@HiddenFilterCount</span>
                                     }
                                 </button>
-                                <ul class="dropdown-menu dropdown-menu-end shadow-sm">
-                                    <li>
-                                        <button class="dropdown-item d-flex align-items-center gap-2" type="button"
+                                <div class="menu">
+                                        <button class="menu-item" type="button"
                                                 @onclick="@(() => ToggleRoleFilter(MessageRole.Assistant))">
-                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.Assistant) ? "bi-square" : "bi-check-square-fill text-primary")"></i>
+                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.Assistant) ? "bi-square" : "bi-check-square-fill fg-primary")"></i>
                                             <i class="bi bi-stars opacity-75"></i>
                                             Responses
                                         </button>
-                                    </li>
-                                    <li>
-                                        <button class="dropdown-item d-flex align-items-center gap-2" type="button"
+                                        <button class="menu-item" type="button"
                                                 @onclick="ToggleToolFilters">
-                                            <i class="bi @(AreToolMessagesHidden ? "bi-square" : "bi-check-square-fill text-primary")"></i>
+                                            <i class="bi @(AreToolMessagesHidden ? "bi-square" : "bi-check-square-fill fg-primary")"></i>
                                             <i class="bi bi-tools opacity-75"></i>
                                             Tool Activity
                                         </button>
-                                    </li>
-                                    <li>
-                                        <button class="dropdown-item d-flex align-items-center gap-2" type="button"
+                                        <button class="menu-item" type="button"
                                                 @onclick="@(() => ToggleRoleFilter(MessageRole.System))">
-                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.System) ? "bi-square" : "bi-check-square-fill text-primary")"></i>
+                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.System) ? "bi-square" : "bi-check-square-fill fg-primary")"></i>
                                             <i class="bi bi-gear opacity-75"></i>
                                             System
                                         </button>
-                                    </li>
-                                    <li>
-                                        <button class="dropdown-item d-flex align-items-center gap-2" type="button"
+                                        <button class="menu-item" type="button"
                                                 @onclick="@(() => ToggleRoleFilter(MessageRole.User))">
-                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.User) ? "bi-square" : "bi-check-square-fill text-primary")"></i>
+                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.User) ? "bi-square" : "bi-check-square-fill fg-primary")"></i>
                                             <i class="bi bi-person opacity-75"></i>
                                             User
                                         </button>
-                                    </li>
                                     @if (_hiddenRoles.Any())
                                     {
-                                        <li><hr class="dropdown-divider"></li>
-                                        <li>
-                                            <button class="dropdown-item d-flex align-items-center gap-2 text-primary" type="button"
+                                        <hr class="menu-divider">
+                                            <button class="menu-item fg-primary" type="button"
                                                     @onclick="ClearFilters">
                                                 <i class="bi bi-arrow-counterclockwise"></i>
                                                 Show All
                                             </button>
-                                        </li>
                                     }
-                                </ul>
+                                </div>
                             </div>
                         }
-                        <span class="badge bg-secondary">@VisibleMessageCount @(VisibleMessageCount == 1 ? "message" : "messages")</span>
+                        <span class="badge theme-secondary">@VisibleMessageCount @(VisibleMessageCount == 1 ? "message" : "messages")</span>
                     </div>
                     @if (HasHiddenMessages)
                     {
-                        <div class="small text-body-secondary mb-2">
+                        <div class="small fg-1 mb-3">
                             Showing latest @_displayedMessages.Count of @TotalMessageCount messages to keep this page responsive.
                         </div>
                     }
                 }
-                <div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;" @ref="_sessionOutputContainer">
+                <div class="d-flex flex-column gap-5 overflow-auto p-3" style="max-height: 600px;" @ref="_sessionOutputContainer">
                     @if (HasGoalPrompt)
                     {
                         <div class="chat-message d-flex flex-column chat-message-user">
-                            <div class="chat-bubble py-2 px-3 text-break bg-primary-subtle text-primary-emphasis border border-primary-subtle position-relative pe-5">
+                            <div class="chat-bubble py-3 px-5 text-break bg-subtle-primary fg-emphasis-primary border border-subtle-primary position-relative pe-12">
                                 @if (!_isEditingGoalPrompt)
                                 {
-                                    <div class="position-absolute top-0 end-0 p-2">
-                                        <div class="dropdown">
-                                            <button type="button" class="btn btn-sm btn-link p-0 text-primary-emphasis text-decoration-none"
-                                                    data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="Goal prompt actions">
+                                    <div class="position-absolute top-0 end-0 p-3">
+                                        <div>
+                                            <button type="button" class="btn-sm btn-link p-0 fg-emphasis-primary text-decoration-none"
+                                                    data-bs-toggle="menu" data-bs-placement="bottom-end" aria-expanded="false" title="Goal prompt actions">
                                                 <i class="bi bi-three-dots-vertical"></i>
                                             </button>
-                                            <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                            <div class="menu">
                                                 @if (CanEditGoalPrompt)
                                                 {
-                                                    <li>
-                                                        <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                                        <button type="button" class="menu-item"
                                                                 @onclick="StartGoalPromptEdit" title="Edit prompt">
                                                             <i class="bi bi-pencil"></i>
                                                             <span>Edit prompt</span>
                                                         </button>
-                                                    </li>
                                                 }
-                                                <li>
-                                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                                    <button type="button" class="menu-item"
                                                             @onclick="CopyGoalPrompt" title="Copy prompt">
                                                         <i class="bi bi-clipboard"></i>
                                                         <span>Copy prompt</span>
                                                     </button>
-                                                </li>
-                                                <li>
-                                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                                    <button type="button" class="menu-item"
                                                             @onclick="ShowFullGoalPrompt" title="View full prompt">
                                                         <i class="bi bi-arrows-fullscreen"></i>
                                                         <span>View full prompt</span>
                                                     </button>
-                                                </li>
-                                            </ul>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="white-space-pre-wrap m-0 lh-base">@GoalPromptDisplayText</div>
+                                    <div class="white-space-pre-wrap m-0 lh-md">@GoalPromptDisplayText</div>
                                 }
                                 else
                                 {
-                                    <textarea class="form-control lh-base textarea-editable"
+                                    <textarea class="form-control lh-md textarea-editable"
                                               @bind="_editedGoalPrompt" rows="6" placeholder="Enter the goal prompt for the AI agent..."></textarea>
                                 }
                             </div>
-                            <div class="d-flex gap-2 mt-1 px-2 small text-secondary">
+                            <div class="d-flex gap-3 mt-1 px-3 small fg-secondary">
                                 <span class="fw-medium"><i class="bi bi-bullseye me-1"></i>Goal</span>
                                 @if (GoalPromptTimestamp.HasValue)
                                 {
@@ -203,16 +187,16 @@
                             </div>
                             @if (_isEditingGoalPrompt)
                             {
-                                <div class="d-flex justify-content-end gap-2 px-2">
-                                    <button type="button" class="btn btn-sm btn-secondary" @onclick="CancelGoalPromptEdit" title="Cancel editing">
+                                <div class="d-flex justify-content-end gap-3 px-3">
+                                    <button type="button" class="btn-sm btn-solid theme-secondary" @onclick="CancelGoalPromptEdit" title="Cancel editing">
                                         <i class="bi bi-x-lg me-1"></i>
                                         <span>Cancel</span>
                                     </button>
-                                    <button type="button" class="btn btn-sm btn-primary" @onclick="SaveGoalPrompt"
+                                    <button type="button" class="btn-sm btn-solid theme-primary" @onclick="SaveGoalPrompt"
                                             disabled="@_isSavingGoalPrompt" title="Save changes">
                                         @if (_isSavingGoalPrompt)
                                         {
-                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                            <span class="spinner-border spinner-sm me-1" role="status"></span>
                                         }
                                         else
                                         {
@@ -227,14 +211,14 @@
                     @if (_attachmentList.Any())
                     {
                         <div class="chat-message d-flex flex-column chat-message-user">
-                            <div class="chat-bubble py-2 px-3 bg-body-tertiary border">
-                                <div class="small fw-semibold text-body-secondary mb-2">
+                            <div class="chat-bubble py-3 px-5 bg-2 border">
+                                <div class="small fw-semibold fg-1 mb-3">
                                     <i class="bi bi-paperclip me-1"></i>Attached files
                                 </div>
-                                <div class="d-flex flex-column gap-2">
+                                <div class="d-flex flex-column gap-3">
                                     @foreach (var attachment in _attachmentList)
                                     {
-                                        <a class="d-flex align-items-center gap-2 text-decoration-none border rounded-3 px-2 py-2 bg-body min-width-0"
+                                        <a class="d-flex align-items-center gap-3 text-decoration-none border rounded-5 px-3 py-3 bg-body min-w-0"
                                            href="@GetAttachmentUrl(attachment.Id)" target="_blank" rel="noreferrer"
                                            title="@attachment.FileName">
                                             @if (IsImageAttachment(attachment))
@@ -244,17 +228,17 @@
                                             }
                                             else
                                             {
-                                                <i class="bi bi-paperclip text-body-secondary flex-shrink-0"></i>
+                                                <i class="bi bi-paperclip fg-1 flex-shrink-0"></i>
                                             }
-                                            <span class="d-flex flex-column min-width-0">
-                                                <span class="text-body text-truncate">@attachment.FileName</span>
-                                                <span class="small text-body-secondary">@FormatAttachmentSize(attachment.SizeBytes)</span>
+                                            <span class="d-flex flex-column min-w-0">
+                                                <span class="fg-body text-truncate">@attachment.FileName</span>
+                                                <span class="small fg-1">@FormatAttachmentSize(attachment.SizeBytes)</span>
                                             </span>
                                         </a>
                                     }
                                 </div>
                             </div>
-                            <div class="d-flex gap-2 mt-1 px-2 small text-secondary">
+                            <div class="d-flex gap-3 mt-1 px-3 small fg-secondary">
                                 <span class="fw-medium"><i class="bi bi-image me-1"></i>Context</span>
                             </div>
                         </div>
@@ -265,12 +249,12 @@
                         @if (entry.IsToolGroup)
                         {
                             <div class="chat-message d-flex flex-column chat-message-tooluse" data-tool-group="true">
-                                <div class="chat-bubble py-2 px-3 text-break bg-body-tertiary border">
+                                <div class="chat-bubble py-3 px-5 text-break bg-2 border">
                                     <details>
                                         <summary class="fw-semibold small opacity-75">
                                             <i class="bi bi-tools me-1"></i>@entry.Message.Content
                                         </summary>
-                                        <div class="d-flex flex-column gap-2 mt-2">
+                                        <div class="d-flex flex-column gap-3 mt-3">
                                             @foreach (var toolEntry in entry.ToolEntries!)
                                             {
                                                 <ChatMessage Role="@toolEntry.Message.Role" Content="@toolEntry.Message.Content"
@@ -282,7 +266,7 @@
                                         </div>
                                     </details>
                                 </div>
-                                <div class="d-flex gap-2 mt-1 px-2 small text-secondary">
+                                <div class="d-flex gap-3 mt-1 px-3 small fg-secondary">
                                     <span class="fw-medium"><i class="bi bi-tools me-1"></i>Tool Calls</span>
                                     <span class="opacity-75">@GetEntryTimestampText(entry)</span>
                                 </div>
@@ -299,14 +283,14 @@
                     @if (ShowInlineWaitingActivity)
                     {
                         <div class="chat-message chat-message-assistant d-flex flex-column" role="status" aria-live="polite">
-                            <div class="chat-bubble py-2 px-3 bg-body-tertiary border d-flex gap-2 align-items-center">
+                            <div class="chat-bubble py-3 px-5 bg-2 border d-flex gap-3 align-items-center">
                                 <span class="typing-dot"></span>
                                 <span class="typing-dot"></span>
                                 <span class="typing-dot"></span>
                             </div>
                             @if (!string.IsNullOrWhiteSpace(CurrentActivity))
                             {
-                                <div class="d-flex mt-1 px-2 small text-secondary">
+                                <div class="d-flex mt-1 px-3 small fg-secondary">
                                     <span class="opacity-75 text-truncate" style="max-width: min(100%, 24rem);">@CurrentActivity</span>
                                 </div>
                             }
@@ -314,36 +298,36 @@
                     }
                     else if (!_displayedMessages.Any() && !HasGoalPrompt)
                     {
-                        <div class="text-center py-5">
+                        <div class="text-center py-12">
                             @if (Status == JobStatus.Completed)
                             {
-                                <i class="bi bi-check-circle opacity-50 d-block mb-2 fs-1"></i>
-                                <span class="text-body-secondary">Job completed but no conversation was recorded.</span>
+                                <i class="bi bi-check-circle opacity-50 d-block mb-3 fs-4xl"></i>
+                                <span class="fg-1">Job completed but no conversation was recorded.</span>
                             }
                             else if (Status == JobStatus.Failed)
                             {
-                                <i class="bi bi-exclamation-circle opacity-50 d-block mb-2 fs-1"></i>
-                                <span class="text-body-secondary">Job failed. Check the error message above for details.</span>
+                                <i class="bi bi-exclamation-circle opacity-50 d-block mb-3 fs-4xl"></i>
+                                <span class="fg-1">Job failed. Check the error message above for details.</span>
                             }
                             else if (Status == JobStatus.Cancelled)
                             {
-                                <i class="bi bi-x-circle opacity-50 d-block mb-2 fs-1"></i>
-                                <span class="text-body-secondary">Job was cancelled. No conversation recorded.</span>
+                                <i class="bi bi-x-circle opacity-50 d-block mb-3 fs-4xl"></i>
+                                <span class="fg-1">Job was cancelled. No conversation recorded.</span>
                             }
                             else if (Status == JobStatus.Stalled)
                             {
-                                <i class="bi bi-hourglass-split opacity-50 d-block mb-2 fs-1"></i>
-                                <span class="text-body-secondary">Job stalled before any conversation was recorded. Use the follow-up input below to continue.</span>
+                                <i class="bi bi-hourglass-split opacity-50 d-block mb-3 fs-4xl"></i>
+                                <span class="fg-1">Job stalled before any conversation was recorded. Use the follow-up input below to continue.</span>
                             }
                             else if (Status == JobStatus.New || Status == JobStatus.Pending)
                             {
-                                <i class="bi bi-hourglass opacity-50 d-block mb-2 fs-1"></i>
-                                <span class="text-body-secondary">Conversation will appear after the job runs.</span>
+                                <i class="bi bi-hourglass opacity-50 d-block mb-3 fs-4xl"></i>
+                                <span class="fg-1">Conversation will appear after the job runs.</span>
                             }
                             else
                             {
-                                <i class="bi bi-chat-left-text opacity-50 d-block mb-2 fs-1"></i>
-                                <span class="text-body-secondary">No conversation recorded for this job.</span>
+                                <i class="bi bi-chat-left-text opacity-50 d-block mb-3 fs-4xl"></i>
+                                <span class="fg-1">No conversation recorded for this job.</span>
                             }
                         </div>
                     }
@@ -352,65 +336,59 @@
 		}
         else if (_activeTab == "console")
         {
-            <pre class="terminal-output overscroll-contain white-space-pre-wrap flex-grow-1 m-0 p-3 overflow-auto rounded-bottom small text-break"
+            <pre class="terminal-output overscroll-contain white-space-pre-wrap flex-grow-1 m-0 p-5 overflow-auto rounded-bottom small text-break"
                  style="max-height: 400px;">@ConsoleOutput</pre>
         }
         else if (_activeTab == "command")
         {
-            <div class="p-3 flex-grow-1 overflow-auto">
+            <div class="p-5 flex-grow-1 overflow-auto">
                 @if (_commandSteps.Count > 1)
                 {
                     <div class="accordion border rounded" id="job-command-steps">
                         @foreach (var step in _commandSteps)
                         {
                             var isExpanded = string.Equals(step.Key, _commandSteps[0].Key, StringComparison.Ordinal);
-                            <div class="accordion-item">
-                                <h2 class="accordion-header" id="@($"job-command-heading-{step.Key}")">
-                                    <button class="accordion-button @(isExpanded ? string.Empty : "collapsed")" type="button"
-                                            data-bs-toggle="collapse" data-bs-target="@($"#job-command-collapse-{step.Key}")"
-                                            aria-expanded="@isExpanded.ToString().ToLowerInvariant()"
-                                            aria-controls="@($"job-command-collapse-{step.Key}")">
-                                        <span class="d-flex align-items-center gap-2">
-                                            <i class="bi @(step.Icon) opacity-75"></i>
-                                            <span>@step.Label</span>
-                                        </span>
-                                    </button>
-                                </h2>
-                                <div id="@($"job-command-collapse-{step.Key}")" class="accordion-collapse collapse @(isExpanded ? "show" : string.Empty)">
-                                    <div class="accordion-body">
-                                        <div class="d-flex justify-content-end mb-2">
-                                            <button type="button" class="btn btn-sm btn-secondary"
-                                                    @onclick="@(() => CopyCommandToClipboard(step.Command))"
-                                                    title="@($"Copy {step.Label} command to clipboard")">
-                                                <i class="bi bi-clipboard me-1"></i>
-                                                <span class="d-none d-sm-inline">Copy</span>
-                                            </button>
-                                        </div>
-                                        <div class="p-3 bg-body-tertiary rounded border">
-                                            <code class="small d-block text-break" style="white-space: pre-wrap;">@step.Command</code>
-                                        </div>
+                            <details class="accordion-item" open="@isExpanded">
+                <summary class="accordion-header" collapsed")" data-bs-toggle="collapse" data-bs-target="@($"#job-command-collapse-{step.Key}")"job-command-collapse-{step.Key}")" @onclick:preventDefault="true">
+                                    <span class="d-flex align-items-center gap-3">
+                                        <i class="bi @(step.Icon) opacity-75"></i>
+                                        <span>@step.Label</span>
+                                    </span>
+                                    <AccordionIcon />
+                                </summary>
+                                <div class="accordion-body">
+                                    <div class="d-flex justify-content-end mb-3">
+                                        <button type="button" class="btn-sm btn-solid theme-secondary"
+                                                @onclick="@(() => CopyCommandToClipboard(step.Command))"
+                                                title="@($"Copy {step.Label} command to clipboard")">
+                                            <i class="bi bi-clipboard me-1"></i>
+                                            <span class="d-none sm:d-inline">Copy</span>
+                                        </button>
+                                    </div>
+                                    <div class="p-5 bg-2 rounded border">
+                                        <code class="small d-block text-break" style="white-space: pre-wrap;">@step.Command</code>
                                     </div>
                                 </div>
-                            </div>
+                            </details>
                         }
                     </div>
                 }
                 else if (!string.IsNullOrWhiteSpace(PrimaryCommandText))
                 {
-                    <div class="d-flex justify-content-end mb-2">
-                        <button type="button" class="btn btn-sm btn-secondary" @onclick="CopyPrimaryCommandToClipboard"
+                    <div class="d-flex justify-content-end mb-3">
+                        <button type="button" class="btn-sm btn-solid theme-secondary" @onclick="CopyPrimaryCommandToClipboard"
                                 title="Copy command to clipboard">
                             <i class="bi bi-clipboard me-1"></i>
-                            <span class="d-none d-sm-inline">Copy</span>
+                            <span class="d-none sm:d-inline">Copy</span>
                         </button>
                     </div>
-                    <div class="p-3 bg-body-tertiary rounded border">
+                    <div class="p-5 bg-2 rounded border">
                         <code class="small d-block text-break" style="white-space: pre-wrap;">@PrimaryCommandText</code>
                     </div>
                 }
                 @if (!string.IsNullOrEmpty(SessionId))
                 {
-                    <div class="mt-3">
+                    <div class="mt-5">
                         <StatItem Label="Session ID" Value="@SessionId" Monospace="true" />
                     </div>
                 }
@@ -421,26 +399,26 @@
     @* Follow-up input section - for completed, stalled, and failed jobs *@
     @if (CanSendFollowUp)
     {
-        <div class="card-footer bg-body-tertiary border-top">
+        <div class="card-footer bg-2 border-top">
             @if (Status is JobStatus.Stalled or JobStatus.Failed)
             {
-                <p class="small text-body-secondary mb-2">
+                <p class="small fg-1 mb-3">
                     <i class="bi bi-info-circle me-1"></i>
                     @(Status == JobStatus.Stalled
                         ? "The job timed out. Describe what to try next and the agent will continue from where it left off."
                         : "The job failed. Provide guidance for the next attempt.")
                 </p>
             }
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-3">
                 <textarea class="form-control" rows="4"
                           placeholder="@(Status is JobStatus.Stalled or JobStatus.Failed ? "Describe what to try next..." : "Add follow-up instructions...")"
                           value="@_followUpPrompt"
                           @oninput="HandleFollowUpInput" disabled="@_isSendingFollowUp"></textarea>
-                <button class="btn btn-primary align-self-end flex-shrink-0" @onclick="SendFollowUp"
+                <button class="btn-solid theme-primary align-self-end flex-shrink-0" @onclick="SendFollowUp"
                         disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp)" title="Send follow-up">
                     @if (_isSendingFollowUp)
                     {
-                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                        <span class="spinner-border spinner-sm" role="status"></span>
                     }
                     else
                     {
@@ -1222,28 +1200,14 @@
     }
 }
 
-@if (_showGoalPromptModal)
-{
-    <div class="modal-backdrop fade show vs-modal-backdrop"></div>
-    <div class="modal fade show d-block vs-modal-container" tabindex="-1" role="dialog" @onclick="CloseGoalPromptModal">
-        <div class="modal-dialog modal-lg vs-modal-dialog modal-dialog-centered modal-dialog-scrollable"
-             @onclick:stopPropagation="true">
-            <div class="modal-content vs-modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-bullseye me-2"></i>Full Goal Prompt</h5>
-                    <button type="button" class="btn-close" @onclick="CloseGoalPromptModal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <pre class="bg-body-tertiary border rounded p-3 overflow-auto lh-base m-0 text-break"
-                         style="white-space: pre-wrap; max-height: 60vh;">@GoalPrompt</pre>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="CopyGoalPrompt">
-                        <i class="bi bi-clipboard me-1"></i>Copy to Clipboard
-                    </button>
-                    <button type="button" class="btn btn-secondary" @onclick="CloseGoalPromptModal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
+<ModalDialog IsVisible="_showGoalPromptModal" Title="Full Goal Prompt" Icon="bullseye" Size="ModalDialog.ModalSize.Large" OnClose="CloseGoalPromptModal">
+    <ChildContent>
+        <pre class="bg-2 border rounded p-5 overflow-auto lh-md m-0 text-break white-space-pre-wrap max-height-50dvh">@GoalPrompt</pre>
+    </ChildContent>
+    <FooterContent>
+        <button type="button" class="btn-solid theme-secondary" @onclick="CopyGoalPrompt">
+            <i class="bi bi-clipboard me-1"></i>Copy to Clipboard
+        </button>
+        <button type="button" class="btn-solid theme-secondary" @onclick="CloseGoalPromptModal">Close</button>
+    </FooterContent>
+</ModalDialog>

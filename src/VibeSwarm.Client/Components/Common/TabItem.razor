@@ -4,7 +4,7 @@
 	<button class="nav-link @(IsActive ? "active" : "") @Class" type="button" @onclick="HandleClick">
 		@if (!string.IsNullOrEmpty(Icon))
 		{
-			<i class="bi bi-@Icon me-2 @IconClass"></i>
+			<i class="bi bi-@Icon @IconClass"></i>
 		}
 		@Text
 		@if (BadgeCount.HasValue)
@@ -22,7 +22,7 @@
 	public string? Icon { get; set; }
 
 	[Parameter]
-	public string? IconClass { get; set; } = "d-none d-sm-inline";
+	public string? IconClass { get; set; } = "d-none sm:d-inline";
 
 	[Parameter]
 	public bool IsActive { get; set; }
@@ -31,7 +31,7 @@
 	public int? BadgeCount { get; set; }
 
 	[Parameter]
-	public string BadgeClass { get; set; } = "bg-secondary-subtle text-secondary-emphasis";
+	public string BadgeClass { get; set; } = "badge-subtle theme-secondary";
 
 	[Parameter]
 	public EventCallback OnClick { get; set; }

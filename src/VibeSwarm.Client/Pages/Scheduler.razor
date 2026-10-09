@@ -26,12 +26,12 @@ else if (!_schedules.Any())
 }
 else
 {
-	<div class="d-flex flex-column gap-4">
+	<div class="d-flex flex-column gap-7">
 		@foreach (var (heading, schedules) in GetGroups())
 		{
-			<section class="d-flex flex-column gap-2" aria-label="@heading">
+			<section class="d-flex flex-column gap-3" aria-label="@heading">
 				<h2 class="text-eyebrow mb-0 px-1">@heading</h2>
-				<div class="list-group rounded-4">
+				<div class="list-group rounded-9">
 					@foreach (var schedule in schedules)
 					{
 						<ScheduleRow @key="schedule.Id" Schedule="schedule" ActiveJob="GetActiveJobForSchedule(schedule.Id)"
@@ -49,7 +49,7 @@ else
 <ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete Schedule"
 				   Message="@GetDeleteConfirmationMessage()"
 				   SubMessage="@GetDeleteConfirmationSubMessage()"
-				   ConfirmText="Delete" ButtonClass="btn-danger" IsProcessing="_isDeleting"
+				   ConfirmText="Delete" ButtonClass="btn-solid theme-danger" IsProcessing="_isDeleting"
 				   OnConfirm="ConfirmDelete" OnCancel="CancelDelete" />
 
 @code {

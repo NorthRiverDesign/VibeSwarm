@@ -3,15 +3,17 @@
 @inject NavigationManager NavigationManager
 @implements IDisposable
 
-<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;">
+@* A manual popover, so the toasts share the browser's top layer with open dialogs and
+   show above them rather than under their backdrop. *@
+<div @ref="_layer" class="toast-container position-fixed top-0 end-0 p-5" popover="manual" data-vs-toast-layer>
 	@foreach (var notification in NotificationService.Notifications)
 	{
-		<div class="toast show fade @GetToastClass(notification.Type)" role="alert" aria-live="assertive"
+		<div class="toast show @GetToastClass(notification.Type)" role="alert" aria-live="assertive"
 			aria-atomic="true">
-			<div class="toast-header">
-				<i class="@GetIconClass(notification.Type) me-2"></i>
+			<div class="toast-header gap-3">
+				<i class="@GetIconClass(notification.Type)"></i>
 				<strong class="me-auto">@notification.Title</strong>
-				<small class="text-body-secondary">@GetTimeAgo(notification.CreatedAt)</small>
+				<small class="fg-1">@GetTimeAgo(notification.CreatedAt)</small>
 				<button type="button" class="btn-close" aria-label="Close"
 					@onclick="() => Dismiss(notification.Id)"></button>
 			</div>
@@ -20,9 +22,9 @@
 
 				@if (notification.HasAction)
 				{
-					<div class="mt-3 d-flex justify-content-end">
+					<div class="mt-5 d-flex justify-content-end">
 						<button type="button"
-								class="btn btn-primary btn-sm"
+								class="btn-solid theme-primary btn-sm"
 								@onclick="() => HandleAction(notification)">
 							<i class="bi bi-box-arrow-up-right me-1"></i>@notification.ActionLabel
 						</button>
@@ -34,6 +36,10 @@
 </div>
 
 @code {
+	private ElementReference _layer;
+	private IJSObjectReference? _interop;
+	private bool _layerShown;
+	private int _shownCount;
 	private Timer? _autoRemoveTimer;
 	private Timer? _refreshTimer;
 	private Action? _onNotificationChanged;
@@ -87,10 +93,10 @@
 	{
 		return type switch
 		{
-			NotificationType.Success => "border-success",
-			NotificationType.Error => "border-danger",
-			NotificationType.Warning => "border-warning",
-			NotificationType.Info => "border-info",
+			NotificationType.Success => "theme-success",
+			NotificationType.Error => "theme-danger",
+			NotificationType.Warning => "theme-warning",
+			NotificationType.Info => "theme-info",
 			_ => ""
 		};
 	}
@@ -101,10 +107,10 @@
 		// You could replace these with Bootstrap Icons if you add that library
 		return type switch
 		{
-			NotificationType.Success => "bi bi-check-circle-fill text-success",
-			NotificationType.Error => "bi bi-x-circle-fill text-danger",
-			NotificationType.Warning => "bi bi-exclamation-triangle-fill text-warning",
-			NotificationType.Info => "bi bi-info-circle-fill text-info",
+			NotificationType.Success => "bi bi-check-circle-fill fg-success",
+			NotificationType.Error => "bi bi-x-circle-fill fg-danger",
+			NotificationType.Warning => "bi bi-exclamation-triangle-fill fg-warning",
+			NotificationType.Info => "bi bi-info-circle-fill fg-info",
 			_ => "bi bi-bell-fill"
 		};
 	}
@@ -121,8 +127,39 @@
 		return $"{(int)elapsed.TotalHours}h ago";
 	}
 
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		// Show the layer while there are toasts. A new toast shows it again, which also lifts
+		// it above any dialog that opened since; re-renders that add nothing leave it be, as
+		// re-showing restarts the toasts' entrance animation.
+		var count = NotificationService.Notifications.Count();
+		var hasToasts = count > 0;
+		var arrived = count > _shownCount;
+		_shownCount = count;
+		if (hasToasts == _layerShown && !arrived)
+		{
+			return;
+		}
+
+		try
+		{
+			_interop ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", ModalDialog.InteropModulePath);
+			if (_interop is null)
+			{
+				return;
+			}
+
+			await _interop.InvokeVoidAsync(hasToasts ? "raiseToastLayer" : "hideToastLayer");
+			_layerShown = hasToasts;
+		}
+		catch (JSDisconnectedException)
+		{
+		}
+	}
+
 	public void Dispose()
 	{
+		_ = _interop?.DisposeAsync();
 		if (_onNotificationChanged != null)
 		{
 			NotificationService.OnChange -= _onNotificationChanged;

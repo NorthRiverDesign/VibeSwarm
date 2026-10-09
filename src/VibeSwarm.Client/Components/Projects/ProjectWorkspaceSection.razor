@@ -9,31 +9,30 @@
 
 @if (!IsEdit)
 {
-	<div class="mb-4">
+	<div class="mb-7">
 		<label class="form-label fw-semibold">Start from</label>
-		<div class="d-flex flex-column flex-sm-row gap-2" role="group" aria-label="Project source">
+		<div class="d-flex flex-column sm:flex-row gap-3" role="group" aria-label="Project source">
 			@foreach (var option in SourceOptions)
 			{
 				var id = $"project-source-{option.Mode}";
 				<div class="flex-fill">
-					<input type="radio" class="btn-check" name="projectSourceMode" id="@id"
-						   checked="@(FormModel.CreationMode == option.Mode)"
-						   @onchange="() => SelectSourceMode(option.Mode)" />
-					<label class="btn btn-outline-secondary w-100 d-flex align-items-center justify-content-center gap-2 py-2"
-						   for="@id">
+					<label class="btn-check btn-outline theme-secondary w-100 d-flex align-items-center justify-content-center gap-3 py-3">
+						<input type="radio" name="projectSourceMode" id="@id"
+							   checked="@(FormModel.CreationMode == option.Mode)"
+							   @onchange="() => SelectSourceMode(option.Mode)" />
 						<i class="bi bi-@option.Icon"></i>
 						<span>@option.Label</span>
 					</label>
 				</div>
 			}
 		</div>
-		<div class="form-text mt-2">@CurrentSourceOption.Help</div>
+		<div class="form-text mt-3">@CurrentSourceOption.Help</div>
 	</div>
 }
 
 @if (!IsEdit && FormModel.CreationMode != ProjectCreationMode.ExistingDirectory)
 {
-	<div class="mb-4">
+	<div class="mb-7">
 		<label for="modal-githubRepo" class="form-label fw-semibold">
 			@(FormModel.CreationMode == ProjectCreationMode.CloneGitHubRepository ? "Repository to clone" : "New repository name")
 		</label>
@@ -41,20 +40,20 @@
 			@* Always rendered: a prefix hidden with d-none is still the input group's
 			   first child, which leaves the field beside it with a square, border-less
 			   edge. Phones get the icon, wider screens the full host. *@
-			<span class="input-group-text"><i class="bi bi-github d-sm-none"></i><span class="d-none d-sm-inline">github.com/</span></span>
+			<span class="input-group-text"><i class="bi bi-github sm:d-none"></i><span class="d-none sm:d-inline">github.com/</span></span>
 			<input id="modal-githubRepo" type="text" class="form-control"
 				   value="@FormModel.GitHubRepositoryInput" @oninput="HandleGitHubRepositoryChanged"
 				   placeholder="@(FormModel.CreationMode == ProjectCreationMode.CloneGitHubRepository ? "owner/repo" : "my-project")"
 				   maxlength="@ValidationLimits.ProjectGitHubRepositoryMaxLength" />
 			@if (FormModel.CreationMode == ProjectCreationMode.CloneGitHubRepository)
 			{
-				<button id="modal-githubRepoBrowse" type="button" class="btn btn-secondary"
+				<button id="modal-githubRepoBrowse" type="button" class="btn-solid theme-secondary"
 						@onclick="BrowseGitHubRepositories" title="Browse your repositories">
-					<i class="bi bi-search"></i><span class="d-none d-sm-inline ms-1">Browse</span>
+					<i class="bi bi-search"></i><span class="d-none sm:d-inline ms-1">Browse</span>
 				</button>
 			}
 		</div>
-		<ValidationMessage For="@(() => FormModel.GitHubRepositoryInput)" class="text-danger small mt-1" />
+		<ValidationMessage For="@(() => FormModel.GitHubRepositoryInput)" class="fg-danger small mt-1" />
 		<div class="form-text">
 			@if (FormModel.CreationMode == ProjectCreationMode.CloneGitHubRepository)
 			{
@@ -68,24 +67,24 @@
 	</div>
 }
 
-<div class="mb-4">
+<div class="mb-7">
 	<label for="modal-workingPath" class="form-label fw-semibold">Working folder</label>
 	<div class="input-group">
 		<input id="modal-workingPath" type="text" class="form-control font-monospace"
 			   value="@FormModel.WorkingPath" @oninput="HandleWorkingPathInput"
 			   placeholder="@WorkingPathPlaceholder" maxlength="@ValidationLimits.ProjectWorkingPathMaxLength" />
-		<button type="button" class="btn btn-secondary" @onclick="HandleBrowseWorkingPath"
+		<button type="button" class="btn-solid theme-secondary" @onclick="HandleBrowseWorkingPath"
 				title="Browse folders" aria-label="Browse folders">
 			<i class="bi bi-folder2-open"></i>
 		</button>
 	</div>
-	<ValidationMessage For="@(() => FormModel.WorkingPath)" class="text-danger small" />
+	<ValidationMessage For="@(() => FormModel.WorkingPath)" class="fg-danger small" />
 
 	@* Live detection result — replaces static help text once VibeSwarm knows what is there. *@
 	@if (_isInspecting)
 	{
-		<div class="form-text d-flex align-items-center gap-2">
-			<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+		<div class="form-text d-flex align-items-center gap-3">
+			<span class="spinner-border spinner-sm" role="status" aria-hidden="true"></span>
 			<span>Checking folder…</span>
 		</div>
 	}
@@ -95,9 +94,9 @@
 	}
 	else if (_alreadyUsedByProject is not null)
 	{
-		<div class="alert alert-warning d-flex gap-2 py-2 px-3 mt-2 mb-0 small" role="status">
+		<div class="alert theme-warning py-3 px-5 mt-3 mb-0 small" role="status">
 			<i class="bi bi-exclamation-triangle flex-shrink-0 mt-1"></i>
-			<div class="min-width-0">
+			<div class="min-w-0">
 				<strong>@_alreadyUsedByProject</strong> already uses this folder. Pick another one to avoid two
 				projects writing to the same working tree.
 			</div>
@@ -105,11 +104,11 @@
 	}
 	else if (_inspection.IsGitRepository)
 	{
-		<div class="alert alert-success d-flex gap-2 py-2 px-3 mt-2 mb-0 small" role="status">
+		<div class="alert theme-success py-3 px-5 mt-3 mb-0 small" role="status">
 			<i class="bi bi-git flex-shrink-0 mt-1"></i>
-			<div class="min-width-0">
+			<div class="min-w-0">
 				<div class="fw-semibold">Git repository detected</div>
-				<div class="d-flex flex-wrap row-gap-1 column-gap-3 mt-1 text-body-secondary">
+				<div class="d-flex flex-wrap row-gap-1 column-gap-5 mt-1 fg-1">
 					@if (!string.IsNullOrWhiteSpace(_inspection.GitHubRepository))
 					{
 						<span class="text-truncate"><i class="bi bi-github me-1"></i>@_inspection.GitHubRepository</span>
@@ -132,9 +131,9 @@
 	}
 	else if (_inspection.Exists)
 	{
-		<div class="alert alert-info d-flex gap-2 py-2 px-3 mt-2 mb-0 small" role="status">
+		<div class="alert theme-info py-3 px-5 mt-3 mb-0 small" role="status">
 			<i class="bi bi-folder2-open flex-shrink-0 mt-1"></i>
-			<div class="min-width-0">
+			<div class="min-w-0">
 				@if (_inspection.IsEmpty)
 				{
 					<span>Empty folder — VibeSwarm will work here directly.</span>
@@ -144,7 +143,7 @@
 					<span>Existing folder, not under git.</span>
 					@if (!string.IsNullOrWhiteSpace(_inspection.DetectedStack))
 					{
-						<span class="text-body-secondary"> Looks like a @_inspection.DetectedStack project.</span>
+						<span class="fg-1"> Looks like a @_inspection.DetectedStack project.</span>
 					}
 				}
 			</div>
@@ -160,36 +159,36 @@
    that aren't projects yet. One tap fills in the whole form. *@
 @if (ShowSuggestions)
 {
-	<div class="mb-4">
-		<div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+	<div class="mb-7">
+		<div class="d-flex align-items-center justify-content-between gap-3 mb-3">
 			<label class="form-label fw-semibold mb-0">Repositories found on this host</label>
 			@if (_isScanning)
 			{
-				<span class="spinner-border spinner-border-sm text-secondary" role="status" aria-hidden="true"></span>
+				<span class="spinner-border spinner-sm fg-secondary" role="status" aria-hidden="true"></span>
 			}
 		</div>
 		<div class="list-group">
 			@foreach (var candidate in _suggestions.Take(_showAllSuggestions ? _suggestions.Count : SuggestionPreviewCount))
 			{
-				<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3"
+				<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-5 py-5"
 						@onclick="() => ApplySuggestionAsync(candidate)">
-					<i class="bi bi-git fs-5 text-body-secondary flex-shrink-0"></i>
-					<span class="d-flex flex-column min-width-0 text-start flex-grow-1">
+					<i class="bi bi-git fs-lg fg-1 flex-shrink-0"></i>
+					<span class="d-flex flex-column min-w-0 text-start flex-grow-1">
 						<span class="fw-medium text-truncate">@candidate.SuggestedName</span>
-						<span class="small text-body-secondary text-truncate">
+						<span class="small fg-1 text-truncate">
 							@(candidate.GitHubRepository ?? candidate.Path)
 						</span>
 					</span>
 					@if (!string.IsNullOrWhiteSpace(candidate.DetectedStack))
 					{
-						<span class="badge text-bg-secondary flex-shrink-0 d-none d-sm-inline">@candidate.DetectedStack</span>
+						<span class="badge theme-secondary flex-shrink-0 d-none sm:d-inline">@candidate.DetectedStack</span>
 					}
 				</button>
 			}
 		</div>
 		@if (_suggestions.Count > SuggestionPreviewCount && !_showAllSuggestions)
 		{
-			<button type="button" class="btn btn-link btn-sm px-0 mt-1"
+			<button type="button" class="btn-link btn-sm px-0 mt-1"
 					@onclick="() => _showAllSuggestions = true">
 				Show @(_suggestions.Count - SuggestionPreviewCount) more
 			</button>
@@ -197,21 +196,21 @@
 	</div>
 }
 
-<div class="mb-4">
+<div class="mb-7">
 	<label for="modal-name" class="form-label fw-semibold">Project name</label>
 	<InputText id="modal-name" @bind-Value="FormModel.Name" class="form-control" placeholder="My Project"
 			   maxlength="@ValidationLimits.ProjectNameMaxLength" />
-	<ValidationMessage For="@(() => FormModel.Name)" class="text-danger small" />
+	<ValidationMessage For="@(() => FormModel.Name)" class="fg-danger small" />
 </div>
 
-<div class="mb-2">
+<div class="mb-3">
 	<label for="modal-description" class="form-label fw-semibold">
-		Description <span class="text-body-secondary fw-normal">(optional)</span>
+		Description <span class="fg-1 fw-normal">(optional)</span>
 	</label>
 	<InputTextArea id="modal-description" @bind-Value="FormModel.Description" class="form-control" rows="2"
 				   placeholder="What is this project for?"
 				   maxlength="@ValidationLimits.ProjectDescriptionMaxLength" />
-	<ValidationMessage For="@(() => FormModel.Description)" class="text-danger small" />
+	<ValidationMessage For="@(() => FormModel.Description)" class="fg-danger small" />
 </div>
 
 @code {

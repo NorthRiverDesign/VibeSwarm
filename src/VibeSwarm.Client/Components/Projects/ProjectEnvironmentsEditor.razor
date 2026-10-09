@@ -1,10 +1,10 @@
 @* A project's environments as a grouped list. Each row opens in place to edit it; new ones open
    straight away. *@
 
-<section class="d-flex flex-column gap-2" aria-label="Environments">
-	<div class="d-flex align-items-center gap-3 px-1">
+<section class="d-flex flex-column gap-3" aria-label="Environments">
+	<div class="d-flex align-items-center gap-5 px-1">
 		<h2 class="text-eyebrow mb-0 me-auto">Environments</h2>
-		<button type="button" class="btn btn-sm btn-link text-decoration-none px-0" @onclick="AddEnvironment">
+		<button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="AddEnvironment">
 			<i class="bi bi-plus-lg me-1"></i>Add
 		</button>
 	</div>
@@ -16,91 +16,95 @@
 	}
 	else
 	{
-		<div class="list-group rounded-4">
+		<div class="list-group rounded-9">
 			@foreach (var environment in _environments.Select((value, index) => new { value, index }))
 			{
 				var item = environment.value;
 				var isExpanded = _expandedIds.Contains(item.Id);
-				<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-3"
+				<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-5"
 						@onclick="() => ToggleExpanded(item.Id)" aria-expanded="@(isExpanded ? "true" : "false")">
-					<i class="bi @GetKindIcon(item.Type) flex-shrink-0 @(item.IsEnabled ? "text-primary" : "text-body-tertiary")"></i>
-					<span class="flex-grow-1 min-width-0 text-start">
-						<span class="d-flex align-items-center gap-2 min-width-0">
+					<i class="bi @GetKindIcon(item.Type) flex-shrink-0 @(item.IsEnabled ? "fg-primary" : "fg-2")"></i>
+					<span class="flex-grow-1 min-w-0 text-start">
+						<span class="d-flex align-items-center gap-3 min-w-0">
 							<span class="fw-medium text-truncate">@(string.IsNullOrWhiteSpace(item.Name) ? "Untitled environment" : item.Name)</span>
 							@if (item.IsPrimary)
 							{
-								<i class="bi bi-star-fill text-warning small flex-shrink-0" title="Primary environment"></i>
+								<i class="bi bi-star-fill fg-warning small flex-shrink-0" title="Primary environment"></i>
 							}
 						</span>
-						<span class="d-block small text-body-secondary text-truncate">@GetEnvironmentSummary(item)</span>
+						<span class="d-block small fg-1 text-truncate">@GetEnvironmentSummary(item)</span>
 					</span>
-					<i class="bi @(isExpanded ? "bi-chevron-up" : "bi-chevron-down") text-body-tertiary flex-shrink-0"></i>
+					<i class="bi @(isExpanded ? "bi-chevron-up" : "bi-chevron-down") fg-2 flex-shrink-0"></i>
 				</button>
 				@if (isExpanded)
 				{
-					<div class="list-group-item d-flex flex-column gap-3 py-3">
-						<div class="row g-3">
-							<div class="col-12 col-md-6">
-								<label class="form-label small text-body-secondary mb-1" for="@($"env-name-{item.Id}")">Name</label>
+					<div class="list-group-item d-flex flex-column gap-5 py-5">
+						<div class="row g-5">
+							<div class="col-12 md:col-6">
+								<label class="form-label small fg-1 mb-1" for="@($"env-name-{item.Id}")">Name</label>
 								<InputText id="@($"env-name-{item.Id}")" @bind-Value="item.Name" class="form-control" placeholder="Staging" />
 							</div>
-							<div class="col-12 col-md-6">
-								<label class="form-label small text-body-secondary mb-1" for="@($"env-url-{item.Id}")">URL</label>
+							<div class="col-12 md:col-6">
+								<label class="form-label small fg-1 mb-1" for="@($"env-url-{item.Id}")">URL</label>
 								<InputText id="@($"env-url-{item.Id}")" @bind-Value="item.Url" class="form-control font-monospace" placeholder="https://staging.example.com" />
 							</div>
 							<div class="col-6">
-								<label class="form-label small text-body-secondary mb-1" for="@($"env-kind-{item.Id}")">Kind</label>
-								<InputSelect id="@($"env-kind-{item.Id}")" @bind-Value="item.Type" @bind-Value:after="() => OnEnvironmentTypeChanged(item)" class="form-select">
+								<label class="form-label small fg-1 mb-1" for="@($"env-kind-{item.Id}")">Kind</label>
+								<InputSelect id="@($"env-kind-{item.Id}")" @bind-Value="item.Type" @bind-Value:after="() => OnEnvironmentTypeChanged(item)" class="form-control">
 									<option value="@EnvironmentType.Web">Web</option>
 									<option value="@EnvironmentType.Release">GitHub Releases</option>
 									<option value="@EnvironmentType.Other">Generic</option>
 								</InputSelect>
 							</div>
 							<div class="col-6">
-								<label class="form-label small text-body-secondary mb-1" for="@($"env-stage-{item.Id}")">Stage</label>
-								<InputSelect id="@($"env-stage-{item.Id}")" @bind-Value="item.Stage" class="form-select">
+								<label class="form-label small fg-1 mb-1" for="@($"env-stage-{item.Id}")">Stage</label>
+								<InputSelect id="@($"env-stage-{item.Id}")" @bind-Value="item.Stage" class="form-control">
 									<option value="@EnvironmentStage.Production">Production</option>
 									<option value="@EnvironmentStage.Development">Development</option>
 									<option value="@EnvironmentStage.Local">Local</option>
 								</InputSelect>
 							</div>
 							<div class="col-12">
-								<label class="form-label small text-body-secondary mb-1" for="@($"env-description-{item.Id}")">Notes for agents <span class="text-body-tertiary">(optional)</span></label>
+								<label class="form-label small fg-1 mb-1" for="@($"env-description-{item.Id}")">Notes for agents <span class="fg-2">(optional)</span></label>
 								<InputTextArea id="@($"env-description-{item.Id}")" @bind-Value="item.Description" class="form-control" rows="2" />
 							</div>
 						</div>
 
-						<div class="d-flex flex-wrap gap-4">
-							<div class="form-check form-switch mb-0">
-								<InputCheckbox id="@($"env-enabled-{item.Id}")" @bind-Value="item.IsEnabled" class="form-check-input" />
-								<label class="form-check-label" for="@($"env-enabled-{item.Id}")">Enabled</label>
+						<div class="d-flex flex-wrap gap-7">
+							<div class="form-field mb-0">
+								<div class="switch">
+									<InputCheckbox role="switch" switch id="@($"env-enabled-{item.Id}")" @bind-Value="item.IsEnabled" />
+								</div>
+								<label for="@($"env-enabled-{item.Id}")">Enabled</label>
 							</div>
-							<div class="form-check form-switch mb-0">
-								<InputCheckbox id="@($"env-primary-{item.Id}")" Value="@item.IsPrimary"
-									ValueChanged="@(value => TogglePrimaryEnvironment(item.Id, value))"
-									ValueExpression="@(() => item.IsPrimary)" class="form-check-input" />
-								<label class="form-check-label" for="@($"env-primary-{item.Id}")">Primary</label>
+							<div class="form-field mb-0">
+								<div class="switch">
+									<InputCheckbox role="switch" switch id="@($"env-primary-{item.Id}")" Value="@item.IsPrimary"
+										ValueChanged="@(value => TogglePrimaryEnvironment(item.Id, value))"
+										ValueExpression="@(() => item.IsPrimary)" />
+								</div>
+								<label for="@($"env-primary-{item.Id}")">Primary</label>
 							</div>
 						</div>
 
 						@if (item.Type == EnvironmentType.Web)
 						{
-							<div class="d-flex flex-column gap-2">
-								<div class="text-eyebrow">Web login <span class="text-body-tertiary">· optional</span></div>
-								<div class="row g-3">
-									<div class="col-12 col-md-6">
-										<label class="form-label small text-body-secondary mb-1" for="@($"env-username-{item.Id}")">Username</label>
+							<div class="d-flex flex-column gap-3">
+								<div class="text-eyebrow">Web login <span class="fg-2">· optional</span></div>
+								<div class="row g-5">
+									<div class="col-12 md:col-6">
+										<label class="form-label small fg-1 mb-1" for="@($"env-username-{item.Id}")">Username</label>
 										<InputText id="@($"env-username-{item.Id}")" @bind-Value="item.Username" class="form-control" placeholder="tester@example.com" />
 									</div>
-									<div class="col-12 col-md-6">
-										<label class="form-label small text-body-secondary mb-1" for="@($"env-password-{item.Id}")">Password</label>
+									<div class="col-12 md:col-6">
+										<label class="form-label small fg-1 mb-1" for="@($"env-password-{item.Id}")">Password</label>
 										<InputText id="@($"env-password-{item.Id}")" @bind-Value="item.Password" class="form-control" type="password"
 											placeholder="@(item.HasPassword ? "Leave blank to keep the saved password" : "Optional password")" />
 										@if (item.HasPassword)
 										{
-											<div class="form-check mt-2">
-												<InputCheckbox id="@($"env-clear-password-{item.Id}")" @bind-Value="item.ClearPassword" class="form-check-input" />
-												<label class="form-check-label small" for="@($"env-clear-password-{item.Id}")">Clear saved password</label>
+											<div class="form-field mt-3">
+												<InputCheckbox id="@($"env-clear-password-{item.Id}")" @bind-Value="item.ClearPassword" class="check" />
+												<label class="small" for="@($"env-clear-password-{item.Id}")">Clear saved password</label>
 											</div>
 										}
 									</div>
@@ -108,16 +112,16 @@
 							</div>
 						}
 
-						<div class="d-flex align-items-center gap-2">
-							<button type="button" class="btn btn-sm btn-secondary" title="Move up" aria-label="Move up"
+						<div class="d-flex align-items-center gap-3">
+							<button type="button" class="btn-sm btn-solid theme-secondary" title="Move up" aria-label="Move up"
 									@onclick="() => MoveEnvironmentUp(item.Id)" disabled="@(environment.index == 0)">
 								<i class="bi bi-arrow-up"></i>
 							</button>
-							<button type="button" class="btn btn-sm btn-secondary" title="Move down" aria-label="Move down"
+							<button type="button" class="btn-sm btn-solid theme-secondary" title="Move down" aria-label="Move down"
 									@onclick="() => MoveEnvironmentDown(item.Id)" disabled="@(environment.index >= _environments.Count - 1)">
 								<i class="bi bi-arrow-down"></i>
 							</button>
-							<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none ms-auto px-0"
+							<button type="button" class="btn-sm btn-link fg-danger text-decoration-none ms-auto px-0"
 									@onclick="() => RemoveEnvironment(item.Id)">
 								<i class="bi bi-trash me-1"></i>Remove
 							</button>

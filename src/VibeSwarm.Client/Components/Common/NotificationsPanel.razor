@@ -2,12 +2,12 @@
 @implements IDisposable
 
 <div class="position-relative">
-    <button class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center position-relative touch-manipulation @(Compact ? "mobile-header-icon" : string.Empty)"
+    <button class="btn-link fg-secondary p-0 fs-lg d-flex align-items-center justify-content-center position-relative touch-manipulation @(Compact ? "mobile-header-icon" : string.Empty)"
             type="button" @onclick="NotificationService.TogglePanel" title="Notifications" aria-label="Notifications">
         <i class="bi bi-bell@(_unreadCount > 0 ? "-fill" : "")"></i>
         @if (_unreadCount > 0)
         {
-            <span class="notification-bell-badge position-absolute badge rounded-pill bg-danger"
+            <span class="notification-bell-badge position-absolute badge rounded-pill theme-danger"
                   aria-label="@_unreadCount unread notifications">
                 @(_unreadCount > 9 ? "9+" : _unreadCount.ToString())
             </span>

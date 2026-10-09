@@ -1,56 +1,37 @@
 @page "/logout"
 @attribute [Authorize]
 @inject NavigationManager NavigationManager
-@inject IJSRuntime JSRuntime
-@implements IDisposable
 
 <PageTitle>Logout - VibeSwarm</PageTitle>
 
-<div class="modal-backdrop fade show vs-modal-backdrop position-fixed inset-0"></div>
-<div class="modal fade show d-block vs-modal-container position-fixed inset-0 d-flex align-items-center justify-content-center overflow-x-hidden overflow-y-auto" tabindex="-1" role="dialog">
-    <div class="modal-dialog vs-modal-dialog pe-none m-auto modal-sm modal-dialog-centered">
-        <div class="modal-content vs-modal-content pe-auto mw-100">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-box-arrow-right me-2"></i>Log Out
-                </h5>
-            </div>
-            <div class="modal-body text-center">
-                @if (_isLoggingOut)
-                {
-                    <div class="py-3">
-                        <LoadingSpinner />
-                        <p class="mb-0 text-muted">Logging out...</p>
-                    </div>
-                }
-                else
-                {
-                    <p class="mb-3 text-muted">Are you sure you want to log out?</p>
-                }
-            </div>
-            @if (!_isLoggingOut)
-            {
-                <div class="modal-footer justify-content-center">
-                    <ActionButton Icon="x-lg" Text="Cancel" OnClick="Cancel" />
-                    <ActionButton Icon="box-arrow-right" Text="Log Out" Style="ActionButton.ButtonStyle.Danger" OnClick="ConfirmLogout" />
-                </div>
-            }
-        </div>
-    </div>
-</div>
+<ModalDialog IsVisible="true" Title="Log Out" Icon="box-arrow-right" Size="ModalDialog.ModalSize.Small"
+			 ShowCloseButton="false" CloseOnBackdropClick="false" BodyClass="text-center" OnClose="Cancel">
+	<ChildContent>
+		@if (_isLoggingOut)
+		{
+			<div class="py-5">
+				<LoadingSpinner />
+				<p class="mb-0 fg-1">Logging out...</p>
+			</div>
+		}
+		else
+		{
+			<p class="mb-5 fg-1">Are you sure you want to log out?</p>
+		}
+	</ChildContent>
+	<FooterContent>
+		@if (!_isLoggingOut)
+		{
+			<div class="d-flex justify-content-center gap-3 w-100">
+				<ActionButton Icon="x-lg" Text="Cancel" OnClick="Cancel" />
+				<ActionButton Icon="box-arrow-right" Text="Log Out" Style="ActionButton.ButtonStyle.Danger" OnClick="ConfirmLogout" />
+			</div>
+		}
+	</FooterContent>
+</ModalDialog>
 
 @code {
     private bool _isLoggingOut = false;
-    private bool _bodyClassAdded = false;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender && !_bodyClassAdded)
-        {
-            await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.add('vs-modal-open')");
-            _bodyClassAdded = true;
-        }
-    }
 
     private void ConfirmLogout()
     {
@@ -58,23 +39,8 @@
         NavigationManager.NavigateTo("/account/logout", forceLoad: true);
     }
 
-    private async Task Cancel()
+    private void Cancel()
     {
-        await RemoveBodyClass();
         NavigationManager.NavigateTo("/");
-    }
-
-    private async Task RemoveBodyClass()
-    {
-        if (_bodyClassAdded)
-        {
-            await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.remove('vs-modal-open')");
-            _bodyClassAdded = false;
-        }
-    }
-
-    public void Dispose()
-    {
-        // Note: Can't await in Dispose, but the navigation will handle cleanup
     }
 }

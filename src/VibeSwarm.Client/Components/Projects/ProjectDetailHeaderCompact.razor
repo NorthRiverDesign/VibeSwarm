@@ -1,14 +1,14 @@
 @* Project title, with the branch and any uncommitted changes on one quiet line beneath it *@
 
-<div class="d-flex flex-column gap-1 mb-3">
+<div class="d-flex flex-column gap-1 mb-5">
 	<div>
-		<a href="/projects" class="small text-body-secondary text-decoration-none d-inline-flex align-items-center gap-1">
+		<a href="/projects" class="small fg-1 text-decoration-none d-inline-flex align-items-center gap-1">
 			<i class="bi bi-chevron-left"></i>Projects
 		</a>
 	</div>
 
-	<div class="d-flex align-items-center gap-2">
-		<h1 class="mb-0 me-auto min-width-0 text-break">@Name</h1>
+	<div class="d-flex align-items-center gap-3">
+		<h1 class="mb-0 me-auto min-w-0 text-break">@Name</h1>
 		<ProjectActionsDropdown IconOnly="true" OnEdit="OnEdit" IsActive="IsActive"
 								OnToggleActive="OnToggleActive" ShowSyncAction="@IsGitRepository"
 								ShowCreateBranchAction="@IsGitRepository" ShowMergeBranchAction="@ShowMergeBranchAction"
@@ -23,7 +23,7 @@
 
 	@if (IsGitRepository)
 	{
-		<div class="d-flex flex-wrap align-items-center column-gap-2 small text-body-secondary">
+		<div class="d-flex flex-wrap align-items-center column-gap-3 small fg-1">
 			@if (Branches.Any())
 			{
 				<GitBranchSelector Branches="@Branches" CurrentBranch="@CurrentBranch" Subtle="true"
@@ -39,8 +39,8 @@
 
 			@if (HasUncommittedChanges)
 			{
-				<span class="text-body-tertiary" aria-hidden="true">·</span>
-				<button type="button" class="btn btn-sm btn-link text-warning text-decoration-none px-0"
+				<span class="fg-2" aria-hidden="true">·</span>
+				<button type="button" class="btn-sm btn-link fg-warning text-decoration-none px-0"
 						@onclick="OnUncommittedChangesClick" title="Review uncommitted changes">
 					@UncommittedChangesLabel
 				</button>
@@ -49,8 +49,8 @@
 	}
 	else if (IsLoadingGitInfo)
 	{
-		<div class="d-flex align-items-center gap-2 small text-body-secondary py-1">
-			<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+		<div class="d-flex align-items-center gap-3 small fg-1 py-1">
+			<span class="spinner-border spinner-sm" role="status" aria-hidden="true"></span>
 			<span>Checking Git…</span>
 		</div>
 	}

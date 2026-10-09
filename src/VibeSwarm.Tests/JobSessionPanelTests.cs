@@ -515,9 +515,9 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("5 messages", html);
 		Assert.Contains("System", html);
 		Assert.Contains("Provider", html);
-		Assert.Contains("bg-primary-subtle", html);
-		Assert.Contains("bg-success-subtle", html);
-		Assert.Contains("bg-warning-subtle", html);
+		Assert.Contains("bg-subtle-primary", html);
+		Assert.Contains("bg-subtle-success", html);
+		Assert.Contains("bg-subtle-warning", html);
 		Assert.Contains("Process started (PID: 123)", html);
 		Assert.Contains("Connected to provider stream", html);
 	}
@@ -1519,6 +1519,7 @@ public sealed class JobSessionPanelTests
 	public void JobSessionPanel_Bunit_RendersGoalPromptBubbleWithDropdownActions()
 	{
 		using var context = new BunitContext();
+		context.JSInterop.SetupModule(VibeSwarm.Client.Components.Common.ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 		var copied = false;
 
 		var cut = context.Render<JobSessionPanel>(parameters => parameters
@@ -1537,7 +1538,7 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("Ship the requested feature.", cut.Markup);
 		Assert.Contains("Goal", cut.Markup);
 		Assert.DoesNotContain("overflow-hidden", cut.Find(".card-body").ClassName);
-		Assert.Equal("static", cut.Find("button[title='Goal prompt actions']").GetAttribute("data-bs-display"));
+		Assert.Equal("menu", cut.Find("button[title='Goal prompt actions']").GetAttribute("data-bs-toggle"));
 
 		cut.Find("button[title='Copy prompt']").Click();
 

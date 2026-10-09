@@ -1,22 +1,22 @@
 @* One provider on the dashboard: a link to the Providers page that shows how it connects and,
    when known, how much of its usage limit is left. *@
 
-<a href="/providers" class="list-group-item list-group-item-action d-flex flex-column gap-2">
-	<span class="d-flex align-items-center gap-3">
-		<i class="bi bi-@GetProviderTypeIcon(ProviderType) flex-shrink-0 @(IsEnabled ? "text-primary" : "text-body-tertiary")"></i>
-		<span class="flex-grow-1 min-width-0">
-			<span class="d-block fw-medium text-truncate @(IsEnabled ? "" : "text-body-secondary")">@Name</span>
-			<span class="d-block small text-body-secondary text-truncate" title="@CliVersion">@GetSummary()</span>
+<a href="/providers" class="list-group-item list-group-item-action d-flex flex-column gap-3">
+	<span class="d-flex align-items-center gap-5">
+		<i class="bi bi-@GetProviderTypeIcon(ProviderType) flex-shrink-0 @(IsEnabled ? "fg-primary" : "fg-2")"></i>
+		<span class="flex-grow-1 min-w-0">
+			<span class="d-block fw-medium text-truncate @(IsEnabled ? "" : "fg-1")">@Name</span>
+			<span class="d-block small fg-1 text-truncate" title="@CliVersion">@GetSummary()</span>
 		</span>
 		@if (UsageSummary?.IsLimitReached == true)
 		{
-			<span class="small text-danger-emphasis flex-shrink-0">Limit reached</span>
+			<span class="small fg-emphasis-danger flex-shrink-0">Limit reached</span>
 		}
 		else if (!IsEnabled)
 		{
-			<span class="small text-body-tertiary flex-shrink-0">Off</span>
+			<span class="small fg-2 flex-shrink-0">Off</span>
 		}
-		<i class="bi bi-chevron-right text-body-tertiary flex-shrink-0"></i>
+		<i class="bi bi-chevron-right fg-2 flex-shrink-0"></i>
 	</span>
 	@if (ShouldShowUsageSection())
 	{
@@ -24,7 +24,7 @@
 	}
 	@if (!string.IsNullOrWhiteSpace(UsageRefreshError))
 	{
-		<span class="small text-warning-emphasis text-break">@UsageRefreshError</span>
+		<span class="small fg-emphasis-warning text-break">@UsageRefreshError</span>
 	}
 </a>
 

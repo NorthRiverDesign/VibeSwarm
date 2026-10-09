@@ -9,36 +9,36 @@
 	<ChildContent>
 		<EditForm Model="@Agent" OnValidSubmit="HandleValidSubmit">
 			<DataAnnotationsValidator />
-			<ValidationSummary class="text-danger mb-3" />
+			<ValidationSummary class="fg-danger mb-5" />
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="team-role-name" class="form-label">Name</label>
 				<InputText id="team-role-name" @bind-Value="Agent.Name" class="form-control"
 						   placeholder="Security Reviewer" />
-				<ValidationMessage For="@(() => Agent.Name)" class="text-danger small" />
+				<ValidationMessage For="@(() => Agent.Name)" class="fg-danger small" />
 			</div>
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="team-role-description" class="form-label">Purpose</label>
 				<InputTextArea id="team-role-description" @bind-Value="Agent.Description" class="form-control"
 							   rows="4" placeholder="Short summary of this role's purpose..." />
 				<div class="form-text">Shown in project agent pickers and execution summaries.</div>
 			</div>
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="team-role-responsibilities" class="form-label">Agent Instructions</label>
 				<InputTextArea id="team-role-responsibilities" @bind-Value="Agent.Responsibilities" class="form-control"
 							   rows="6" placeholder="Describe what this role owns, reviews, or specializes in..." />
-				<ValidationMessage For="@(() => Agent.Responsibilities)" class="text-danger small" />
+				<ValidationMessage For="@(() => Agent.Responsibilities)" class="fg-danger small" />
 				<div class="form-text">Use this to capture what the agent owns, reviews, and how it should approach the work.</div>
 			</div>
 
-			<div class="row g-3 mb-3">
-				<div class="col-12 col-lg-6">
+			<div class="row g-5 mb-5">
+				<div class="col-12 lg:col-6">
 					<label for="team-role-provider" class="form-label">Default Provider</label>
 					@if (!_providers.Any())
 					{
-						<div class="rounded border bg-body-tertiary p-3 small text-body-secondary">
+						<div class="rounded border bg-2 p-5 small fg-1">
 							No enabled providers are available yet. You can still save this agent and choose a provider when assigning it to a project.
 						</div>
 					}
@@ -48,7 +48,7 @@
 									 Value="Agent.DefaultProviderId"
 									 ValueChanged="HandleDefaultProviderChanged"
 									 ValueExpression="@(() => Agent.DefaultProviderId)"
-									 class="form-select">
+									 class="form-control">
 							<option value="">Choose when assigned to a project</option>
 							@foreach (var provider in _providers)
 							{
@@ -58,14 +58,14 @@
 						<div class="form-text">Used when this agent is assigned to a project or selected for a job.</div>
 					}
 				</div>
-				<div class="col-12 col-lg-6">
+				<div class="col-12 lg:col-6">
 					<label for="team-role-model" class="form-label">Default Model</label>
 					<div class="input-group">
 						<InputSelect TValue="string" id="team-role-model"
 									 Value="@(Agent.DefaultModelId ?? string.Empty)"
 									 ValueChanged="HandleDefaultModelChanged"
 									 ValueExpression="@(() => Agent.DefaultModelId)"
-									 class="form-select"
+									 class="form-control"
 									 disabled="@(!Agent.DefaultProviderId.HasValue || !CurrentProviderModels.Any())">
 							<option value="">Use provider default model</option>
 							@foreach (var model in CurrentProviderModels)
@@ -91,13 +91,13 @@
 						}
 					</div>
 				</div>
-				<div class="col-12 col-lg-6">
+				<div class="col-12 lg:col-6">
 					<label for="team-role-reasoning" class="form-label">Default Reasoning</label>
 					<InputSelect TValue="string" id="team-role-reasoning"
 								 Value="@(Agent.DefaultReasoningEffort ?? string.Empty)"
 								 ValueChanged="HandleDefaultReasoningChanged"
 								 ValueExpression="@(() => Agent.DefaultReasoningEffort)"
-								 class="form-select"
+								 class="form-control"
 								 disabled="@(!Agent.DefaultProviderId.HasValue || !CurrentReasoningOptions.Any())">
 						<option value="">Use provider default reasoning</option>
 						@foreach (var reasoning in CurrentReasoningOptions)
@@ -122,12 +122,12 @@
 				</div>
 			</div>
 
-			<div class="border rounded bg-body-tertiary p-3 mb-3">
-				<div class="fw-semibold mb-2">Default Execution Profile</div>
-				<div class="row g-3">
-					<div class="col-12 col-lg-6">
+			<div class="border rounded bg-2 p-5 mb-5">
+				<div class="fw-semibold mb-3">Default Execution Profile</div>
+				<div class="row g-5">
+					<div class="col-12 lg:col-6">
 						<label for="team-role-cycle-mode" class="form-label">Cycle Mode</label>
-						<InputSelect id="team-role-cycle-mode" @bind-Value="Agent.DefaultCycleMode" class="form-select">
+						<InputSelect id="team-role-cycle-mode" @bind-Value="Agent.DefaultCycleMode" class="form-control">
 							<option value="@CycleMode.SingleCycle">Single Cycle</option>
 							<option value="@CycleMode.FixedCount">Fixed Count</option>
 							<option value="@CycleMode.Autonomous">Autonomous</option>
@@ -136,15 +136,15 @@
 					</div>
 					@if (Agent.DefaultCycleMode != CycleMode.SingleCycle)
 					{
-						<div class="col-12 col-lg-6">
+						<div class="col-12 lg:col-6">
 							<label for="team-role-max-cycles" class="form-label">Max Cycles</label>
 							<InputNumber id="team-role-max-cycles" @bind-Value="Agent.DefaultMaxCycles" class="form-control" min="1" max="100" />
-							<ValidationMessage For="@(() => Agent.DefaultMaxCycles)" class="text-danger small" />
+							<ValidationMessage For="@(() => Agent.DefaultMaxCycles)" class="fg-danger small" />
 							<div class="form-text">Safety limit for fixed-count or autonomous execution.</div>
 						</div>
-						<div class="col-12 col-lg-6">
+						<div class="col-12 lg:col-6">
 							<label for="team-role-session-mode" class="form-label">Session Mode</label>
-							<InputSelect id="team-role-session-mode" @bind-Value="Agent.DefaultCycleSessionMode" class="form-select">
+							<InputSelect id="team-role-session-mode" @bind-Value="Agent.DefaultCycleSessionMode" class="form-control">
 								<option value="@CycleSessionMode.ContinueSession">Continue Session</option>
 								<option value="@CycleSessionMode.FreshSession">Fresh Session</option>
 							</InputSelect>
@@ -160,33 +160,33 @@
 				</div>
 			</div>
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label class="form-label">Skills</label>
 				@if (!_skills.Any())
 				{
-					<div class="text-body-secondary small">No skills available yet. Skills can be added later from the Skills page.</div>
+					<div class="fg-1 small">No skills available yet. Skills can be added later from the Skills page.</div>
 				}
 				else
 				{
-					<div class="border rounded bg-body-tertiary p-3">
-						<div class="row g-2">
+					<div class="border rounded bg-2 p-5">
+						<div class="row g-3">
 							@foreach (var skill in _skills)
 							{
 								var inputId = $"team-role-skill-{skill.Id}";
-								<div class="col-12 col-md-6">
-									<div class="form-check">
-										<input id="@inputId" class="form-check-input" type="checkbox"
+								<div class="col-12 md:col-6">
+									<div class="form-field">
+										<input id="@inputId" class="check" type="checkbox"
 											   checked="@IsSkillSelected(skill.Id)"
 											   @onchange="(args) => ToggleSkill(skill, args.Value is true)" />
-										<label class="form-check-label" for="@inputId">
+										<label for="@inputId">
 											<span class="fw-semibold">@skill.Name</span>
 											@if (!skill.IsEnabled)
 											{
-												<span class="text-body-secondary small ms-1">(Disabled)</span>
+												<span class="fg-1 small ms-1">(Disabled)</span>
 											}
 											@if (!string.IsNullOrWhiteSpace(skill.Description))
 											{
-												<span class="d-block text-body-secondary small">@skill.Description</span>
+												<span class="d-block fg-1 small">@skill.Description</span>
 											}
 										</label>
 									</div>
@@ -197,10 +197,12 @@
 				}
 			</div>
 
-			<div class="mb-3">
-				<div class="form-check form-switch">
-					<InputCheckbox id="team-role-enabled" @bind-Value="Agent.IsEnabled" class="form-check-input" />
-					<label class="form-check-label" for="team-role-enabled">
+			<div class="mb-5">
+				<div class="form-field">
+					<div class="switch">
+						<InputCheckbox role="switch" switch id="team-role-enabled" @bind-Value="Agent.IsEnabled" />
+					</div>
+					<label for="team-role-enabled">
 						Enabled
 					</label>
 				</div>
@@ -209,17 +211,17 @@
 
 			@if (!string.IsNullOrEmpty(ErrorMessage))
 			{
-				<div class="text-danger small mb-3">
+				<div class="fg-danger small mb-5">
 					<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
 				</div>
 			}
 
-			<div class="d-flex gap-2 justify-content-end">
-				<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
-				<button type="submit" class="btn btn-primary" disabled="@IsSaving">
+			<div class="d-flex gap-3 justify-content-end">
+				<button type="button" class="btn-solid theme-secondary" @onclick="HandleCancel">Cancel</button>
+				<button type="submit" class="btn-solid theme-primary" disabled="@IsSaving">
 					@if (IsSaving)
 					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
 					}
 					@(IsSaving ? "Saving..." : (IsEdit ? "Update Agent" : "Add Agent"))
 				</button>

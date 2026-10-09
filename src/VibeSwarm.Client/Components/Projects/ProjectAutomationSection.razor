@@ -1,8 +1,8 @@
 @using VibeSwarm.Shared.Validation
 
-<div class="mb-3">
+<div class="mb-5">
 	<label for="modal-autoCommitMode" class="form-label">Auto-commit</label>
-	<InputSelect id="modal-autoCommitMode" @bind-Value="Project.AutoCommitMode" class="form-select">
+	<InputSelect id="modal-autoCommitMode" @bind-Value="Project.AutoCommitMode" class="form-control">
 		<option value="@AutoCommitMode.Off">Off — commit manually</option>
 		<option value="@AutoCommitMode.CommitOnly">Commit after a job finishes</option>
 		<option value="@AutoCommitMode.CommitAndPush">Commit and push after a job finishes</option>
@@ -10,9 +10,9 @@
 	<div class="form-text">Applies only when the job completes successfully.</div>
 </div>
 
-<div class="mb-3">
+<div class="mb-5">
 	<label for="modal-gitChangeDeliveryMode" class="form-label">Result delivery</label>
-	<InputSelect id="modal-gitChangeDeliveryMode" @bind-Value="Project.GitChangeDeliveryMode" class="form-select">
+	<InputSelect id="modal-gitChangeDeliveryMode" @bind-Value="Project.GitChangeDeliveryMode" class="form-control">
 		<option value="@GitChangeDeliveryMode.CommitToBranch">Commit to the working branch</option>
 		<option value="@GitChangeDeliveryMode.PullRequest">Open a pull request</option>
 	</InputSelect>
@@ -20,20 +20,20 @@
 
 @if (Project.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
 {
-	<div class="mb-3">
+	<div class="mb-5">
 		<label for="modal-defaultTargetBranch" class="form-label">Default target branch</label>
 		<InputText id="modal-defaultTargetBranch" @bind-Value="Project.DefaultTargetBranch" class="form-control"
 				   placeholder="develop" maxlength="@ValidationLimits.ProjectDefaultTargetBranchMaxLength" />
-		<ValidationMessage For="@(() => Project.DefaultTargetBranch)" class="text-danger small" />
+		<ValidationMessage For="@(() => Project.DefaultTargetBranch)" class="fg-danger small" />
 		<div class="form-text">New jobs target this branch when opening pull requests or merging completed work.</div>
 	</div>
 }
 
-<div class="mb-3">
+<div class="mb-5">
 	<label for="modal-commitSummaryInferenceProvider" class="form-label">Commit message writer</label>
 	<InputSelect TValue="Guid?" id="modal-commitSummaryInferenceProvider"
 				 @bind-Value="Project.CommitSummaryInferenceProviderId"
-				 @bind-Value:after="HandleCommitSummaryProviderChanged" class="form-select">
+				 @bind-Value:after="HandleCommitSummaryProviderChanged" class="form-control">
 		<option value="">Use the coding provider</option>
 		@foreach (var provider in AvailableInferenceProviders)
 		{
@@ -47,13 +47,13 @@
 
 @if (Project.CommitSummaryInferenceProviderId.HasValue)
 {
-	<div class="mb-3">
+	<div class="mb-5">
 		<label for="modal-commitSummaryInferenceModel" class="form-label">
-			Commit message model <span class="text-body-secondary fw-normal">(optional)</span>
+			Commit message model <span class="fg-1 fw-normal">(optional)</span>
 		</label>
 		<div class="input-group">
 			<InputSelect id="modal-commitSummaryInferenceModel" @bind-Value="Project.CommitSummaryInferenceModelId"
-						 class="form-select" disabled="@(!InferenceModels.Any())">
+						 class="form-control" disabled="@(!InferenceModels.Any())">
 				<option value="">Provider default</option>
 				@foreach (var model in InferenceModels)
 				{
@@ -72,10 +72,12 @@
 
 @if (IsEdit)
 {
-	<hr class="my-3" />
-	<div class="form-check form-switch">
-		<InputCheckbox id="modal-isActive" @bind-Value="Project.IsActive" class="form-check-input" />
-		<label class="form-check-label" for="modal-isActive">Project is active</label>
+	<hr class="my-5" />
+	<div class="form-field">
+		<div class="switch">
+			<InputCheckbox role="switch" switch id="modal-isActive" @bind-Value="Project.IsActive" />
+		</div>
+		<label for="modal-isActive">Project is active</label>
 	</div>
 	<div class="form-text">Inactive projects are hidden from the dashboard and de-emphasized elsewhere.</div>
 }

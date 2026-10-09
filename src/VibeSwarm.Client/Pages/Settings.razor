@@ -5,11 +5,11 @@
 
 <PageHeader Title="Settings" Subtitle="Defaults that apply across every project and job." />
 
-<ul class="nav nav-pills nav-pills-quiet gap-1 small flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain mb-4" aria-label="Settings section">
+<ul class="nav gap-1 small flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain mb-7" aria-label="Settings section">
 	@foreach (var (key, label) in Sections)
 	{
 		<li class="nav-item">
-			<button type="button" class="nav-link rounded-pill px-3 @(_activeTab == key ? "active" : "")"
+			<button type="button" class="nav-link rounded-pill px-5 @(_activeTab == key ? "active" : "")"
 					aria-pressed="@(_activeTab == key ? "true" : "false")" @onclick="() => SetTab(key)">@label</button>
 		</li>
 	}
@@ -25,17 +25,17 @@ else if (_activeTab == "database")
 }
 else
 {
-	<div class="d-flex flex-column gap-4">
-		<div class="list-group rounded-4">
-			<div class="list-group-item d-flex align-items-center gap-3 py-3">
+	<div class="d-flex flex-column gap-7">
+		<div class="list-group rounded-9">
+			<div class="list-group-item d-flex align-items-center gap-5 py-5">
 				<img src="img/logo_icon.png" alt="" class="brand-icon flex-shrink-0" />
-				<span class="min-width-0">
+				<span class="min-w-0">
 					<span class="d-block fw-medium">@AppBranding.Name</span>
-					<span class="d-block small text-body-secondary">@AppBranding.Tagline</span>
+					<span class="d-block small fg-1">@AppBranding.Tagline</span>
 				</span>
 			</div>
-			<div class="list-group-item d-flex justify-content-between gap-3 small">
-				<span class="text-body-secondary flex-shrink-0">Runtime</span>
+			<div class="list-group-item d-flex justify-content-between gap-5 small">
+				<span class="fg-1 flex-shrink-0">Runtime</span>
 				<span class="text-end text-break">@System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription</span>
 			</div>
 		</div>

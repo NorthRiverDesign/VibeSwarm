@@ -5,16 +5,18 @@
 	<div class="alert @AlertClass @Class" role="alert">
 		@if (ShowIcon)
 		{
-			<i class="bi @IconClass me-2"></i>
+			<i class="bi @IconClass flex-shrink-0"></i>
 		}
-		@if (ChildContent != null)
-		{
-			@ChildContent
-		}
-		else
-		{
-			@Message
-		}
+		<div class="flex-grow-1 min-w-0">
+			@if (ChildContent != null)
+			{
+				@ChildContent
+			}
+			else
+			{
+				@Message
+			}
+		</div>
 		@if (Dismissible && OnDismiss.HasDelegate)
 		{
 			<button type="button" class="btn-close" @onclick="OnDismiss" aria-label="Close"></button>
@@ -67,13 +69,13 @@
 
 	private string AlertClass => Type switch
 	{
-		AlertType.Success => "alert-success",
-		AlertType.Danger => "alert-danger",
-		AlertType.Warning => "alert-warning",
-		AlertType.Info => "alert-info",
-		AlertType.Primary => "alert-primary",
-		AlertType.Secondary => "alert-secondary",
-		_ => "alert-info"
+		AlertType.Success => "theme-success",
+		AlertType.Danger => "theme-danger",
+		AlertType.Warning => "theme-warning",
+		AlertType.Info => "theme-info",
+		AlertType.Primary => "theme-primary",
+		AlertType.Secondary => "theme-secondary",
+		_ => "theme-info"
 	};
 
 	private string IconClass => Type switch

@@ -48,9 +48,9 @@ public sealed class SchedulerPageTests
 
 			Assert.Contains("Scheduler", html);
 			Assert.Contains("update dependencies, check security issues", html);
-			Assert.Contains("justify-content-between gap-2 mb-4", html);
+			Assert.Contains("justify-content-between gap-3 mb-7", html);
 			Assert.Contains(">Active<", html);
-			Assert.Contains("list-group rounded-4", html);
+			Assert.Contains("list-group rounded-9", html);
 			Assert.Contains("Repo", html);
 			Assert.Contains($"next {nextRunAtUtc.FormatRelativeToNow()}", html);
 			Assert.Contains("aria-expanded=\"false\"", html);

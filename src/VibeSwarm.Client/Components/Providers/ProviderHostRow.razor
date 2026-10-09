@@ -2,55 +2,55 @@
    place for the details and the install, update and API key actions, and opens by itself while
    something still needs doing. *@
 
-<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-3"
+<button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-5"
 		@onclick="ToggleExpanded" aria-expanded="@(IsExpanded ? "true" : "false")">
-	<i class="bi bi-@GetProviderTypeIcon(Status.ProviderType) flex-shrink-0 @(IsReady ? "text-primary" : "text-warning")"></i>
-	<span class="flex-grow-1 min-width-0 text-start">
+	<i class="bi bi-@GetProviderTypeIcon(Status.ProviderType) flex-shrink-0 @(IsReady ? "fg-primary" : "fg-warning")"></i>
+	<span class="flex-grow-1 min-w-0 text-start">
 		<span class="d-block fw-medium text-truncate">On this host</span>
 		@if (!IsExpanded && GetAttentionLine() is { } attention)
 		{
-			<span class="d-block small text-warning-emphasis text-truncate">@attention</span>
+			<span class="d-block small fg-emphasis-warning text-truncate">@attention</span>
 		}
 	</span>
-	<span class="small flex-shrink-0 @(IsReady ? "text-success" : "text-warning-emphasis")">@GetStatusText()</span>
-	<i class="bi @(IsExpanded ? "bi-chevron-up" : "bi-chevron-down") text-body-tertiary flex-shrink-0"></i>
+	<span class="small flex-shrink-0 @(IsReady ? "fg-success" : "fg-emphasis-warning")">@GetStatusText()</span>
+	<i class="bi @(IsExpanded ? "bi-chevron-up" : "bi-chevron-down") fg-2 flex-shrink-0"></i>
 </button>
 @if (IsExpanded)
 {
-	<div class="list-group-item d-flex flex-column gap-3 py-3">
-		<dl class="d-flex flex-column gap-2 small mb-0">
-			<div class="d-flex justify-content-between gap-3">
-				<dt class="fw-normal text-body-secondary">Installed</dt>
+	<div class="list-group-item d-flex flex-column gap-5 py-5">
+		<dl class="d-flex flex-column gap-3 small mb-0">
+			<div class="d-flex justify-content-between gap-5">
+				<dt class="fw-normal fg-1">Installed</dt>
 				<dd class="mb-0 text-end text-break">@(Status.IsInstalled ? Status.InstalledVersion ?? "Yes" : "No")</dd>
 			</div>
 			@if (!string.IsNullOrWhiteSpace(Status.ResolvedExecutablePath))
 			{
-				<div class="d-flex justify-content-between gap-3">
-					<dt class="fw-normal text-body-secondary">Path</dt>
-					<dd class="mb-0 text-end min-width-0 font-monospace text-break">@Status.ResolvedExecutablePath</dd>
+				<div class="d-flex justify-content-between gap-5">
+					<dt class="fw-normal fg-1">Path</dt>
+					<dd class="mb-0 text-end min-w-0 font-monospace text-break">@Status.ResolvedExecutablePath</dd>
 				</div>
 			}
-			<div class="d-flex justify-content-between gap-3">
-				<dt class="fw-normal text-body-secondary">Signed in</dt>
+			<div class="d-flex justify-content-between gap-5">
+				<dt class="fw-normal fg-1">Signed in</dt>
 				<dd class="mb-0 text-end">@GetSignInText()</dd>
 			</div>
 			@if (!string.IsNullOrWhiteSpace(Status.AuthenticationStatus))
 			{
-				<dd class="mb-0 text-body-secondary">@Status.AuthenticationStatus</dd>
+				<dd class="mb-0 fg-1">@Status.AuthenticationStatus</dd>
 			}
 		</dl>
 
 		@if (Status.HostTools.Count > 0)
 		{
-			<div class="d-flex flex-column gap-2">
+			<div class="d-flex flex-column gap-3">
 				<div class="text-eyebrow">Helpful tools</div>
 				@foreach (var tool in Status.HostTools)
 				{
-					<div class="d-flex align-items-start gap-2 small">
-						<i class="bi @(tool.IsInstalled ? "bi-check-circle text-success" : "bi-exclamation-circle text-warning") flex-shrink-0"></i>
-						<span class="flex-grow-1 min-width-0">
-							<span class="d-block">@tool.Name <span class="text-body-secondary">(@tool.Command)</span></span>
-							<span class="d-block text-body-secondary">@(tool.IsInstalled ? tool.Purpose : tool.Status ?? tool.Purpose)</span>
+					<div class="d-flex align-items-start gap-3 small">
+						<i class="bi @(tool.IsInstalled ? "bi-check-circle fg-success" : "bi-exclamation-circle fg-warning") flex-shrink-0"></i>
+						<span class="flex-grow-1 min-w-0">
+							<span class="d-block">@tool.Name <span class="fg-1">(@tool.Command)</span></span>
+							<span class="d-block fg-1">@(tool.IsInstalled ? tool.Purpose : tool.Status ?? tool.Purpose)</span>
 						</span>
 					</div>
 				}
@@ -59,8 +59,8 @@
 
 		@if (_showKeyForm)
 		{
-			<EditForm Model="@_request" OnValidSubmit="HandleSaveAuthentication" class="d-flex flex-column gap-2">
-				<label class="form-label small text-body-secondary mb-0" for="@($"host-key-{Status.ProviderType}")">@Status.ApiKeyLabel</label>
+			<EditForm Model="@_request" OnValidSubmit="HandleSaveAuthentication" class="d-flex flex-column gap-3">
+				<label class="form-label small fg-1 mb-0" for="@($"host-key-{Status.ProviderType}")">@Status.ApiKeyLabel</label>
 				<InputText id="@($"host-key-{Status.ProviderType}")" @bind-Value="_request.ApiKey" class="form-control" type="password"
 						   placeholder="@Status.ApiKeyPlaceholder" />
 				@if (!string.IsNullOrWhiteSpace(Status.ApiKeyHelpText))
@@ -69,36 +69,36 @@
 				}
 				@if (!string.IsNullOrWhiteSpace(_errorMessage))
 				{
-					<div class="text-danger small"><i class="bi bi-exclamation-circle me-1"></i>@_errorMessage</div>
+					<div class="fg-danger small"><i class="bi bi-exclamation-circle me-1"></i>@_errorMessage</div>
 				}
-				<div class="d-flex gap-2">
-					<button type="submit" class="btn btn-primary btn-sm" disabled="@IsSavingAuthentication">
+				<div class="d-flex gap-3">
+					<button type="submit" class="btn-solid theme-primary btn-sm" disabled="@IsSavingAuthentication">
 						@if (IsSavingAuthentication)
 						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							<span class="spinner-border spinner-sm me-1" role="status"></span>
 						}
 						Save key
 					</button>
-					<button type="button" class="btn btn-secondary btn-sm" @onclick="HideKeyForm" disabled="@IsSavingAuthentication">Cancel</button>
+					<button type="button" class="btn-solid theme-secondary btn-sm" @onclick="HideKeyForm" disabled="@IsSavingAuthentication">Cancel</button>
 				</div>
 			</EditForm>
 		}
 		else
 		{
-			<div class="d-flex flex-wrap align-items-center gap-2">
-				<button type="button" class="btn btn-sm @(Status.IsInstalled ? "btn-secondary" : "btn-primary")"
+			<div class="d-flex flex-wrap align-items-center gap-3">
+				<button type="button" class="btn btn-sm @(Status.IsInstalled ? "btn-solid theme-secondary" : "btn-solid theme-primary")"
 						@onclick="InstallProvider" disabled="@IsInstalling">
 					@if (IsInstalling)
 					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
 					}
 					@(Status.IsInstalled ? "Update" : "Install")
 				</button>
-				<button type="button" class="btn btn-sm @(Status.IsInstalled && !Status.IsAuthenticated ? "btn-primary" : "btn-secondary")"
+				<button type="button" class="btn btn-sm @(Status.IsInstalled && !Status.IsAuthenticated ? "btn-solid theme-primary" : "btn-solid theme-secondary")"
 						@onclick="ShowKeyForm" disabled="@IsSavingAuthentication">
 					Use an API key
 				</button>
-				<a class="btn btn-sm btn-link text-decoration-none px-0 ms-auto" href="@Status.DocumentationUrl" target="_blank" rel="noopener noreferrer">
+				<a class="btn-sm btn-link text-decoration-none px-0 ms-auto" href="@Status.DocumentationUrl" target="_blank" rel="noopener noreferrer">
 					Setup guide<i class="bi bi-box-arrow-up-right ms-1"></i>
 				</a>
 			</div>

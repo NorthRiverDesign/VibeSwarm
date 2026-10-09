@@ -6,27 +6,27 @@
 	@if (IsEditing)
 	{
 		@* Edit Mode *@
-		<div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-end gap-3 p-3">
+		<div class="d-flex flex-column sm:flex-row align-items-stretch sm:align-items-end gap-5 p-5">
 			<div class="flex-grow-1">
 				<textarea class="form-control form-control-sm" rows="5" @bind="EditDescription" @bind:event="oninput"
 						  maxlength="@ValidationLimits.IdeaDescriptionMaxLength">
 				</textarea>
-				<div class="d-flex justify-content-between mt-2 small text-body-secondary">
+				<div class="d-flex justify-content-between mt-3 small fg-1">
 					<span>@GetEditLengthSummary()</span>
 				</div>
 				@if (!string.IsNullOrWhiteSpace(EditValidationMessage))
 				{
-					<div class="text-danger small mt-2">
+					<div class="fg-danger small mt-3">
 						<i class="bi bi-exclamation-circle me-1"></i>@EditValidationMessage
 					</div>
 				}
 			</div>
-			<div class="d-flex justify-content-end gap-2">
-				<button type="button" class="btn btn-sm btn-success" @onclick="SaveEdit"
+			<div class="d-flex justify-content-end gap-3">
+				<button type="button" class="btn-sm btn-solid theme-success" @onclick="SaveEdit"
 						disabled="@(!CanSaveEdit)">
 					<i class="bi bi-check-lg"></i>
 				</button>
-				<button type="button" class="btn btn-sm btn-secondary" @onclick="CancelEdit">
+				<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="CancelEdit">
 					<i class="bi bi-x-lg"></i>
 				</button>
 			</div>
@@ -35,45 +35,45 @@
 	else
 	{
 		@* View Mode — one line until tapped; tapping shows the full text and the actions *@
-		<div class="d-flex align-items-center gap-3 px-3">
+		<div class="d-flex align-items-center gap-5 px-5">
 			<span class="flex-shrink-0" title="@GetStatusTitle()">
 				@if (IsRunningIdea())
 				{
-					<span class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>
+					<span class="spinner-border spinner-sm fg-primary" role="status" aria-hidden="true"></span>
 				}
 				else
 				{
 					<i class="bi @GetStatusIcon() @GetStatusIconColor()"></i>
 				}
 			</span>
-			<button type="button" class="btn btn-link text-reset text-decoration-none text-start border-0 px-0 py-3 flex-grow-1 min-width-0"
+			<button type="button" class="btn-link fg-reset text-decoration-none text-start border-0 px-0 py-5 flex-grow-1 min-w-0"
 					@onclick="ToggleExpanded" aria-expanded="@_isExpanded.ToString().ToLowerInvariant()" title="@(_isExpanded ? "Show less" : "Show the whole idea and its actions")">
-				<span class="d-block @(_isExpanded ? "text-break white-space-pre-wrap" : "text-truncate") @(IsRunningIdea() ? "text-body-secondary" : "")">@Idea.Description</span>
+				<span class="d-block @(_isExpanded ? "text-break white-space-pre-wrap" : "text-truncate") @(IsRunningIdea() ? "fg-1" : "")">@Idea.Description</span>
 			</button>
 			@if (Idea.Attachments.Any() && !_isExpanded)
 			{
-				<i class="bi bi-paperclip text-body-tertiary flex-shrink-0" title="@($"{Idea.Attachments.Count} attachment{(Idea.Attachments.Count == 1 ? "" : "s")}")"></i>
+				<i class="bi bi-paperclip fg-2 flex-shrink-0" title="@($"{Idea.Attachments.Count} attachment{(Idea.Attachments.Count == 1 ? "" : "s")}")"></i>
 			}
 			@if (Idea.JobId.HasValue && (IsRunningIdea() || IsQueuedIdea()))
 			{
-				<NavLink href="@($"/jobs/view/{Idea.JobId}")" class="btn btn-sm btn-link text-decoration-none px-0 flex-shrink-0">View job</NavLink>
+				<NavLink href="@($"/jobs/view/{Idea.JobId}")" class="btn-sm btn-link text-decoration-none px-0 flex-shrink-0">View job</NavLink>
 			}
 			else if (IsQueuedIdea())
 			{
-				<span class="small text-body-secondary flex-shrink-0">Queued</span>
+				<span class="small fg-1 flex-shrink-0">Queued</span>
 			}
 			else if (!IsRunningIdea())
 			{
-				<button type="button" class="btn btn-link text-success p-0 icon-button-round d-inline-flex align-items-center justify-content-center flex-shrink-0"
+				<button type="button" class="btn-link fg-success p-0 icon-button-round d-inline-flex align-items-center justify-content-center flex-shrink-0"
 						@onclick="HandleStart" disabled="@(!HasDefaultProvider || IsStarting || Idea.JobId.HasValue)"
 						title="@(HasActiveJobs ? "Queue this idea after the current job" : "Start this idea")" aria-label="Start this idea">
 					@if (IsStarting)
 					{
-						<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+						<span class="spinner-border spinner-sm" role="status" aria-hidden="true"></span>
 					}
 					else
 					{
-						<i class="bi bi-play-circle fs-4"></i>
+						<i class="bi bi-play-circle fs-xl"></i>
 					}
 				</button>
 			}
@@ -81,10 +81,10 @@
 
 		@if (_isExpanded)
 		{
-			<div class="d-flex flex-column gap-2 px-3 pb-3">
+			<div class="d-flex flex-column gap-3 px-5 pb-5">
 				@if (Idea.ExpansionStatus is IdeaExpansionStatus.Approved or IdeaExpansionStatus.PendingReview)
 				{
-					<div class="d-flex flex-wrap gap-2">
+					<div class="d-flex flex-wrap gap-3">
 						@if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved)
 						{
 							<MetaChip Variant="ai" Icon="bi-stars" Text="Expanded" />
@@ -97,10 +97,10 @@
 				}
 				@if (Idea.Attachments.Any())
 				{
-					<div class="d-flex flex-wrap gap-2">
+					<div class="d-flex flex-wrap gap-3">
 						@foreach (var attachment in Idea.Attachments.OrderBy(attachment => attachment.CreatedAt))
 						{
-							<a class="d-inline-flex align-items-center gap-2 text-decoration-none border rounded-2 px-2 py-1 bg-body-secondary min-width-0"
+							<a class="d-inline-flex align-items-center gap-3 text-decoration-none border rounded-4 px-3 py-1 bg-1 min-w-0"
 							   href="@GetAttachmentUrl(attachment.Id)" target="_blank" rel="noreferrer"
 							   title="@attachment.FileName">
 								@if (IsImageAttachment(attachment))
@@ -109,21 +109,21 @@
 								}
 								else
 								{
-									<i class="bi bi-paperclip text-muted flex-shrink-0"></i>
+									<i class="bi bi-paperclip fg-1 flex-shrink-0"></i>
 								}
-								<span class="d-flex flex-column min-width-0">
+								<span class="d-flex flex-column min-w-0">
 									<span class="text-truncate small">@attachment.FileName</span>
-									<span class="text-muted small">@FormatAttachmentSize(attachment.SizeBytes)</span>
+									<span class="fg-1 small">@FormatAttachmentSize(attachment.SizeBytes)</span>
 								</span>
 							</a>
 						}
 					</div>
 				}
-				<div class="d-flex flex-wrap align-items-center gap-2">
-					<button type="button" class="btn btn-sm btn-secondary" @onclick="StartEdit" disabled="@IsRunningIdea()">
+				<div class="d-flex flex-wrap align-items-center gap-3">
+					<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="StartEdit" disabled="@IsRunningIdea()">
 						<i class="bi bi-pencil me-1"></i>Edit
 					</button>
-					<RowActionsDropdown Label="More" MenuAlignClass="dropdown-menu-start">
+					<RowActionsDropdown Label="More" Placement="bottom-start">
 						@if (IsRunningIdea() && Idea.JobId.HasValue)
 						{
 							<RowActionsItem Icon="stop-fill" Text="Stop Job" Warning="true" OnClick="HandleStopJob" />
@@ -148,11 +148,11 @@
 @functions {
 	private string GetStatusIconColor()
 	{
-		if (IsQueuedIdea()) return "text-primary";
-		if (Idea.ExpansionStatus == IdeaExpansionStatus.Expanding) return "text-info";
-		if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved) return "text-success";
-		if (Idea.ExpansionStatus == IdeaExpansionStatus.PendingReview) return "text-warning";
-		return "text-body-tertiary";
+		if (IsQueuedIdea()) return "fg-primary";
+		if (Idea.ExpansionStatus == IdeaExpansionStatus.Expanding) return "fg-info";
+		if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved) return "fg-success";
+		if (Idea.ExpansionStatus == IdeaExpansionStatus.PendingReview) return "fg-warning";
+		return "fg-2";
 	}
 
 	private string GetStatusTitle()

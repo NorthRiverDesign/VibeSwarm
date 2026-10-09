@@ -1,24 +1,24 @@
 @* User interaction panel for CLI agent input requests *@
 
-<div class="card mb-3 mb-lg-4 border-warning">
-	<div class="card-header bg-warning bg-opacity-25 d-flex align-items-center">
-		<i class="bi bi-chat-left-text me-2 text-warning fs-5"></i>
-		<strong class="text-warning">User Input Required</strong>
+<div class="card mb-5 lg:mb-7 border-warning">
+	<div class="card-header bg-warning bg-30 flex-row align-items-center">
+		<i class="bi bi-chat-left-text me-3 fg-warning fs-lg"></i>
+		<strong class="fg-warning">User Input Required</strong>
 	</div>
 	<div class="card-body">
-		<div class="mb-3">
-			<p class="mb-2 text-body-secondary small">The CLI agent is asking:</p>
-			<pre class="white-space-pre-wrap bg-body-secondary p-3 rounded mb-0 text-break overflow-auto">@Prompt</pre>
+		<div class="mb-5">
+			<p class="mb-3 fg-1 small">The CLI agent is asking:</p>
+			<pre class="white-space-pre-wrap bg-1 p-5 rounded mb-0 text-break overflow-auto">@Prompt</pre>
 		</div>
 
 		@if (Choices != null && Choices.Count > 0)
 		{
-			<div class="mb-3">
-				<label class="form-label small text-body-secondary">Choose an option:</label>
-				<div class="d-flex flex-wrap gap-2">
+			<div class="mb-5">
+				<label class="form-label small fg-1">Choose an option:</label>
+				<div class="d-flex flex-wrap gap-3">
 					@foreach (var choice in Choices)
 					{
-						<button type="button" class="btn btn-primary" @onclick="() => OnSubmitChoice.InvokeAsync(choice)"
+						<button type="button" class="btn-solid theme-primary" @onclick="() => OnSubmitChoice.InvokeAsync(choice)"
 								disabled="@IsSubmitting">
 							@choice
 						</button>
@@ -27,18 +27,18 @@
 			</div>
 		}
 
-		<div class="mb-3">
-			<label for="interactionResponse" class="form-label small text-body-secondary">
+		<div class="mb-5">
+			<label for="interactionResponse" class="form-label small fg-1">
 				Or enter your response:
 			</label>
 			<div class="input-group">
 				<input type="text" id="interactionResponse" class="form-control" @bind="Response" @bind:event="oninput"
 					   @onkeyup="HandleKeyPress" placeholder="Type your response..." disabled="@IsSubmitting" />
-				<button class="btn btn-primary" type="button" @onclick="SubmitTypedResponse"
+				<button class="btn-solid theme-primary" type="button" @onclick="SubmitTypedResponse"
 						disabled="@(IsSubmitting || string.IsNullOrWhiteSpace(Response))">
 					@if (IsSubmitting)
 					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
 						<span>Sending...</span>
 					}
 					else
@@ -52,12 +52,12 @@
 
 		@if (!string.IsNullOrEmpty(ErrorMessage))
 		{
-			<Alert Type="Alert.AlertType.Danger" Class="py-2 mb-0">@ErrorMessage</Alert>
+			<Alert Type="Alert.AlertType.Danger" Class="py-3 mb-0">@ErrorMessage</Alert>
 		}
 
 		@if (RequestedAt.HasValue)
 		{
-			<p class="text-body-secondary small mb-0 mt-2">
+			<p class="fg-1 small mb-0 mt-3">
 				<i class="bi bi-clock me-1"></i>
 				Waiting since @RequestedAt.Value.FormatDateTimeShort()
 			</p>

@@ -30,7 +30,7 @@ public sealed class ThemeSelectorTests
 
 		Assert.Contains("Theme", html);
 		Assert.Contains("bi-moon-stars-fill", html);
-		Assert.Contains("btn btn-primary", html);
+		Assert.Contains("btn-solid theme-primary", html);
 		Assert.Contains(">Dark</span>", html, StringComparison.Ordinal);
 	}
 }

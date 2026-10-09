@@ -1,19 +1,17 @@
 @* A single action inside a <RowActionsDropdown>. Use <RowActionsDivider/> for separators. *@
 
-<li>
-	<button type="button" class="dropdown-item @(Danger ? "text-danger" : "") @(Warning ? "text-warning" : "")"
-			@onclick="OnClick" @onclick:stopPropagation="true" disabled="@Disabled">
-		@if (!string.IsNullOrEmpty(Icon))
-		{
-			<i class="bi bi-@Icon me-2 @(IconSpin ? "spin" : "")"></i>
-		}
-		@Text
-		@if (ChildContent != null)
-		{
-			@ChildContent
-		}
-	</button>
-</li>
+<button type="button" class="menu-item @(Danger ? "theme-danger" : "") @(Warning ? "theme-warning" : "")"
+		@onclick="OnClick" @onclick:stopPropagation="true" disabled="@Disabled">
+	@if (!string.IsNullOrEmpty(Icon))
+	{
+		<i class="bi bi-@Icon @(IconSpin ? "spin" : "")"></i>
+	}
+	@Text
+	@if (ChildContent != null)
+	{
+		@ChildContent
+	}
+</button>
 
 @code {
 	[Parameter] public string? Icon { get; set; }

@@ -72,7 +72,7 @@ return request;
 }
 
 public string GetSourceModeButtonClass(ProjectModalFormModel project, ProjectCreationMode mode)
-=> project.CreationMode == mode ? "btn-primary" : "btn-secondary";
+=> project.CreationMode == mode ? "btn-solid theme-primary" : "btn-solid theme-secondary";
 
 public string GetWorkingPathHelpText(ProjectModalFormModel project) => project.CreationMode switch
 {

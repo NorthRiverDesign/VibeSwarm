@@ -9,13 +9,13 @@
 	@* Self-hosted open-source models have no upstream quota, so show that plainly
 	   instead of an empty meter or a "no usage data" fallback. *@
 	<div class="@Class">
-		<div class="d-flex align-items-center gap-1 small text-body-secondary">
+		<div class="d-flex align-items-center gap-1 small fg-1">
 			<i class="bi bi-infinity"></i>
 			<span>@(Compact ? "Unmetered" : "Unmetered \u2014 no provider quota")</span>
 		</div>
 		@if (!string.IsNullOrWhiteSpace(UsageSummary.LimitMessage))
 		{
-			<div class="small text-body-tertiary mt-1">@UsageSummary.LimitMessage</div>
+			<div class="small fg-2 mt-1">@UsageSummary.LimitMessage</div>
 		}
 	</div>
 }
@@ -25,11 +25,11 @@ else if (displayWindows.Count > 0)
 		@foreach (var window in displayWindows)
 		{
 			var percentUsed = GetPercentUsed(window);
-			<div class="@(window != displayWindows[0] ? "mt-2 pt-2 border-top border-secondary-subtle" : string.Empty)">
+			<div class="@(window != displayWindows[0] ? "mt-3 pt-3 border-top border-subtle-secondary" : string.Empty)">
 				@if (window.MaxUsage.HasValue && window.MaxUsage > 0)
 				{
 					<div class="d-flex justify-content-between align-items-center small mb-1">
-						<span class="text-body-secondary">@GetUsageLabel(window)</span>
+						<span class="fg-1">@GetUsageLabel(window)</span>
 						<span class="fw-medium @GetTextColorClass(percentUsed)">
 							@percentUsed%
 						</span>
@@ -41,28 +41,28 @@ else if (displayWindows.Count > 0)
 				}
 				else
 				{
-					<div class="small text-body-secondary">
+					<div class="small fg-1">
 						<i class="bi bi-graph-up me-1"></i>@GetFallbackUsageLabel(window)
 					</div>
 				}
 
 				@if (ShowResetTime && window.ResetTime.HasValue)
 				{
-					<div class="small text-body-tertiary mt-1">
+					<div class="small fg-2 mt-1">
 						<i class="bi bi-clock me-1"></i>Resets @FormatResetTime(window.ResetTime.Value)
 					</div>
 				}
 
 				@if (window.IsLimitReached)
 				{
-					<div class="small text-danger mt-1">
+					<div class="small fg-danger mt-1">
 						<i class="bi bi-exclamation-triangle-fill me-1"></i>Limit reached
 					</div>
 				}
 
 				@if (!string.IsNullOrWhiteSpace(window.Message) && ShouldShowMessage(window, displayWindows.Count))
 				{
-					<div class="small text-body-tertiary mt-1">@window.Message</div>
+					<div class="small fg-2 mt-1">@window.Message</div>
 				}
 			</div>
 		}
@@ -73,23 +73,23 @@ else if (UsageSummary != null && ShowEmptyState)
 	<div class="@Class">
 		@if (GetFallbackUsageLabel() is { } fallbackLabel)
 		{
-			<div class="small text-body-secondary">
+			<div class="small fg-1">
 				<i class="bi bi-graph-up me-1"></i>@fallbackLabel
 			</div>
 			@if (!string.IsNullOrWhiteSpace(UsageSummary.LimitMessage))
 			{
-				<div class="small text-body-tertiary mt-1">@UsageSummary.LimitMessage</div>
+				<div class="small fg-2 mt-1">@UsageSummary.LimitMessage</div>
 			}
 			@if (ShowResetTime && UsageSummary.LimitResetTime.HasValue)
 			{
-				<div class="small text-body-tertiary mt-1">
+				<div class="small fg-2 mt-1">
 					<i class="bi bi-clock me-1"></i>Resets @FormatResetTime(UsageSummary.LimitResetTime.Value)
 				</div>
 			}
 		}
 		else
 		{
-			<div class="small text-body-tertiary">
+			<div class="small fg-2">
 				<i class="bi bi-graph-up me-1"></i>No usage data
 			</div>
 		}
@@ -258,8 +258,8 @@ else if (UsageSummary != null && ShowEmptyState)
 
 	private static string GetTextColorClass(int percent) => percent switch
 	{
-		>= 95 => "text-danger",
-		>= 80 => "text-warning",
+		>= 95 => "fg-danger",
+		>= 80 => "fg-warning",
 		_ => ""
 	};
 

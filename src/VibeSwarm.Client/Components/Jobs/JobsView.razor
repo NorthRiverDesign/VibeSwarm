@@ -13,9 +13,9 @@
 
 @* Jobs: what is running, what needs you, what runs next, then what already ran. A row of
    project pills narrows every section to one project. *@
-<div class="d-flex flex-column gap-4">
-	<div class="d-flex flex-column gap-3">
-		<div class="d-flex align-items-center gap-2">
+<div class="d-flex flex-column gap-7">
+	<div class="d-flex flex-column gap-5">
+		<div class="d-flex align-items-center gap-3">
 			<h1 class="mb-0 me-auto">Jobs</h1>
 			@if (_selectedProjectId.HasValue)
 			{
@@ -26,15 +26,15 @@
 
 		@if (VisibleProjects.Any())
 		{
-			<ul class="nav nav-pills nav-pills-quiet gap-1 small flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain" aria-label="Project">
+			<ul class="nav gap-1 small flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain" aria-label="Project">
 				<li class="nav-item">
-					<button type="button" class="nav-link rounded-pill px-3 @(_selectedProjectId == null ? "active" : "")"
+					<button type="button" class="nav-link rounded-pill px-5 @(_selectedProjectId == null ? "active" : "")"
 							aria-pressed="@(_selectedProjectId == null ? "true" : "false")" @onclick="() => SelectProject(null)">All projects</button>
 				</li>
 				@foreach (var project in VisibleProjects)
 				{
 					<li class="nav-item">
-						<button type="button" class="nav-link rounded-pill px-3 d-inline-flex align-items-center gap-2 @(_selectedProjectId == project.Id ? "active" : "") @(project.IsActive ? "" : "opacity-75")"
+						<button type="button" class="nav-link rounded-pill px-5 d-inline-flex align-items-center gap-3 @(_selectedProjectId == project.Id ? "active" : "") @(project.IsActive ? "" : "opacity-75")"
 								aria-pressed="@(_selectedProjectId == project.Id ? "true" : "false")" @onclick="() => SelectProject(project.Id)">
 							@project.Name
 							@if (GetActiveCountForProject(project.Id) > 0)
@@ -73,29 +73,29 @@
 	{
 		@if (!_currentJobs.Any() && !UpcomingIdeaGroups.Any())
 		{
-			<p class="small text-body-secondary mb-0 px-1">
+			<p class="small fg-1 mb-0 px-1">
 				<i class="bi bi-check2-circle me-1"></i>Nothing is running or queued@(GetSelectedProject() is { } selected ? $" in {selected.Name}" : "").
 			</p>
 		}
 
 		@if (RunningJobs.Any())
 		{
-			<section class="d-flex flex-column gap-2" aria-label="Running">
+			<section class="d-flex flex-column gap-3" aria-label="Running">
 				<h2 class="text-eyebrow mb-0 px-1">Running · @RunningJobs.Count</h2>
-				<div class="list-group rounded-4">
+				<div class="list-group rounded-9">
 					@foreach (var job in RunningJobs)
 					{
-						<div class="list-group-item d-flex align-items-center gap-3 py-3">
-							<span class="spinner-border spinner-border-sm text-primary flex-shrink-0" role="status" aria-hidden="true"></span>
-							<a href="@GetJobHref(job.Id)" class="flex-grow-1 min-width-0 text-reset text-decoration-none">
+						<div class="list-group-item d-flex align-items-center gap-5 py-5">
+							<span class="spinner-border spinner-sm fg-primary flex-shrink-0" role="status" aria-hidden="true"></span>
+							<a href="@GetJobHref(job.Id)" class="flex-grow-1 min-w-0 fg-reset text-decoration-none">
 								<span class="d-block fw-medium text-truncate" title="@job.DisplayTitle">@job.DisplayTitle</span>
-								<span class="d-block small text-body-secondary text-truncate">@GetRunningSubtitle(job)</span>
+								<span class="d-block small fg-1 text-truncate">@GetRunningSubtitle(job)</span>
 							</a>
-							<button type="button" class="btn btn-sm btn-outline-danger rounded-pill flex-shrink-0"
+							<button type="button" class="btn-sm btn-outline theme-danger rounded-pill flex-shrink-0"
 									@onclick="() => StopJob(job)" disabled="@_stoppingJobIds.Contains(job.Id)" title="Cancel this job">
 								@if (_stoppingJobIds.Contains(job.Id))
 								{
-									<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+									<span class="spinner-border spinner-sm me-1" role="status" aria-hidden="true"></span>
 								}
 								Stop
 							</button>
@@ -107,9 +107,9 @@
 
 		@if (WaitingJobs.Any())
 		{
-			<section class="d-flex flex-column gap-2" aria-label="Needs you">
+			<section class="d-flex flex-column gap-3" aria-label="Needs you">
 				<h2 class="text-eyebrow mb-0 px-1">Needs you · @WaitingJobs.Count</h2>
-				<div class="list-group rounded-4">
+				<div class="list-group rounded-9">
 					@foreach (var job in WaitingJobs)
 					{
 						<JobRow @key="job.Id" Job="@job" ShowProjectName="@ShowProjectNames" Href="@GetJobHref(job.Id)" />
@@ -120,9 +120,9 @@
 
 		@if (QueuedJobs.Any() || UpcomingIdeaGroups.Any())
 		{
-			<section class="d-flex flex-column gap-2" aria-label="Up next">
+			<section class="d-flex flex-column gap-3" aria-label="Up next">
 				<h2 class="text-eyebrow mb-0 px-1">Up next@(QueuedJobs.Any() ? $" · {QueuedJobs.Count}" : "")</h2>
-				<div class="list-group rounded-4">
+				<div class="list-group rounded-9">
 					@foreach (var job in QueuedJobs)
 					{
 						<JobRow @key="job.Id" Job="@job" ShowProjectName="@ShowProjectNames" Href="@GetJobHref(job.Id)"
@@ -130,24 +130,24 @@
 					}
 					@foreach (var group in UpcomingIdeaGroups)
 					{
-						<a href="/projects/@group.ProjectId" class="list-group-item list-group-item-action d-flex align-items-center gap-3">
-							<i class="bi bi-lightbulb text-body-tertiary flex-shrink-0"></i>
-							<span class="flex-grow-1 min-width-0 text-truncate text-body-secondary">@GetIdeaGroupLabel(group)</span>
-							<i class="bi bi-chevron-right text-body-tertiary flex-shrink-0"></i>
+						<a href="/projects/@group.ProjectId" class="list-group-item list-group-item-action d-flex align-items-center gap-5">
+							<i class="bi bi-lightbulb fg-2 flex-shrink-0"></i>
+							<span class="flex-grow-1 min-w-0 text-truncate fg-1">@GetIdeaGroupLabel(group)</span>
+							<i class="bi bi-chevron-right fg-2 flex-shrink-0"></i>
 						</a>
 					}
 				</div>
 			</section>
 		}
 
-		<section class="d-flex flex-column gap-2" aria-label="Recent">
-			<div class="d-flex align-items-center gap-3 px-1">
+		<section class="d-flex flex-column gap-3" aria-label="Recent">
+			<div class="d-flex align-items-center gap-5 px-1">
 				<h2 class="text-eyebrow mb-0 me-auto">Recent</h2>
 				@if (_isRefreshing || _isLoadingJobs)
 				{
-					<span class="spinner-border spinner-border-sm text-body-secondary" role="status" aria-label="Refreshing jobs"></span>
+					<span class="spinner-border spinner-sm fg-1" role="status" aria-label="Refreshing jobs"></span>
 				}
-				<select class="form-select form-select-sm w-auto" aria-label="Show" value="@_statusFilter" @onchange="OnStatusFilterChanged">
+				<select class="form-control form-control-sm w-auto" aria-label="Show" value="@_statusFilter" @onchange="OnStatusFilterChanged">
 					<option value="finished">All</option>
 					<option value="completed">Completed</option>
 					<option value="failed">Failed</option>
@@ -159,7 +159,7 @@
 			}
 			else
 			{
-				<div class="list-group rounded-4">
+				<div class="list-group rounded-9">
 					@foreach (var job in _jobsResult.Items)
 					{
 						<JobRow @key="job.Id" Job="@job" ShowProjectName="@ShowProjectNames" Href="@GetJobHref(job.Id)" />

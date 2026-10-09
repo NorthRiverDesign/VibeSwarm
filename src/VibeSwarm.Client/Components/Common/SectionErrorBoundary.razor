@@ -6,21 +6,21 @@
 	</ChildContent>
 	<ErrorContent Context="exception">
 		<Alert Type="Alert.AlertType.Danger">
-			<div class="d-flex flex-column gap-3">
-				<div class="d-flex flex-column flex-sm-row align-items-sm-start justify-content-between gap-3">
-					<div class="min-width-0">
+			<div class="d-flex flex-column gap-5">
+				<div class="d-flex flex-column sm:flex-row sm:align-items-start justify-content-between gap-5">
+					<div class="min-w-0">
 						<div class="fw-semibold">Couldn't load @SectionTitle.</div>
-						<div class="small text-body-secondary">
+						<div class="small fg-1">
 							An unexpected error interrupted this section. Try rendering it again.
 						</div>
 					</div>
-					<button type="button" class="btn btn-sm btn-secondary flex-shrink-0" @onclick="RecoverAsync">
+					<button type="button" class="btn-sm btn-solid theme-secondary flex-shrink-0" @onclick="RecoverAsync">
 						<i class="bi bi-arrow-clockwise me-1"></i>Try Again
 					</button>
 				</div>
 				<details class="small">
 					<summary class="cursor-pointer">Show error details</summary>
-					<pre class="mb-0 mt-2 p-2 bg-body-tertiary rounded small font-monospace white-space-pre-wrap">@FormatException(exception)</pre>
+					<pre class="mb-0 mt-3 p-3 bg-2 rounded small font-monospace white-space-pre-wrap">@FormatException(exception)</pre>
 				</details>
 			</div>
 		</Alert>

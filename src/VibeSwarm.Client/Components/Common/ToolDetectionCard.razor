@@ -1,18 +1,18 @@
 @* Tool Detection Card - Shows status of detected CLI tools with install support *@
 @inject HttpClient Http
 
-<div class="d-flex flex-column gap-2">
-	<div class="d-flex align-items-center gap-3 px-1">
+<div class="d-flex flex-column gap-3">
+	<div class="d-flex align-items-center gap-5 px-1">
 		<h2 class="text-eyebrow mb-0 me-auto">Tools on this host</h2>
-		<button type="button" class="btn btn-sm btn-link text-decoration-none px-0" @onclick="DetectTools" disabled="@(_isLoading || _isInstalling != null)">
+		<button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="DetectTools" disabled="@(_isLoading || _isInstalling != null)">
 			<i class="bi bi-arrow-clockwise me-1 @(_isLoading ? "spin" : "")"></i>Check again
 		</button>
 	</div>
-	<div class="border rounded-4 p-3">
+	<div class="border rounded-9 p-5">
 		@if (_isLoading)
 		{
-			<div class="d-flex align-items-center gap-2 text-body-secondary">
-				<span class="spinner-border spinner-border-sm" role="status"></span>
+			<div class="d-flex align-items-center gap-3 fg-1">
+				<span class="spinner-border spinner-sm" role="status"></span>
 				<span>Detecting tools...</span>
 			</div>
 		}
@@ -20,26 +20,26 @@
 		{
 			<ul class="list-unstyled mb-0">
 				@* Git *@
-				<li class="d-flex align-items-center gap-2 mb-2">
-					<i class="bi bi-git text-danger"></i>
+				<li class="d-flex align-items-center gap-3 mb-3">
+					<i class="bi bi-git fg-danger"></i>
 					<span class="flex-grow-1">Git</span>
 					@if (_gitAvailable)
 					{
-						<span class="badge bg-success-subtle text-success-emphasis">
+						<span class="badge badge-subtle theme-success">
 							<i class="bi bi-check-circle me-1"></i>Available
 						</span>
 					}
 					else
 					{
-						<span class="badge bg-danger-subtle text-danger-emphasis me-1">
+						<span class="badge badge-subtle theme-danger me-1">
 							<i class="bi bi-x-circle me-1"></i>Not Found
 						</span>
-						<button type="button" class="btn btn-sm btn-primary"
+						<button type="button" class="btn-sm btn-solid theme-primary"
 								@onclick='() => InstallTool("git")'
 								disabled="@(_isInstalling != null)">
 							@if (_isInstalling == "git")
 							{
-								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+								<span class="spinner-border spinner-sm me-1" role="status"></span>
 								<span>Installing...</span>
 							}
 							else
@@ -52,26 +52,26 @@
 				</li>
 
 				@* GitHub CLI *@
-				<li class="d-flex align-items-center gap-2 mb-2">
+				<li class="d-flex align-items-center gap-3 mb-3">
 					<i class="bi bi-github"></i>
 					<span class="flex-grow-1">GitHub CLI</span>
 					@if (_ghAvailable)
 					{
-						<span class="badge bg-success-subtle text-success-emphasis">
+						<span class="badge badge-subtle theme-success">
 							<i class="bi bi-check-circle me-1"></i>Available
 						</span>
 					}
 					else
 					{
-						<span class="badge bg-danger-subtle text-danger-emphasis me-1">
+						<span class="badge badge-subtle theme-danger me-1">
 							<i class="bi bi-x-circle me-1"></i>Not Found
 						</span>
-						<button type="button" class="btn btn-sm btn-primary"
+						<button type="button" class="btn-sm btn-solid theme-primary"
 								@onclick='() => InstallTool("gh")'
 								disabled="@(_isInstalling != null)">
 							@if (_isInstalling == "gh")
 							{
-								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+								<span class="spinner-border spinner-sm me-1" role="status"></span>
 								<span>Installing...</span>
 							}
 							else
@@ -86,18 +86,18 @@
 				@* GitHub CLI Auth Status (sub-status) *@
 				@if (_ghAvailable)
 				{
-					<li class="d-flex align-items-center gap-2 ps-4">
+					<li class="d-flex align-items-center gap-3 ps-7">
 						<i class="bi bi-shield-lock opacity-50"></i>
-						<span class="flex-grow-1 text-body-secondary small">Authentication</span>
+						<span class="flex-grow-1 fg-1 small">Authentication</span>
 						@if (_ghAuthenticated)
 						{
-							<span class="badge bg-success-subtle text-success-emphasis">
+							<span class="badge badge-subtle theme-success">
 								<i class="bi bi-check-circle me-1"></i>Authenticated
 							</span>
 						}
 						else
 						{
-							<span class="badge bg-warning-subtle text-warning-emphasis">
+							<span class="badge badge-subtle theme-warning">
 								<i class="bi bi-exclamation-triangle me-1"></i>Not Authenticated
 							</span>
 						}
@@ -105,35 +105,35 @@
 				}
 
 				@* Separator *@
-				<li><hr class="my-2"></li>
+				<li><hr class="my-3"></li>
 
 				@* Section header for optional browser tools *@
-				<li class="mb-2">
-					<span class="small fw-semibold text-body-secondary text-uppercase">Browser Tools</span>
-					<span class="small text-body-secondary ms-1">(optional)</span>
+				<li class="mb-3">
+					<span class="small fw-semibold fg-1 text-uppercase">Browser Tools</span>
+					<span class="small fg-1 ms-1">(optional)</span>
 				</li>
 
 				@* Node.js *@
-				<li class="d-flex align-items-center gap-2 mb-2">
-					<i class="bi bi-node-plus text-success"></i>
+				<li class="d-flex align-items-center gap-3 mb-3">
+					<i class="bi bi-node-plus fg-success"></i>
 					<span class="flex-grow-1">Node.js</span>
 					@if (_nodeAvailable)
 					{
-						<span class="badge bg-success-subtle text-success-emphasis">
+						<span class="badge badge-subtle theme-success">
 							<i class="bi bi-check-circle me-1"></i>@(_nodeVersion ?? "Available")
 						</span>
 					}
 					else
 					{
-						<span class="badge bg-secondary-subtle text-secondary-emphasis me-1">
+						<span class="badge badge-subtle theme-secondary me-1">
 							<i class="bi bi-dash-circle me-1"></i>Not Found
 						</span>
-						<button type="button" class="btn btn-sm btn-secondary"
+						<button type="button" class="btn-sm btn-solid theme-secondary"
 								@onclick='() => InstallTool("nodejs")'
 								disabled="@(_isInstalling != null)">
 							@if (_isInstalling == "nodejs")
 							{
-								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+								<span class="spinner-border spinner-sm me-1" role="status"></span>
 								<span>Installing...</span>
 							}
 							else
@@ -146,32 +146,32 @@
 				</li>
 
 				@* Playwright Chromium *@
-				<li class="d-flex align-items-center gap-2 mb-2">
-					<i class="bi bi-browser-chrome text-primary"></i>
+				<li class="d-flex align-items-center gap-3 mb-3">
+					<i class="bi bi-browser-chrome fg-primary"></i>
 					<span class="flex-grow-1">Playwright Chromium</span>
 					@if (_playwrightInstalled)
 					{
-						<span class="badge bg-success-subtle text-success-emphasis">
+						<span class="badge badge-subtle theme-success">
 							<i class="bi bi-check-circle me-1"></i>Installed
 						</span>
 					}
 					else if (!_nodeAvailable)
 					{
-						<span class="badge bg-secondary-subtle text-secondary-emphasis">
+						<span class="badge badge-subtle theme-secondary">
 							<i class="bi bi-dash-circle me-1"></i>Requires Node.js
 						</span>
 					}
 					else
 					{
-						<span class="badge bg-secondary-subtle text-secondary-emphasis me-1">
+						<span class="badge badge-subtle theme-secondary me-1">
 							<i class="bi bi-dash-circle me-1"></i>Not Installed
 						</span>
-						<button type="button" class="btn btn-sm btn-secondary"
+						<button type="button" class="btn-sm btn-solid theme-secondary"
 								@onclick='() => InstallTool("playwright")'
 								disabled="@(_isInstalling != null)">
 							@if (_isInstalling == "playwright")
 							{
-								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+								<span class="spinner-border spinner-sm me-1" role="status"></span>
 								<span>Installing...</span>
 							}
 							else
@@ -186,43 +186,43 @@
 				@* Playwright status detail *@
 				@if (_playwrightStatus != null && !_playwrightInstalled)
 				{
-					<li class="d-flex align-items-center gap-2 ps-4">
+					<li class="d-flex align-items-center gap-3 ps-7">
 						<i class="bi bi-info-circle opacity-50"></i>
-						<span class="small text-body-secondary">@_playwrightStatus</span>
+						<span class="small fg-1">@_playwrightStatus</span>
 					</li>
 				}
 			</ul>
 
 			@if (_installResult != null)
 			{
-				<div class="mt-3 border rounded p-2 @(_installResult.Success ? "border-success-subtle bg-success-subtle" : "border-danger-subtle bg-danger-subtle")">
-					<div class="d-flex align-items-center gap-2 mb-1">
+				<div class="mt-5 border rounded p-3 @(_installResult.Success ? "border-subtle-success bg-subtle-success" : "border-subtle-danger bg-subtle-danger")">
+					<div class="d-flex align-items-center gap-3 mb-1">
 						@if (_installResult.Success)
 						{
-							<i class="bi bi-check-circle text-success"></i>
-							<span class="small fw-semibold text-success-emphasis">Installation complete</span>
+							<i class="bi bi-check-circle fg-success"></i>
+							<span class="small fw-semibold fg-emphasis-success">Installation complete</span>
 						}
 						else
 						{
-							<i class="bi bi-x-circle text-danger"></i>
-							<span class="small fw-semibold text-danger-emphasis">Installation failed</span>
+							<i class="bi bi-x-circle fg-danger"></i>
+							<span class="small fw-semibold fg-emphasis-danger">Installation failed</span>
 						}
 						<button type="button" class="btn-close ms-auto" @onclick="() => _installResult = null"></button>
 					</div>
 					@if (!string.IsNullOrWhiteSpace(_installResult.Output))
 					{
-						<pre class="mb-0 text-body white-space-pre-wrap text-caption @(_installResult.Success ? "text-success-emphasis" : "text-danger-emphasis")" style="max-height: 200px; overflow-y: auto;">@_installResult.Output</pre>
+						<pre class="mb-0 fg-body white-space-pre-wrap text-caption @(_installResult.Success ? "fg-emphasis-success" : "fg-emphasis-danger")" style="max-height: 200px; overflow-y: auto;">@_installResult.Output</pre>
 					}
 					@if (!_installResult.Success && !string.IsNullOrWhiteSpace(_installResult.Error))
 					{
-						<pre class="mb-0 text-danger-emphasis white-space-pre-wrap text-caption" style="max-height: 200px; overflow-y: auto;">@_installResult.Error</pre>
+						<pre class="mb-0 fg-emphasis-danger white-space-pre-wrap text-caption" style="max-height: 200px; overflow-y: auto;">@_installResult.Error</pre>
 					}
 				</div>
 			}
 
 			@if (_error != null)
 			{
-				<div class="text-danger small mt-2">
+				<div class="fg-danger small mt-3">
 					<i class="bi bi-exclamation-triangle me-1"></i>@_error
 				</div>
 			}

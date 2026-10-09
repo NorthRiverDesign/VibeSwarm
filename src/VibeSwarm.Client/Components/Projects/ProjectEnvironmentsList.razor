@@ -6,40 +6,40 @@
 }
 else
 {
-	<div class="d-grid gap-3">
+	<div class="d-grid gap-5">
 		@foreach (var environment in Environments.Where(environment => environment.IsEnabled).OrderByDescending(environment => environment.IsPrimary).ThenBy(environment => environment.SortOrder))
 		{
-			<div class="border rounded p-3 bg-body-tertiary">
-				<div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
-					<div class="min-width-0">
-						<div class="d-flex align-items-center gap-2 flex-wrap">
+			<div class="border rounded p-5 bg-2">
+				<div class="d-flex align-items-start justify-content-between gap-5 flex-wrap">
+					<div class="min-w-0">
+						<div class="d-flex align-items-center gap-3 flex-wrap">
 							<span class="fw-semibold">@environment.Name</span>
-							<span class="badge bg-secondary-subtle text-secondary-emphasis">@environment.Type</span>
+							<span class="badge badge-subtle theme-secondary">@environment.Type</span>
 							<span class="@GetStageBadgeClass(environment.Stage)">@environment.Stage</span>
 							@if (environment.IsPrimary)
 							{
-								<span class="badge bg-success-subtle text-success-emphasis">Primary</span>
+								<span class="badge badge-subtle theme-success">Primary</span>
 							}
 							@if (environment.Type == EnvironmentType.Web)
 							{
-								<span class="badge bg-info-subtle text-info-emphasis">Playwright MCP</span>
+								<span class="badge badge-subtle theme-info">Playwright MCP</span>
 							}
 						</div>
-						<div class="small mt-2">
+						<div class="small mt-3">
 							<a href="@environment.Url" target="_blank" rel="noopener noreferrer" class="text-decoration-none font-monospace">
 								@environment.Url
 							</a>
 						</div>
 						@if (!string.IsNullOrWhiteSpace(environment.Description))
 						{
-							<div class="small text-body-secondary mt-2">@environment.Description</div>
+							<div class="small fg-1 mt-3">@environment.Description</div>
 						}
-						<div class="small text-body-secondary mt-2">@GetStageSummary(environment.Stage)</div>
+						<div class="small fg-1 mt-3">@GetStageSummary(environment.Stage)</div>
 					</div>
 					@if (environment.Type == EnvironmentType.Web && !string.IsNullOrWhiteSpace(environment.Username))
 					{
-						<div class="small text-body-secondary">
-							<div class="fw-semibold text-body">Saved login</div>
+						<div class="small fg-1">
+							<div class="fw-semibold fg-body">Saved login</div>
 							<div>@environment.Username</div>
 							@if (environment.HasPassword)
 							{
@@ -59,10 +59,10 @@ else
 
 	private static string GetStageBadgeClass(EnvironmentStage stage) => stage switch
 	{
-		EnvironmentStage.Production => "badge bg-danger-subtle text-danger-emphasis",
-		EnvironmentStage.Development => "badge bg-warning-subtle text-warning-emphasis",
-		EnvironmentStage.Local => "badge bg-info-subtle text-info-emphasis",
-		_ => "badge bg-secondary-subtle text-secondary-emphasis"
+		EnvironmentStage.Production => "badge badge-subtle theme-danger",
+		EnvironmentStage.Development => "badge badge-subtle theme-warning",
+		EnvironmentStage.Local => "badge badge-subtle theme-info",
+		_ => "badge badge-subtle theme-secondary"
 	};
 
 	private static string GetStageSummary(EnvironmentStage stage) => stage switch

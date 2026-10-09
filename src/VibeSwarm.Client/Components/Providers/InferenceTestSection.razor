@@ -4,20 +4,20 @@
 @inject IJSRuntime JSRuntime
 
 <div>
-	<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+	<div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-5">
 		<h3 class="text-eyebrow mb-0">Try a prompt</h3>
 		@if (!Provider.IsEnabled)
 		{
-			<span class="badge bg-warning-subtle text-warning-emphasis">Enable to test</span>
+			<span class="badge badge-subtle theme-warning">Enable to test</span>
 		}
 	</div>
 
-	<div class="row g-3 mb-3">
-		<div class="col-12 col-lg-4">
+	<div class="row g-5 mb-5">
+		<div class="col-12 lg:col-4">
 			<label for="@GetModelInputId()" class="form-label">Model</label>
 			<div class="input-group">
 				<select id="@GetModelInputId()"
-						class="form-select"
+						class="form-control"
 						value="@_selectedModelId"
 						@onchange="HandleModelChanged"
 						disabled="@(!Provider.IsEnabled || _isLoadingModels || _testModels.Count == 0)">
@@ -39,7 +39,7 @@
 			</div>
 			<div class="form-text">@GetTestModelHelpText()</div>
 		</div>
-		<div class="col-12 col-lg-8">
+		<div class="col-12 lg:col-8">
 			<label for="@GetPromptInputId()" class="form-label">Prompt</label>
 			<textarea id="@GetPromptInputId()"
 					  class="form-control font-monospace"
@@ -52,12 +52,12 @@
 
 	<button id="@GetSubmitButtonId()"
 			type="button"
-			class="btn btn-primary"
+			class="btn-solid theme-primary"
 			@onclick="HandleSubmit"
 			disabled="@(!CanSubmit)">
 		@if (_isTesting)
 		{
-			<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+			<span class="spinner-border spinner-sm me-1" role="status"></span>
 			<span>Sending...</span>
 		}
 		else
@@ -72,7 +72,7 @@
 		<hr />
 		@if (_testResponse.Success)
 		{
-			<div class="d-flex flex-wrap gap-3 small text-body-secondary mb-2">
+			<div class="d-flex flex-wrap gap-5 small fg-1 mb-3">
 				@if (!string.IsNullOrEmpty(_testResponse.ModelUsed))
 				{
 					<span><i class="bi bi-cpu me-1"></i>@_testResponse.ModelUsed</span>
@@ -86,7 +86,7 @@
 					<span><i class="bi bi-hash me-1"></i>@_testResponse.CompletionTokens tokens</span>
 				}
 			</div>
-			<pre class="p-3 rounded bg-body-secondary small mb-0 white-space-pre-wrap" style="word-break:break-word;">@_testResponse.Response</pre>
+			<pre class="p-5 rounded bg-1 small mb-0 white-space-pre-wrap" style="word-break:break-word;">@_testResponse.Response</pre>
 		}
 		else
 		{

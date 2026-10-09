@@ -2,7 +2,7 @@
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged" Title="Suggest Ideas" Icon="stars"
 			 Size="ModalDialog.ModalSize.Small" OnClose="HandleCancel">
 	<ChildContent>
-		<p class="text-body-secondary mb-3">
+		<p class="fg-1 mb-5">
 			Choose how to analyze the current codebase, then generate a short list of actionable ideas.
 		</p>
 
@@ -15,19 +15,21 @@
 		{
 			@if (HasInference && HasConfiguredProviders)
 			{
-				<div class="form-check form-switch mb-3">
-					<input class="form-check-input" type="checkbox" id="useInferenceForSuggestions" checked="@UseInference"
-						   @onchange="HandleToggleInference">
-					<label class="form-check-label" for="useInferenceForSuggestions">
+				<div class="form-field mb-5">
+					<div class="switch">
+						<input role="switch" switch type="checkbox" id="useInferenceForSuggestions" checked="@UseInference"
+							   @onchange="HandleToggleInference">
+					</div>
+					<label for="useInferenceForSuggestions">
 						<i class="bi @(UseInference ? "bi-pc-display" : "bi-cloud") me-1"></i>
 						@(UseInference ? "Use inference" : "Use configured provider")
 					</label>
 				</div>
 			}
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="suggestIdeasProvider" class="form-label fw-medium">@GetProviderLabel()</label>
-				<select id="suggestIdeasProvider" class="form-select" @bind="SelectedProviderIdValue"
+				<select id="suggestIdeasProvider" class="form-control" @bind="SelectedProviderIdValue"
 						disabled="@(!CurrentProviders.Any())">
 					@foreach (var provider in CurrentProviders)
 					{
@@ -44,13 +46,13 @@
 				}
 			</div>
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="suggestIdeasModel" class="form-label fw-medium">
 					Model
-					<span class="text-body-secondary fw-normal">(optional)</span>
+					<span class="fg-1 fw-normal">(optional)</span>
 				</label>
 				<div class="input-group">
-					<select id="suggestIdeasModel" class="form-select" @bind="SelectedModelIdValue"
+					<select id="suggestIdeasModel" class="form-control" @bind="SelectedModelIdValue"
 							disabled="@(!SelectedProviderId.HasValue || !SelectedProviderModels.Any())">
 						<option value="">Use provider default model</option>
 						@foreach (var model in SelectedProviderModels)
@@ -67,7 +69,7 @@
 
 			<div>
 				<label for="suggestIdeasCount" class="form-label fw-medium">Ideas to Generate</label>
-				<select id="suggestIdeasCount" class="form-select" @bind="IdeaCountValue">
+				<select id="suggestIdeasCount" class="form-control" @bind="IdeaCountValue">
 					@for (var count = SuggestIdeasRequest.MinIdeaCount; count <= SuggestIdeasRequest.MaxIdeaCount; count++)
 					{
 						<option value="@count">@count</option>
@@ -78,11 +80,11 @@
 	</ChildContent>
 
 	<FooterContent>
-		<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
-		<button type="button" class="btn btn-primary" @onclick="HandleConfirm" disabled="@(IsProcessing || !CanConfirm)">
+		<button type="button" class="btn-solid theme-secondary" @onclick="HandleCancel">Cancel</button>
+		<button type="button" class="btn-solid theme-primary" @onclick="HandleConfirm" disabled="@(IsProcessing || !CanConfirm)">
 			@if (IsProcessing)
 			{
-				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+				<span class="spinner-border spinner-sm me-1" role="status"></span>
 			}
 			<i class="bi bi-stars me-1"></i>Generate Ideas
 		</button>

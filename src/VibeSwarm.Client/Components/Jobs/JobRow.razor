@@ -4,53 +4,53 @@
 @{
 	var detail = GetDetail(Job);
 }
-<a href="@(Href ?? $"/jobs/view/{Job.Id}")" class="list-group-item list-group-item-action d-flex align-items-start gap-3">
+<a href="@(Href ?? $"/jobs/view/{Job.Id}")" class="list-group-item list-group-item-action d-flex align-items-start gap-5">
 	<span class="flex-shrink-0">
 		@switch (Job.Status)
 		{
 			case JobStatus.Completed:
-				<i class="bi bi-check-circle-fill text-success" title="Completed"></i>
+				<i class="bi bi-check-circle-fill fg-success" title="Completed"></i>
 				break;
 			case JobStatus.Failed:
-				<i class="bi bi-x-circle-fill text-danger" title="Failed"></i>
+				<i class="bi bi-x-circle-fill fg-danger" title="Failed"></i>
 				break;
 			case JobStatus.Cancelled:
-				<i class="bi bi-slash-circle text-body-secondary" title="Cancelled"></i>
+				<i class="bi bi-slash-circle fg-1" title="Cancelled"></i>
 				break;
 			case JobStatus.Started:
 			case JobStatus.Planning:
 			case JobStatus.Processing:
-				<span class="spinner-border spinner-border-sm text-primary" role="status" title="@Job.Status.ToString()">
+				<span class="spinner-border spinner-sm fg-primary" role="status" title="@Job.Status.ToString()">
 					<span class="visually-hidden">Running</span>
 				</span>
 				break;
 			case JobStatus.New:
 			case JobStatus.Pending:
-				<i class="bi bi-hourglass-split text-warning" title="Queued"></i>
+				<i class="bi bi-hourglass-split fg-warning" title="Queued"></i>
 				break;
 			case JobStatus.Paused:
-				<i class="bi bi-chat-dots-fill text-warning" title="Waiting for your reply"></i>
+				<i class="bi bi-chat-dots-fill fg-warning" title="Waiting for your reply"></i>
 				break;
 			case JobStatus.Stalled:
-				<i class="bi bi-exclamation-triangle-fill text-warning" title="Stalled"></i>
+				<i class="bi bi-exclamation-triangle-fill fg-warning" title="Stalled"></i>
 				break;
 			default:
-				<i class="bi bi-circle text-secondary" title="@Job.Status.ToString()"></i>
+				<i class="bi bi-circle fg-secondary" title="@Job.Status.ToString()"></i>
 				break;
 		}
 	</span>
-	<span class="flex-grow-1 min-width-0">
+	<span class="flex-grow-1 min-w-0">
 		<span class="d-block text-truncate" title="@Job.DisplayTitle">@Job.DisplayTitle</span>
 		@if (ShowProjectName || detail != null)
 		{
 			<span class="d-block small text-truncate">
 				@if (ShowProjectName)
 				{
-					<span class="text-body-secondary">@(Job.ProjectName ?? "Unknown project")</span>
+					<span class="fg-1">@(Job.ProjectName ?? "Unknown project")</span>
 				}
 				@if (ShowProjectName && detail != null)
 				{
-					<span class="text-body-tertiary"> · </span>
+					<span class="fg-2"> · </span>
 				}
 				@if (detail != null)
 				{
@@ -59,7 +59,7 @@
 			</span>
 		}
 	</span>
-	<span class="small text-body-secondary flex-shrink-0" title="@Job.CreatedAt.FormatDateTimeShort()">@(TrailingText ?? GetTimeLabel(Job))</span>
+	<span class="small fg-1 flex-shrink-0" title="@Job.CreatedAt.FormatDateTimeShort()">@(TrailingText ?? GetTimeLabel(Job))</span>
 </a>
 
 @code {
@@ -90,15 +90,15 @@
 		return job.Status switch
 		{
 			JobStatus.Started or JobStatus.Planning or JobStatus.Processing when !string.IsNullOrWhiteSpace(job.CurrentActivity)
-				=> (job.CurrentActivity, "text-info"),
-			JobStatus.Paused => ("Waiting for your reply", "text-warning"),
+				=> (job.CurrentActivity, "fg-info"),
+			JobStatus.Paused => ("Waiting for your reply", "fg-warning"),
 			JobStatus.Failed or JobStatus.Stalled when !string.IsNullOrWhiteSpace(job.ErrorMessage)
-				=> (job.ErrorMessage, "text-danger"),
-			JobStatus.Failed => ("Failed", "text-danger"),
-			JobStatus.Stalled => ("Stalled", "text-warning"),
-			JobStatus.Completed when job.BuildVerified == false => ("Checks failed", "text-danger"),
-			JobStatus.Completed when hasDetectedChanges && !hasDeliveredChanges => ("Changes not committed yet", "text-warning"),
-			JobStatus.Completed when job.ChangedFilesCount == 0 => ("No changes", "text-body-secondary"),
+				=> (job.ErrorMessage, "fg-danger"),
+			JobStatus.Failed => ("Failed", "fg-danger"),
+			JobStatus.Stalled => ("Stalled", "fg-warning"),
+			JobStatus.Completed when job.BuildVerified == false => ("Checks failed", "fg-danger"),
+			JobStatus.Completed when hasDetectedChanges && !hasDeliveredChanges => ("Changes not committed yet", "fg-warning"),
+			JobStatus.Completed when job.ChangedFilesCount == 0 => ("No changes", "fg-1"),
 			_ => null
 		};
 	}

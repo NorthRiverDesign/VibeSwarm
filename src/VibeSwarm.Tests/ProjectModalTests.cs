@@ -56,9 +56,9 @@ var output = await renderer.RenderComponentAsync<ProjectModal>(parameters);
 return output.ToHtmlString();
 });
 
-Assert.Contains("vs-project-modal-body", html);
-Assert.Contains("vs-modal-dialog-wide-lg", html);
-Assert.Contains("modal-lg", html);
+Assert.Contains("vs-project-dialog-body", html);
+Assert.Contains("vs-dialog-wide-lg", html);
+Assert.Contains("dialog-lg", html);
 // Essentials render up front; everything else lives in collapsed accordion sections.
 Assert.Contains("Start from", html);
 Assert.Contains("Working folder", html);
@@ -388,15 +388,14 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 		cut.Find("#modal-workingPath").Input("/tmp/demo");
 
 		// Build verification lives in a collapsed section and requires a build command.
-		Assert.DoesNotContain("show", cut.FindAll(".accordion-collapse")
-			.Last().ClassList.ToArray());
+		Assert.False(cut.FindAll("details.accordion-item").Last().HasAttribute("open"));
 		cut.Find("#modal-buildVerificationEnabled").Change(true);
 		cut.Find("form").Submit();
 
 		cut.WaitForAssertion(() =>
 		{
 			Assert.Contains("Build command is required when build verification is enabled.", cut.Markup);
-			Assert.Contains("show", cut.FindAll(".accordion-collapse").Last().ClassList.ToArray());
+			Assert.True(cut.FindAll("details.accordion-item").Last().HasAttribute("open"));
 		}, WaitTimeout);
 	}
 
@@ -408,8 +407,7 @@ private static BunitContext CreateBunitContext(
 	IFileSystemService? fileSystemService = null)
 {
 	var context = new BunitContext();
-	context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
-	context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
+	context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 	context.JSInterop.SetupVoid("vibeSwarmInitTouchDrag", _ => true);
 	context.Services.AddLogging();
 	var resolvedProvider = provider ?? new Provider

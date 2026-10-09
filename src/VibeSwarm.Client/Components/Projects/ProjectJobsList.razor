@@ -2,20 +2,20 @@
    Search and bulk actions stay folded away until the search icon or Select is tapped. *@
 
 <SectionErrorBoundary SectionTitle="job list">
-	<section class="d-flex flex-column gap-2" aria-label="Recent jobs">
-		<div class="d-flex align-items-center gap-3 px-1">
+	<section class="d-flex flex-column gap-3" aria-label="Recent jobs">
+		<div class="d-flex align-items-center gap-5 px-1">
 			<h2 class="text-eyebrow mb-0 me-auto">@SectionTitle</h2>
 			@if (IsPageLoading)
 			{
-				<span class="spinner-border spinner-border-sm text-body-secondary" role="status" aria-label="Refreshing jobs"></span>
+				<span class="spinner-border spinner-sm fg-1" role="status" aria-label="Refreshing jobs"></span>
 			}
-			<button type="button" class="btn btn-sm btn-link text-decoration-none px-0 @(IsSearchVisible ? "text-primary" : "text-body-secondary")"
+			<button type="button" class="btn-sm btn-link text-decoration-none px-0 @(IsSearchVisible ? "fg-primary" : "fg-1")"
 					@onclick="ToggleSearch" title="Search and filter jobs" aria-label="Search jobs" aria-pressed="@IsSearchVisible.ToString().ToLowerInvariant()">
 				<i class="bi bi-search"></i>
 			</button>
 			@if (VisibleJobs.Count > 0 || HasBulkActions)
 			{
-				<button type="button" class="btn btn-sm btn-link text-decoration-none px-0" @onclick="ToggleSelectMode">
+				<button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="ToggleSelectMode">
 					@(_isSelecting ? "Done" : "Select")
 				</button>
 			}
@@ -29,7 +29,7 @@
 					   value="@SearchQuery"
 					   @oninput="HandleSearchInput"
 					   title="Filter jobs by name" />
-				<select class="form-select flex-grow-0 w-auto"
+				<select class="form-control flex-grow-0 w-auto"
 						value="@StatusFilter"
 						@onchange="HandleStatusFilterChange"
 						title="Filter by status">
@@ -44,80 +44,69 @@
 
 		@if (_isSelecting)
 		{
-			<div class="d-flex align-items-center gap-2 px-1">
+			<div class="d-flex align-items-center gap-3 px-1">
 				@if (VisibleJobs.Count > 0)
 				{
-					<div class="form-check mb-0 me-auto">
-						<input id="@_selectAllCheckboxId" class="form-check-input" type="checkbox"
+					<div class="form-field mb-0 me-auto">
+						<input id="@_selectAllCheckboxId" class="check" type="checkbox"
 							   checked="@IsAllVisibleJobsSelected"
 							   @onchange="HandleSelectAllChanged"
 							   aria-label="Select all visible jobs" />
-						<label class="form-check-label small" for="@_selectAllCheckboxId">
+						<label class="small" for="@_selectAllCheckboxId">
 							@(SelectedJobsCount > 0 ? $"{SelectedJobsCount} selected" : "Select all")
 						</label>
 					</div>
 				}
-				<div class="dropdown ms-auto">
-					<button type="button" class="btn btn-sm btn-secondary dropdown-toggle" data-bs-toggle="dropdown"
+				<div class="ms-auto">
+					<button type="button" class="btn-sm btn-solid theme-secondary" data-bs-toggle="menu" data-bs-placement="bottom-end"
 							aria-expanded="false" disabled="@IsAnyActionInProgress" title="Job actions">
 						@if (IsAnyActionInProgress)
 						{
-							<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+							<span class="spinner-border spinner-sm me-1" role="status" aria-hidden="true"></span>
 						}
 						Actions
+						<i class="bi bi-chevron-down small opacity-75"></i>
 					</button>
-					<ul class="dropdown-menu dropdown-menu-end">
-						<li>
-							<button type="button" class="dropdown-item" @onclick="HandleRetrySelected"
+					<div class="menu">
+							<button type="button" class="menu-item" @onclick="HandleRetrySelected"
 									disabled="@(RetryableSelectedJobsCount == 0)"
 									title="Retry selected failed, cancelled, or stopped jobs">
-								<i class="bi bi-arrow-clockwise me-2"></i>Retry (@RetryableSelectedJobsCount)
+								<i class="bi bi-arrow-clockwise"></i>Retry (@RetryableSelectedJobsCount)
 							</button>
-						</li>
-						<li>
-							<button type="button" class="dropdown-item" @onclick="HandlePrioritizeSelected"
+							<button type="button" class="menu-item" @onclick="HandlePrioritizeSelected"
 									disabled="@(PrioritizableSelectedJobsCount == 0)"
 									title="Move selected queued jobs to the front">
-								<i class="bi bi-arrow-up-circle me-2"></i>Move to front (@PrioritizableSelectedJobsCount)
+								<i class="bi bi-arrow-up-circle"></i>Move to front (@PrioritizableSelectedJobsCount)
 							</button>
-						</li>
-						<li>
-							<button type="button" class="dropdown-item text-danger" @onclick="HandleCancelSelected"
+							<button type="button" class="menu-item theme-danger" @onclick="HandleCancelSelected"
 									disabled="@(CancellableSelectedJobsCount == 0)"
 									title="Cancel selected queued or active jobs">
-								<i class="bi bi-x-octagon me-2"></i>Cancel (@CancellableSelectedJobsCount)
+								<i class="bi bi-x-octagon"></i>Cancel (@CancellableSelectedJobsCount)
 							</button>
-						</li>
-						<li>
-							<button type="button" class="dropdown-item text-danger" @onclick="HandleDeleteSelected"
+							<button type="button" class="menu-item theme-danger" @onclick="HandleDeleteSelected"
 									disabled="@(DeletableSelectedJobsCount == 0)"
 									title="Delete selected jobs that are not running">
-								<i class="bi bi-trash me-2"></i>Delete (@DeletableSelectedJobsCount)
+								<i class="bi bi-trash"></i>Delete (@DeletableSelectedJobsCount)
 							</button>
-						</li>
 						@if (HasBulkActions)
 						{
-							<li><hr class="dropdown-divider"></li>
+							<hr class="menu-divider">
 						}
 						@if (HasActiveJobs)
 						{
-							<li>
-								<button type="button" class="dropdown-item text-danger" @onclick="HandleCancelAll"
+								<button type="button" class="menu-item theme-danger" @onclick="HandleCancelAll"
 										title="Cancel all queued and active jobs">
-									<i class="bi bi-x-octagon me-2"></i>Cancel all active jobs
+									<i class="bi bi-x-octagon"></i>Cancel all active jobs
 								</button>
-							</li>
 						}
 						@if (HasCompletedJobs)
 						{
-							<li>
-								<button type="button" class="dropdown-item text-danger" @onclick="HandleDeleteCompleted"
+								<button type="button" class="menu-item theme-danger" @onclick="HandleDeleteCompleted"
 										title="Delete completed jobs for this project">
-									<i class="bi bi-trash me-2"></i>Delete all completed jobs
+									<i class="bi bi-trash"></i>Delete all completed jobs
 								</button>
-							</li>
 						}
-					</ul>
+					</div>
 				</div>
 			</div>
 		}
@@ -137,17 +126,17 @@
 		}
 		else
 		{
-			<div class="list-group rounded-4">
+			<div class="list-group rounded-9">
 				@foreach (var job in VisibleJobs)
 				{
 					@if (_isSelecting)
 					{
-						<label class="list-group-item list-group-item-action d-flex align-items-center gap-3 cursor-pointer">
-							<input class="form-check-input flex-shrink-0 m-0" type="checkbox"
+						<label class="list-group-item list-group-item-action d-flex align-items-center gap-5 cursor-pointer">
+							<input class="check flex-shrink-0 m-0" type="checkbox"
 								   checked="@IsJobSelected(job.Id)"
 								   @onchange="e => HandleJobSelectionChanged(job.Id, e)"
 								   aria-label="@($"Select job {job.DisplayTitle}")" />
-							<span class="flex-grow-1 min-width-0 text-truncate">@job.DisplayTitle</span>
+							<span class="flex-grow-1 min-w-0 text-truncate">@job.DisplayTitle</span>
 						</label>
 					}
 					else

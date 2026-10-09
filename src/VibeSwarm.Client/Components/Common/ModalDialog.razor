@@ -1,43 +1,39 @@
-@* Reusable modal dialog component *@
+@* Reusable modal dialog, built on Bootstrap's Dialog: a native <dialog> opened with
+   showModal(), so the browser supplies the backdrop, focus trap, Escape key and stacking
+   (a dialog opened from another one simply sits above it). Phones get a full-screen sheet. *@
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
-@if (IsVisible)
+@if (IsVisible || _isOpen)
 {
-	<div class="modal fade show d-block vs-modal-container position-fixed inset-0 d-flex align-items-center justify-content-center overflow-x-hidden overflow-y-auto @ContainerClass" tabindex="-1" role="dialog"
-		@onmousedown="HandleBackdropMouseDown" @onclick="HandleBackdropClick">
-		@* The backdrop sits inside the container, not beside it: a modal opened on top of
-		   another one has to dim the modal below it, and a sibling backdrop would paint
-		   underneath it instead. *@
-		<div class="modal-backdrop fade show vs-modal-backdrop position-fixed inset-0"></div>
-		<div class="modal-dialog vs-modal-dialog pe-none m-auto @SizeClass @(IsCentered ? "modal-dialog-centered" : "") @(IsScrollable ? "modal-dialog-scrollable" : "") @DialogClass"
-			@onmousedown:stopPropagation="true" @onclick:stopPropagation="true">
-			<div class="modal-content vs-modal-content pe-auto mw-100 @ContentClass">
-				<div class="modal-header min-width-0">
-					<h2 class="modal-title mb-0 d-flex align-items-center gap-2 min-width-0">
-						@if (!string.IsNullOrEmpty(Icon))
-						{
-							<i class="bi bi-@Icon opacity-75 flex-shrink-0"></i>
-						}
-						<span class="text-truncate">@Title</span>
-					</h2>
-					@if (ShowCloseButton)
-					{
-						<button type="button" class="btn-close" @onclick="Close" aria-label="Close"></button>
-					}
-				</div>
-				<div class="modal-body vs-modal-body overflow-x-hidden overscroll-contain min-width-0 @BodyClass">
-					@ChildContent
-				</div>
-				@if (FooterContent != null)
+	<dialog @ref="_dialog" class="dialog @(FullscreenOnPhones ? "sm-down:dialog-fullscreen" : "") @SizeClass @(IsScrollable ? "dialog-scrollable" : "") @DialogClass"
+			aria-labelledby="@(ShowHeader ? _titleId : null)" aria-label="@(ShowHeader ? null : Title)">
+		@if (ShowHeader)
+		{
+		<div class="dialog-header gap-3 min-w-0">
+			<h2 id="@_titleId" class="dialog-title mb-0 d-flex align-items-center gap-3 min-w-0">
+				@if (!string.IsNullOrEmpty(Icon))
 				{
-					<div class="modal-footer min-width-0">
-						@FooterContent
-					</div>
+					<i class="bi bi-@Icon opacity-75 flex-shrink-0"></i>
 				}
-			</div>
+				<span class="text-truncate">@Title</span>
+			</h2>
+			@if (ShowCloseButton)
+			{
+				<button type="button" class="btn-close" @onclick="Close" aria-label="Close"></button>
+			}
 		</div>
-	</div>
+		}
+		<div class="dialog-body vs-dialog-body overflow-x-hidden overscroll-contain min-w-0 @BodyClass">
+			@ChildContent
+		</div>
+		@if (FooterContent != null)
+		{
+			<div class="dialog-footer min-w-0">
+				@FooterContent
+			</div>
+		}
+	</dialog>
 }
 
 @code {
@@ -65,13 +61,19 @@
 	public ModalSize Size { get; set; } = ModalSize.Default;
 
 	[Parameter]
-	public bool IsCentered { get; set; } = true;
-
-	[Parameter]
 	public bool IsScrollable { get; set; } = true;
 
 	[Parameter]
 	public bool ShowCloseButton { get; set; } = true;
+
+	/// <summary>False drops the title bar, for a dialog that is all body (the search palette).
+	/// <see cref="Title"/> still names the dialog for screen readers.</summary>
+	[Parameter]
+	public bool ShowHeader { get; set; } = true;
+
+	/// <summary>Phones show the dialog as a full-screen sheet unless this is false.</summary>
+	[Parameter]
+	public bool FullscreenOnPhones { get; set; } = true;
 
 	[Parameter]
 	public bool CloseOnBackdropClick { get; set; } = true;
@@ -85,68 +87,89 @@
 	[Parameter]
 	public EventCallback OnClose { get; set; }
 
-	[Parameter]
-	public string? ContainerClass { get; set; }
-
+	/// <summary>Extra classes for the <c>&lt;dialog&gt;</c> element.</summary>
 	[Parameter]
 	public string? DialogClass { get; set; }
 
 	[Parameter]
-	public string? ContentClass { get; set; }
-
-	[Parameter]
 	public string? BodyClass { get; set; }
+
+	public const string InteropModulePath = "./js/bootstrap-interop.js";
 
 	private string SizeClass => Size switch
 	{
-		ModalSize.Small => "modal-sm",
-		ModalSize.Large => "modal-lg",
-		ModalSize.ExtraLarge => "modal-xl",
+		ModalSize.Small => "dialog-sm",
+		ModalSize.Large => "dialog-lg",
+		ModalSize.ExtraLarge => "dialog-xl",
 		_ => ""
 	};
 
-	// Track if mousedown started on the backdrop (not inside modal content)
-	private bool _mouseDownOnBackdrop;
-	private bool _wasVisible;
+	private readonly string _titleId = $"dialog-title-{Guid.NewGuid():N}";
+	private ElementReference _dialog;
+	private IJSObjectReference? _interop;
+	private DotNetObjectReference<ModalDialog>? _selfReference;
 
-	// Scroll locking is reference counted: closing a modal that was opened on top of
-	// another one must not unlock the page while the one underneath is still open.
-	public const string LockBodyScrollScript =
-		"window.vsModalDepth = (window.vsModalDepth || 0) + 1; document.body.classList.add('vs-modal-open');";
-
-	public const string UnlockBodyScrollScript =
-		"window.vsModalDepth = Math.max(0, (window.vsModalDepth || 1) - 1); " +
-		"if (window.vsModalDepth === 0) { document.body.classList.remove('vs-modal-open'); }";
+	// The <dialog> stays rendered while it is open, and through its exit transition after
+	// IsVisible turns false, so Bootstrap can animate it out before Blazor removes it.
+	private bool _isOpen;
+	private bool _isClosing;
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)
 	{
-		if (IsVisible && !_wasVisible)
+		if (IsVisible && !_isOpen)
 		{
-			await JSRuntime.InvokeVoidAsync("eval", LockBodyScrollScript);
-			_wasVisible = true;
+			var interop = await GetInteropAsync();
+			if (interop is null)
+			{
+				return;
+			}
+
+			_isOpen = true;
+			_selfReference ??= DotNetObjectReference.Create(this);
+			await interop.InvokeVoidAsync("showDialog", _dialog, _selfReference,
+				new { closeOnBackdrop = CloseOnBackdropClick, closeOnEscape = true });
 		}
-		else if (!IsVisible && _wasVisible)
+		else if (!IsVisible && _isOpen && !_isClosing)
 		{
-			await JSRuntime.InvokeVoidAsync("eval", UnlockBodyScrollScript);
-			_wasVisible = false;
+			_isClosing = true;
+			try
+			{
+				var interop = await GetInteropAsync();
+				if (interop is not null)
+				{
+					await interop.InvokeVoidAsync("hideDialog", _dialog);
+				}
+			}
+			catch (JSDisconnectedException)
+			{
+			}
+			finally
+			{
+				_isOpen = false;
+				_isClosing = false;
+				StateHasChanged();
+			}
 		}
 	}
 
-	private void HandleBackdropMouseDown()
+	private async Task<IJSObjectReference?> GetInteropAsync()
 	{
-		// This will only fire if mousedown is on the backdrop (not stopped by modal-dialog)
-		_mouseDownOnBackdrop = true;
+		_interop ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", InteropModulePath);
+		return _interop;
 	}
 
-	private async Task HandleBackdropClick()
+	/// <summary>Called by Bootstrap when the person closes the dialog with Escape or the backdrop.</summary>
+	[JSInvokable]
+	public async Task HandleDialogDismissed()
 	{
-		// Only close if both mousedown and click (mouseup) happened on the backdrop
-		// This prevents closing when user drags text selection outside the modal
-		if (CloseOnBackdropClick && _mouseDownOnBackdrop)
+		if (!_isOpen || _isClosing)
 		{
-			await Close();
+			return;
 		}
-		_mouseDownOnBackdrop = false;
+
+		// The browser has already closed the dialog; just let go of it.
+		_isOpen = false;
+		await Close();
 	}
 
 	public async Task Close()
@@ -154,6 +177,7 @@
 		IsVisible = false;
 		await IsVisibleChanged.InvokeAsync(false);
 		await OnClose.InvokeAsync();
+		StateHasChanged();
 	}
 
 	public void Show()
@@ -164,10 +188,23 @@
 
 	public async ValueTask DisposeAsync()
 	{
-		if (_wasVisible)
+		if (_interop is not null)
 		{
-			try { await JSRuntime.InvokeVoidAsync("eval", UnlockBodyScrollScript); } catch { }
-			_wasVisible = false;
+			try
+			{
+				if (_isOpen)
+				{
+					await _interop.InvokeVoidAsync("disposeDialog", _dialog);
+				}
+
+				await _interop.DisposeAsync();
+			}
+			catch (JSDisconnectedException)
+			{
+			}
 		}
+
+		_isOpen = false;
+		_selfReference?.Dispose();
 	}
 }

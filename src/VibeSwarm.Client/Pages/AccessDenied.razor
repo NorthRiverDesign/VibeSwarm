@@ -3,22 +3,22 @@
 
 <PageTitle>Access Denied - VibeSwarm</PageTitle>
 
-<div class="container mt-5">
+<div class="container mt-12">
     <div class="row justify-content-center">
-        <div class="col-md-8 col-lg-6">
-            <Card Title="Access Denied" Icon="shield-lock" Class="shadow border-warning" HeaderClass="bg-warning text-dark">
-                <p class="lead">You don't have permission to access this resource.</p>
+        <div class="md:col-8 lg:col-6">
+            <Card Title="Access Denied" Icon="shield-lock" Class="shadow border-warning" HeaderClass="bg-warning fg-contrast-warning">
+                <p class="fg-body">You don't have permission to access this resource.</p>
 
-                <p class="text-muted">
+                <p class="fg-1">
                     This could happen because:
                 </p>
-                <ul class="text-muted">
+                <ul class="fg-1">
                     <li>You're not logged in</li>
                     <li>Your session has expired</li>
                     <li>You don't have the required permissions</li>
                 </ul>
 
-                <div class="mt-4">
+                <div class="mt-7">
                     <AuthorizeView>
                         <Authorized>
                             <p>You are currently logged in as <strong>@context.User.Identity?.Name</strong>.</p>

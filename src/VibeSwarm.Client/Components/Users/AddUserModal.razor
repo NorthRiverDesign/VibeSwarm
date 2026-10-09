@@ -7,35 +7,35 @@
 
 			@if (!string.IsNullOrEmpty(ErrorMessage))
 			{
-				<div class="text-danger small mb-3">
+				<div class="fg-danger small mb-5">
 					<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
 				</div>
 			}
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="addUserName" class="form-label">Username</label>
 				<InputText id="addUserName" @bind-Value="Model.UserName" class="form-control" />
-				<ValidationMessage For="@(() => Model.UserName)" class="text-danger small" />
+				<ValidationMessage For="@(() => Model.UserName)" class="fg-danger small" />
 			</div>
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="addUserPassword" class="form-label">Password</label>
 				<InputText id="addUserPassword" @bind-Value="Model.Password" class="form-control" type="password" />
-				<ValidationMessage For="@(() => Model.Password)" class="text-danger small" />
+				<ValidationMessage For="@(() => Model.Password)" class="fg-danger small" />
 				<div class="form-text">
 					Password must be at least 8 characters with uppercase, lowercase, and a digit.
 				</div>
 			</div>
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="addUserRole" class="form-label">Role</label>
-				<InputSelect id="addUserRole" @bind-Value="Model.Role" class="form-select">
+				<InputSelect id="addUserRole" @bind-Value="Model.Role" class="form-control">
 					<option value="@UserRoles.User">User</option>
 					<option value="@UserRoles.Admin">Admin</option>
 				</InputSelect>
 			</div>
 
-			<div class="d-flex justify-content-end gap-2">
+			<div class="d-flex justify-content-end gap-3">
 				<ActionButton Text="Cancel" OnClick="CloseAsync" />
 				<ActionButton Type="submit" Style="ActionButton.ButtonStyle.Primary" Text="Add User"
 							  IsLoading="@IsSubmitting" />

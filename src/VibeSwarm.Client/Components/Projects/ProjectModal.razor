@@ -10,16 +10,16 @@
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
 Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "folder-plus")"
-Size="ModalDialog.ModalSize.Large" DialogClass="vs-modal-dialog-wide-lg" OnClose="HandleClose"
-BodyClass="vs-project-modal-body">
+Size="ModalDialog.ModalSize.Large" DialogClass="vs-dialog-wide-lg" OnClose="HandleClose"
+BodyClass="vs-project-dialog-body">
 <ChildContent>
 @* No overflow-x-hidden here: it would make the form its own scroll container and
    the sticky action bar below would have nothing to stick to. The modal body and
    content already clip horizontally. *@
 <EditForm Model="@FormModel" OnValidSubmit="HandleValidSubmit" OnInvalidSubmit="HandleInvalidSubmit"
-class="mw-100">
+class="max-w-100">
 <DataAnnotationsValidator />
-<ValidationSummary class="text-danger mb-3" />
+<ValidationSummary class="fg-danger mb-5" />
 
 <ProjectWorkspaceSection FormModel="@FormModel" FormState="@_formState" IsEdit="@IsEdit"
 WorkingPathPlaceholder="@_formState.WorkingPathPlaceholder"
@@ -34,7 +34,7 @@ OnWorkspaceInspected="HandleWorkspaceInspected" />
 
 @* Everything below has a working default. It stays collapsed so a new project needs
    nothing more than a folder and a name. *@
-<div class="accordion mb-4">
+<div class="accordion mb-7">
 @if (!IsEdit && FormModel.CreationMode == ProjectCreationMode.CreateGitHubRepository)
 {
 <AccordionSection Title="Repository options" Icon="github"
@@ -66,7 +66,7 @@ OnRemove="RemoveProviderSelection" OnAdd="AddProviderSelection"
 OnPreferredModelChanged="HandlePreferredModelChanged"
 OnModelsRefreshed="LoadProviderModelsAsync" />
 
-<hr class="my-4" />
+<hr class="my-7" />
 
 <ProjectAgentsSection Project="@FormModel" AvailableAgents="@_availableAgents"
 AvailableProviders="@_availableProviders" ResolveAgent="ResolveAgent"
@@ -80,14 +80,14 @@ OnModelsRefreshed="LoadProviderModelsAsync" />
 <AccordionSection Title="Ideas and planning" Icon="lightbulb"
 Summary="How improvement ideas and plans are generated"
 Badge="@(FormModel.PlanningEnabled ? "Planning on" : null)"
-BadgeClass="text-bg-primary" @bind-IsOpen="_openIdeas">
+BadgeClass="theme-primary" @bind-IsOpen="_openIdeas">
 <ProjectIdeaGenerationSection Project="@FormModel"
 AvailableInferenceProviders="@_availableInferenceProviders"
 InferenceModels="@_ideaInferenceModels"
 OnProviderChanged="HandleIdeaInferenceProviderChanged"
 OnModelsRefreshed="LoadIdeaInferenceModelsAsync" />
 
-<hr class="my-4" />
+<hr class="my-7" />
 
 <ProjectPlanningSection Project="@FormModel" AvailableProviders="@GetPlanningProviders().ToList()"
 PlanningModels="@_planningModels"
@@ -105,31 +105,31 @@ Badge="@(HasInstructions ? "Set" : null)" @bind-IsOpen="_openInstructions">
 <AccordionSection Title="Build verification" Icon="shield-check"
 Summary="Run build and tests before committing"
 Badge="@(FormModel.BuildVerificationEnabled ? "On" : null)"
-BadgeClass="text-bg-success" @bind-IsOpen="_openBuildVerification">
+BadgeClass="theme-success" @bind-IsOpen="_openBuildVerification">
 <ProjectBuildVerificationSection Project="@FormModel" DetectedStack="@_detectedStack" />
 </AccordionSection>
 </div>
 
 @if (!string.IsNullOrEmpty(_cloneProgressMessage))
 {
-<Alert Type="Alert.AlertType.Info" Message="@_cloneProgressMessage" Class="mb-3" />
+<Alert Type="Alert.AlertType.Info" Message="@_cloneProgressMessage" Class="mb-5" />
 }
 
 @if (!string.IsNullOrEmpty(ErrorMessage))
 {
-<div class="text-danger small mb-3">
+<div class="fg-danger small mb-5">
 <i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
 </div>
 }
 
 @* Pinned to the bottom of the scrolling body: the form is long on a phone and
    Create should never be a scroll away. *@
-<div class="d-flex gap-2 justify-content-sm-end position-sticky pt-3 border-top vs-modal-sticky-actions">
-<button type="button" class="btn btn-secondary flex-shrink-0" @onclick="HandleCancel">Cancel</button>
-<button type="submit" class="btn btn-primary flex-grow-1 flex-sm-grow-0" disabled="@IsSaving">
+<div class="d-flex gap-3 sm:justify-content-end position-sticky pt-5 border-top vs-dialog-sticky-actions">
+<button type="button" class="btn-solid theme-secondary flex-shrink-0" @onclick="HandleCancel">Cancel</button>
+<button type="submit" class="btn-solid theme-primary flex-grow-1 sm:flex-grow-0" disabled="@IsSaving">
 @if (IsSaving)
 {
-<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+<span class="spinner-border spinner-sm me-1" role="status"></span>
 }
 @if (IsSaving && !string.IsNullOrEmpty(_cloneProgressMessage))
 {

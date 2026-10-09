@@ -2,12 +2,12 @@
 @inject IVersionControlService VersionControlService
 @inject IProjectService ProjectService
 
-<div class="card mb-3">
-	<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between flex-wrap gap-2">
+<div class="card mb-5">
+	<div class="card-header flex-row align-items-center justify-content-between flex-wrap gap-3">
 		<h6 class="mb-0 fw-semibold">
-			<i class="bi bi-git me-2 text-danger"></i>Git Settings
+			<i class="bi bi-git me-3 fg-danger"></i>Git Settings
 		</h6>
-		<button type="button" class="btn btn-sm btn-secondary" @onclick="RefreshStatus" disabled="@_isLoading"
+		<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="RefreshStatus" disabled="@_isLoading"
 				title="Refresh Git status">
 			<i class="bi bi-arrow-clockwise @(_isLoading ? "spin" : "")"></i>
 		</button>
@@ -15,25 +15,25 @@
 	<div class="card-body">
 		@if (_isLoading)
 		{
-			<div class="d-flex align-items-center gap-2 text-body-secondary">
-				<span class="spinner-border spinner-border-sm" role="status"></span>
+			<div class="d-flex align-items-center gap-3 fg-1">
+				<span class="spinner-border spinner-sm" role="status"></span>
 				<span>Checking Git status...</span>
 			</div>
 		}
 		else
 		{
 			@* Git Repository Status *@
-			<div class="mb-3">
-				<div class="d-flex align-items-center gap-2 mb-2">
+			<div class="mb-5">
+				<div class="d-flex align-items-center gap-3 mb-3">
 					@if (_isGitRepository)
 					{
-						<span class="badge bg-success-subtle text-success-emphasis">
+						<span class="badge badge-subtle theme-success">
 							<i class="bi bi-check-circle me-1"></i>Git Repository
 						</span>
 					}
 					else
 					{
-						<span class="badge bg-warning-subtle text-warning-emphasis">
+						<span class="badge badge-subtle theme-warning">
 							<i class="bi bi-exclamation-triangle me-1"></i>Not a Git Repository
 						</span>
 					}
@@ -41,14 +41,14 @@
 
 				@if (!_isGitRepository)
 				{
-					<p class="text-body-secondary small mb-2">
+					<p class="fg-1 small mb-3">
 						This directory is not a Git repository. Initialize it to track changes.
 					</p>
-					<button type="button" class="btn btn-sm btn-primary" @onclick="InitializeRepository"
+					<button type="button" class="btn-sm btn-solid theme-primary" @onclick="InitializeRepository"
 							disabled="@_isInitializing">
 						@if (_isInitializing)
 						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							<span class="spinner-border spinner-sm me-1" role="status"></span>
 							<span>Initializing...</span>
 						}
 						else
@@ -63,23 +63,23 @@
 			@if (_isGitRepository)
 			{
 				@* Remote Configuration *@
-				<div class="mb-3">
-					<h6 class="text-body-secondary small text-uppercase mb-2">
+				<div class="mb-5">
+					<h6 class="fg-1 small text-uppercase mb-3">
 						<i class="bi bi-cloud me-1"></i>Remote Repositories
 					</h6>
 
 					@if (_remotes.Any())
 					{
-						<ul class="list-unstyled mb-2">
+						<ul class="list-unstyled mb-3">
 							@foreach (var remote in _remotes)
 							{
-								<li class="d-flex align-items-center gap-2 mb-1">
-									<span class="badge bg-body-tertiary text-body fw-medium">@remote.Key</span>
+								<li class="d-flex align-items-center gap-3 mb-1">
+									<span class="badge fw-medium">@remote.Key</span>
 									<code class="small text-truncate flex-grow-1" style="max-width: 300px;"
 										  title="@remote.Value">@remote.Value</code>
 									@if (IsGitHubUrl(remote.Value))
 									{
-										<a href="@GetGitHubWebUrl(remote.Value)" target="_blank" class="text-body-secondary"
+										<a href="@GetGitHubWebUrl(remote.Value)" target="_blank" class="fg-1"
 											   title="Open on GitHub">
 											<i class="bi bi-box-arrow-up-right"></i>
 										</a>
@@ -90,34 +90,34 @@
 					}
 					else
 					{
-						<p class="text-body-secondary small mb-2">
+						<p class="fg-1 small mb-3">
 							No remote repositories configured. Create a GitHub repository to push your code.
 						</p>
 					}
 
 					@* GitHub CLI Status - always show regardless of remotes *@
-					<div class="d-flex flex-wrap gap-2 mb-3">
+					<div class="d-flex flex-wrap gap-3 mb-5">
 						@if (_isGitHubCliAvailable)
 						{
-							<span class="badge bg-success-subtle text-success-emphasis">
+							<span class="badge badge-subtle theme-success">
 								<i class="bi bi-check-circle me-1"></i>GitHub CLI Installed
 							</span>
 							@if (_isGitHubCliAuthenticated)
 							{
-								<span class="badge bg-success-subtle text-success-emphasis">
+								<span class="badge badge-subtle theme-success">
 									<i class="bi bi-check-circle me-1"></i>Authenticated
 								</span>
 							}
 							else
 							{
-								<span class="badge bg-warning-subtle text-warning-emphasis">
+								<span class="badge badge-subtle theme-warning">
 									<i class="bi bi-exclamation-triangle me-1"></i>Not Authenticated
 								</span>
 							}
 						}
 						else
 						{
-							<span class="badge bg-secondary-subtle text-secondary-emphasis">
+							<span class="badge badge-subtle theme-secondary">
 								<i class="bi bi-info-circle me-1"></i>GitHub CLI Not Found
 							</span>
 						}
@@ -127,22 +127,22 @@
 					{
 						@if (_isGitHubCliAvailable && _isGitHubCliAuthenticated)
 						{
-							<button type="button" class="btn btn-primary btn-sm" @onclick="ShowCreateRepoModal">
+							<button type="button" class="btn-solid theme-primary btn-sm" @onclick="ShowCreateRepoModal">
 								<i class="bi bi-github me-1"></i>
 								Create GitHub Repository
 							</button>
 						}
 						else if (_isGitHubCliAvailable && !_isGitHubCliAuthenticated)
 						{
-							<Alert Type="Alert.AlertType.Warning" Class="mb-0 py-2 small">
-								<i class="bi bi-exclamation-triangle me-2"></i>
+							<Alert Type="Alert.AlertType.Warning" Class="mb-0 py-3 small">
+								<i class="bi bi-exclamation-triangle me-3"></i>
 								Please authenticate with GitHub CLI by running <code>gh auth login</code> in your terminal.
 							</Alert>
 						}
 						else
 						{
-							<Alert Type="Alert.AlertType.Info" Class="mb-0 py-2 small">
-								<i class="bi bi-info-circle me-2"></i>
+							<Alert Type="Alert.AlertType.Info" Class="mb-0 py-3 small">
+								<i class="bi bi-info-circle me-3"></i>
 								Install <a href="https://cli.github.com/" target="_blank">GitHub CLI</a> to create repositories directly
 								from VibeSwarm.
 							</Alert>
@@ -154,13 +154,13 @@
 			@* Messages *@
 			@if (!string.IsNullOrEmpty(_errorMessage))
 			{
-				<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mb-0 mt-3" Dismissible="true"
+				<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mb-0 mt-5" Dismissible="true"
 					   OnDismiss="ClearMessages" />
 			}
 
 			@if (!string.IsNullOrEmpty(_successMessage))
 			{
-				<Alert Type="Alert.AlertType.Success" Message="@_successMessage" Class="mb-0 mt-3" Dismissible="true"
+				<Alert Type="Alert.AlertType.Success" Message="@_successMessage" Class="mb-0 mt-5" Dismissible="true"
 					   OnDismiss="ClearMessages" />
 			}
 		}

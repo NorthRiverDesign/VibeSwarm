@@ -54,7 +54,7 @@ public sealed class SkillsPageTests
 		Assert.Contains("Import", html);
 		Assert.Contains("accept=\".skill\"", html);
 		Assert.Contains("bootstrap-ui", html);
-		Assert.Contains("justify-content-between gap-2 mb-4", html);
+		Assert.Contains("justify-content-between gap-3 mb-7", html);
 	}
 
 	private sealed class FakeSkillService(IReadOnlyList<Skill> skills) : ISkillService

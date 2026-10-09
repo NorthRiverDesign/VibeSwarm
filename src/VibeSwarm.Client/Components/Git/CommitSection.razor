@@ -1,20 +1,20 @@
 
-<div class="card mb-3 mb-lg-4">
-	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center flex-wrap gap-2">
+<div class="card mb-5 lg:mb-7">
+	<div class="card-header flex-row justify-content-between align-items-center flex-wrap gap-3">
 		<div class="d-flex align-items-center">
-			<i class="bi bi-cloud-upload me-2 opacity-75"></i>
+			<i class="bi bi-cloud-upload me-3 opacity-75"></i>
 			<strong>Delivery</strong>
 		</div>
-		<div class="d-flex flex-wrap gap-2">
+		<div class="d-flex flex-wrap gap-3">
 			@if (!string.IsNullOrEmpty(BranchName))
 			{
-				<span class="badge bg-body-tertiary text-body font-monospace">
+				<span class="badge font-monospace">
 					<i class="bi bi-diagram-2 me-1"></i>@BranchName
 				</span>
 			}
 			@if (!string.IsNullOrEmpty(TargetBranch))
 			{
-				<span class="badge bg-body-tertiary text-body font-monospace">
+				<span class="badge font-monospace">
 					<i class="bi bi-signpost-split me-1"></i>@TargetBranch
 				</span>
 			}
@@ -28,18 +28,18 @@
 	@if (!IsPushed && !IsAutoCommitted)
 	{
 		<div class="card-body">
-			<label for="commitMessage" class="form-label d-flex flex-wrap align-items-center gap-2 mb-2">
+			<label for="commitMessage" class="form-label d-flex flex-wrap align-items-center gap-3 mb-3">
 				<span>Commit Message</span>
 				@if (IsLoadingSummary)
 				{
-					<span class="badge bg-secondary">
-						<span class="spinner-border spinner-border-sm me-1" role="status" style="width: 0.75rem; height: 0.75rem;"></span>
+					<span class="badge theme-secondary">
+						<span class="spinner-border spinner-sm me-1" role="status" style="width: 0.75rem; height: 0.75rem;"></span>
 						Generating...
 					</span>
 				}
 				else if (HasAISummary)
 				{
-					<span class="badge bg-info">
+					<span class="badge theme-info">
 						<i class="bi bi-robot me-1"></i>AI Generated
 					</span>
 				}
@@ -51,9 +51,9 @@
 
 			@if (!string.IsNullOrEmpty(SummaryError))
 			{
-				<Alert Type="Alert.AlertType.Warning" Class="mt-2 mb-0 py-2 px-3 small">
+				<Alert Type="Alert.AlertType.Warning" Class="mt-3 mb-0 py-3 px-5 small">
 					@SummaryError
-					<button type="button" class="btn btn-sm btn-warning ms-2" @onclick="OnRefreshSummary">
+					<button type="button" class="btn-sm btn-solid theme-warning ms-3" @onclick="OnRefreshSummary">
 						<i class="bi bi-arrow-repeat"></i> Retry
 					</button>
 				</Alert>
@@ -61,26 +61,26 @@
 
 			@if (!string.IsNullOrEmpty(PushError))
 			{
-				<Alert Type="Alert.AlertType.Danger" ShowIcon="true" Class="mt-3 mb-0">
+				<Alert Type="Alert.AlertType.Danger" ShowIcon="true" Class="mt-5 mb-0">
 					@PushError
 				</Alert>
 			}
 
 			@if (!string.IsNullOrEmpty(PullRequestUrl))
 			{
-				<Alert Type="Alert.AlertType.Success" Class="mt-3 mb-0 py-2 px-3 small">
+				<Alert Type="Alert.AlertType.Success" Class="mt-5 mb-0 py-3 px-5 small">
 					<i class="bi bi-github me-1"></i>
 					<a href="@PullRequestUrl" target="_blank" rel="noreferrer">Pull request ready@(PullRequestNumber.HasValue ? $" #{PullRequestNumber.Value}" : string.Empty)</a>
 				</Alert>
 			}
 		</div>
-		<div class="card-footer bg-body-secondary d-flex flex-wrap gap-2">
-			<button class="btn btn-primary" @onclick="OnCommitAndPush" disabled="@(!CanPush || IsBusy)">
+		<div class="card-footer bg-1 d-flex flex-wrap gap-3">
+			<button class="btn-solid theme-primary" @onclick="OnCommitAndPush" disabled="@(!CanPush || IsBusy)">
 				@if (IsPushing)
 				{
-					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					<span class="d-none d-sm-inline">@PushStatus</span>
-					<span class="d-sm-none">Pushing...</span>
+					<span class="spinner-border spinner-sm me-1" role="status"></span>
+					<span class="d-none sm:d-inline">@PushStatus</span>
+					<span class="sm:d-none">Pushing...</span>
 				}
 				else
 				{
@@ -91,10 +91,10 @@
 
 			@if (CanCreatePullRequest)
 			{
-				<button class="btn btn-secondary" @onclick="OnCreatePullRequest" disabled="@IsBusy">
+				<button class="btn-solid theme-secondary" @onclick="OnCreatePullRequest" disabled="@IsBusy">
 					@if (IsCreatingPullRequest)
 					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
 						<span>Creating PR...</span>
 					}
 					else
@@ -107,10 +107,10 @@
 
 			@if (CanMergeBranch)
 			{
-				<button class="btn btn-success" @onclick="OnMergeBranch" disabled="@IsBusy">
+				<button class="btn-solid theme-success" @onclick="OnMergeBranch" disabled="@IsBusy">
 					@if (IsMergingBranch)
 					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
 						<span>Merging...</span>
 					}
 					else
@@ -124,22 +124,22 @@
 	}
 	else
 	{
-		<div class="card-body p-3">
-			<div class="d-flex align-items-center gap-2 mb-2">
-				<i class="bi bi-check-circle-fill text-success"></i>
+		<div class="card-body p-5">
+			<div class="d-flex align-items-center gap-3 mb-3">
+				<i class="bi bi-check-circle-fill fg-success"></i>
 				<strong>@GetStatusHeading()</strong>
 			</div>
 
-			<div class="d-flex flex-wrap gap-2 mb-2">
+			<div class="d-flex flex-wrap gap-3 mb-3">
 				@if (!string.IsNullOrEmpty(PushedCommitHash))
 				{
-					<span class="badge bg-body-tertiary text-body font-monospace">
+					<span class="badge font-monospace">
 						<i class="bi bi-git me-1"></i>@PushedCommitHash[..Math.Min(7, PushedCommitHash.Length)]
 					</span>
 				}
 				@if (!string.IsNullOrEmpty(PullRequestUrl))
 				{
-					<a class="btn btn-sm btn-secondary" href="@PullRequestUrl" target="_blank" rel="noreferrer">
+					<a class="btn-sm btn-solid theme-secondary" href="@PullRequestUrl" target="_blank" rel="noreferrer">
 						<i class="bi bi-github me-1"></i>
 						<span>Open PR@(PullRequestNumber.HasValue ? $" #{PullRequestNumber.Value}" : string.Empty)</span>
 					</a>
@@ -148,18 +148,18 @@
 
 			@if (!string.IsNullOrEmpty(CommitMessageUsed))
 			{
-				<div class="bg-body-tertiary rounded p-2 small text-body-secondary" style="white-space: pre-wrap;">@CommitMessageUsed</div>
+				<div class="bg-2 rounded p-3 small fg-1" style="white-space: pre-wrap;">@CommitMessageUsed</div>
 			}
 
 			@if (CanMergeBranch)
 			{
-				<div class="mt-3 d-flex flex-wrap gap-2">
+				<div class="mt-5 d-flex flex-wrap gap-3">
 					@if (CanCreatePullRequest)
 					{
-						<button class="btn btn-secondary" @onclick="OnCreatePullRequest" disabled="@IsBusy">
+						<button class="btn-solid theme-secondary" @onclick="OnCreatePullRequest" disabled="@IsBusy">
 							@if (IsCreatingPullRequest)
 							{
-								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+								<span class="spinner-border spinner-sm me-1" role="status"></span>
 								<span>Creating PR...</span>
 							}
 							else
@@ -169,10 +169,10 @@
 							}
 						</button>
 					}
-					<button class="btn btn-success" @onclick="OnMergeBranch" disabled="@IsBusy">
+					<button class="btn-solid theme-success" @onclick="OnMergeBranch" disabled="@IsBusy">
 						@if (IsMergingBranch)
 						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							<span class="spinner-border spinner-sm me-1" role="status"></span>
 							<span>Merging...</span>
 						}
 						else
@@ -185,11 +185,11 @@
 			}
 			else if (CanCreatePullRequest)
 			{
-				<div class="mt-3">
-					<button class="btn btn-secondary" @onclick="OnCreatePullRequest" disabled="@IsBusy">
+				<div class="mt-5">
+					<button class="btn-solid theme-secondary" @onclick="OnCreatePullRequest" disabled="@IsBusy">
 						@if (IsCreatingPullRequest)
 						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							<span class="spinner-border spinner-sm me-1" role="status"></span>
 							<span>Creating PR...</span>
 						}
 						else

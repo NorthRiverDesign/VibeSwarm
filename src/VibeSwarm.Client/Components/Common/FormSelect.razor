@@ -1,7 +1,7 @@
 @* Reusable wrapper for <select> form control *@
 @typeparam TValue
 
-<select class="form-select @SizeClass @Class" value="@CurrentValueAsString" @onchange="HandleChange"
+<select class="form-control @SizeClass @Class" value="@CurrentValueAsString" @onchange="HandleChange"
 		disabled="@Disabled" aria-label="@AriaLabel">
 	@ChildContent
 </select>
@@ -32,8 +32,8 @@
 
 	private string SizeClass => Size switch
 	{
-		SelectSize.Small => "form-select-sm",
-		SelectSize.Large => "form-select-lg",
+		SelectSize.Small => "form-control-sm",
+		SelectSize.Large => "form-control-lg",
 		_ => ""
 	};
 

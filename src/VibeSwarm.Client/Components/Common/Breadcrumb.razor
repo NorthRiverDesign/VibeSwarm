@@ -1,32 +1,36 @@
 @* Reusable breadcrumb navigation component *@
 
-<nav aria-label="breadcrumb" class="mb-3">
-	<ol class="breadcrumb mb-0">
+<nav aria-label="breadcrumb" class="mb-5">
+	<ol class="breadcrumb">
 		@foreach (var (item, index) in Items.Select((item, i) => (item, i)))
 		{
 			var isLast = index == Items.Count - 1;
-			@if (isLast)
+			@if (index > 0)
 			{
-				<li class="breadcrumb-item active" aria-current="page">
-					@if (!string.IsNullOrEmpty(item.Icon))
-					{
-						<i class="bi bi-@item.Icon me-1"></i>
-					}
-					@item.Text
-				</li>
+				<li class="breadcrumb-divider" aria-hidden="true"></li>
 			}
-			else
-			{
-				<li class="breadcrumb-item">
-					<a href="@item.Href" class="text-decoration-none">
+			<li class="breadcrumb-item">
+				@if (isLast)
+				{
+					<span class="breadcrumb-link active gap-1" aria-current="page">
 						@if (!string.IsNullOrEmpty(item.Icon))
 						{
-							<i class="bi bi-@item.Icon me-1"></i>
+							<i class="bi bi-@item.Icon"></i>
+						}
+						@item.Text
+					</span>
+				}
+				else
+				{
+					<a href="@item.Href" class="breadcrumb-link gap-1">
+						@if (!string.IsNullOrEmpty(item.Icon))
+						{
+							<i class="bi bi-@item.Icon"></i>
 						}
 						@item.Text
 					</a>
-				</li>
-			}
+				}
+			</li>
 		}
 	</ol>
 </nav>

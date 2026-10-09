@@ -18,14 +18,14 @@
 <div class="app-layout d-flex flex-column">
     @* Mobile Header *@
     <header
-        class="app-header d-lg-none sticky-top d-flex align-items-center gap-2 flex-shrink-0 border-bottom">
-        <NavLink class="app-brand d-flex align-items-center gap-2 ms-2 ms-sm-0 text-decoration-none fw-semibold" href="/" Match="NavLinkMatch.All">
+        class="app-header lg:d-none sticky-top d-flex align-items-center gap-3 flex-shrink-0 border-bottom">
+        <NavLink class="app-brand d-flex align-items-center gap-3 ms-3 sm:ms-0 text-decoration-none fw-semibold" href="/" Match="NavLinkMatch.All">
             <span class="app-brand-mark app-mark-xs d-inline-block flex-shrink-0"></span>
             <span class="text-truncate">@AppBranding.Name</span>
         </NavLink>
         <div class="ms-auto d-flex align-items-center flex-shrink-0">
             <button type="button"
-                    class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center touch-manipulation mobile-header-icon"
+                    class="btn-link fg-secondary p-0 fs-lg d-flex align-items-center justify-content-center touch-manipulation mobile-header-icon"
                     @onclick="OpenSearch" title="Search" aria-label="Search">
                 <i class="bi bi-search"></i>
             </button>
@@ -36,17 +36,17 @@
     </header>
 
     @* Sidebar Navigation (desktop; phones and tablets use the tab bar below) *@
-    <nav id="app-sidebar" class="app-sidebar position-fixed d-none d-lg-flex flex-column">
+    <nav id="app-sidebar" class="app-sidebar position-fixed d-none lg:d-flex flex-column">
         @* Brand (desktop only — mobile shows brand in top bar) *@
-        <div class="d-none d-lg-flex align-items-center gap-2 px-3 py-3 fw-semibold">
+        <div class="d-none lg:d-flex align-items-center gap-3 px-5 py-5 fw-semibold">
             <span class="app-brand-mark app-mark-sm d-inline-block"></span>
             <span>@AppBranding.Name</span>
         </div>
-        <div class="flex-grow-1 vs-side-nav d-flex flex-column gap-1 overflow-y-auto min-height-0 p-2">
+        <div class="flex-grow-1 vs-side-nav d-flex flex-column gap-1 overflow-y-auto min-h-0 p-3">
             <button class="nav-btn cursor-pointer" @onclick="OpenSearch" title="Search (Ctrl+K)">
                 <i class="bi bi-search"></i>
                 <span class="flex-grow-1">Search</span>
-                <kbd class="border rounded px-1 text-muted bg-transparent small d-none d-lg-inline">⌃K</kbd>
+                <kbd class="border rounded px-1 fg-1 bg-transparent small d-none lg:d-inline">⌃K</kbd>
             </button>
             <NavLink class="nav-item" href="/" Match="NavLinkMatch.All">
                 <i class="bi bi-speedometer2"></i>
@@ -99,8 +99,8 @@
             </NavLink>
         </div>
 
-        <div class="border-top d-none d-lg-flex flex-column">
-            <div class="px-3 py-2">
+        <div class="border-top d-none lg:d-flex flex-column">
+            <div class="px-5 py-3">
                 <LoginDisplay />
             </div>
         </div>
@@ -111,8 +111,8 @@
     <DeveloperUpdateOverlay />
 
     @* Main Content *@
-    <main class="app-main flex-grow-1 min-height-0 overflow-y-auto overflow-x-hidden">
-        <div class="main-content mw-100">
+    <main class="app-main flex-grow-1 min-h-0 overflow-y-auto overflow-x-hidden">
+        <div class="main-content max-w-100">
             <ErrorBoundary @ref="_errorBoundary">
                 <ChildContent>
                     @Body
@@ -122,32 +122,32 @@
                         _ = ReportFatalUiErrorAsync(exception);
                     }
                     <div class="d-flex align-items-center justify-content-center w-100" style="min-height: 50vh;">
-                        <div class="text-center p-4 mx-auto" style="max-width: 500px;">
-                            <div class="mb-4">
-                                <i class="bi bi-exclamation-octagon text-danger" style="font-size: 3rem;"></i>
+                        <div class="text-center p-7 mx-auto" style="max-width: 500px;">
+                            <div class="mb-7">
+                                <i class="bi bi-exclamation-octagon fg-danger" style="font-size: 3rem;"></i>
                             </div>
-                            <h4 class="text-body mb-3">Something Went Wrong</h4>
-                            <p class="text-muted mb-4">An unexpected error occurred while loading this page.</p>
-                            <div class="d-flex flex-column flex-sm-row gap-2 justify-content-center">
-                                <button class="btn btn-primary" @onclick="RecoverFromError">
-                                    <i class="bi bi-arrow-clockwise me-2"></i>Try Again
+                            <h4 class="fg-body mb-5">Something Went Wrong</h4>
+                            <p class="fg-1 mb-7">An unexpected error occurred while loading this page.</p>
+                            <div class="d-flex flex-column sm:flex-row gap-3 justify-content-center">
+                                <button class="btn-solid theme-primary" @onclick="RecoverFromError">
+                                    <i class="bi bi-arrow-clockwise me-3"></i>Try Again
                                 </button>
-                                <button class="btn btn-secondary" @onclick="NavigateToDashboard">
-                                    <i class="bi bi-house me-2"></i>Go to Dashboard
+                                <button class="btn-solid theme-secondary" @onclick="NavigateToDashboard">
+                                    <i class="bi bi-house me-3"></i>Go to Dashboard
                                 </button>
                             </div>
-                            <div class="mt-2">
-                                <button class="btn btn-link btn-sm text-muted" @onclick="ForceReloadPage">
+                            <div class="mt-3">
+                                <button class="btn-link btn-sm fg-1" @onclick="ForceReloadPage">
                                     <i class="bi bi-arrow-repeat me-1"></i>Full page reload
                                 </button>
                             </div>
                             @if (IsDevelopment())
                             {
-                                <div class="mt-4 text-start">
+                                <div class="mt-7 text-start">
                                     <details>
-                                        <summary class="text-muted small" style="cursor: pointer;">Technical Details
+                                        <summary class="fg-1 small" style="cursor: pointer;">Technical Details
                                         </summary>
-                                        <pre class="bg-body-tertiary p-3 rounded mt-2 small text-danger overflow-auto"
+                                        <pre class="bg-2 p-5 rounded mt-3 small fg-danger overflow-auto"
                                              style="max-height: 200px;">@exception.Message
                                             @exception.StackTrace</pre>
                                         </details>
@@ -162,22 +162,22 @@
 
         @* Tab bar (phones and tablets): the main destinations within thumb reach, like an iOS app.
            Everything else lives on the More page. *@
-        <nav class="app-tab-bar d-flex d-lg-none flex-shrink-0 border-top user-select-none" aria-label="Main">
+        <nav class="app-tab-bar d-flex lg:d-none flex-shrink-0 border-top user-select-none" aria-label="Main">
             <NavLink class="app-tab d-flex flex-column align-items-center justify-content-center gap-1 text-decoration-none" href="/" Match="NavLinkMatch.All">
-                <i class="bi bi-speedometer2 fs-4 lh-1"></i>
+                <i class="bi bi-speedometer2 fs-xl lh-1"></i>
                 <span class="text-caption fw-medium">Dashboard</span>
             </NavLink>
             <NavLink class="app-tab d-flex flex-column align-items-center justify-content-center gap-1 text-decoration-none" href="/projects">
-                <i class="bi bi-folder fs-4 lh-1"></i>
+                <i class="bi bi-folder fs-xl lh-1"></i>
                 <span class="text-caption fw-medium">Projects</span>
             </NavLink>
             <NavLink class="app-tab d-flex flex-column align-items-center justify-content-center gap-1 text-decoration-none" href="/jobs">
-                <i class="bi bi-list-task fs-4 lh-1"></i>
+                <i class="bi bi-list-task fs-xl lh-1"></i>
                 <span class="text-caption fw-medium">Jobs</span>
             </NavLink>
             <a class="app-tab d-flex flex-column align-items-center justify-content-center gap-1 text-decoration-none @(IsMoreTabActive ? "active" : "")"
                href="/more" aria-current="@(IsMoreTabActive ? "page" : null)">
-                <i class="bi bi-three-dots fs-4 lh-1"></i>
+                <i class="bi bi-three-dots fs-xl lh-1"></i>
                 <span class="text-caption fw-medium">More</span>
             </a>
         </nav>
@@ -201,41 +201,41 @@
 
                 @if (!string.IsNullOrEmpty(_changePasswordError))
                 {
-                    <div class="text-danger small mb-3">
+                    <div class="fg-danger small mb-5">
                         <i class="bi bi-exclamation-circle me-1"></i>@_changePasswordError
                     </div>
                 }
 
-                <div class="mb-3">
+                <div class="mb-5">
                     <label for="currentPassword" class="form-label">Current Password</label>
                     <InputText id="currentPassword" type="password" @bind-Value="_changePasswordModel.CurrentPassword"
                                class="form-control" />
-                    <ValidationMessage For="@(() => _changePasswordModel.CurrentPassword)" class="text-danger small" />
+                    <ValidationMessage For="@(() => _changePasswordModel.CurrentPassword)" class="fg-danger small" />
                 </div>
 
-                <div class="mb-3">
+                <div class="mb-5">
                     <label for="newPassword" class="form-label">New Password</label>
                     <InputText id="newPassword" type="password" @bind-Value="_changePasswordModel.NewPassword"
                                class="form-control" />
-                    <ValidationMessage For="@(() => _changePasswordModel.NewPassword)" class="text-danger small" />
+                    <ValidationMessage For="@(() => _changePasswordModel.NewPassword)" class="fg-danger small" />
                     <div class="form-text">
                         Password must be at least 8 characters and contain uppercase, lowercase, and a digit.
                     </div>
                 </div>
 
-                <div class="mb-3">
+                <div class="mb-5">
                     <label for="confirmPassword" class="form-label">Confirm New Password</label>
                     <InputText id="confirmPassword" type="password" @bind-Value="_changePasswordModel.ConfirmPassword"
                                class="form-control" />
-                    <ValidationMessage For="@(() => _changePasswordModel.ConfirmPassword)" class="text-danger small" />
+                    <ValidationMessage For="@(() => _changePasswordModel.ConfirmPassword)" class="fg-danger small" />
                 </div>
 
-                <div class="d-flex justify-content-end gap-2">
-                    <button type="button" class="btn btn-secondary" @onclick="CloseChangePasswordModal">Cancel</button>
-                    <button type="submit" class="btn btn-primary" disabled="@_isChangingPassword">
+                <div class="d-flex justify-content-end gap-3">
+                    <button type="button" class="btn-solid theme-secondary" @onclick="CloseChangePasswordModal">Cancel</button>
+                    <button type="submit" class="btn-solid theme-primary" disabled="@_isChangingPassword">
                         @if (_isChangingPassword)
                         {
-                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            <span class="spinner-border spinner-sm me-1" role="status"></span>
                         }
                         Change Password
                     </button>

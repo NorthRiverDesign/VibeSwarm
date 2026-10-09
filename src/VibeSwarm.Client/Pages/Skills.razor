@@ -6,53 +6,51 @@
 <PageHeader Title="Skills" Subtitle="Instructions agents can load on demand during a job.">
 	<Actions>
 		@* Every way to add a skill sits behind the one + button. *@
-		<div class="dropdown">
-			<button type="button" class="btn btn-primary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
-					data-bs-toggle="dropdown" aria-expanded="false" title="Add a skill" aria-label="Add a skill">
+		<div>
+			<button type="button" class="btn-solid theme-primary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
+					data-bs-toggle="menu" data-bs-placement="bottom-end" aria-expanded="false" title="Add a skill" aria-label="Add a skill">
 				<i class="bi bi-plus-lg"></i>
 			</button>
-			<ul class="dropdown-menu dropdown-menu-end">
-				<li><button type="button" class="dropdown-item" @onclick="ShowAddModal"><i class="bi bi-pencil me-2"></i>Write a new skill</button></li>
-				<li><button type="button" class="dropdown-item" @onclick="ShowMarketplaceModal"><i class="bi bi-shop me-2"></i>From the marketplace</button></li>
-				<li><button type="button" class="dropdown-item" @onclick="ShowLocalPathModal"><i class="bi bi-folder2-open me-2"></i>From a folder on this host</button></li>
-				<li>
-					<label class="dropdown-item cursor-pointer mb-0">
-						<i class="bi bi-box-arrow-in-down me-2"></i>Import a .skill file
+			<div class="menu">
+				<button type="button" class="menu-item" @onclick="ShowAddModal"><i class="bi bi-pencil"></i>Write a new skill</button>
+				<button type="button" class="menu-item" @onclick="ShowMarketplaceModal"><i class="bi bi-shop"></i>From the marketplace</button>
+				<button type="button" class="menu-item" @onclick="ShowLocalPathModal"><i class="bi bi-folder2-open"></i>From a folder on this host</button>
+					<label class="menu-item cursor-pointer mb-0">
+						<i class="bi bi-box-arrow-in-down me-3"></i>Import a .skill file
 						<InputFile OnChange="HandleImportFileSelected" accept=".skill" class="d-none" />
 					</label>
-				</li>
-			</ul>
+			</div>
 		</div>
 	</Actions>
 </PageHeader>
 
 @if (_importErrorMessage != null)
 {
-	<Alert Type="Alert.AlertType.Danger" Message="@_importErrorMessage" Class="mb-3" />
+	<Alert Type="Alert.AlertType.Danger" Message="@_importErrorMessage" Class="mb-5" />
 }
 
 @if (_importPreview != null)
 {
-	<Card Class="mb-3" Title="Import skill preview">
+	<Card Class="mb-5" Title="Import skill preview">
 		<HeaderActions>
 			<ActionButton Text="Cancel" OnClick="ResetImportPreview" Disabled="_isImportingSkill" />
 			<ActionButton Text="@(_isImportingSkill ? "Importing..." : "Import skill")" Style="ActionButton.ButtonStyle.Primary"
 						  OnClick="ConfirmImportAsync" IsLoading="_isImportingSkill" Disabled="_isImportingSkill" />
 		</HeaderActions>
 		<ChildContent>
-			<div class="d-flex flex-column gap-3">
+			<div class="d-flex flex-column gap-5">
 				<div>
-					<div class="small text-body-secondary mb-1">Name</div>
+					<div class="small fg-1 mb-1">Name</div>
 					<div class="fw-semibold font-monospace">@_importPreview.Name</div>
 				</div>
 				@if (!string.IsNullOrWhiteSpace(_importPreview.Description))
 				{
 					<div>
-						<div class="small text-body-secondary mb-1">Description</div>
+						<div class="small fg-1 mb-1">Description</div>
 						<div>@_importPreview.Description</div>
 					</div>
 				}
-				<div class="d-flex flex-wrap gap-3 small text-body-secondary">
+				<div class="d-flex flex-wrap gap-5 small fg-1">
 					<span class="d-flex align-items-center gap-1">
 						<i class="bi bi-file-text opacity-75"></i>
 						@_importPreview.Content.Length chars
@@ -63,7 +61,7 @@
 					</span>
 					@if (_importPreview.NameExists)
 					{
-						<span class="d-flex align-items-center gap-1 text-warning">
+						<span class="d-flex align-items-center gap-1 fg-warning">
 							<i class="bi bi-exclamation-circle"></i>
 							This skill already exists and will be skipped.
 						</span>
@@ -73,8 +71,8 @@
 				@if (_importPreview.Warnings.Count > 0)
 				{
 					<Alert Type="Alert.AlertType.Warning" Class="mb-0">
-						<div class="fw-semibold mb-2">Warnings</div>
-						<ul class="mb-0 ps-3">
+						<div class="fw-semibold mb-3">Warnings</div>
+						<ul class="mb-0 ps-5">
 							@foreach (var warning in _importPreview.Warnings)
 							{
 								<li>@warning</li>
@@ -84,7 +82,7 @@
 				}
 
 				<div>
-					<div class="small text-body-secondary mb-1">Included files</div>
+					<div class="small fg-1 mb-1">Included files</div>
 					<div class="d-flex flex-column gap-1 small">
 						@foreach (var file in _importPreview.IncludedFiles)
 						{
@@ -112,49 +110,51 @@ else if (!_skillsList.Any())
 }
 else
 {
-	<div class="list-group rounded-4">
+	<div class="list-group rounded-9">
 		@foreach (var skill in _skillsList)
 		{
 			<ListRow @key="skill.Id" Icon="lightbulb"
-					 IconClass="@(skill.IsEnabled ? "text-primary" : "text-body-tertiary")"
-					 Title="@skill.Name" TitleClass="@(skill.IsEnabled ? "font-monospace" : "font-monospace text-body-secondary")"
+					 IconClass="@(skill.IsEnabled ? "fg-primary" : "fg-2")"
+					 Title="@skill.Name" TitleClass="@(skill.IsEnabled ? "font-monospace" : "font-monospace fg-1")"
 					 Subtitle="@skill.Description">
 				<Trailing>
 					@if (!skill.IsEnabled)
 					{
-						<span class="small text-body-tertiary flex-shrink-0">Off</span>
+						<span class="small fg-2 flex-shrink-0">Off</span>
 					}
 				</Trailing>
 				<ChildContent>
 					@if (!string.IsNullOrWhiteSpace(skill.Description))
 					{
-						<div class="small text-body-secondary">@skill.Description</div>
+						<div class="small fg-1">@skill.Description</div>
 					}
-					<dl class="d-flex flex-column gap-2 small mb-0">
-						<div class="d-flex justify-content-between gap-3">
-							<dt class="fw-normal text-body-secondary">Size</dt>
+					<dl class="d-flex flex-column gap-3 small mb-0">
+						<div class="d-flex justify-content-between gap-5">
+							<dt class="fw-normal fg-1">Size</dt>
 							<dd class="mb-0">@skill.Content.Length.ToString("N0") characters</dd>
 						</div>
-						<div class="d-flex justify-content-between gap-3">
-							<dt class="fw-normal text-body-secondary">Added</dt>
+						<div class="d-flex justify-content-between gap-5">
+							<dt class="fw-normal fg-1">Added</dt>
 							<dd class="mb-0">@skill.CreatedAt.FormatDateTimeShort()</dd>
 						</div>
 						@if (skill.UpdatedAt is { } updatedAt)
 						{
-							<div class="d-flex justify-content-between gap-3">
-								<dt class="fw-normal text-body-secondary">Changed</dt>
+							<div class="d-flex justify-content-between gap-5">
+								<dt class="fw-normal fg-1">Changed</dt>
 								<dd class="mb-0">@updatedAt.FormatDateTimeShort()</dd>
 							</div>
 						}
 					</dl>
-					<div class="form-check form-switch mb-0">
-						<input class="form-check-input" type="checkbox" role="switch" id="@($"skill-enabled-{skill.Id:N}")"
-							   checked="@skill.IsEnabled" @onchange="() => ToggleEnabled(skill)" />
-						<label class="form-check-label" for="@($"skill-enabled-{skill.Id:N}")">Agents can load this skill</label>
+					<div class="form-field mb-0">
+						<div class="switch">
+							<input type="checkbox" role="switch" switch id="@($"skill-enabled-{skill.Id:N}")"
+								   checked="@skill.IsEnabled" @onchange="() => ToggleEnabled(skill)" />
+						</div>
+						<label for="@($"skill-enabled-{skill.Id:N}")">Agents can load this skill</label>
 					</div>
-					<div class="d-flex align-items-center gap-2">
-						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => EditSkill(skill)">Edit</button>
-						<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none px-0 ms-auto" @onclick="() => ShowDeleteConfirmation(skill)">
+					<div class="d-flex align-items-center gap-3">
+						<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => EditSkill(skill)">Edit</button>
+						<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 ms-auto" @onclick="() => ShowDeleteConfirmation(skill)">
 							<i class="bi bi-trash me-1"></i>Delete
 						</button>
 					</div>
@@ -171,7 +171,7 @@ else
 @* Delete Confirmation Modal *@
 <ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete Skill"
 				   Message="@($"Are you sure you want to delete {_skillToDelete?.Name}?")" SubMessage="This action cannot be undone."
-				   ConfirmText="Delete" ButtonClass="btn-danger" IsProcessing="_isDeleting" OnConfirm="ConfirmDelete"
+				   ConfirmText="Delete" ButtonClass="btn-solid theme-danger" IsProcessing="_isDeleting" OnConfirm="ConfirmDelete"
 				   OnCancel="CancelDelete" />
 
 @* Marketplace browse modal *@

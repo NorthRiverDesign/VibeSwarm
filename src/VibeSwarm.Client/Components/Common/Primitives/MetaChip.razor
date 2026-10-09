@@ -1,4 +1,4 @@
-@* Bootstrap badge used inline in meta rows. Variant maps to Bootstrap's text-bg-* subtle classes. *@
+@* Bootstrap badge used inline in meta rows. Variant maps to a Bootstrap theme-* colour. *@
 
 <span class="badge @VariantClass d-inline-flex align-items-center gap-1 @CssClass">
 	@if (!string.IsNullOrEmpty(Icon))
@@ -18,12 +18,12 @@
 
 	private string VariantClass => Variant?.ToLowerInvariant() switch
 	{
-		"sha" => "font-monospace text-bg-secondary",
-		"pushed" => "text-bg-success",
-		"failed" or "danger" => "text-bg-danger",
-		"warning" or "warn" => "text-bg-warning",
-		"info" => "text-bg-info",
-		"ai" => "text-bg-primary",
-		_ => "text-bg-secondary"
+		"sha" => "font-monospace theme-secondary",
+		"pushed" => "theme-success",
+		"failed" or "danger" => "theme-danger",
+		"warning" or "warn" => "theme-warning",
+		"info" => "theme-info",
+		"ai" => "theme-primary",
+		_ => "theme-secondary"
 	};
 }

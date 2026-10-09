@@ -1,22 +1,22 @@
 @* Uncommitted changes card for failed/cancelled jobs that may have made partial changes *@
 
-<div class="card mb-3 mb-lg-4 @(HasChanges ? "border-warning" : "")">
-	<div class="card-header @(HasChanges ? "bg-warning bg-opacity-25" : "bg-body-secondary")">
-		<div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-			<div class="d-flex align-items-center gap-2">
+<div class="card mb-5 lg:mb-7 @(HasChanges ? "border-warning" : "")">
+	<div class="card-header @(HasChanges ? "bg-warning bg-30" : "bg-1")">
+		<div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+			<div class="d-flex align-items-center gap-3">
 				<i class="bi bi-folder-symlink me-1 opacity-75"></i>
 				<strong>Working Directory Changes</strong>
 				@if (HasChanges && DiffFiles.Count > 0)
 				{
-					<span class="badge bg-warning text-dark">@DiffFiles.Count file(s)</span>
+					<span class="badge theme-warning ">@DiffFiles.Count file(s)</span>
 				}
 			</div>
 			@if (!IsChecking)
 			{
-				<button class="btn btn-sm btn-secondary" @onclick="OnRefresh"
+				<button class="btn-sm btn-solid theme-secondary" @onclick="OnRefresh"
 					title="Check for changes in working directory">
 					<i class="bi bi-arrow-repeat me-1"></i>
-					<span class="d-none d-sm-inline">Refresh</span>
+					<span class="d-none sm:d-inline">Refresh</span>
 				</button>
 			}
 		</div>
@@ -24,8 +24,8 @@
 	<div class="card-body">
 		@if (IsChecking)
 		{
-			<div class="d-flex align-items-center justify-content-center gap-2 py-4 text-body-secondary">
-				<span class="spinner-border spinner-border-sm" role="status"></span>
+			<div class="d-flex align-items-center justify-content-center gap-3 py-7 fg-1">
+				<span class="spinner-border spinner-sm" role="status"></span>
 				<span>Checking for uncommitted changes...</span>
 			</div>
 		}
@@ -35,48 +35,50 @@
 		}
 		else if (!HasChecked)
 		{
-			<div class="text-center py-3">
-				<p class="text-body-secondary mb-3">
-					<i class="bi bi-exclamation-circle me-2"></i>
+			<div class="text-center py-5">
+				<p class="fg-1 mb-5">
+					<i class="bi bi-exclamation-circle me-3"></i>
 					This job @(JobFailed ? "failed" : "was cancelled") but the CLI agent may have made changes to the
 					working directory.
 				</p>
-				<button class="btn btn-primary" @onclick="OnCheck">
+				<button class="btn-solid theme-primary" @onclick="OnCheck">
 					<i class="bi bi-search me-1"></i>Check for Changes
 				</button>
 			</div>
 		}
 		else if (!HasChanges)
 		{
-			<div class="text-center py-3 text-body-secondary">
-				<i class="bi bi-check-circle me-2 text-success"></i>
+			<div class="text-center py-5 fg-1">
+				<i class="bi bi-check-circle me-3 fg-success"></i>
 				No uncommitted changes found in the working directory.
 			</div>
 		}
 		else
 		{
 			@* Show uncommitted changes with options to commit or discard *@
-			<div class="alert alert-warning mb-3">
-				<i class="bi bi-exclamation-triangle me-2"></i>
-				<strong>Uncommitted changes detected!</strong>
-				<span class="d-block d-sm-inline mt-1 mt-sm-0 ms-sm-1">
-					The CLI agent made changes before the job @(JobFailed ? "failed" : "was cancelled").
-				</span>
+			<div class="alert theme-warning mb-5">
+				<i class="bi flex-shrink-0 bi-exclamation-triangle"></i>
+				<div class="flex-grow-1 min-w-0">
+					<strong>Uncommitted changes detected!</strong>
+					<span class="d-block sm:d-inline mt-1 sm:mt-0 sm:ms-1">
+						The CLI agent made changes before the job @(JobFailed ? "failed" : "was cancelled").
+					</span>
+				</div>
 			</div>
 
 			@* Diff viewer for uncommitted changes *@
-			<div class="mb-3">
-				<div class="d-flex align-items-center justify-content-between mb-2">
-					<span class="text-body-secondary small">
-						<span class="text-success">+@GitDiffParser.TotalAdditions(DiffFiles)</span>
-						<span class="text-danger ms-1">-@GitDiffParser.TotalDeletions(DiffFiles)</span>
+			<div class="mb-5">
+				<div class="d-flex align-items-center justify-content-between mb-3">
+					<span class="fg-1 small">
+						<span class="fg-success">+@GitDiffParser.TotalAdditions(DiffFiles)</span>
+						<span class="fg-danger ms-1">-@GitDiffParser.TotalDeletions(DiffFiles)</span>
 					</span>
 					<div class="btn-group btn-group-sm">
-						<button type="button" class="btn btn-secondary" @onclick="ExpandAll" title="Expand all"
+						<button type="button" class="btn-solid theme-secondary" @onclick="ExpandAll" title="Expand all"
 							disabled="@(_expandedFiles.Count == DiffFiles.Count)">
 							<i class="bi bi-arrows-expand"></i>
 						</button>
-						<button type="button" class="btn btn-secondary" @onclick="CollapseAll" title="Collapse all"
+						<button type="button" class="btn-solid theme-secondary" @onclick="CollapseAll" title="Collapse all"
 							disabled="@(_expandedFiles.Count == 0)">
 							<i class="bi bi-arrows-collapse"></i>
 						</button>
@@ -87,62 +89,58 @@
 					@foreach (var (file, index) in DiffFiles.Select((f, i) => (f, i)))
 					{
 						var isExpanded = _expandedFiles.Contains(index);
-						<div class="accordion-item">
-							<h2 class="accordion-header">
-								<button class="accordion-button @(isExpanded ? "" : "collapsed") py-2 px-3" type="button"
-									@onclick="() => ToggleFile(index)">
-									<span class="d-flex align-items-center gap-2 w-100">
-										@if (file.IsNew)
-										{
-											<i class="bi bi-file-earmark-plus text-success" title="New file"></i>
-										}
-										else if (file.IsDeleted)
-										{
-											<i class="bi bi-file-earmark-minus text-danger" title="Deleted file"></i>
-										}
-										else
-										{
-											<i class="bi bi-file-earmark-diff text-warning" title="Modified file"></i>
-										}
-										<span class="font-monospace small text-truncate flex-grow-1">@file.FileName</span>
-										<span class="small">
-											@if (file.Additions > 0)
-											{
-												<span class="text-success fw-medium">+@file.Additions</span>
-											}
-											@if (file.Deletions > 0)
-											{
-												<span class="text-danger fw-medium ms-1">-@file.Deletions</span>
-											}
-										</span>
-									</span>
-								</button>
-							</h2>
-							<div class="accordion-collapse @(isExpanded ? "show" : "collapse")">
-								<div class="accordion-body p-0">
-									@if (!file.IsDeleted)
+						<details class="accordion-item" open="@isExpanded">
+							<summary class="accordion-header py-3 px-5" " : "collapsed") py-3 px-5" @onclick="() => ToggleFile(index)" @onclick:preventDefault="true">
+								<span class="d-flex align-items-center gap-3 w-100">
+									@if (file.IsNew)
 									{
-										<div class="terminal-output overscroll-contain white-space-pre-wrap overflow-auto p-2 small" style="max-height: 250px;">
-											@((MarkupString)GitDiffParser.FormatDiffHtml(file.DiffContent))
-										</div>
+										<i class="bi bi-file-earmark-plus fg-success" title="New file"></i>
+									}
+									else if (file.IsDeleted)
+									{
+										<i class="bi bi-file-earmark-minus fg-danger" title="Deleted file"></i>
 									}
 									else
 									{
-										<div class="p-3 text-body-secondary small">
-											<i class="bi bi-trash me-1"></i>File deleted
-										</div>
+										<i class="bi bi-file-earmark-diff fg-warning" title="Modified file"></i>
 									}
-								</div>
+									<span class="font-monospace small text-truncate flex-grow-1">@file.FileName</span>
+									<span class="small">
+										@if (file.Additions > 0)
+										{
+											<span class="fg-success fw-medium">+@file.Additions</span>
+										}
+										@if (file.Deletions > 0)
+										{
+											<span class="fg-danger fw-medium ms-1">-@file.Deletions</span>
+										}
+									</span>
+								</span>
+								<AccordionIcon />
+							</summary>
+							<div class="accordion-body p-0">
+								@if (!file.IsDeleted)
+								{
+									<div class="terminal-output overscroll-contain white-space-pre-wrap overflow-auto p-3 small" style="max-height: 250px;">
+										@((MarkupString)GitDiffParser.FormatDiffHtml(file.DiffContent))
+									</div>
+								}
+								else
+								{
+									<div class="p-5 fg-1 small">
+										<i class="bi bi-trash me-1"></i>File deleted
+									</div>
+								}
 							</div>
-						</div>
+						</details>
 					}
 				</div>
 			</div>
 
-			<hr class="my-3" />
+			<hr class="my-5" />
 
 			@* Commit section for uncommitted changes *@
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="uncommittedCommitMsg" class="form-label fw-medium small">
 					<i class="bi bi-chat-square-text me-1"></i>Commit Message (to keep changes)
 				</label>
@@ -154,22 +152,22 @@
 			@* Discard confirmation *@
 			@if (_showDiscardConfirmation)
 			{
-				<div class="alert alert-danger py-3 mb-3">
-					<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+				<div class="alert theme-danger py-5 mb-5">
+					<div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
 						<div>
-							<i class="bi bi-exclamation-triangle me-2"></i>
+							<i class="bi bi-exclamation-triangle me-3"></i>
 							<strong>Are you sure?</strong> This will permanently discard all uncommitted changes.
 						</div>
-						<div class="d-flex gap-2">
-							<button type="button" class="btn btn-secondary btn-sm"
+						<div class="d-flex gap-3">
+							<button type="button" class="btn-solid theme-secondary btn-sm"
 								@onclick="() => _showDiscardConfirmation = false" disabled="@IsDiscarding">
 								Cancel
 							</button>
-							<button type="button" class="btn btn-danger btn-sm" @onclick="ConfirmDiscard"
+							<button type="button" class="btn-solid theme-danger btn-sm" @onclick="ConfirmDiscard"
 								disabled="@IsDiscarding">
 								@if (IsDiscarding)
 								{
-									<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+									<span class="spinner-border spinner-sm me-1" role="status"></span>
 								}
 								Yes, Discard All
 							</button>
@@ -179,12 +177,12 @@
 			}
 
 			@* Action buttons *@
-			<div class="d-flex flex-wrap gap-2">
-				<button class="btn btn-success" @onclick="OnCommit"
+			<div class="d-flex flex-wrap gap-3">
+				<button class="btn-solid theme-success" @onclick="OnCommit"
 					disabled="@(IsCommitting || IsDiscarding || string.IsNullOrWhiteSpace(CommitMessage))">
 					@if (IsCommitting)
 					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
 						<span>Committing...</span>
 					}
 					else
@@ -193,7 +191,7 @@
 						<span>Keep Changes</span>
 					}
 				</button>
-				<button class="btn btn-danger" @onclick="() => _showDiscardConfirmation = true"
+				<button class="btn-solid theme-danger" @onclick="() => _showDiscardConfirmation = true"
 					disabled="@(IsCommitting || IsDiscarding || _showDiscardConfirmation)">
 					<i class="bi bi-trash me-1"></i>
 					<span>Discard Changes</span>

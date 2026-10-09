@@ -3,7 +3,7 @@
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Create New Branch" Icon="git"
     Size="ModalDialog.ModalSize.Default">
     <ChildContent>
-        <div class="mb-3">
+        <div class="mb-5">
             <label for="newBranchName" class="form-label">Branch Name</label>
             <input type="text" class="form-control" id="newBranchName" @bind="_branchName" @bind:event="oninput"
                 placeholder="e.g., feature/new-feature" disabled="@IsCreating" />
@@ -14,10 +14,10 @@
         </div>
         @if (!string.IsNullOrEmpty(ErrorMessage))
         {
-            <Alert Type="Alert.AlertType.Danger" Class="py-2 mb-0">@ErrorMessage</Alert>
+            <Alert Type="Alert.AlertType.Danger" Class="py-3 mb-0">@ErrorMessage</Alert>
         }
-        <div class="alert alert-info py-2 mb-0 mt-3">
-            <i class="bi bi-lightbulb me-1"></i>
+        <div class="alert theme-info py-3 mb-0 mt-5">
+            <i class="bi bi-lightbulb"></i>
             <small>This branch will only be created locally. Use this to isolate Job changes before pushing.</small>
         </div>
     </ChildContent>

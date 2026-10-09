@@ -30,9 +30,9 @@ public sealed class MobileShellCssTests
 		// page content above it doesn't add the inset a second time.
 		Assert.Matches(new Regex(@"\.app-tab-bar\s*\{[^}]*padding-bottom:\s*var\(--vs-safe-area-bottom\);"), css);
 		Assert.DoesNotMatch(new Regex(@"\.main-content\s*\{[^}]*safe-area-bottom"), css);
-		// A full-screen modal pads whichever band is last, never the body and the footer both.
-		Assert.Matches(new Regex(@"\.vs-modal-dialog \.modal-body:last-child\s*\{[^}]*max\("), css);
-		Assert.Matches(new Regex(@"\.vs-modal-dialog \.modal-footer\s*\{[^}]*padding-bottom:\s*max\(0\.75rem, var\(--vs-safe-area-bottom\)\);"), css);
+		// A full-screen dialog pads whichever band is last, never the body and the footer both.
+		Assert.Matches(new Regex(@"\.dialog \.dialog-body:last-child\s*\{[^}]*max\("), css);
+		Assert.Matches(new Regex(@"\.dialog \.dialog-footer\s*\{[^}]*padding-bottom:\s*max\(0\.75rem, var\(--vs-safe-area-bottom\)\);"), css);
 	}
 
 	[Fact]
@@ -40,8 +40,10 @@ public sealed class MobileShellCssTests
 	{
 		var css = ReadSiteCss();
 
-		// iOS zooms the page into any focused field under 16px, small input groups included.
-		Assert.Matches(new Regex(@"@media \(pointer: coarse\)\s*\{[^@]*\.input-group-sm > \.form-control,[^}]*\{\s*font-size: var\(--vs-text-body\);"), css);
+		// iOS zooms the page into any focused field under 16px. Small fields and input groups
+		// read their size from shared tokens, so pin every field, and the small token, to 16px.
+		Assert.Matches(new Regex(@"@media \(pointer: coarse\)\s*\{[^@]*\.form-control\s*\{\s*--bs-control-font-size: var\(--vs-text-body\);"), css);
+		Assert.Matches(new Regex(@"@media \(pointer: coarse\)\s*\{\s*:root\s*\{[^}]*--bs-btn-input-sm-font-size: var\(--vs-text-body\);"), css);
 	}
 
 	[Fact]

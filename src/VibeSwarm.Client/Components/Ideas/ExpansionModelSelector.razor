@@ -1,12 +1,14 @@
 @* Reusable model selection component for idea expansion *@
 
-<div class="text-start mb-2">
+<div class="text-start mb-3">
 	@if (HasInference)
 	{
-		<div class="form-check form-switch mb-2">
-			<input class="form-check-input" type="checkbox" id="useInference" checked="@UseInference"
-				   @onchange="HandleToggleInference">
-				<label class="form-check-label" for="useInference">
+		<div class="form-field mb-3">
+			<div class="switch">
+				<input role="switch" switch type="checkbox" id="useInference" checked="@UseInference"
+					   @onchange="HandleToggleInference">
+			</div>
+				<label for="useInference">
 					<i class="bi bi-pc-display me-1"></i>Use inference
 				</label>
 			</div>
@@ -16,11 +18,11 @@
 		{
 			@if (AvailableModels.Any())
 			{
-				<div class="mb-2">
+				<div class="mb-3">
 					<label class="form-label fw-semibold small mb-1">
 						<i class="bi bi-cpu me-1"></i>Model
 					</label>
-					<select class="form-select form-select-sm" value="@SelectedModelName" @onchange="HandleModelChanged">
+					<select class="form-control form-control-sm" value="@SelectedModelName" @onchange="HandleModelChanged">
 						<option value="">Auto (default model)</option>
 						@foreach (var model in AvailableModels)
 						{
@@ -37,7 +39,7 @@
 			}
 			else
 			{
-				<div class="text-warning small">
+				<div class="fg-warning small">
 					<i class="bi bi-exclamation-triangle me-1"></i>No local models available. Check your inference provider
 					settings.
 				</div>
@@ -47,11 +49,11 @@
 		{
 			@if (AvailableProviders.Count > 1)
 			{
-				<div class="mb-2">
+				<div class="mb-3">
 					<label class="form-label fw-semibold small mb-1">
 						<i class="bi bi-cloud me-1"></i>Provider
 					</label>
-					<select class="form-select form-select-sm" value="@SelectedProviderId" @onchange="HandleProviderChanged">
+					<select class="form-control form-control-sm" value="@SelectedProviderId" @onchange="HandleProviderChanged">
 						@foreach (var provider in AvailableProviders)
 						{
 							<option value="@provider.Id">
@@ -67,13 +69,13 @@
 			}
 			else if (AvailableProviders.Count == 1)
 			{
-				<div class="text-body-secondary small">
+				<div class="fg-1 small">
 					<i class="bi bi-cloud me-1"></i>Using @AvailableProviders[0].Name
 				</div>
 			}
 			else
 			{
-				<div class="text-warning small">
+				<div class="fg-warning small">
 					<i class="bi bi-exclamation-triangle me-1"></i>No providers configured.
 					<a href="/providers">Set up a provider</a> first.
 				</div>

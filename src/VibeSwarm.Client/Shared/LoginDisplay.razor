@@ -5,86 +5,64 @@
 
 <AuthorizeView>
     <Authorized>
-        <div class="d-flex align-items-center justify-content-end gap-2">
+        <div class="d-flex align-items-center justify-content-end gap-3">
             @* Desktop: User info with gear dropdown on the right *@
-            <div class="d-none d-lg-flex justify-content-between align-items-center w-100 gap-1">
-                <div class="d-flex align-items-center gap-2 text-secondary">
+            <div class="d-none lg:d-flex justify-content-between align-items-center w-100 gap-1">
+                <div class="d-flex align-items-center gap-3 fg-secondary">
                     <i class="bi bi-person-circle"></i>
-                    <span class="fw-semibold text-body-emphasis">@context.User.Identity?.Name</span>
+                    <span class="fw-semibold fg-body">@context.User.Identity?.Name</span>
                 </div>
-                <div class="d-flex align-items-center gap-3">
+                <div class="d-flex align-items-center gap-5">
                     <NotificationsPanel />
                     <QueueDropdownPanel OpenUpward="true" />
-                    <div class="dropup">
-                        <button class="btn btn-link text-secondary p-0 lh-1" type="button" data-bs-toggle="dropdown"
+                    <div>
+                        <button class="btn-link fg-secondary p-0 lh-1" type="button" data-bs-toggle="menu" data-bs-placement="top-end"
                                 aria-expanded="false" title="User options">
                             <i class="bi bi-gear"></i>
                         </button>
-                        <ul class="dropdown-menu dropdown-menu-end shadow vs-nav-dropdown-menu" style="min-width: 16rem;">
-                            <li>
-                                <ThemeSelector SelectedTheme="_selectedTheme" IsLoading="_isUpdatingTheme"
-                                               OnThemeSelected="HandleThemeSelected" />
-                            </li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li>
-                                <button class="dropdown-item" type="button" @onclick="ShowChangePasswordModal">
-                                    <i class="bi bi-key me-2"></i>Change Password
-                                </button>
-                            </li>
-                            <li>
-                                <hr class="dropdown-divider">
-                            </li>
-                            <li>
-                                <a class="dropdown-item" href="/logout">
-                                    <i class="bi bi-box-arrow-right me-2"></i>Log Out
-                                </a>
-                            </li>
-                        </ul>
+                        <div class="menu vs-nav-dropdown-menu" style="min-width: 16rem;">
+                            <ThemeSelector SelectedTheme="_selectedTheme" IsLoading="_isUpdatingTheme"
+                                           OnThemeSelected="HandleThemeSelected" />
+                            <hr class="menu-divider">
+                            <button class="menu-item" type="button" @onclick="ShowChangePasswordModal">
+                                <i class="bi bi-key"></i>Change Password
+                            </button>
+                            <hr class="menu-divider">
+                            <a class="menu-item" href="/logout">
+                                <i class="bi bi-box-arrow-right"></i>Log Out
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
 
             @* Mobile: Compact dropdown with user icon *@
-			<div class="dropdown d-lg-none mobile-header-dropdown">
-				<button class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center lh-1 touch-manipulation mobile-header-icon" type="button"
-						data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="User menu" aria-label="User menu">
+			<div class="lg:d-none mobile-header-dropdown">
+				<button class="btn-link fg-secondary p-0 fs-lg d-flex align-items-center justify-content-center lh-1 touch-manipulation mobile-header-icon" type="button"
+						data-bs-toggle="menu" data-bs-placement="bottom-end" data-bs-display="static" aria-expanded="false" title="User menu" aria-label="User menu">
 					<i class="bi bi-person-circle"></i>
 				</button>
-                <ul class="dropdown-menu dropdown-menu-end shadow vs-nav-dropdown-menu" style="min-width: 16rem;">
-                    <li class="dropdown-header">
+                <div class="menu vs-nav-dropdown-menu" style="min-width: 16rem;">
+                    <div class="menu-header">
                         <span class="fw-semibold">@context.User.Identity?.Name</span>
-                    </li>
-                    <li>
-                        <hr class="dropdown-divider">
-                    </li>
-                    <li>
-                        <ThemeSelector SelectedTheme="_selectedTheme" IsLoading="_isUpdatingTheme"
-                                       OnThemeSelected="HandleThemeSelected" />
-                    </li>
-                    <li>
-                        <hr class="dropdown-divider">
-                    </li>
-                    <li>
-                        <button class="dropdown-item" type="button" @onclick="ShowChangePasswordModal">
-                            <i class="bi bi-key me-2"></i>Change Password
-                        </button>
-                    </li>
-                    <li>
-                        <hr class="dropdown-divider">
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="/logout">
-                            <i class="bi bi-box-arrow-right me-2"></i>Log Out
-                        </a>
-                    </li>
-                </ul>
+                    </div>
+                    <hr class="menu-divider">
+                    <ThemeSelector SelectedTheme="_selectedTheme" IsLoading="_isUpdatingTheme"
+                                   OnThemeSelected="HandleThemeSelected" />
+                    <hr class="menu-divider">
+                    <button class="menu-item" type="button" @onclick="ShowChangePasswordModal">
+                        <i class="bi bi-key"></i>Change Password
+                    </button>
+                    <hr class="menu-divider">
+                    <a class="menu-item" href="/logout">
+                        <i class="bi bi-box-arrow-right"></i>Log Out
+                    </a>
+                </div>
             </div>
         </div>
     </Authorized>
     <NotAuthorized>
-        <a href="/login" class="btn btn-sm btn-primary">Login</a>
+        <a href="/login" class="btn-sm btn-solid theme-primary">Login</a>
     </NotAuthorized>
 </AuthorizeView>
 

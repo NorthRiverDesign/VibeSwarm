@@ -1,11 +1,13 @@
 @if (Project != null)
 {
-	<div class="form-check form-switch mb-1">
-		<InputCheckbox id="modal-planningEnabled" @bind-Value="Project.PlanningEnabled"
-					   @bind-Value:after="HandlePlanningEnabledChanged" class="form-check-input" />
-		<label class="form-check-label" for="modal-planningEnabled">Review a plan before each job</label>
+	<div class="form-field mb-1">
+		<div class="switch">
+			<InputCheckbox role="switch" switch id="modal-planningEnabled" @bind-Value="Project.PlanningEnabled"
+						   @bind-Value:after="HandlePlanningEnabledChanged" />
+		</div>
+		<label for="modal-planningEnabled">Review a plan before each job</label>
 	</div>
-	<div class="form-text mb-3">
+	<div class="form-text mb-5">
 		Idea expansion runs through Claude Code or Copilot plan mode so you can review a structured implementation
 		plan before the job is created.
 	</div>
@@ -14,16 +16,16 @@
 	{
 		@if (!AvailableProviders.Any())
 		{
-			<Alert Type="Alert.AlertType.Warning" Class="py-2 px-3 small mb-0">
+			<Alert Type="Alert.AlertType.Warning" Class="py-3 px-5 small mb-0">
 				<span>Planning needs an enabled Claude or Copilot provider. Add one under Providers first.</span>
 			</Alert>
 		}
 		else
 		{
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="modal-planningProvider" class="form-label">Planning provider</label>
 				<InputSelect TValue="Guid?" id="modal-planningProvider" @bind-Value="Project.PlanningProviderId"
-							 @bind-Value:after="HandlePlanningProviderChanged" class="form-select">
+							 @bind-Value:after="HandlePlanningProviderChanged" class="form-control">
 					@foreach (var provider in AvailableProviders)
 					{
 						<option value="@provider.Id">@provider.Name (@provider.Type)</option>
@@ -31,13 +33,13 @@
 				</InputSelect>
 			</div>
 
-			<div class="row g-3">
-				<div class="col-12 col-sm-6">
+			<div class="row g-5">
+				<div class="col-12 sm:col-6">
 					<label for="modal-planningModel" class="form-label">
-						Model <span class="text-body-secondary fw-normal">(optional)</span>
+						Model <span class="fg-1 fw-normal">(optional)</span>
 					</label>
 					<div class="input-group">
-						<InputSelect id="modal-planningModel" @bind-Value="Project.PlanningModelId" class="form-select"
+						<InputSelect id="modal-planningModel" @bind-Value="Project.PlanningModelId" class="form-control"
 									 disabled="@(!Project.PlanningProviderId.HasValue || !PlanningModels.Any())">
 							<option value="">Provider default</option>
 							@foreach (var model in PlanningModels)
@@ -54,12 +56,12 @@
 					}
 				</div>
 
-				<div class="col-12 col-sm-6">
+				<div class="col-12 sm:col-6">
 					<label for="modal-planningReasoning" class="form-label">
-						Reasoning <span class="text-body-secondary fw-normal">(optional)</span>
+						Reasoning <span class="fg-1 fw-normal">(optional)</span>
 					</label>
 					<InputSelect id="modal-planningReasoning" @bind-Value="Project.PlanningReasoningEffort"
-								 class="form-select"
+								 class="form-control"
 								 disabled="@(!Project.PlanningProviderId.HasValue || !PlanningReasoningOptions.Any())">
 						<option value="">Provider default</option>
 						@foreach (var reasoning in PlanningReasoningOptions)

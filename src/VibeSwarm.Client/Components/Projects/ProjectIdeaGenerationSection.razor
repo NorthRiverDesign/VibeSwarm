@@ -1,9 +1,9 @@
 @if (Project != null)
 {
-	<div class="mb-3">
+	<div class="mb-5">
 		<label for="modal-ideaInferenceProvider" class="form-label">Idea provider</label>
 		<InputSelect TValue="Guid?" id="modal-ideaInferenceProvider" @bind-Value="Project.IdeaInferenceProviderId"
-					 @bind-Value:after="HandleProviderChanged" class="form-select">
+					 @bind-Value:after="HandleProviderChanged" class="form-control">
 			<option value="">Use the coding provider</option>
 			@foreach (var provider in AvailableInferenceProviders)
 			{
@@ -18,12 +18,12 @@
 
 	@if (Project.IdeaInferenceProviderId.HasValue)
 	{
-		<div class="mb-3">
+		<div class="mb-5">
 			<label for="modal-ideaInferenceModel" class="form-label">
-				Idea model <span class="text-body-secondary fw-normal">(optional)</span>
+				Idea model <span class="fg-1 fw-normal">(optional)</span>
 			</label>
 			<div class="input-group">
-				<InputSelect id="modal-ideaInferenceModel" @bind-Value="Project.IdeaInferenceModelId" class="form-select"
+				<InputSelect id="modal-ideaInferenceModel" @bind-Value="Project.IdeaInferenceModelId" class="form-control"
 							 disabled="@(!InferenceModels.Any())">
 					<option value="">Provider default</option>
 					@foreach (var model in InferenceModels)
