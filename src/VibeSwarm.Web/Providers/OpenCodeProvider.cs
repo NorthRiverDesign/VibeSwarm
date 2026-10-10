@@ -16,6 +16,7 @@ public class OpenCodeProvider : CliProviderBase
     private static readonly Version VariantVersion = new(1, 3, 0);
     private static readonly Version ForkSessionVersion = new(1, 2, 6);
     private static readonly Version SkipPermissionsVersion = new(1, 4, 0);
+    private static readonly Version AutoApproveVersion = new(1, 17, 12);
     private static readonly Version ThinkingVersion = new(1, 4, 0);
 
     private readonly string? _apiEndpoint;
@@ -268,7 +269,12 @@ public class OpenCodeProvider : CliProviderBase
 
         // Skip permission prompts in `opencode run` (v1.4.0+). Brings OpenCode dispatch to parity with
         // Claude/Copilot headless modes so tool calls don't block for a TTY confirm.
-        if (CurrentSkipPermissions && SupportsCliVersion(SkipPermissionsVersion))
+        // v1.17.12 renamed it --auto and kept the old name only as a hidden alias.
+        if (CurrentSkipPermissions && SupportsCliVersion(AutoApproveVersion))
+        {
+            args.Add("--auto");
+        }
+        else if (CurrentSkipPermissions && SupportsCliVersion(SkipPermissionsVersion))
         {
             args.Add("--dangerously-skip-permissions");
         }

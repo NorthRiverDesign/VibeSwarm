@@ -194,6 +194,37 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void Claude_ResumingWithAppendSystemPrompt_RendersSystemPromptFresh()
+    {
+        // A resumed conversation otherwise reuses the prompt recorded on its first run,
+        // dropping this run's rules (prior-work restore notes, current project memory).
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 267);
+        provider.ApplyOptions(new ExecutionOptions { AppendSystemPrompt = "extra rules" });
+
+        var args = provider.BuildCliArgs("test", "session-123");
+
+        var idx = args.IndexOf("--system-prompt-snapshot");
+        Assert.True(idx >= 0);
+        Assert.Equal("off", args[idx + 1]);
+    }
+
+    [Theory]
+    [InlineData(267, null, "extra rules")]
+    [InlineData(266, "session-123", "extra rules")]
+    [InlineData(296, "session-123", null)]
+    public void Claude_NewSessionOldCliOrNoSystemPrompt_KeepsRecordedSystemPrompt(int patch, string? sessionId, string? appendSystemPrompt)
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, patch);
+        provider.ApplyOptions(new ExecutionOptions { AppendSystemPrompt = appendSystemPrompt });
+
+        var args = provider.BuildCliArgs("test", sessionId);
+
+        Assert.DoesNotContain("--system-prompt-snapshot", args);
+    }
+
+    [Fact]
     public void Claude_WithAdditionalDirectories_AddsDistinctTrimmedAddDirFlags()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
@@ -1833,6 +1864,20 @@ public sealed class ProviderCliArgsTests
         var args = provider.BuildRunCommandArgs("test", null);
 
         Assert.Contains("--dangerously-skip-permissions", args);
+        Assert.DoesNotContain("--auto", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithSkipPermissions_AndAutoVersion_UsesAutoFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 17, 12);
+        provider.ApplyOptions(new ExecutionOptions { SkipPermissions = true });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.Contains("--auto", args);
+        Assert.DoesNotContain("--dangerously-skip-permissions", args);
     }
 
     [Fact]

@@ -57,6 +57,7 @@ public class ClaudeProvider : CliProviderBase
     private static readonly Version SessionNameVersion = new(2, 1, 0);
     private static readonly Version IncludeHookEventsVersion = new(2, 1, 0);
     private static readonly Version AppendSystemPromptFileVersion = new(2, 1, 0);
+    private static readonly Version SystemPromptSnapshotVersion = new(2, 1, 267);
     private UsageLimits? _lastObservedUsageLimits;
 
     /// <summary>Whether runs can authenticate with an API key, which <c>--bare</c> requires.</summary>
@@ -522,6 +523,19 @@ public class ClaudeProvider : CliProviderBase
         {
             args.Add("--append-system-prompt-file");
             args.Add(CurrentAppendSystemPromptFile);
+        }
+
+        // Since 2.1.267 a resumed conversation reuses the system prompt recorded on its first run and
+        // ignores the text passed now, so a follow-up would lose this run's rules (restored prior work,
+        // current project memory). Render it fresh from this run's flags instead.
+        var resumesSession = !string.IsNullOrEmpty(sessionId) || CurrentContinueLastSession;
+        var passesSystemPrompt = !string.IsNullOrEmpty(CurrentSystemPrompt)
+            || !string.IsNullOrEmpty(CurrentAppendSystemPrompt)
+            || !string.IsNullOrEmpty(CurrentAppendSystemPromptFile);
+        if (resumesSession && passesSystemPrompt && SupportsCliVersion(SystemPromptSnapshotVersion))
+        {
+            args.Add("--system-prompt-snapshot");
+            args.Add("off");
         }
 
         // Move dynamic (per-machine/per-run) system prompt sections into the first user message so the

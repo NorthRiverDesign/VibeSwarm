@@ -285,7 +285,7 @@ public sealed class ProviderVersionAlignmentTests
 	[InlineData(null, VersionSupportState.Unknown)]
 	[InlineData("1.9.9", VersionSupportState.Unsupported)]
 	[InlineData("2.1.108", VersionSupportState.Older)]
-	[InlineData("2.1.287", VersionSupportState.Verified)]
+	[InlineData("2.1.296", VersionSupportState.Verified)]
 	[InlineData("2.2.0", VersionSupportState.Newer)]
 	public void ProviderVersionReference_EvaluatesInstalledVersionAgainstTarget(string? version, VersionSupportState expected)
 	{
@@ -324,7 +324,7 @@ public sealed class ProviderVersionAlignmentTests
 		var older = ProviderVersionReference.Describe(ProviderType.Claude, new Version(2, 1, 108));
 
 		Assert.Contains("2.1.108", older);
-		Assert.Contains("2.1.287", older);
+		Assert.Contains("2.1.296", older);
 	}
 
 	[Fact]

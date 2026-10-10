@@ -19,25 +19,26 @@ public static partial class ProviderVersionReference
 	/// <summary>
 	/// Date the provider integrations were last checked against live CLI releases.
 	/// </summary>
-	public static readonly DateOnly LastReviewed = new(2026, 10, 1);
+	public static readonly DateOnly LastReviewed = new(2026, 10, 10);
 
 	private static readonly Dictionary<ProviderType, ProviderVersionTarget> Targets = new()
 	{
 		[ProviderType.Claude] = new ProviderVersionTarget(
 			ProviderType.Claude,
 			Executable: "claude",
-			VerifiedAgainst: new Version(2, 1, 287),
+			VerifiedAgainst: new Version(2, 1, 296),
 			MinimumSupported: new Version(2, 0, 0),
 			DocumentationUrl: "https://code.claude.com/docs/en/cli-reference",
 			Notes: "Usage limits arrive as 'rate_limit_event' stream-json messages carrying "
 				+ "five_hour and seven_day windows. Effort levels are low/medium/high/xhigh/max; "
 				+ "'standard' is ignored with a warning, not aliased. --bare never reads the OAuth "
-				+ "login, so it needs an API key."),
+				+ "login, so it needs an API key. Since 2.1.267 a resumed conversation reuses the "
+				+ "system prompt recorded on its first run unless --system-prompt-snapshot off is passed."),
 
 		[ProviderType.Copilot] = new ProviderVersionTarget(
 			ProviderType.Copilot,
 			Executable: "copilot",
-			VerifiedAgainst: new Version(1, 0, 91),
+			VerifiedAgainst: new Version(1, 0, 95),
 			MinimumSupported: new Version(1, 0, 0),
 			DocumentationUrl: "https://docs.github.com/en/copilot/how-tos/copilot-cli",
 			Notes: "Billing is moving from premium requests to GitHub AI Credits (--max-ai-credits). "
@@ -49,12 +50,13 @@ public static partial class ProviderVersionReference
 		[ProviderType.OpenCode] = new ProviderVersionTarget(
 			ProviderType.OpenCode,
 			Executable: "opencode",
-			VerifiedAgainst: new Version(1, 18, 31),
+			VerifiedAgainst: new Version(1, 18, 35),
 			MinimumSupported: new Version(1, 0, 0),
 			DocumentationUrl: "https://opencode.ai/docs/cli",
 			Notes: "Bring-your-own-model harness with no first-party quota. Reasoning effort maps to "
-				+ "--variant. Metering depends entirely on the configured model provider, so locally "
-				+ "hosted open-source models are unmetered."),
+				+ "--variant. --auto (1.17.12+) replaced --dangerously-skip-permissions, which stays "
+				+ "as a hidden alias. Metering depends entirely on the configured model provider, so "
+				+ "locally hosted open-source models are unmetered."),
 	};
 
 	/// <summary>
