@@ -117,7 +117,7 @@
 					var headerId = $"diffHeader{index}";
 					var isExpanded = _expandedFiles.Contains(index);
 					<details class="accordion-item" open="@isExpanded">
-						<summary class="accordion-header" " : "collapsed")" @onclick="() => ToggleFile(index)" @onclick:preventDefault="true">
+						<summary class="accordion-header" @onclick="() => ToggleFile(index)" @onclick:preventDefault="true">
 							<span class="me-3">
 								@if (file.IsNew)
 								{

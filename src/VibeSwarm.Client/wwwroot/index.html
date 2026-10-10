@@ -703,6 +703,26 @@
                     details: reason && reason.stack ? reason.stack : String(reason)
                 });
             });
+
+            // A render crash only reaches the console before Blazor shows #blazor-error-ui, so report
+            // the first one; otherwise a crash on a phone leaves nothing to diagnose on the server.
+            (function () {
+                var consoleError = console.error;
+                var reported = false;
+                console.error = function () {
+                    consoleError.apply(console, arguments);
+                    var text = Array.prototype.join.call(arguments, ' ');
+                    if (reported || text.indexOf('Unhandled exception rendering component') === -1) return;
+
+                    reported = true;
+                    window.vibeSwarmDiagnostics.reportCriticalError({
+                        source: 'client',
+                        category: 'render-crash',
+                        message: text.split('\n')[0],
+                        details: text
+                    });
+                };
+            })();
         </script>
 
         <!-- PWA Install Prompt -->

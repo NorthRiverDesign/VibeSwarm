@@ -73,7 +73,7 @@
                         var isExpanded = _expandedItems.Contains(index);
 
                         <details class="accordion-item" open="@isExpanded">
-              <summary class="accordion-header py-3 px-5" " : "collapsed") py-3 px-5" @onclick="() => ToggleExpanded(index)" @onclick:preventDefault="true">
+                            <summary class="accordion-header py-3 px-5" @onclick="() => ToggleExpanded(index)" @onclick:preventDefault="true">
                                 <span class="d-flex align-items-center gap-3 w-100">
                                     @if (file.IsNew)
                                     {
