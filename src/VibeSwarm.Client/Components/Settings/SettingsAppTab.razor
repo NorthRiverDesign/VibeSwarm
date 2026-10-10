@@ -5,6 +5,7 @@
 @inject NotificationService NotificationService
 @inject ICriticalErrorLogService CriticalErrorLogService
 @inject DeveloperUpdateOverlayService DeveloperUpdateOverlayService
+@inject NavigationManager Navigation
 @using VibeSwarm.Shared.Models
 
 @if (_isLoading)
@@ -140,6 +141,38 @@ else
 Recurring schedules and timestamp displays use this timezone. Existing schedules keep the same local
 clock time when you change it.
 </div>
+</div>
+
+</AccordionSection>
+
+<AccordionSection Title="Connection" Icon="shield-lock"
+Summary="Whether browsers can also reach VibeSwarm over HTTPS"
+@bind-IsOpen="_openConnection">
+
+<div class="mb-0">
+<div class="form-field">
+<div class="switch">
+	<input role="switch" switch type="checkbox" id="enableHttps"
+	   @bind="_settings.EnableHttps" />
+</div>
+<label for="enableHttps">
+Serve over HTTPS
+</label>
+</div>
+<div class="form-text">
+Off by default: VibeSwarm serves plain HTTP, so phones on your network or VPN open it without a
+certificate warning. When on, it also serves HTTPS with a self-signed certificate, which browsers
+warn about until you install it from <a href="/cert" target="_blank">/cert</a>. Browsers only allow
+installing VibeSwarm as an app and keeping the screen awake over HTTPS. Takes effect the next time
+VibeSwarm starts.
+</div>
+@if (!_settings.EnableHttps && IsViewingOverHttps)
+{
+<div class="small fg-emphasis-warning mt-3">
+You're using HTTPS now. After VibeSwarm restarts, open its <code>http://</code> address instead
+(port 5000 unless <code>ASPNETCORE_URLS</code> sets another).
+</div>
+}
 </div>
 
 </AccordionSection>
@@ -371,6 +404,7 @@ else
 
 	private AppSettings _settings = new();
 	private bool _openProjectDefaults = true;
+	private bool _openConnection;
 	private bool _openAgentQuality;
 	private bool _openIdeaPrompts;
 	private bool _openMarketplace;
@@ -390,6 +424,8 @@ else
 	private bool _showGitHubToken;
 
 	private void ToggleGitHubTokenVisibility() => _showGitHubToken = !_showGitHubToken;
+
+	private bool IsViewingOverHttps => Navigation.BaseUri.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
 
 	private string _placeholder => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
 	private string _examplePath => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";

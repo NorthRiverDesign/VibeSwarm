@@ -37,6 +37,7 @@ public sealed class SettingsServiceTests : IDisposable
 			InjectRepoMap = false,
 			InjectEfficiencyRules = false,
 			EnableCommitAttribution = false,
+			EnableHttps = true,
 			CriticalErrorLogRetentionDays = 45,
 			CriticalErrorLogMaxEntries = 350,
 			IdeaExpansionPromptTemplate = "Expand {{idea}}",
@@ -52,6 +53,7 @@ public sealed class SettingsServiceTests : IDisposable
 		Assert.False(saved.InjectRepoMap);
 		Assert.False(saved.InjectEfficiencyRules);
 		Assert.False(saved.EnableCommitAttribution);
+		Assert.True(saved.EnableHttps);
 		Assert.Equal(45, saved.CriticalErrorLogRetentionDays);
 		Assert.Equal(350, saved.CriticalErrorLogMaxEntries);
 		Assert.Equal("Expand {{idea}}", saved.IdeaExpansionPromptTemplate);
@@ -69,6 +71,7 @@ public sealed class SettingsServiceTests : IDisposable
 		var settings = await service.GetSettingsAsync();
 
 		Assert.True(settings.EnableCommitAttribution);
+		Assert.False(settings.EnableHttps);
 	}
 
 	[Fact]

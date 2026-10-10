@@ -249,6 +249,11 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(true);
 
+                    b.Property<bool>("EnableHttps")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
+
                     b.Property<bool>("EnablePromptStructuring")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER")

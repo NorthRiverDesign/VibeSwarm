@@ -43,24 +43,13 @@ var builder = WebApplication.CreateBuilder(args);
 var runtimeDatabaseConfigurationStore = new DatabaseRuntimeConfigurationStore();
 var runtimeDatabaseConfiguration = runtimeDatabaseConfigurationStore.Load();
 
-// Generate self-signed certificate if it doesn't exist
+// Self-signed certificate for HTTPS, generated only when HTTPS is turned on in Settings
 var certPath = Path.Combine(AppContext.BaseDirectory, "vibeswarm.pfx");
 var certPassword = "vibeswarm-dev-cert";
 
-if (!File.Exists(certPath))
-{
-    Console.WriteLine("Generating self-signed certificate for HTTPS...");
-
-    var cert = VibeSwarm.Web.CertificateGenerator.GenerateSelfSignedCertificate("VibeSwarm");
-    var certBytes = cert.Export(X509ContentType.Pfx, certPassword);
-    File.WriteAllBytes(certPath, certBytes);
-
-    Console.WriteLine($"Self-signed certificate created at: {certPath}");
-    Console.WriteLine("Using self-signed certificate. Your browser will show a security warning - this is expected.");
-}
-
 // Configure Kestrel HTTPS defaults with the self-signed certificate.
-// URL binding is controlled by ASPNETCORE_URLS (set in .env or environment).
+// Addresses come from ASPNETCORE_URLS and the Serve over HTTPS setting; they are bound after the
+// database is migrated (see ServerUrlResolver below). This callback only runs for an https:// address.
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
     serverOptions.ConfigureHttpsDefaults(httpsOptions =>
@@ -68,12 +57,6 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
         httpsOptions.ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile(certPath, certPassword);
     });
 });
-
-// Fallback URLs if ASPNETCORE_URLS is not set in .env or environment
-if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
-{
-    builder.WebHost.UseUrls("http://localhost:5000", "https://localhost:5001");
-}
 
 var environmentConnectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Default")
 	?? Environment.GetEnvironmentVariable("CONNECTIONSTRINGS__DEFAULT");
@@ -207,6 +190,7 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     options.Cookie.SameSite = SameSiteMode.Lax;
     options.Cookie.Name = "VibeSwarm.Auth";
+    options.CookieManager = new SchemeScopedCookieManager();
 
     // Default expiration for session cookies (when Remember Me is NOT checked)
     // This is the server-side ticket lifetime
@@ -269,6 +253,37 @@ using (var scope = app.Services.CreateScope())
         .CreateMigrationContext(connectionString, databaseProvider))
     {
         await migrationContext.Database.MigrateAsync();
+    }
+
+    // Serve HTTP only unless HTTPS is turned on in Settings, so LAN and VPN browsers don't
+    // hit a self-signed certificate warning. Read once here; changing it needs a restart.
+    var enableHttps = await scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>().AppSettings
+        .AsNoTracking()
+        .OrderBy(s => s.Id)
+        .Select(s => s.EnableHttps)
+        .FirstOrDefaultAsync();
+    var serverUrls = VibeSwarm.Web.ServerUrlResolver.Resolve(app.Configuration[WebHostDefaults.ServerUrlsKey], enableHttps);
+    if (serverUrls.Message is not null)
+    {
+        Console.WriteLine(serverUrls.Message);
+    }
+
+    if (serverUrls.ServesHttps && !File.Exists(certPath))
+    {
+        Console.WriteLine("Generating self-signed certificate for HTTPS...");
+
+        var cert = VibeSwarm.Web.CertificateGenerator.GenerateSelfSignedCertificate("VibeSwarm");
+        var certBytes = cert.Export(X509ContentType.Pfx, certPassword);
+        File.WriteAllBytes(certPath, certBytes);
+
+        Console.WriteLine($"Self-signed certificate created at: {certPath}");
+        Console.WriteLine("Using self-signed certificate. Your browser will show a security warning - this is expected.");
+    }
+
+    app.Urls.Clear();
+    foreach (var url in serverUrls.Urls)
+    {
+        app.Urls.Add(url);
     }
 
     // Initialize admin user and roles

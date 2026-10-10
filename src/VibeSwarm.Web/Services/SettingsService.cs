@@ -227,6 +227,7 @@ public class SettingsService : ISettingsService
 			existing.InjectRepoMap = settings.InjectRepoMap;
 			existing.InjectEfficiencyRules = settings.InjectEfficiencyRules;
 			existing.EnableCommitAttribution = settings.EnableCommitAttribution;
+			existing.EnableHttps = settings.EnableHttps;
 			existing.CriticalErrorLogRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			existing.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
 			existing.IdeaExpansionPromptTemplate = NormalizePromptTemplate(

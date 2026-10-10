@@ -21,6 +21,7 @@ public class AppSettingsExportDto
 	public bool InjectRepoMap { get; set; }
 	public bool InjectEfficiencyRules { get; set; }
 	public bool EnableCommitAttribution { get; set; } = true;
+	public bool EnableHttps { get; set; }
 	public int CriticalErrorLogRetentionDays { get; set; } = AppSettings.DefaultCriticalErrorLogRetentionDays;
 	public int CriticalErrorLogMaxEntries { get; set; } = AppSettings.DefaultCriticalErrorLogMaxEntries;
 }

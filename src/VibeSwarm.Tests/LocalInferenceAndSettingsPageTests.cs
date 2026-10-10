@@ -76,6 +76,7 @@ return output.ToHtmlString();
 	Assert.Contains(">Eastern (UTC-0", html);
 	Assert.DoesNotContain("Europe/", html);
 	Assert.Contains("Enable provider commit attribution", html);
+	Assert.Contains("Serve over HTTPS", html);
 	Assert.Contains("Idea Prompt Templates", html);
 	Assert.Contains("Idea expansion template", html);
 	Assert.Contains("Direct idea implementation template", html);

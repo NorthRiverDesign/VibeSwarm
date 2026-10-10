@@ -102,19 +102,20 @@ Only copy `.env` when you want to customize ports, pre-create the first admin ac
 
 The application will:
 
-- Generate a self-signed HTTPS certificate (first run only)
 - Run database migrations (SQLite by default, zero configuration)
 - Auto-detect installed CLI agents
-- Start on **https://localhost:5001** and **http://localhost:5000**
+- Start on **http://localhost:5000**
 
 ### 5. Open Your Browser
 
-Navigate to `https://localhost:5001`
+Navigate to `http://localhost:5000`
 
-Your browser will show a certificate warning (self-signed cert). This is expected:
+To also serve HTTPS, turn on **Settings → Connection → Serve over HTTPS** and restart VibeSwarm. It then generates a self-signed certificate and listens on **https://localhost:5001** as well. Your browser will show a certificate warning until you trust it (devices can install it from `/cert`):
 
 - **Chrome/Edge**: Click "Advanced" → "Proceed to localhost"
 - **Firefox**: Click "Advanced" → "Accept the Risk and Continue"
+
+Browsers only allow installing VibeSwarm as an app and keeping the screen awake over HTTPS (or on `localhost`).
 
 On first launch you will be redirected to a setup wizard to create your admin account. For automated deployments, set `DEFAULT_ADMIN_PASS` and optionally `DEFAULT_ADMIN_USER` in your `.env` file before starting the app.
 
@@ -141,7 +142,7 @@ The `.env` file is the **only** configuration you need. Place it in the repo roo
 
 | Variable                     | Default                                        | Description                                              |
 | ---------------------------- | ---------------------------------------------- | -------------------------------------------------------- |
-| `ASPNETCORE_URLS`            | `https://localhost:5001;http://localhost:5000` | Bind addresses. Use `0.0.0.0` for remote access.         |
+| `ASPNETCORE_URLS`            | `http://localhost:5000`                        | Bind addresses. Use `0.0.0.0` for remote access. `https://` ones need HTTPS on in Settings. |
 | `DEFAULT_ADMIN_USER`         | `admin` when only a password is provided       | Optional admin username for automated setup.             |
 | `DEFAULT_ADMIN_PASS`         | _(empty — setup wizard)_                       | Admin password. Min 8 chars, upper + lower + digit.      |
 | `DATABASE_PROVIDER`          | `sqlite`                                       | Database engine: `sqlite` or `mysql`.                    |
@@ -230,7 +231,7 @@ ExecStart=/opt/vibeswarm/VibeSwarm.Web
 Restart=always
 RestartSec=10
 KillSignal=SIGINT
-Environment=ASPNETCORE_URLS=https://0.0.0.0:5001;http://0.0.0.0:5000
+Environment=ASPNETCORE_URLS=http://0.0.0.0:5000;https://0.0.0.0:5001
 Environment=ASPNETCORE_ENVIRONMENT=Production
 
 [Install]
@@ -256,7 +257,7 @@ nssm start VibeSwarm
 
 ## Security
 
-- VibeSwarm generates a self-signed HTTPS certificate on first run. For production, place behind a reverse proxy with a real certificate.
+- VibeSwarm serves plain HTTP by default. Turning on Settings → Connection → Serve over HTTPS adds HTTPS with a self-signed certificate. For production, place it behind a reverse proxy with a real certificate.
 - The application calls CLI tools on the host system. It does **not** store API keys — your agents authenticate through their own configurations.
 - All user passwords are hashed with ASP.NET Core Identity defaults.
 
@@ -266,16 +267,16 @@ nssm start VibeSwarm
 
 ### Certificate Warning
 
-Expected with self-signed certificates. Accept the warning in your browser, or replace with a real cert behind a reverse proxy.
+Expected with self-signed certificates, which VibeSwarm only uses while Settings → Connection → Serve over HTTPS is on. Turn it off and restart to serve HTTP only, accept the warning in your browser, or put a real certificate in front with a reverse proxy.
 
 ### Port Already in Use
 
 ```bash
 # Windows
-netstat -ano | findstr :5001
+netstat -ano | findstr :5000
 
 # Linux/macOS
-lsof -i :5001
+lsof -i :5000
 ```
 
 Change the port in `.env` via `ASPNETCORE_URLS`.

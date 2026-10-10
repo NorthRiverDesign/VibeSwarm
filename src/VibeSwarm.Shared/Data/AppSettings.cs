@@ -54,6 +54,13 @@ public class AppSettings
 	/// </summary>
 	public bool EnableCommitAttribution { get; set; } = true;
 
+	/// <summary>
+	/// Whether to serve the app over HTTPS with its self-signed certificate as well as HTTP.
+	/// Off by default, so browsers on the LAN or a VPN open it without a certificate warning.
+	/// Read once at startup, so a change applies after the app restarts.
+	/// </summary>
+	public bool EnableHttps { get; set; }
+
 	[Range(MinCriticalErrorLogRetentionDays, MaxCriticalErrorLogRetentionDays)]
 	public int CriticalErrorLogRetentionDays { get; set; } = DefaultCriticalErrorLogRetentionDays;
 
