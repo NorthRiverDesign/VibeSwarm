@@ -766,7 +766,8 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 				.GetProperty("playwright");
 			var environment = playwrightServer.GetProperty("env");
 
-			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "ms-playwright"), environment.GetProperty("PLAYWRIGHT_BROWSERS_PATH").GetString());
+			// Browsers come from the shared cache the Settings installer fills, not a per-job download.
+			Assert.Equal(BrowserToolsLocator.GetPlaywrightBrowsersPath(), environment.GetProperty("PLAYWRIGHT_BROWSERS_PATH").GetString());
 			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "tmp"), environment.GetProperty("TMPDIR").GetString());
 			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "tmp"), environment.GetProperty("TMP").GetString());
 			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "tmp"), environment.GetProperty("TEMP").GetString());
@@ -792,6 +793,69 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 				Directory.Delete(workingDirectory, recursive: true);
 			}
 		}
+	}
+
+	[Theory]
+	[InlineData(ProviderType.Claude)]
+	[InlineData(ProviderType.Copilot)]
+	[InlineData(ProviderType.OpenCode)]
+	public async Task GenerateExecutionResourcesAsync_WithBrowser_GivesProjectWithoutWebEnvironmentPlaywright(ProviderType providerType)
+	{
+		var service = new McpConfigService();
+		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-browser-tools-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingDirectory);
+		McpExecutionResources? resources = null;
+
+		try
+		{
+			resources = await service.GenerateExecutionResourcesAsync(
+				providerType,
+				new Project { Name = "Api", WorkingPath = workingDirectory },
+				workingDirectory,
+				browserExecutablePath: "/usr/bin/chromium");
+
+			Assert.NotNull(resources?.ConfigFilePath);
+			Assert.NotNull(resources!.BrowserArtifactsDirectory);
+
+			using var document = JsonDocument.Parse(await File.ReadAllTextAsync(resources.ConfigFilePath!));
+			List<string?> command;
+			JsonElement environment;
+			if (providerType == ProviderType.OpenCode)
+			{
+				var server = document.RootElement.GetProperty("mcp").GetProperty("playwright");
+				command = server.GetProperty("command").EnumerateArray().Select(value => value.GetString()).ToList();
+				environment = server.GetProperty("environment");
+			}
+			else
+			{
+				var server = document.RootElement.GetProperty("mcpServers").GetProperty("playwright");
+				command = [server.GetProperty("command").GetString(), .. server.GetProperty("args").EnumerateArray().Select(value => value.GetString())];
+				environment = server.GetProperty("env");
+			}
+
+			Assert.Equal(
+				["npx", "-y", "@playwright/mcp@latest", "--browser", "chromium", "--executable-path", "/usr/bin/chromium", "--headless", "--isolated"],
+				command);
+			Assert.Equal(BrowserToolsLocator.GetPlaywrightBrowsersPath(), environment.GetProperty("PLAYWRIGHT_BROWSERS_PATH").GetString());
+			Assert.False(environment.TryGetProperty("APP_URL", out _));
+		}
+		finally
+		{
+			service.CleanupExecutionResources(resources);
+			Directory.Delete(workingDirectory, recursive: true);
+		}
+	}
+
+	[Fact]
+	public async Task GenerateExecutionResourcesAsync_WithoutBrowserOrWebEnvironment_SkipsPlaywright()
+	{
+		var service = new McpConfigService();
+
+		var resources = await service.GenerateExecutionResourcesAsync(
+			ProviderType.Claude,
+			new Project { Name = "Api", WorkingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-missing-{Guid.NewGuid():N}") });
+
+		Assert.Null(resources);
 	}
 
 	[Fact]

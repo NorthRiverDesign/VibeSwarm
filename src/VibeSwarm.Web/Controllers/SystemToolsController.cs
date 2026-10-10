@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VibeSwarm.Shared.Utilities;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Web.Controllers;
 
@@ -10,6 +11,11 @@ namespace VibeSwarm.Web.Controllers;
 [Authorize]
 public class SystemToolsController : ControllerBase
 {
+    // One install at a time: two apt-get runs fight over the dpkg lock, and a second tap from a
+    // phone that lost track of the first install shouldn't start another.
+    private static readonly SemaphoreSlim InstallGate = new(1, 1);
+    private static volatile string? _installingTool;
+
     [HttpGet("detected")]
     public async Task<IActionResult> GetDetectedTools(CancellationToken ct)
     {
@@ -19,29 +25,49 @@ public class SystemToolsController : ControllerBase
         var npxResult = await RunShellCommandAsync("npx --version", TimeSpan.FromSeconds(10), ct);
         var npxAvailable = npxResult.Success;
 
-        // Detect Playwright browsers by checking the chromium executable in common cache locations
-        var playwrightResult = await DetectPlaywrightBrowsersAsync(ct);
+        // The same lookup jobs use, so "installed" here means agents get this browser
+        var chromiumPath = BrowserToolsLocator.FindChromiumExecutable();
+        var chromiumVersion = chromiumPath is null ? null : await GetChromiumVersionAsync(chromiumPath, ct);
 
         return Ok(new
         {
             NodeAvailable = nodeResult.Success,
             NodeVersion = nodeVersion,
             NpxAvailable = npxAvailable,
-            PlaywrightBrowsersInstalled = playwrightResult.Installed,
-            PlaywrightStatus = playwrightResult.Status
+            PlaywrightBrowsersInstalled = chromiumPath is not null,
+            PlaywrightStatus = chromiumPath is not null
+                ? $"{chromiumVersion ?? "Chromium"} at {chromiumPath}"
+                : "Chromium browser not installed",
+            ChromiumPath = chromiumPath,
+            ChromiumVersion = chromiumVersion,
+            InstallingTool = _installingTool
         });
     }
 
     [HttpPost("install/{tool}")]
-    public async Task<IActionResult> InstallTool(string tool, CancellationToken ct)
+    public async Task<IActionResult> InstallTool(string tool)
     {
         var command = GetInstallCommand(tool);
         if (command is null)
             return BadRequest(new { Success = false, Error = $"Unknown tool: {tool}" });
 
-        var timeout = tool.ToLowerInvariant() == "playwright" ? TimeSpan.FromMinutes(10) : TimeSpan.FromMinutes(5);
-        var result = await RunShellCommandAsync(command, timeout, ct);
-        return Ok(new { result.Success, result.Output, result.Error });
+        if (!await InstallGate.WaitAsync(0))
+            return Conflict(new { Success = false, Error = $"Another install ({_installingTool}) is still running. Check again once it finishes." });
+
+        try
+        {
+            _installingTool = tool.ToLowerInvariant();
+            var timeout = _installingTool == "playwright" ? TimeSpan.FromMinutes(10) : TimeSpan.FromMinutes(5);
+            // Not tied to the request: a phone that sleeps mid-install drops the connection, and the
+            // installer should still finish while holding the gate.
+            var result = await RunShellCommandAsync(command, timeout, CancellationToken.None);
+            return Ok(new { result.Success, result.Output, result.Error });
+        }
+        finally
+        {
+            _installingTool = null;
+            InstallGate.Release();
+        }
     }
 
     [HttpGet("install-info/{tool}")]
@@ -99,40 +125,42 @@ public class SystemToolsController : ControllerBase
         return "sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs npm";
     }
 
-    private static string GetPlaywrightInstallCommand()
+    internal static string GetPlaywrightInstallCommand()
     {
-        // Install Playwright chromium browser with system dependencies.
-        // --with-deps installs OS-level libraries (libgbm, libasound, etc.) required by chromium.
-        // ARM64 (Raspberry Pi) is supported via chromium-browser fallback on Debian/Ubuntu.
-        return "npx -y playwright install chromium --with-deps";
+        // Downloads Chromium into the shared Playwright cache that jobs read (BrowserToolsLocator), then
+        // fetches the Playwright MCP package so the first job doesn't wait on npm.
+        const string fetchMcpServer = "npx -y @playwright/mcp@latest --version";
+        if (OperatingSystem.IsWindows())
+            return $"npx -y playwright@latest install chromium; if ($?) {{ {fetchMcpServer} }}";
+
+        var installNode = $"(command -v npx >/dev/null 2>&1 || ({GetNodeJsInstallCommand()}))";
+        if (OperatingSystem.IsMacOS())
+            return $"{installNode} && npx -y playwright@latest install chromium && {fetchMcpServer}";
+
+        // --with-deps apt-installs the libraries Chromium needs (libgbm, libasound, ...), which takes root.
+        // Without passwordless sudo, sudo would wait on a password nobody can type, so skip it.
+        return $"{installNode} && " +
+               "if [ \"$(id -u)\" -eq 0 ] || sudo -n true 2>/dev/null; " +
+               "then npx -y playwright@latest install --with-deps chromium; " +
+               "else npx -y playwright@latest install chromium; fi " +
+               $"&& {fetchMcpServer}";
     }
 
-    private static async Task<(bool Installed, string Status)> DetectPlaywrightBrowsersAsync(CancellationToken ct)
+    private static async Task<string?> GetChromiumVersionAsync(string chromiumPath, CancellationToken ct)
     {
-        // Try running npx playwright --version to see if it's available, then check for browsers
-        var versionResult = await RunShellCommandAsync("npx -y playwright --version", TimeSpan.FromSeconds(30), ct);
-        if (!versionResult.Success)
-            return (false, "Playwright not available (Node.js/npx required)");
+        // chrome.exe is a GUI app that prints nothing for --version
+        if (OperatingSystem.IsWindows())
+            return null;
 
-        // Check common Playwright browser cache locations
-        var homeDir = Environment.GetEnvironmentVariable("HOME") ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var browserPaths = new[]
-        {
-            Path.Combine(homeDir, ".cache", "ms-playwright"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ms-playwright")
-        };
+        var quotedPath = $"'{chromiumPath.Replace("'", "'\\''", StringComparison.Ordinal)}'";
+        var result = await RunShellCommandAsync($"{quotedPath} --version", TimeSpan.FromSeconds(10), ct);
+        var version = result.Success ? result.Output?.Trim().Split('\n')[0].Trim() : null;
+        if (string.IsNullOrEmpty(version))
+            return null;
 
-        foreach (var browserPath in browserPaths)
-        {
-            if (Directory.Exists(browserPath))
-            {
-                var chromiumDirs = Directory.GetDirectories(browserPath, "chromium*");
-                if (chromiumDirs.Length > 0)
-                    return (true, $"Chromium installed ({Path.GetFileName(chromiumDirs[^1])})");
-            }
-        }
-
-        return (false, "Chromium browser not installed");
+        // "Chromium 154.0.8037.92 built on Debian GNU/Linux 13 (trixie)" reads fine without the build note
+        var builtOn = version.IndexOf(" built on ", StringComparison.Ordinal);
+        return builtOn > 0 ? version[..builtOn] : version;
     }
 
     private static async Task<ProcessResult> RunShellCommandAsync(string command, TimeSpan timeout, CancellationToken cancellationToken)

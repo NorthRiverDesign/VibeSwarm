@@ -1057,6 +1057,38 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void OpenCode_McpConfig_ReachesTheCliThroughOpenCodeConfigEnvironmentVariable()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        var callerEnvironment = new Dictionary<string, string> { ["APP_URL"] = "http://localhost:5000" };
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            McpConfigPath = "/tmp/vibeswarm/mcp/opencode-mcp-test.json",
+            EnvironmentVariables = callerEnvironment
+        });
+
+        provider.ApplyMcpConfigEnvironmentVariable();
+        var environment = provider.GetEffectiveEnvironmentVariables();
+
+        Assert.NotNull(environment);
+        Assert.Equal("/tmp/vibeswarm/mcp/opencode-mcp-test.json", environment!["OPENCODE_CONFIG"]);
+        Assert.Equal("http://localhost:5000", environment["APP_URL"]);
+        Assert.False(callerEnvironment.ContainsKey("OPENCODE_CONFIG"));
+        Assert.DoesNotContain(provider.BuildRunCommandArgs("test", null), arg => arg.Contains("opencode-mcp-test.json"));
+    }
+
+    [Fact]
+    public void OpenCode_WithoutMcpConfig_LeavesOpenCodeConfigUnset()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.ApplyOptions(new ExecutionOptions());
+
+        provider.ApplyMcpConfigEnvironmentVariable();
+
+        Assert.False(provider.GetEffectiveEnvironmentVariables()?.ContainsKey("OPENCODE_CONFIG") ?? false);
+    }
+
+    [Fact]
     public void OpenCode_WithSessionId_AddsSessionFlag()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));

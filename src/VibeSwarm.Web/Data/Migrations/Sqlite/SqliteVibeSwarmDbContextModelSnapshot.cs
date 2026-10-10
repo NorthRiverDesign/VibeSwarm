@@ -244,6 +244,11 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("EnableBrowserTools")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
                     b.Property<bool>("EnableCommitAttribution")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER")

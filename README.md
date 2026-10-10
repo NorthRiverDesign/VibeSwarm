@@ -69,6 +69,18 @@ folders and files (`.vibeswarm/`, `.claude/`, `.opencode/`, `.copilot/`, `CLAUDE
 and a run that only leaves such files behind doesn't count as a code change. Agents are also
 told to keep plans, todo lists and scratch work out of the repository.
 
+### Browser for agents
+
+Agents can open, click through and screenshot the web apps they build. Every job gets the
+[Playwright MCP](https://github.com/microsoft/playwright-mcp) server, driving a headless
+Chromium on the host, whether Claude Code, Copilot or OpenCode runs it. Set it up under
+**Settings > General > Browser for agents**: it shows whether Node.js and Chromium are
+installed, and **Install Playwright and Chromium** installs whatever is missing. Chromium goes
+into Playwright's shared cache (`~/.cache/ms-playwright` on Linux), with its system libraries
+when VibeSwarm can use `sudo` without a password. A system Chromium (such as Debian's
+`chromium` package on a Raspberry Pi) works too. Turn off **Give every job a browser** to keep
+it to projects with a web environment.
+
 ---
 
 ## Quick Start

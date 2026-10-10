@@ -640,7 +640,12 @@ public partial class JobProcessingService
             // Snapshot which environments and Playwright access were exposed to this job
             var environmentSnapshots = JobEnvironmentSnapshot.FromProject(job.Project);
             var hasWebEnvironment = environmentSnapshots.Any(e => e.Type == EnvironmentType.Web);
-            job.PlaywrightEnabled = hasWebEnvironment;
+            // Browser for agents (Settings): every job gets Playwright MCP on the host's Chromium. Projects
+            // with a web environment always had Playwright, so they get the located Chromium either way.
+            var browserExecutablePath = (appSettings?.EnableBrowserTools ?? true) || hasWebEnvironment
+                ? BrowserToolsLocator.FindChromiumForJobs()
+                : null;
+            job.PlaywrightEnabled = hasWebEnvironment || browserExecutablePath != null;
             job.EnvironmentCount = environmentSnapshots.Count;
             if (environmentSnapshots.Count > 0)
             {
@@ -776,7 +781,7 @@ public partial class JobProcessingService
                 ExecutionResult? planningResult = null;
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, cancellationToken);
+                    var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, browserExecutablePath, cancellationToken);
                     executionContext.ActivePrompt = planningPrompt;
                     executionContext.LatestActivity = planningActivity;
                     await PersistExecutionCheckpointAsync(job.Id, JobStatus.Planning, executionContext, cancellationToken);
@@ -941,7 +946,7 @@ public partial class JobProcessingService
 
             async Task<ExecutionResult> ExecuteCurrentCycleAsync(string promptToExecute, string? requestedSessionId)
             {
-                var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, cancellationToken);
+                var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, browserExecutablePath, cancellationToken);
                 var wantsOneHourCache = provider.Type == ProviderType.Claude
                     && (job.CycleMode != CycleMode.SingleCycle || job.SwarmId != null);
                 var hasMcp = !string.IsNullOrEmpty(mcpOptions.McpConfigPath);

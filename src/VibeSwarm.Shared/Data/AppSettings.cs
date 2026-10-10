@@ -61,6 +61,13 @@ public class AppSettings
 	/// </summary>
 	public bool EnableHttps { get; set; }
 
+	/// <summary>
+	/// Whether every job gets Playwright MCP with the host's Chromium, whichever provider runs it, so
+	/// agents can open and screenshot the web app they build. Projects with a web environment get it
+	/// either way. Jobs only get it while Node.js and a Chromium are installed.
+	/// </summary>
+	public bool EnableBrowserTools { get; set; } = true;
+
 	[Range(MinCriticalErrorLogRetentionDays, MaxCriticalErrorLogRetentionDays)]
 	public int CriticalErrorLogRetentionDays { get; set; } = DefaultCriticalErrorLogRetentionDays;
 

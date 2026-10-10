@@ -228,6 +228,7 @@ public class SettingsService : ISettingsService
 			existing.InjectEfficiencyRules = settings.InjectEfficiencyRules;
 			existing.EnableCommitAttribution = settings.EnableCommitAttribution;
 			existing.EnableHttps = settings.EnableHttps;
+			existing.EnableBrowserTools = settings.EnableBrowserTools;
 			existing.CriticalErrorLogRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			existing.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
 			existing.IdeaExpansionPromptTemplate = NormalizePromptTemplate(

@@ -248,6 +248,34 @@ repository's default git identity.
 
 </AccordionSection>
 
+<AccordionSection Title="Browser for agents" Icon="browser-chrome"
+Summary="A headless Chromium agents use to see the web apps they build"
+@bind-IsOpen="_openBrowserTools">
+
+@* Only checks the host once opened: detection runs node, npx and chromium. *@
+@if (_openBrowserTools)
+{
+<BrowserToolsPanel>
+<div>
+<div class="form-field">
+<div class="switch">
+	<input role="switch" switch type="checkbox" id="enableBrowserTools"
+	   @bind="_settings.EnableBrowserTools" />
+</div>
+<label for="enableBrowserTools">
+Give every job a browser
+</label>
+</div>
+<div class="form-text">
+Connects Playwright MCP to every job, so Claude Code, Copilot and OpenCode agents can open, click
+through and screenshot the pages they change. When off, only projects with a web environment get it.
+</div>
+</div>
+</BrowserToolsPanel>
+}
+
+</AccordionSection>
+
 <AccordionSection Title="Idea prompts" Icon="lightbulb"
 Summary="Templates used when generating improvement ideas"
 @bind-IsOpen="_openIdeaPrompts">
@@ -406,6 +434,7 @@ else
 	private bool _openProjectDefaults = true;
 	private bool _openConnection;
 	private bool _openAgentQuality;
+	private bool _openBrowserTools;
 	private bool _openIdeaPrompts;
 	private bool _openMarketplace;
 	private bool _openErrorLogs;

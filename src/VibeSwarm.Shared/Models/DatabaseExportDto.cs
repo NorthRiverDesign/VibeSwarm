@@ -22,6 +22,7 @@ public class AppSettingsExportDto
 	public bool InjectEfficiencyRules { get; set; }
 	public bool EnableCommitAttribution { get; set; } = true;
 	public bool EnableHttps { get; set; }
+	public bool EnableBrowserTools { get; set; } = true;
 	public int CriticalErrorLogRetentionDays { get; set; } = AppSettings.DefaultCriticalErrorLogRetentionDays;
 	public int CriticalErrorLogMaxEntries { get; set; } = AppSettings.DefaultCriticalErrorLogMaxEntries;
 }

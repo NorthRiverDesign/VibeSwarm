@@ -148,6 +148,7 @@ public partial class JobProcessingService
 		Guid providerId,
 		Project? project,
 		string? workingDirectory,
+		string? browserExecutablePath,
         CancellationToken cancellationToken)
     {
         try
@@ -168,6 +169,7 @@ public partial class JobProcessingService
 				provider.Type,
 				project,
 				workingDirectory,
+				browserExecutablePath,
 				cancellationToken);
 			if (!string.IsNullOrEmpty(resources?.ConfigFilePath))
 			{

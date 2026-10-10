@@ -264,7 +264,7 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         // Note: opencode run does not accept a --config / MCP config path flag.
-        // MCP servers are configured via opencode.json(c) in the working dir or ~/.config/opencode/.
+        // The generated MCP config reaches it through OPENCODE_CONFIG (ApplyMcpConfigEnvironmentVariable).
 
         // Skip permission prompts in `opencode run` (v1.4.0+). Brings OpenCode dispatch to parity with
         // Claude/Copilot headless modes so tool calls don't block for a TTY confirm.
@@ -289,6 +289,24 @@ public class OpenCodeProvider : CliProviderBase
         args.Add(prompt);
 
         return args;
+    }
+
+    /// <summary>
+    /// Layers the job's generated MCP config (Playwright, the repo's .mcp.json servers) over the user's
+    /// own OpenCode config. OpenCode merges OPENCODE_CONFIG between the global and project configs.
+    /// </summary>
+    internal void ApplyMcpConfigEnvironmentVariable()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentMcpConfigPath))
+        {
+            return;
+        }
+
+        // Copy first so the setting stays with this run instead of leaking into the caller's dictionary.
+        CurrentEnvironmentVariables = CurrentEnvironmentVariables != null
+            ? new Dictionary<string, string>(CurrentEnvironmentVariables, StringComparer.Ordinal)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+        CurrentEnvironmentVariables["OPENCODE_CONFIG"] = CurrentMcpConfigPath;
     }
 
     public override async Task<CliUpdateResult> UpdateCliAsync(CancellationToken cancellationToken = default)
@@ -377,6 +395,7 @@ public class OpenCodeProvider : CliProviderBase
         // Build the full command using the centralized argument builder
         // Reference: https://opencode.ai/docs/cli#run
         var args = BuildRunCommandArgs(prompt, sessionId);
+        ApplyMcpConfigEnvironmentVariable();
 
         var fullCommand = FormatCommandForDisplay(execPath, args);
 

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Utilities;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -36,10 +37,15 @@ Task<string?> GenerateMcpConfigJsonAsync(Project? project = null, CancellationTo
 	/// and shell environment files needed by the target provider.
 	/// Returns null when no provider-specific execution resources are required.
 	/// </summary>
+	/// <param name="browserExecutablePath">
+	/// The Chromium the Playwright MCP server launches (see <c>BrowserToolsLocator</c>). When set, the job gets
+	/// Playwright MCP even if its project has no web environment.
+	/// </param>
 	Task<McpExecutionResources?> GenerateExecutionResourcesAsync(
 		ProviderType providerType,
 		Project? project = null,
 		string? workingDirectory = null,
+		string? browserExecutablePath = null,
 		CancellationToken cancellationToken = default);
 
 /// <summary>
@@ -116,6 +122,7 @@ DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 
 		var config = BuildStandardMcpConfig(
 			project,
+			browserExecutablePath: null,
 			CreatePlaywrightEnvironmentVariables(project, browserArtifactsDirectory: null),
 			projectMcpConfig);
 		return JsonSerializer.Serialize(config, JsonOptions);
@@ -127,7 +134,7 @@ DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 		string? workingDirectory = null,
 		CancellationToken cancellationToken = default)
 	{
-		var resources = await GenerateExecutionResourcesAsync(providerType, project, workingDirectory, cancellationToken);
+		var resources = await GenerateExecutionResourcesAsync(providerType, project, workingDirectory, cancellationToken: cancellationToken);
 		return resources?.ConfigFilePath;
 	}
 
@@ -135,6 +142,7 @@ DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 		ProviderType providerType,
 		Project? project = null,
 		string? workingDirectory = null,
+		string? browserExecutablePath = null,
 		CancellationToken cancellationToken = default)
 	{
 		var projectMcpConfig = await LoadProjectMcpConfigAsync(project, workingDirectory, cancellationToken);
@@ -147,7 +155,8 @@ DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 		var reservedServerNames = providerType == ProviderType.Copilot
 			? projectMcpConfig?.McpServers.Keys
 			: null;
-		var requiresMcp = RequiresMcp(project, generatedProjectMcpConfig);
+		var includesPlaywright = IncludesPlaywright(project, browserExecutablePath);
+		var requiresMcp = includesPlaywright || generatedProjectMcpConfig?.McpServers.Count > 0;
 		var bashEnvFilePath = providerType == ProviderType.Copilot
 			? await CreateCopilotBashEnvFileAsync(cancellationToken)
 			: null;
@@ -156,7 +165,7 @@ DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 			return null;
 		}
 
-		var browserArtifactsDirectory = requiresMcp && HasEnabledWebEnvironment(project)
+		var browserArtifactsDirectory = includesPlaywright
 			? CreateBrowserArtifactsDirectory()
 			: null;
 		string? filePath = null;
@@ -165,8 +174,8 @@ DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 			filePath = CreateConfigFilePath(providerType, workingDirectory);
 			var playwrightEnvironment = CreatePlaywrightEnvironmentVariables(project, browserArtifactsDirectory);
 			var json = providerType == ProviderType.OpenCode
-				? JsonSerializer.Serialize(BuildOpenCodeConfig(project, playwrightEnvironment, generatedProjectMcpConfig, reservedServerNames), JsonOptions)
-				: JsonSerializer.Serialize(BuildStandardMcpConfig(project, playwrightEnvironment, generatedProjectMcpConfig, reservedServerNames), JsonOptions);
+				? JsonSerializer.Serialize(BuildOpenCodeConfig(project, browserExecutablePath, playwrightEnvironment, generatedProjectMcpConfig, reservedServerNames), JsonOptions)
+				: JsonSerializer.Serialize(BuildStandardMcpConfig(project, browserExecutablePath, playwrightEnvironment, generatedProjectMcpConfig, reservedServerNames), JsonOptions);
 
 			await File.WriteAllTextAsync(filePath, json, cancellationToken);
 			TrackTempFile(filePath);
@@ -290,6 +299,24 @@ private static bool RequiresMcp(Project? project, McpConfig? projectMcpConfig)
 return HasEnabledWebEnvironment(project) || projectMcpConfig?.McpServers.Count > 0;
 }
 
+	private static bool IncludesPlaywright(Project? project, string? browserExecutablePath)
+	{
+		return HasEnabledWebEnvironment(project) || !string.IsNullOrWhiteSpace(browserExecutablePath);
+	}
+
+	private static string[] BuildPlaywrightArgs(string? browserExecutablePath)
+	{
+		if (string.IsNullOrWhiteSpace(browserExecutablePath))
+		{
+			return PlaywrightCommandArgs;
+		}
+
+		// Launch the host's Chromium directly: the default Chrome channel doesn't exist on ARM Linux, and
+		// the MCP package's own Playwright may expect a different download than the one installed.
+		// --isolated keeps each job's profile in memory, so parallel jobs never fight over one.
+		return [.. PlaywrightCommandArgs, "--browser", "chromium", "--executable-path", browserExecutablePath, "--headless", "--isolated"];
+	}
+
 	private static bool HasEnabledWebEnvironment(Project? project)
 	{
 		return project?.Environments.Any(environment => environment.IsEnabled && environment.Type == EnvironmentType.Web) == true;
@@ -300,7 +327,6 @@ return HasEnabledWebEnvironment(project) || projectMcpConfig?.McpServers.Count >
 		var directoryPath = Path.Combine(Path.GetTempPath(), "vibeswarm", "browser-artifacts", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directoryPath);
 		Directory.CreateDirectory(Path.Combine(directoryPath, "tmp"));
-		Directory.CreateDirectory(Path.Combine(directoryPath, "ms-playwright"));
 		Directory.CreateDirectory(Path.Combine(directoryPath, "cache"));
 		Directory.CreateDirectory(Path.Combine(directoryPath, "output"));
 		return directoryPath;
@@ -312,7 +338,9 @@ return HasEnabledWebEnvironment(project) || projectMcpConfig?.McpServers.Count >
 		if (!string.IsNullOrWhiteSpace(browserArtifactsDirectory))
 		{
 			var temporaryDirectory = Path.Combine(browserArtifactsDirectory, "tmp");
-			environmentVariables["PLAYWRIGHT_BROWSERS_PATH"] = Path.Combine(browserArtifactsDirectory, "ms-playwright");
+			// Browsers come from the shared cache the Settings installer fills. XDG_CACHE_HOME is moved below,
+			// which would otherwise send Playwright looking for (and downloading) a browser per job.
+			environmentVariables["PLAYWRIGHT_BROWSERS_PATH"] = BrowserToolsLocator.GetPlaywrightBrowsersPath();
 			environmentVariables["TMPDIR"] = temporaryDirectory;
 			environmentVariables["TMP"] = temporaryDirectory;
 			environmentVariables["TEMP"] = temporaryDirectory;
@@ -542,6 +570,7 @@ var fileName = $"opencode-mcp-{Guid.NewGuid():N}.json";
 
 	private static McpConfig BuildStandardMcpConfig(
 		Project? project,
+		string? browserExecutablePath,
 		Dictionary<string, string>? playwrightEnvironment,
 		McpConfig? projectMcpConfig = null,
 		IEnumerable<string>? reservedServerNames = null)
@@ -560,7 +589,7 @@ var fileName = $"opencode-mcp-{Guid.NewGuid():N}.json";
 			}
 		}
 
-		if (HasEnabledWebEnvironment(project))
+		if (IncludesPlaywright(project, browserExecutablePath))
 		{
 			var takenNames = reservedServerNames == null
 				? config.McpServers.Keys
@@ -569,7 +598,7 @@ var fileName = $"opencode-mcp-{Guid.NewGuid():N}.json";
 		config.McpServers[serverName] = new McpServer
 		{
 			Command = "npx",
-			Args = PlaywrightCommandArgs,
+			Args = BuildPlaywrightArgs(browserExecutablePath),
 			Env = playwrightEnvironment
 		};
 		}
@@ -579,6 +608,7 @@ var fileName = $"opencode-mcp-{Guid.NewGuid():N}.json";
 
 	private static OpenCodeMcpConfig BuildOpenCodeConfig(
 		Project? project,
+		string? browserExecutablePath,
 		Dictionary<string, string>? playwrightEnvironment,
 		McpConfig? projectMcpConfig = null,
 		IEnumerable<string>? reservedServerNames = null)
@@ -593,7 +623,7 @@ var fileName = $"opencode-mcp-{Guid.NewGuid():N}.json";
 			}
 		}
 
-		if (HasEnabledWebEnvironment(project))
+		if (IncludesPlaywright(project, browserExecutablePath))
 		{
 			var takenNames = reservedServerNames == null
 				? config.Mcp.Keys
@@ -602,7 +632,7 @@ var fileName = $"opencode-mcp-{Guid.NewGuid():N}.json";
 		config.Mcp[serverName] = new OpenCodeMcpServer
 		{
 			Type = "local",
-			Command = ["npx", ..PlaywrightCommandArgs],
+			Command = ["npx", .. BuildPlaywrightArgs(browserExecutablePath)],
 			Enabled = true,
 			Environment = playwrightEnvironment
 		};

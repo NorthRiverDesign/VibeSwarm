@@ -372,7 +372,7 @@ public abstract class ProviderBase : IProvider
 	/// Merges provider-level environment variables with per-execution overrides.
 	/// Per-execution values win when the same key is present in both dictionaries.
 	/// </summary>
-	protected Dictionary<string, string>? GetEffectiveEnvironmentVariables()
+	protected internal Dictionary<string, string>? GetEffectiveEnvironmentVariables()
 	{
 		if ((BaseEnvironmentVariables == null || BaseEnvironmentVariables.Count == 0) &&
 			(CurrentEnvironmentVariables == null || CurrentEnvironmentVariables.Count == 0))

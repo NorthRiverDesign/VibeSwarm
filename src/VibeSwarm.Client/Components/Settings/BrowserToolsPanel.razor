@@ -1,0 +1,181 @@
+@* Browser for agents: whether this host has the Node.js and Chromium a job's Playwright MCP server
+   needs, with a one-tap install when it doesn't. ChildContent (the setting's switch) sits between the
+   facts and the actions. *@
+@inject HttpClient Http
+@inject NotificationService NotificationService
+
+<div class="d-flex flex-column gap-5">
+	@if (_status is null)
+	{
+		<div class="d-flex align-items-center gap-3 small fg-1">
+			<span class="spinner-border spinner-sm" role="status"></span>
+			<span>Checking this host...</span>
+		</div>
+	}
+	else
+	{
+		<dl class="d-flex flex-column gap-3 small mb-0">
+			<div class="d-flex justify-content-between gap-5">
+				<dt class="fw-normal fg-1">Chromium</dt>
+				<dd class="mb-0 text-end">@(_status.ChromiumPath is null ? "Not installed" : _status.ChromiumVersion ?? "Installed")</dd>
+			</div>
+			@if (_status.ChromiumPath is not null)
+			{
+				<div class="d-flex justify-content-between gap-5">
+					<dt class="fw-normal fg-1">Path</dt>
+					<dd class="mb-0 text-end min-w-0 font-monospace text-break">@_status.ChromiumPath</dd>
+				</div>
+			}
+			<div class="d-flex justify-content-between gap-5">
+				<dt class="fw-normal fg-1">Node.js</dt>
+				<dd class="mb-0 text-end">@(_status.NodeAvailable ? _status.NodeVersion ?? "Installed" : "Not installed")</dd>
+			</div>
+		</dl>
+		@if (!IsReady)
+		{
+			<div class="small fg-emphasis-warning">Jobs get no browser until Node.js and Chromium are installed.</div>
+		}
+	}
+
+	@ChildContent
+
+	@if (_status is not null)
+	{
+		<div class="d-flex flex-wrap align-items-center gap-3">
+			@if (!IsReady || IsInstalling)
+			{
+				<button type="button" class="btn-solid theme-primary btn-sm" @onclick="InstallAsync" disabled="@(IsInstalling || _isChecking)">
+					@if (IsInstalling)
+					{
+						<span class="spinner-border spinner-sm" role="status"></span>
+						<span>Installing...</span>
+					}
+					else
+					{
+						<i class="bi bi-download"></i>
+						<span>Install Playwright and Chromium</span>
+					}
+				</button>
+			}
+			<button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="CheckAgainAsync" disabled="@(_isInstalling || _isChecking)">
+				<i class="bi bi-arrow-clockwise @(_isChecking ? "spinner-rotate" : "")"></i>Check again
+			</button>
+		</div>
+		@if (IsInstalling)
+		{
+			<div class="small fg-1">Downloading Chromium can take a few minutes. It keeps going if you leave this page.</div>
+		}
+	}
+
+	@if (!string.IsNullOrWhiteSpace(_installError))
+	{
+		<Alert Type="Alert.AlertType.Danger" Class="mb-0" Dismissible="true" OnDismiss="() => _installError = null">
+			<div class="small fw-semibold mb-1">Install failed</div>
+			<pre class="mb-0 small white-space-pre-wrap text-break overflow-y-auto max-height-50dvh">@_installError</pre>
+		</Alert>
+	}
+</div>
+
+@code {
+	/// <summary>Rendered between the host facts and the install actions.</summary>
+	[Parameter]
+	public RenderFragment? ChildContent { get; set; }
+
+	private BrowserToolsStatus? _status;
+	private bool _isChecking;
+	private bool _isInstalling;
+	private string? _installError;
+
+	private bool IsReady => _status is { NpxAvailable: true, ChromiumPath: not null };
+
+	/// <summary>True while this page runs the install, or another one started earlier is still going.</summary>
+	private bool IsInstalling => _isInstalling || !string.IsNullOrEmpty(_status?.InstallingTool);
+
+	protected override Task OnInitializedAsync() => LoadStatusAsync();
+
+	private async Task CheckAgainAsync()
+	{
+		_isChecking = true;
+		try
+		{
+			await LoadStatusAsync();
+		}
+		finally
+		{
+			_isChecking = false;
+		}
+	}
+
+	private async Task LoadStatusAsync()
+	{
+		try
+		{
+			_status = await Http.GetFromJsonAsync<BrowserToolsStatus>("/api/system-tools/detected") ?? new BrowserToolsStatus();
+		}
+		catch (Exception ex)
+		{
+			_status ??= new BrowserToolsStatus();
+			NotificationService.ShowError($"Couldn't check this host's browser tools: {ex.Message}");
+		}
+	}
+
+	private async Task InstallAsync()
+	{
+		_isInstalling = true;
+		_installError = null;
+		StateHasChanged();
+
+		try
+		{
+			var response = await Http.PostAsync("/api/system-tools/install/playwright", null);
+			var result = await response.Content.ReadFromJsonAsync<InstallResponse>();
+			if (result?.Success == true)
+			{
+				NotificationService.ShowSuccess("Playwright and Chromium are installed. New jobs get the browser.");
+			}
+			else
+			{
+				_installError = TrimOutput(result?.Error ?? result?.Output) ?? "The installer gave no output.";
+			}
+		}
+		catch (Exception ex)
+		{
+			_installError = ex.Message;
+		}
+		finally
+		{
+			_isInstalling = false;
+		}
+
+		await LoadStatusAsync();
+	}
+
+	// Installer output runs to hundreds of lines; the end says what went wrong.
+	private static string? TrimOutput(string? output)
+	{
+		if (string.IsNullOrWhiteSpace(output))
+		{
+			return null;
+		}
+
+		var trimmed = output.Trim();
+		return trimmed.Length <= 4000 ? trimmed : "..." + trimmed[^4000..];
+	}
+
+	private sealed class BrowserToolsStatus
+	{
+		public bool NodeAvailable { get; set; }
+		public string? NodeVersion { get; set; }
+		public bool NpxAvailable { get; set; }
+		public string? ChromiumPath { get; set; }
+		public string? ChromiumVersion { get; set; }
+		public string? InstallingTool { get; set; }
+	}
+
+	private sealed class InstallResponse
+	{
+		public bool Success { get; set; }
+		public string? Output { get; set; }
+		public string? Error { get; set; }
+	}
+}

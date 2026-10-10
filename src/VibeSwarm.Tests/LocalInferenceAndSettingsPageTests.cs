@@ -77,6 +77,7 @@ return output.ToHtmlString();
 	Assert.DoesNotContain("Europe/", html);
 	Assert.Contains("Enable provider commit attribution", html);
 	Assert.Contains("Serve over HTTPS", html);
+	Assert.Contains("Browser for agents", html);
 	Assert.Contains("Idea Prompt Templates", html);
 	Assert.Contains("Idea expansion template", html);
 	Assert.Contains("Direct idea implementation template", html);
