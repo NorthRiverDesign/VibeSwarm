@@ -226,7 +226,7 @@ public abstract class CliProviderBase : ProviderBase
 			var version = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
 			await process.WaitForExitAsync(linkedCts.Token);
 
-			return version.Trim();
+			return FirstVersionLine(version);
 		}
 		catch (OperationCanceledException)
 		{
@@ -236,6 +236,16 @@ public abstract class CliProviderBase : ProviderBase
 		{
 			return "unknown";
 		}
+	}
+
+	/// <summary>
+	/// Keeps the line that carries the version. Some CLIs add hints after it (Copilot prints
+	/// "Run 'copilot update' to check for updates."), which would overflow the stored version.
+	/// </summary>
+	internal static string FirstVersionLine(string output)
+	{
+		var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		return lines.FirstOrDefault(line => line.Any(char.IsAsciiDigit)) ?? lines.FirstOrDefault() ?? string.Empty;
 	}
 
 	/// <summary>

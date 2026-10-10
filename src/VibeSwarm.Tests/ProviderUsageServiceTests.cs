@@ -296,6 +296,19 @@ public sealed class ProviderUsageServiceTests : IDisposable
 		Assert.Equal(75, hold!.PauseThresholdPercent);
 	}
 
+	[Fact]
+	public async Task UpdateVersionInfoAsync_CapsVersionAtColumnLength()
+	{
+		await using var dbContext = CreateDbContext();
+		var providerId = await AddClaudeProviderAsync(dbContext);
+		var service = CreateService(dbContext);
+
+		await service.UpdateVersionInfoAsync(providerId, new string('9', 80));
+
+		var summary = await dbContext.ProviderUsageSummaries.SingleAsync(s => s.ProviderId == providerId);
+		Assert.Equal(new string('9', 50), summary.CliVersion);
+	}
+
 	private static async Task<Guid> AddClaudeProviderAsync(VibeSwarmDbContext dbContext, int? pauseThresholdPercent = null)
 	{
 		var providerId = Guid.NewGuid();

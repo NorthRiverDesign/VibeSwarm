@@ -159,7 +159,8 @@ public class ProviderUsageService : IProviderUsageService
 			_context.ProviderUsageSummaries.Add(summary);
 		}
 
-		summary.CliVersion = version;
+		// Matches the column's max length, so an unexpected version string can't fail the save.
+		summary.CliVersion = version.Length > 50 ? version[..50] : version;
 		summary.VersionCheckedAt = DateTime.UtcNow;
 		summary.LastUpdatedAt = DateTime.UtcNow;
 
