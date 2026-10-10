@@ -112,48 +112,68 @@
     @* Main Content *@
     <main class="app-main flex-grow-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <div class="main-content max-w-100">
-            <ErrorBoundary @ref="_errorBoundary">
+            <ErrorBoundary @key="_errorBoundaryKey">
                 <ChildContent>
                     @Body
                 </ChildContent>
                 <ErrorContent Context="exception">
                     @{
-                        _ = ReportFatalUiErrorAsync(exception);
+                        _errorBoundaryTripped = true;
                     }
-                    <div class="d-flex align-items-center justify-content-center w-100" style="min-height: 50vh;">
-                        <div class="text-center p-7 mx-auto" style="max-width: 500px;">
-                            <div class="mb-7">
-                                <i class="bi bi-exclamation-octagon fg-danger" style="font-size: 3rem;"></i>
-                            </div>
-                            <h4 class="fg-body mb-5">Something Went Wrong</h4>
-                            <p class="fg-1 mb-7">An unexpected error occurred while loading this page.</p>
-                            <div class="d-flex flex-column sm:flex-row gap-3 justify-content-center">
-                                <button class="btn-solid theme-primary" @onclick="RecoverFromError">
-                                    <i class="bi bi-arrow-clockwise"></i>Try Again
+                    @if (TransientNetworkError.Matches(exception))
+                    {
+                        ScheduleNetworkRetry();
+                        <div class="d-flex align-items-center justify-content-center w-100" style="min-height: 50vh;">
+                            <div class="text-center p-7 mx-auto" style="max-width: 500px;">
+                                <div class="mb-7">
+                                    <i class="bi bi-wifi-off fg-1 fs-4xl"></i>
+                                </div>
+                                <h4 class="fg-body mb-5">Can't reach VibeSwarm</h4>
+                                <p class="fg-1 mb-7">The connection dropped. This page reloads by itself once the server answers.</p>
+                                <button class="btn-solid theme-primary" @onclick="ResetErrorBoundary">
+                                    <i class="bi bi-arrow-clockwise"></i>Try Now
                                 </button>
-                                <button class="btn-solid theme-secondary" @onclick="NavigateToDashboard">
-                                    <i class="bi bi-house"></i>Go to Dashboard
-                                </button>
-                            </div>
-                            <div class="mt-3">
-                                <button class="btn-link btn-sm fg-1" @onclick="ForceReloadPage">
-                                    <i class="bi bi-arrow-repeat"></i>Full page reload
-                                </button>
-                            </div>
-                            @if (IsDevelopment())
-                            {
-                                <div class="mt-7 text-start">
-                                    <details>
-                                        <summary class="fg-1 small" style="cursor: pointer;">Technical Details
-                                        </summary>
-                                        <pre class="bg-2 p-5 rounded mt-3 small fg-danger overflow-auto"
-                                             style="max-height: 200px;">@exception.Message
-                                            @exception.StackTrace</pre>
-                                        </details>
-                                    </div>
-                                }
                             </div>
                         </div>
+                    }
+                    else
+                    {
+                        _ = ReportFatalUiErrorAsync(exception);
+                        <div class="d-flex align-items-center justify-content-center w-100" style="min-height: 50vh;">
+                            <div class="text-center p-7 mx-auto" style="max-width: 500px;">
+                                <div class="mb-7">
+                                    <i class="bi bi-exclamation-octagon fg-danger" style="font-size: 3rem;"></i>
+                                </div>
+                                <h4 class="fg-body mb-5">Something Went Wrong</h4>
+                                <p class="fg-1 mb-7">An unexpected error occurred while loading this page.</p>
+                                <div class="d-flex flex-column sm:flex-row gap-3 justify-content-center">
+                                    <button class="btn-solid theme-primary" @onclick="RecoverFromError">
+                                        <i class="bi bi-arrow-clockwise"></i>Try Again
+                                    </button>
+                                    <button class="btn-solid theme-secondary" @onclick="NavigateToDashboard">
+                                        <i class="bi bi-house"></i>Go to Dashboard
+                                    </button>
+                                </div>
+                                <div class="mt-3">
+                                    <button class="btn-link btn-sm fg-1" @onclick="ForceReloadPage">
+                                        <i class="bi bi-arrow-repeat"></i>Full page reload
+                                    </button>
+                                </div>
+                                @if (IsDevelopment())
+                                {
+                                    <div class="mt-7 text-start">
+                                        <details>
+                                            <summary class="fg-1 small" style="cursor: pointer;">Technical Details
+                                            </summary>
+                                            <pre class="bg-2 p-5 rounded mt-3 small fg-danger overflow-auto"
+                                                 style="max-height: 200px;">@exception.Message
+                                                @exception.StackTrace</pre>
+                                            </details>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                    }
                     </ErrorContent>
                 </ErrorBoundary>
             </div>
@@ -247,7 +267,13 @@
     [CascadingParameter]
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
 
-    private ErrorBoundary? _errorBoundary;
+    private int _errorBoundaryKey;
+    private bool _errorBoundaryTripped;
+    private CancellationTokenSource? _networkRetryCts;
+    private int _networkRetryAttempt;
+    private DateTime _lastNetworkErrorAt;
+    private static readonly TimeSpan[] NetworkRetryDelays =
+        [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(15)];
     private bool _hubInitialized = false;
     private HubConnection? _globalHubConnection;
     private string? _lastPagePath;
@@ -265,6 +291,7 @@
     {
         ChangePasswordModalService.OnShowModal += ShowChangePasswordModal;
         ChangePasswordModalService.OnHideModal += CloseChangePasswordModal;
+        NavigationManager.LocationChanged += OnLocationChangedResetErrorBoundary;
     }
 
     protected override async Task OnInitializedAsync()
@@ -407,8 +434,7 @@
         {
             _globalHubConnection = new HubConnectionBuilder()
             .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
-            .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
-TimeSpan.FromSeconds(10) })
+            .WithAutomaticReconnect(new KeepReconnectingPolicy())
             .Build();
 
             // Register global event handlers for toast notifications across all pages
@@ -821,7 +847,58 @@ TimeSpan.FromSeconds(10) })
 
     private void RecoverFromError()
     {
-        _errorBoundary?.Recover();
+        ResetErrorBoundary();
+    }
+
+    private void ScheduleNetworkRetry()
+    {
+        if (_networkRetryCts is not null)
+        {
+            return;
+        }
+
+        // Back off while the outage lasts; start over once the connection held for a minute.
+        if (DateTime.UtcNow - _lastNetworkErrorAt > TimeSpan.FromMinutes(1))
+        {
+            _networkRetryAttempt = 0;
+        }
+
+        _lastNetworkErrorAt = DateTime.UtcNow;
+        var delay = NetworkRetryDelays[Math.Min(_networkRetryAttempt++, NetworkRetryDelays.Length - 1)];
+        _networkRetryCts = new CancellationTokenSource();
+        _ = RetryAfterDelayAsync(delay, _networkRetryCts.Token);
+    }
+
+    private async Task RetryAfterDelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(delay, cancellationToken);
+            await InvokeAsync(ResetErrorBoundary);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    // A new key builds a fresh boundary and page, which reloads its data and starts the boundary's
+    // error count over, so a long outage can't exhaust it and fall through to the fatal screen.
+    private void ResetErrorBoundary()
+    {
+        _networkRetryCts?.Cancel();
+        _networkRetryCts?.Dispose();
+        _networkRetryCts = null;
+        _errorBoundaryTripped = false;
+        _errorBoundaryKey++;
+        StateHasChanged();
+    }
+
+    private void OnLocationChangedResetErrorBoundary(object? sender, LocationChangedEventArgs e)
+    {
+        if (_errorBoundaryTripped)
+        {
+            ResetErrorBoundary();
+        }
     }
 
     private async Task ForceReloadPage()
@@ -838,7 +915,7 @@ TimeSpan.FromSeconds(10) })
 
     private void NavigateToDashboard()
     {
-        _errorBoundary?.Recover();
+        ResetErrorBoundary();
         NavigationManager.NavigateTo("/", forceLoad: false);
     }
 
@@ -908,6 +985,10 @@ string? refreshAction)
     {
         ChangePasswordModalService.OnShowModal -= ShowChangePasswordModal;
         ChangePasswordModalService.OnHideModal -= CloseChangePasswordModal;
+        NavigationManager.LocationChanged -= OnLocationChangedResetErrorBoundary;
+        _networkRetryCts?.Cancel();
+        _networkRetryCts?.Dispose();
+        _networkRetryCts = null;
     }
 
     public async ValueTask DisposeAsync()

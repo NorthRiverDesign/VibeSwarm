@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR.Client;
+using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 
@@ -67,8 +68,7 @@ public partial class ProjectDetail
 	{
 		_hubConnection = new HubConnectionBuilder()
 		.WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
-		.WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
-TimeSpan.FromSeconds(10) })
+		.WithAutomaticReconnect(new KeepReconnectingPolicy())
 		.Build();
 
 		RegisterSignalRHandlers();

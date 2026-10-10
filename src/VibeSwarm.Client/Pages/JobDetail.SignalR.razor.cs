@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.SignalR.Client;
+using VibeSwarm.Client.Services;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Shared.Data;
 
@@ -37,8 +38,7 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
         {
             _hubConnection = new HubConnectionBuilder()
                 .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
-                .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
-                    TimeSpan.FromSeconds(10) })
+                .WithAutomaticReconnect(new KeepReconnectingPolicy())
                 .Build();
 
             _hubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>

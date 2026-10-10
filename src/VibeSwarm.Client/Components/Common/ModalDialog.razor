@@ -154,7 +154,15 @@
 
 	private async Task<IJSObjectReference?> GetInteropAsync()
 	{
-		_interop ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", InteropModulePath);
+		try
+		{
+			_interop ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", InteropModulePath);
+		}
+		catch (JSException)
+		{
+			// The server is unreachable and the module isn't loaded yet; the next render tries again.
+		}
+
 		return _interop;
 	}
 

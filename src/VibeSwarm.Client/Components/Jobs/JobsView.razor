@@ -328,8 +328,7 @@
         {
             _hubConnection = new HubConnectionBuilder()
             .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
-            .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
-TimeSpan.FromSeconds(10) })
+            .WithAutomaticReconnect(new KeepReconnectingPolicy())
             .Build();
 
             _hubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>
@@ -380,6 +379,8 @@ TimeSpan.FromSeconds(10) })
             _hubConnection.Reconnected += async (connectionId) =>
             {
                 try { await _hubConnection.InvokeAsync("SubscribeToJobList"); } catch { }
+                // Catch up on anything that changed while the connection was down.
+                await InvokeAsync(RefreshJobsSafely);
             };
 
             await _hubConnection.StartAsync(cancellationToken);

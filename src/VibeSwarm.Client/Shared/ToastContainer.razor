@@ -103,6 +103,13 @@
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)
 	{
+		if (firstRender)
+		{
+			// Load the interop module while the server is surely reachable. The browser keeps it, so
+			// a toast or dialog shown during an outage still finds it instead of crashing the app.
+			await GetInteropAsync();
+		}
+
 		// Show the layer while there are toasts. A new toast shows it again, which also lifts
 		// it above any dialog that opened since; re-renders that add nothing leave it be, as
 		// re-showing restarts the toasts' entrance animation.
@@ -117,18 +124,35 @@
 
 		try
 		{
-			_interop ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", ModalDialog.InteropModulePath);
-			if (_interop is null)
+			var interop = await GetInteropAsync();
+			if (interop is null)
 			{
 				return;
 			}
 
-			await _interop.InvokeVoidAsync(hasToasts ? "raiseToastLayer" : "hideToastLayer");
+			await interop.InvokeVoidAsync(hasToasts ? "raiseToastLayer" : "hideToastLayer");
 			_layerShown = hasToasts;
 		}
 		catch (JSDisconnectedException)
 		{
 		}
+		catch (JSException)
+		{
+		}
+	}
+
+	private async Task<IJSObjectReference?> GetInteropAsync()
+	{
+		try
+		{
+			_interop ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", ModalDialog.InteropModulePath);
+		}
+		catch (JSException)
+		{
+			// The server is unreachable and the module isn't loaded yet; the next render tries again.
+		}
+
+		return _interop;
 	}
 
 	public void Dispose()

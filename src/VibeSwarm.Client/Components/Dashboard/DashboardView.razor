@@ -385,7 +385,7 @@
     {
         HubConnection = new HubConnectionBuilder()
             .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
-            .WithAutomaticReconnect([TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10)])
+            .WithAutomaticReconnect(new KeepReconnectingPolicy())
             .Build();
 
         HubConnection.On<string, string>("JobStatusChanged", async (_, _) =>
