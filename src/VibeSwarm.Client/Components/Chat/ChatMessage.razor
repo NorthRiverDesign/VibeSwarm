@@ -1,42 +1,63 @@
 @* Single chat message component *@
 
 <div class="@GetContainerClasses()">
-	<div class="chat-bubble py-3 px-5 text-break @GetBubbleClasses()">
-		@if (IsCombinedToolActivity)
+	<div class="chat-bubble max-w-100 py-3 px-5 text-break @GetBubbleClasses()">
+		@if (Role == MessageRole.ToolUse)
 		{
-			<details>
-				<summary class="fw-semibold small opacity-75">
-					<i class="bi bi-tools me-1"></i>@GetToolDisplayName()
+			@* Collapsed, a call reads as what it did and on what; open, it shows the command as a
+			   terminal line and the other arguments as labelled values, never the raw JSON. *@
+			var call = ToolCall;
+			<details class="chat-tool-call">
+				<summary class="d-flex align-items-start gap-3 cursor-pointer user-select-none">
+					<i class="bi bi-@call.Icon flex-shrink-0 opacity-75"></i>
+					<span class="d-flex flex-column min-w-0 flex-grow-1">
+						<span class="fw-semibold small text-break">@call.Title</span>
+						@if (!string.IsNullOrEmpty(call.Preview))
+						{
+							<span class="font-monospace small text-truncate opacity-75">@call.Preview</span>
+						}
+					</span>
+					<i class="bi bi-chevron-right details-chevron flex-shrink-0 small opacity-75"></i>
 				</summary>
-				@if (!string.IsNullOrEmpty(ToolInput))
-				{
-					<div class="mt-3">
-						<div class="small fw-semibold fg-1 text-uppercase mb-1">Call</div>
-						<pre class="chat-tool-code white-space-pre-wrap m-0 p-3 rounded small text-break overflow-auto"
-							style="max-height: 150px;">@ToolInput</pre>
-					</div>
-				}
-				@if (!string.IsNullOrEmpty(ToolOutput))
-				{
-					<div class="mt-3">
-						<div class="small fw-semibold fg-1 text-uppercase mb-1">Response</div>
-						<pre class="chat-tool-code white-space-pre-wrap m-0 p-3 rounded small text-break overflow-auto"
-							style="max-height: 150px;">@TruncateOutput(ToolOutput, 500)</pre>
-					</div>
-				}
-			</details>
-		}
-		else if (Role == MessageRole.ToolUse)
-		{
-			<details>
-				<summary class="fw-semibold small opacity-75">
-					<i class="bi bi-tools me-1"></i>@GetToolDisplayName()
-				</summary>
-				@if (!string.IsNullOrEmpty(ToolInput))
-				{
-					<pre class="chat-tool-code white-space-pre-wrap m-0 mt-3 p-3 rounded small text-break overflow-auto"
-						style="max-height: 150px;">@ToolInput</pre>
-				}
+				<div class="d-flex flex-column gap-3 mt-3">
+					@if (!string.IsNullOrEmpty(call.Command))
+					{
+						<pre class="chat-tool-code white-space-pre-wrap m-0 p-3 rounded small text-break overflow-auto"><span class="opacity-50 user-select-none">$ </span>@call.Command</pre>
+					}
+					@if (call.Fields.Count > 0)
+					{
+						<dl class="d-flex flex-column gap-3 small mb-0">
+							@foreach (var field in call.Fields)
+							{
+								@if (field.IsBlock)
+								{
+									<div class="d-flex flex-column gap-1 min-w-0">
+										<dt class="fw-normal opacity-75">@field.Label</dt>
+										<dd class="mb-0"><pre class="chat-tool-code white-space-pre-wrap m-0 p-3 rounded text-break overflow-auto">@field.Value</pre></dd>
+									</div>
+								}
+								else
+								{
+									<div class="d-flex justify-content-between gap-5 min-w-0">
+										<dt class="fw-normal opacity-75 flex-shrink-0">@field.Label</dt>
+										<dd class="mb-0 text-end text-break">@field.Value</dd>
+									</div>
+								}
+							}
+						</dl>
+					}
+					@if (!string.IsNullOrEmpty(call.RawInput))
+					{
+						<pre class="chat-tool-code white-space-pre-wrap m-0 p-3 rounded small text-break overflow-auto">@call.RawInput</pre>
+					}
+					@if (IsCombinedToolActivity)
+					{
+						<div class="d-flex flex-column gap-1">
+							<div class="small opacity-75">Output</div>
+							<pre class="chat-tool-code white-space-pre-wrap m-0 p-3 rounded small text-break overflow-auto">@TruncateOutput(ToolOutput!, 500)</pre>
+						</div>
+					}
+				</div>
 			</details>
 		}
 		else if (Role == MessageRole.ToolResult)
@@ -100,6 +121,11 @@
 	private bool IsCombinedToolActivity
 		=> Role == MessageRole.ToolUse
 			&& !string.IsNullOrWhiteSpace(ToolOutput);
+
+	private ToolCallView ToolCall => _toolCall ??= ToolCallFormatter.Format(ToolName, ToolInput);
+	private ToolCallView? _toolCall;
+
+	protected override void OnParametersSet() => _toolCall = null;
 
 	private static string TruncateOutput(string text, int maxLength)
 	{

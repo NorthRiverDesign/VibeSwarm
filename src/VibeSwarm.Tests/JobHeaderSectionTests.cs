@@ -1,3 +1,4 @@
+using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
@@ -77,9 +78,74 @@ public sealed class JobHeaderSectionTests
 		});
 
 		Assert.Contains("Claude / claude-sonnet-4 -&gt; Copilot / gpt-5.4", html);
-		Assert.Contains("P 200 / $0.60", html);
-		Assert.Contains("E 550 / $1.50", html);
+		Assert.Contains("Planning</dt>", html);
+		Assert.Contains("200 / $0.60", html);
+		Assert.Contains("Execution</dt>", html);
+		Assert.Contains("550 / $1.50", html);
 		Assert.Contains("$0.60", html);
 		Assert.Contains("$1.50", html);
+	}
+	[Fact]
+	public void JobHeaderSection_Bunit_GroupsEveryWayToStopARunningJobInOneMenu()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobHeaderSection>(parameters => parameters
+			.Add(header => header.Status, JobStatus.Processing)
+			.Add(header => header.JobTitle, "Polish the UI")
+			.Add(header => header.CanCancel, true)
+			.Add(header => header.CanForceReset, true)
+			.Add(header => header.CanRetry, true)
+			.Add(header => header.CreatedAt, DateTime.UtcNow));
+
+		var stopMenu = cut.Find("button[aria-label='Stop'] + .menu");
+		var stopItems = stopMenu.QuerySelectorAll(".menu-item").Select(item => item.TextContent.Trim()).ToList();
+		Assert.Equal(["Stop job", "Mark as failed"], stopItems);
+
+		// Retry lives behind the ⋯ menu, not beside the stop actions.
+		var moreMenu = cut.Find("button[aria-label='Job actions'] + .menu");
+		Assert.Contains("Retry", moreMenu.TextContent);
+		Assert.DoesNotContain("Mark as failed", moreMenu.TextContent);
+	}
+
+	[Fact]
+	public void JobHeaderSection_Bunit_OffersForceStopOnceAStopIsRequested()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobHeaderSection>(parameters => parameters
+			.Add(header => header.Status, JobStatus.Processing)
+			.Add(header => header.CancellationRequested, true)
+			.Add(header => header.CanForceCancel, true)
+			.Add(header => header.CanForceReset, true)
+			.Add(header => header.CreatedAt, DateTime.UtcNow));
+
+		var stopItems = cut.Find("button[aria-label='Stop'] + .menu")
+			.QuerySelectorAll(".menu-item").Select(item => item.TextContent.Trim()).ToList();
+		Assert.Equal(["Force stop", "Mark as failed"], stopItems);
+		Assert.Contains("Stopping…", cut.Markup);
+	}
+
+	[Fact]
+	public void JobHeaderSection_Bunit_ClampsALongTitleAndLinksBack()
+	{
+		using var context = new BunitContext();
+		var longTitle = string.Concat(Enumerable.Repeat("Make the running job page feel native on a phone. ", 4));
+
+		var cut = context.Render<JobHeaderSection>(parameters => parameters
+			.Add(header => header.Status, JobStatus.Completed)
+			.Add(header => header.JobTitle, longTitle)
+			.Add(header => header.BackHref, "/jobs")
+			.Add(header => header.BackLabel, "Jobs")
+			.Add(header => header.CreatedAt, DateTime.UtcNow));
+
+		Assert.Contains("line-clamp-2", cut.Find("h1").ClassName);
+		Assert.Empty(cut.FindAll("button[aria-label='Stop']"));
+		Assert.Equal("/jobs", cut.Find(".job-nav-bar a").GetAttribute("href"));
+		Assert.Contains("Jobs", cut.Find(".job-nav-bar a").TextContent);
+
+		cut.Find("h1").Click();
+
+		Assert.DoesNotContain("line-clamp-2", cut.Find("h1").ClassName ?? string.Empty);
 	}
 }

@@ -67,8 +67,8 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("2 messages", html);
 		Assert.Contains("Tool Activity", html);
 		Assert.Contains("git status --short", html);
-		Assert.Contains("Response", html);
-		Assert.Contains("<details>", html);
+		Assert.Contains("Output", html);
+		Assert.Contains("<details class=\"chat-tool-call\">", html);
 		Assert.DoesNotContain("<details open", html);
 		Assert.DoesNotContain("Final summary only", html);
 	}
@@ -919,7 +919,9 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("Checking the modified files before applying a patch.", html);
 		Assert.Contains("Tool Activity", html);
 		Assert.Contains("git status --short", html);
-		Assert.Contains("bash", html);
+		// The shell call reads by its description, with the command shown on its own, not as JSON.
+		Assert.Contains("Check status", html);
+		Assert.DoesNotContain("&quot;command&quot;", html);
 		Assert.DoesNotContain("toolu_live_123", html);
 	}
 
@@ -1083,7 +1085,7 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("2 messages", html);
 		Assert.DoesNotContain("data-tool-group=\"true\"", html);
 		Assert.DoesNotContain("2 tool calls:", html);
-		Assert.Equal(2, Regex.Matches(html, "<details>").Count);
+		Assert.Equal(2, Regex.Matches(html, "<details class=\"chat-tool-call\">").Count);
 	}
 
 	[Fact]
@@ -1780,6 +1782,40 @@ public sealed class JobSessionPanelTests
 			.Add(panel => panel.OnSendFollowUp, async (string prompt) => await Task.CompletedTask));
 
 		Assert.Empty(cut.FindAll("button[title='Send follow-up']"));
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_FoldsALongGoalPromptUntilShowMore()
+	{
+		using var context = new BunitContext();
+		var longPrompt = string.Join("\n", Enumerable.Range(1, 12).Select(line => $"Requirement {line}: keep the layout simple."));
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.GoalPrompt, longPrompt)
+			.Add(panel => panel.Messages, new List<JobMessage>()));
+
+		Assert.Single(cut.FindAll(".chat-message-user .line-clamp-8"));
+		var toggle = cut.FindAll("button").Single(button => button.TextContent.Trim() == "Show more");
+
+		toggle.Click();
+
+		Assert.Empty(cut.FindAll(".line-clamp-8"));
+		Assert.Single(cut.FindAll("button"), button => button.TextContent.Trim() == "Show less");
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_LeavesAShortGoalPromptUnfolded()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.GoalPrompt, "Fix the login button.")
+			.Add(panel => panel.Messages, new List<JobMessage>()));
+
+		Assert.Empty(cut.FindAll(".line-clamp-8"));
+		Assert.DoesNotContain("Show more", cut.Markup);
 	}
 
 	private static async Task<string> RenderPanelHtmlAsync(Dictionary<string, object?> parameters)

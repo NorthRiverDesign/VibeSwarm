@@ -233,6 +233,21 @@
 	.progress-sm {
 		--bs-progress-height: 6px;
 	}
+	/* Clamp text to a few lines with an ellipsis: a long job title, a long goal prompt. */
+	.line-clamp-2,
+	.line-clamp-8 {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+	.line-clamp-2 {
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+	}
+	.line-clamp-8 {
+		-webkit-line-clamp: 8;
+		line-clamp: 8;
+	}
 }
 
 @layer custom {
@@ -607,10 +622,39 @@ details[open] > summary .details-chevron {
 	border: 1px solid rgba(63, 185, 80, 0.3);
 }
 
-/* Tool code — markup uses white-space-pre-wrap + Bootstrap utilities */
+/* Tool code — markup uses white-space-pre-wrap + Bootstrap utilities. Tall enough that a
+   command or output reads without a cramped inner scroll; only a long heredoc scrolls. */
 .chat-tool-code {
 	background: rgba(0, 0, 0, 0.2);
 	font-family: var(--bs-font-mono);
+	max-height: 40dvh;
+}
+
+/* Tool calls and the job status line are <summary> rows with their own chevron. */
+.chat-tool-call > summary::-webkit-details-marker,
+.job-details > summary::-webkit-details-marker {
+	display: none;
+}
+
+/* The job transcript flows with the page on phones (one scroll to follow); wide screens give
+   it its own scroller beside the changes column. */
+@media (width >= 1024px) {
+	.job-transcript {
+		max-height: 70dvh;
+		overflow-y: auto;
+	}
+}
+
+/* "Latest" pill: floats just above the bottom of whichever scroller holds the transcript. */
+.job-jump-latest {
+	bottom: 0.75rem;
+	z-index: 1;
+}
+
+/* Job page navigation bar: pinned to the top of the page scroller, opaque so the page
+   scrolls under it. Page content keeps to .main-content's padding, so nothing shows beside it. */
+.job-nav-bar {
+	background: var(--bs-bg-body);
 }
 
 /* Typing indicator dots (iMessage style) */
@@ -824,9 +868,6 @@ details[open] > summary .details-chevron {
 	}
 	.chat-bubble {
 		padding: 0.5rem 0.75rem;
-	}
-	.chat-tool-code {
-		max-height: 100px;
 	}
 
 	/* A full-screen dialog slides up from the bottom, as an iOS sheet does. */

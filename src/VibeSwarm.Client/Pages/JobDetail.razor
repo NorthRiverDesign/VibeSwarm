@@ -22,11 +22,9 @@ else
 {
     <WakeLockManager IsActive="@IsJobActive" />
 
-    @* Breadcrumb Navigation *@
-    <Breadcrumb Items="@_breadcrumbItems" />
-
-    @* Page Header Section *@
+    @* Page Header Section: back link and actions, title, status line *@
     <JobHeaderSection Status="@Job.Status" JobTitle="@Job.Title" CancellationRequested="@Job.CancellationRequested"
+                      BackHref="@BackHref" BackLabel="@BackLabel"
                       GitHubRepository="@Job.Project?.GitHubRepository" BranchName="@_branchName" ProjectId="@Job.ProjectId"
                       ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@Job.Provider?.Name"
                       ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
@@ -52,11 +50,6 @@ else
 					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" AgentName="@Job.Agent?.Name"
 					   PlaywrightEnabled="@Job.PlaywrightEnabled" EnvironmentCount="@Job.EnvironmentSnapshots.Count"
 					   EnvironmentTooltip="@BuildEnvironmentTooltip()" />
-
-	@if (ShowChangeSets)
-	{
-		<JobChangeSetsCard ChangeSets="@_changeSets" />
-	}
 
 	<JobStatusSection Job="@Job" IsPushed="@_changesPushed" BranchName="@_branchName" />
 
@@ -187,6 +180,14 @@ else
         </div>
     </div>
 
+	@* Earlier runs of a followed-up job come after the current one *@
+	@if (ShowChangeSets)
+	{
+		<div class="mt-5 lg:mt-7">
+			<JobChangeSetsCard ChangeSets="@_changeSets" />
+		</div>
+	}
+
 	<CreateBranchModal @bind-IsVisible="_showCreateBranchModal" CurrentBranch="@_branchName"
 					   IsCreating="@_isCreatingBranch" ErrorMessage="@_createBranchError" OnCreate="CreateBranch" />
 
@@ -228,12 +229,17 @@ else
     private readonly List<OutputLine> _liveOutput = new();
     private readonly List<JobMessage> _pendingSessionMessages = new();
 
-    private List<Breadcrumb.BreadcrumbItem> _breadcrumbItems => new()
-    {
-        new Breadcrumb.BreadcrumbItem("Projects", "/projects", "folder"),
-        new Breadcrumb.BreadcrumbItem(Job?.Project?.Name ?? "Project", $"/projects/{Job?.ProjectId}"),
-        new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
-    };
+    // Back goes where the job was opened from (the Jobs list passes returnUrl), else to its project.
+    private bool HasLocalReturnUrl => !string.IsNullOrWhiteSpace(ReturnUrl)
+        && ReturnUrl.StartsWith('/')
+        && !ReturnUrl.StartsWith("//", StringComparison.Ordinal)
+        && !ReturnUrl.Contains('\\');
+
+    private string BackHref => HasLocalReturnUrl ? ReturnUrl! : $"/projects/{Job?.ProjectId}";
+
+    private string BackLabel => HasLocalReturnUrl
+        ? ReturnUrl!.StartsWith("/jobs", StringComparison.OrdinalIgnoreCase) ? "Jobs" : "Back"
+        : Job?.Project?.Name ?? "Project";
 
     private bool CanCancel => Job != null &&
         (Job.Status == JobStatus.New ||
@@ -406,13 +412,6 @@ else
         }
     }
 
-	private string GetJobDisplayTitle()
-	{
-		if (Job == null) return "Job";
-		if (!string.IsNullOrEmpty(Job.Title)) return TruncateTitle(Job.Title, 40);
-		return TruncateTitle(Job.GoalPrompt, 40);
-	}
-
 	private async Task EnsureCurrentJobLoadedAsync()
 	{
 		if (_loadedJobId == JobId)
@@ -445,12 +444,6 @@ else
 			await SubscribeToSignalRGroups();
 		}
 	}
-
-    private static string TruncateTitle(string text, int maxLength)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length <= maxLength) return text;
-        return text[..maxLength] + "...";
-    }
 
     #region UI Actions
 

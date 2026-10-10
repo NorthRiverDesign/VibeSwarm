@@ -352,39 +352,94 @@
         </script>
 
         <script>
+            // Keeps a live transcript on its newest message while the reader is at the bottom, and
+            // stops following once they scroll up. A transcript with its own scroller (wide screens)
+            // opens at the latest message; on phones it flows in the page, so the page scroller is
+            // followed instead, and only once the reader has reached the bottom themselves.
             window.vibeSwarmLiveOutput = {
                 isNearBottom: function (element) {
                     if (!element) {
                         return false;
                     }
 
-                    return element.scrollHeight - element.scrollTop - element.clientHeight <= 4;
+                    return element.scrollHeight - element.scrollTop - element.clientHeight <= 32;
+                },
+                scrollerFor: function (element) {
+                    var overflowY = getComputedStyle(element).overflowY;
+                    if (overflowY === 'auto' || overflowY === 'scroll') {
+                        return element;
+                    }
+
+                    return element.closest('.app-main') || document.scrollingElement;
+                },
+                showJumpButton: function (element, state) {
+                    var button = element.querySelector('.job-jump-latest');
+                    if (button) {
+                        button.hidden = state.stick || window.vibeSwarmLiveOutput.isNearBottom(state.scroller);
+                    }
+                },
+                jumpToLatest: function (button) {
+                    var element = button.closest('.job-transcript');
+                    var state = element && element._vsFollow;
+                    if (!state) {
+                        return;
+                    }
+
+                    state.stick = true;
+                    button.hidden = true;
+                    state.scroller.scrollTo({
+                        top: state.scroller.scrollHeight,
+                        behavior: 'smooth'
+                    });
                 },
                 sync: function (element) {
                     if (!element) {
                         return;
                     }
 
-                    var shouldStick = element.dataset.vsAutoscroll !== 'false';
-                    if (shouldStick) {
-                        element.scrollTo({
-                            top: element.scrollHeight,
+                    var live = window.vibeSwarmLiveOutput;
+                    var scroller = live.scrollerFor(element);
+                    var state = element._vsFollow;
+                    if (!state || state.scroller !== scroller) {
+                        if (state) {
+                            state.scroller.removeEventListener('scroll', state.onScroll);
+                        }
+
+                        state = {
+                            scroller: scroller,
+                            lastTop: scroller.scrollTop,
+                            stick: scroller === element || live.isNearBottom(scroller)
+                        };
+                        // Only a scroll up stops following, so a smooth scroll still under way
+                        // when the next message lands doesn't count as the reader leaving.
+                        state.onScroll = function () {
+                            if (!element.isConnected) {
+                                scroller.removeEventListener('scroll', state.onScroll);
+                                return;
+                            }
+
+                            var top = scroller.scrollTop;
+                            if (live.isNearBottom(scroller)) {
+                                state.stick = true;
+                            } else if (top < state.lastTop) {
+                                state.stick = false;
+                            }
+
+                            state.lastTop = top;
+                            live.showJumpButton(element, state);
+                        };
+                        scroller.addEventListener('scroll', state.onScroll, { passive: true });
+                        element._vsFollow = state;
+                    }
+
+                    if (state.stick) {
+                        scroller.scrollTo({
+                            top: scroller.scrollHeight,
                             behavior: 'smooth'
                         });
                     }
 
-                    var updateAutoscrollState = function () {
-                        element.dataset.vsAutoscroll = window.vibeSwarmLiveOutput.isNearBottom(element)
-                            ? 'true'
-                            : 'false';
-                    };
-
-                    if (!element.dataset.vsAutoscrollInitialized) {
-                        element.dataset.vsAutoscrollInitialized = 'true';
-                        element.addEventListener('scroll', updateAutoscrollState, { passive: true });
-                    }
-
-                    updateAutoscrollState();
+                    live.showJumpButton(element, state);
                 }
             };
         </script>
