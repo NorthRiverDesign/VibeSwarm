@@ -46,7 +46,7 @@ else
 
 <div class="mb-5">
 <label for="goalPrompt" class="form-label">@GetGoalPromptLabel()</label>
-<InputTextArea id="goalPrompt" @bind-Value="FormModel.GoalPrompt" class="form-control" rows="5"
+<InputTextArea id="goalPrompt" @bind-Value="FormModel.GoalPrompt" class="form-control textarea-autogrow" rows="3"
 placeholder="@GetGoalPromptPlaceholder()" />
 @if (!string.IsNullOrWhiteSpace(GetGoalPromptHelpText()))
 {

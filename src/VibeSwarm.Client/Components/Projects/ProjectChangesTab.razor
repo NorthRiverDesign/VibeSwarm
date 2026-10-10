@@ -115,8 +115,8 @@ else if (_changesTabDiffFiles != null && _changesTabDiffFiles.Any())
                         </button>
                     }
                 </div>
-                <div class="card rounded-9">
-                    <textarea class="form-control border-0 shadow-none bg-transparent font-monospace" id="changesTabCommitMessage"
+                <div class="card composer-card rounded-9">
+                    <textarea class="form-control textarea-autogrow border-0 shadow-none bg-transparent font-monospace" id="changesTabCommitMessage"
                               @bind="_commitMessage" @bind:event="oninput" rows="3" placeholder="Describe these changes…"
                               disabled="@_isCommitting"></textarea>
                     <div class="card-footer bg-transparent d-flex justify-content-end gap-3">

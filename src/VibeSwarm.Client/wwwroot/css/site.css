@@ -256,6 +256,34 @@ textarea.form-control {
 	max-height: calc(50 * 1.5rem + 0.75rem);
 }
 
+/* A composer field grows with what's typed, as a messaging app's does, from three lines up
+   to a share of the screen that leaves room for the keyboard, then scrolls. Browsers
+   without field-sizing get the same from index.html. */
+textarea.textarea-autogrow {
+	field-sizing: content;
+	resize: none;
+	min-height: calc(3lh + 2 * var(--bs-control-padding-y) + 2 * var(--bs-control-border-width));
+	max-height: 40dvh;
+}
+
+/* A composer card is the field: its borderless textarea draws no ring inside the card, and
+   the card's border takes the focus colour instead. */
+.composer-card {
+	transition: border-color var(--vs-transition);
+}
+.composer-card .form-control {
+	outline: 0;
+}
+.composer-card:has(textarea:focus) {
+	border-color: var(--bs-focus-ring-color);
+}
+
+/* FocusOnNavigate moves focus to each new page's <h1> so screen readers announce it. The
+   heading isn't a control, so it shows no ring; iOS drew one after every tab switch. */
+h1:focus {
+	outline: none;
+}
+
 @keyframes pulse-live {
 	0%,
 	100% {

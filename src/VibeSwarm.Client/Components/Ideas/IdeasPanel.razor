@@ -30,7 +30,7 @@
 	}
 
 	<div class="d-flex flex-column gap-3">
-		<div class="card rounded-9">
+		<div class="card composer-card rounded-9">
 			<div class="d-flex align-items-end gap-3 p-3">
 				<div class="flex-shrink-0">
 					<button type="button" class="btn-link fg-1 rounded-circle p-0 icon-button-round"
@@ -66,7 +66,7 @@
 					</div>
 				</div>
 				<InputFile id="@_fileInputId" class="d-none" multiple OnChange="HandleFileSelection" />
-				<textarea class="form-control border-0 shadow-none bg-transparent px-1" id="@_textareaId" rows="2"
+				<textarea class="form-control textarea-autogrow border-0 shadow-none bg-transparent px-1" id="@_textareaId" rows="3"
 						  placeholder="Add an idea…" aria-label="New idea"
 						  @bind="NewIdeaDescription" @bind:event="oninput" @bind:after="ScheduleDraftSync" @onblur="FlushDraftSyncAsync" @onkeypress="HandleKeyPress"
 						  @ref="_newIdeaTextarea"

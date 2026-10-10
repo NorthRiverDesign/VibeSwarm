@@ -390,6 +390,50 @@
         </script>
 
         <script>
+            // Composer fields (.textarea-autogrow) grow with their text through CSS field-sizing.
+            // Browsers without it size them here: as the user types, and whenever Blazor sets the
+            // value (a restored draft, or the emptied field after sending).
+            (function () {
+                if (window.CSS && CSS.supports('field-sizing', 'content')) {
+                    return;
+                }
+
+                var isAutogrow = function (element) {
+                    return element instanceof HTMLTextAreaElement && element.classList.contains('textarea-autogrow');
+                };
+                var fit = function (textarea) {
+                    if (!textarea.isConnected) {
+                        return;
+                    }
+
+                    textarea.style.height = 'auto';
+                    textarea.style.height = (textarea.scrollHeight + textarea.offsetHeight - textarea.clientHeight) + 'px';
+                };
+                var fitTarget = function (e) {
+                    if (isAutogrow(e.target)) {
+                        fit(e.target);
+                    }
+                };
+
+                document.addEventListener('input', fitTarget, true);
+                document.addEventListener('focusin', fitTarget, true);
+
+                var value = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+                Object.defineProperty(HTMLTextAreaElement.prototype, 'value', {
+                    configurable: true,
+                    enumerable: value.enumerable,
+                    get: value.get,
+                    set: function (text) {
+                        value.set.call(this, text);
+                        if (isAutogrow(this)) {
+                            fit(this);
+                        }
+                    }
+                });
+            })();
+        </script>
+
+        <script>
             window.scrollToEnd = function (element) {
                 if (element) {
                     element.scrollLeft = element.scrollWidth;

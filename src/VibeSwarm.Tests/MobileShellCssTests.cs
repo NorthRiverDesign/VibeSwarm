@@ -55,6 +55,51 @@ public sealed class MobileShellCssTests
 		Assert.Matches(new Regex(@"\.app-floating-banner\s*\{[^}]*bottom:\s*calc\(var\(--vs-tab-bar-height\) \+ var\(--vs-safe-area-bottom\)\);"), ReadSiteCss());
 	}
 
+	[Fact]
+	public void SiteCss_DrawsNoFocusRingRoundThePageHeadingAfterNavigation()
+	{
+		// FocusOnNavigate focuses each new page's <h1> so screen readers announce it; iOS drew
+		// a focus ring round the heading after every tab switch.
+		Assert.Contains("<FocusOnNavigate", File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "App.razor")));
+		Assert.Matches(new Regex(@"h1:focus\s*\{\s*outline:\s*none;"), ReadSiteCss());
+	}
+
+	[Fact]
+	public void ComposerFields_GrowWithTheirText()
+	{
+		Assert.Matches(new Regex(@"textarea\.textarea-autogrow\s*\{[^}]*field-sizing:\s*content;[^}]*max-height:\s*40dvh;"), ReadSiteCss());
+
+		// Browsers without field-sizing are sized from index.html, which also catches the value
+		// Blazor sets when it empties a field after sending.
+		var index = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "wwwroot", "index.html"));
+		Assert.Contains("CSS.supports('field-sizing', 'content')", index);
+		Assert.Contains("getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')", index);
+
+		var ideasPanel = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Components", "Ideas", "IdeasPanel.razor"));
+		Assert.Matches(new Regex(@"<textarea class=""[^""]*\btextarea-autogrow\b[^""]*""[^>]*aria-label=""New idea"""), ideasPanel);
+
+		foreach (var composer in new[]
+		{
+			new[] { "Ideas", "IdeaListItem.razor" },
+			new[] { "Jobs", "JobSessionPanel.razor" },
+			new[] { "Jobs", "CreateJobModal.razor" },
+			new[] { "Jobs", "EditJobModal.razor" },
+			new[] { "Projects", "ProjectChangesTab.razor" },
+		})
+		{
+			var markup = File.ReadAllText(GetRepositoryPath(["src", "VibeSwarm.Client", "Components", .. composer]));
+			Assert.Contains("textarea-autogrow", markup);
+		}
+	}
+
+	[Fact]
+	public void GlobalSearch_ShowsKeyboardHintsOnlyOnDesktop()
+	{
+		var markup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Components", "Common", "GlobalSearchModal.razor"));
+
+		Assert.Matches(new Regex(@"<div class=""[^""]*\bd-none lg:d-flex\b[^""]*"">\s*<span[^>]*>\s*<kbd[^>]*>↑↓</kbd> navigate"), markup);
+	}
+
 	private static string ReadSiteCss()
 		=> File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "wwwroot", "css", "site.css"));
 

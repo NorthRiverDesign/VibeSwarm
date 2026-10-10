@@ -1,6 +1,21 @@
 @* Reusable breadcrumb navigation component *@
 
-<nav aria-label="breadcrumb" class="mb-5">
+@{
+	// Phones get one back link to the page above, as an iOS navigation bar does: the whole
+	// trail wraps onto extra lines there, and its last step repeats the title beneath it.
+	var parent = Items.LastOrDefault(item => !string.IsNullOrEmpty(item.Href));
+}
+
+@if (parent != null)
+{
+	<div class="md:d-none mb-1">
+		<a href="@parent.Href" class="small fg-1 text-decoration-none d-inline-flex align-items-center gap-1">
+			<i class="bi bi-chevron-left"></i>@parent.Text
+		</a>
+	</div>
+}
+
+<nav aria-label="breadcrumb" class="mb-5 @(parent != null ? "d-none md:d-block" : null)">
 	<ol class="breadcrumb">
 		@foreach (var (item, index) in Items.Select((item, i) => (item, i)))
 		{

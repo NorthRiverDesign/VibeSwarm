@@ -57,7 +57,7 @@
 
 			<div>
 				<label for="edit-job-prompt" class="form-label">Goal prompt</label>
-				<textarea id="edit-job-prompt" class="form-control lh-md" rows="8"
+				<textarea id="edit-job-prompt" class="form-control textarea-autogrow lh-md" rows="3"
 						  @bind="_editedPrompt" @bind:event="oninput" disabled="@(IsLocked || _isSaving)"
 						  placeholder="Enter the goal prompt for the AI agent..."></textarea>
 			</div>
