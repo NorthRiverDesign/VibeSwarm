@@ -16,7 +16,8 @@
 		@* IDLE / STOPPED STATE — the settings, grouped like the rest of the project page *@
 		<div class="d-flex flex-column gap-3 px-1">
 			<p class="small fg-1 mb-0">
-				Auto-Pilot reads the code, picks an improvement, builds it, and repeats until it reaches one of the limits below.
+				Auto-Pilot reads the code, picks an improvement, builds and commits it, and repeats until it reaches one of the limits below.
+				It waits out usage limits, looks at new areas when ideas run dry, and tidies up its own work every few changes.
 			</p>
 			@if (_loop != null && (_loop.CompletedIterations > 0 || !string.IsNullOrEmpty(_loop.LastStopReason)))
 			{
@@ -128,17 +129,29 @@
 			</div>
 		</section>
 
+		<section class="d-flex flex-column gap-3" aria-label="Polish">
+			<h2 class="text-eyebrow mb-0 px-1">Polish</h2>
+			<div class="list-group rounded-9">
+				<div class="list-group-item py-5">
+					<label for="ap-polish-every" class="form-label small fg-1 mb-1">Review and tidy up after every</label>
+					<div class="input-group">
+						<input id="ap-polish-every" type="number" class="form-control" @bind="_config.PolishEveryIterations"
+							   min="0" max="@AutoPilotConfig.MaxPolishEveryIterations" />
+						<span class="input-group-text">changes</span>
+					</div>
+					<div class="form-text">A polish pass fixes, refactors and tests the recent changes without adding features. 0 = never.</div>
+				</div>
+			</div>
+		</section>
+
 		<section class="d-flex flex-column gap-3" aria-label="After each change">
 			<h2 class="text-eyebrow mb-0 px-1">After each change</h2>
 			<div class="list-group rounded-9">
-				<label class="list-group-item d-flex align-items-center justify-content-between gap-5 py-5 cursor-pointer" for="ap-autocommit">
-					<span>Commit it</span>
-					<span class="switch">
-						<input type="checkbox" role="switch" switch id="ap-autocommit" @bind="_config.AutoCommit" />
-					</span>
-				</label>
 				<label class="list-group-item d-flex align-items-center justify-content-between gap-5 py-5 cursor-pointer" for="ap-autopush">
-					<span>Push the commit</span>
+					<span class="min-w-0">
+						<span class="d-block">Push the commit</span>
+						<span class="d-block small fg-1">Every change is committed, so the next one builds on it</span>
+					</span>
 					<span class="switch">
 						<input type="checkbox" role="switch" switch id="ap-autopush" @bind="_config.AutoPush" />
 					</span>
@@ -202,15 +215,33 @@
 				}
 				@if (_loop.CurrentJobId.HasValue)
 				{
-					<a href="/jobs/view/@_loop.CurrentJobId" class="list-group-item list-group-item-action d-flex align-items-center gap-5">
-						<i class="bi bi-terminal fg-1 flex-shrink-0"></i>
-						<span class="flex-grow-1">Current job</span>
-						<i class="bi bi-chevron-right fg-2 flex-shrink-0"></i>
-					</a>
+					<ListRow Icon="terminal" IconClass="fg-1" Href="@($"/jobs/view/{_loop.CurrentJobId}")"
+							 Title="@(string.IsNullOrWhiteSpace(_loop.CurrentJobTitle) ? "Current job" : _loop.CurrentJobTitle)"
+							 Subtitle="@GetCurrentJobLine(_loop)"
+							 AttentionLine="@(_loop.CurrentJobStatus == JobStatus.Paused ? "Waiting for your answer" : null)" />
 				}
-				else if (_loop.Status == IterationLoopStatus.Running && _loop.NextIterationAt.HasValue)
+				else if (!string.IsNullOrWhiteSpace(_loop.StatusMessage))
 				{
-					<div class="list-group-item small fg-1">Waiting before the next iteration</div>
+					<div class="list-group-item d-flex align-items-start gap-3 small fg-1">
+						<i class="bi bi-hourglass-split flex-shrink-0"></i>
+						<span class="min-w-0">
+							<span class="d-block">@_loop.StatusMessage</span>
+							@if (_loop.NextIterationAt > DateTime.UtcNow)
+							{
+								<span class="d-block">Resumes at @FormatLocalTime(_loop.NextIterationAt.Value)</span>
+							}
+						</span>
+					</div>
+				}
+				else if (_loop.Status == IterationLoopStatus.Running && _loop.NextIterationAt > DateTime.UtcNow)
+				{
+					<div class="list-group-item small fg-1">Next iteration at @FormatLocalTime(_loop.NextIterationAt.Value)</div>
+				}
+				@if (_loop.PolishEveryIterations > 0)
+				{
+					<div class="list-group-item small fg-1">
+						<i class="bi bi-stars me-1"></i>@GetPolishLine(_loop)
+					</div>
 				}
 				@if (_loop.ConsecutiveFailures > 0)
 				{
@@ -260,7 +291,6 @@
 		{
 			_defaultsApplied = true;
 			// Pre-fill from project settings
-			_config.AutoCommit = Project.AutoCommitMode != AutoCommitMode.Off;
 			_config.AutoPush = Project.AutoCommitMode == AutoCommitMode.CommitAndPush;
 			_config.InferenceProviderId = Project.IdeaInferenceProviderId;
 			_config.InferenceModelId = Project.IdeaInferenceModelId;
@@ -427,6 +457,34 @@
 			? $"${loop.TotalCostUsd:F2} of ${loop.MaxTotalCostUsd.Value:F2}"
 			: $"${loop.TotalCostUsd:F2} spent";
 		return $"{iterations} · {cost}";
+	}
+
+	private static string? GetCurrentJobLine(IterationLoop loop)
+	{
+		if (loop.CurrentJobNotBeforeUtc.HasValue)
+			return $"Queued until {FormatLocalTime(loop.CurrentJobNotBeforeUtc.Value)} for a usage limit";
+
+		return loop.CurrentJobStatus switch
+		{
+			JobStatus.New or JobStatus.Pending => "Queued",
+			JobStatus.Planning => "Planning",
+			JobStatus.Started or JobStatus.Processing => "Running",
+			_ => null
+		};
+	}
+
+	private static string GetPolishLine(IterationLoop loop)
+	{
+		var remaining = loop.PolishEveryIterations - loop.IterationsSinceLastPolish;
+		return remaining <= 0
+			? "Polish pass next"
+			: $"Polish pass after {remaining} more change{(remaining == 1 ? "" : "s")}";
+	}
+
+	private static string FormatLocalTime(DateTime utc)
+	{
+		var local = DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime();
+		return local.Date == DateTime.Now.Date ? local.ToString("h:mm tt") : local.ToString("MMM d, h:mm tt");
 	}
 
 	private static string GetStatusIcon(IterationLoopStatus status) => status switch

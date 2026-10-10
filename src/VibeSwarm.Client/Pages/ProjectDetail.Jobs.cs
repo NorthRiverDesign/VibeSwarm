@@ -1046,9 +1046,12 @@ public partial class ProjectDetail
             return string.Empty;
 
         var iterations = _autoPilotStatus.CompletedIterations;
-        return iterations > 0
+        var summary = iterations > 0
             ? $"{_autoPilotStatus.Status} · {iterations} iteration{(iterations == 1 ? "" : "s")} done"
             : _autoPilotStatus.Status.ToString();
+        return string.IsNullOrWhiteSpace(_autoPilotStatus.StatusMessage) || _autoPilotStatus.CurrentJobId.HasValue
+            ? summary
+            : $"{summary} · {_autoPilotStatus.StatusMessage}";
     }
 
     private async Task StopActiveJob()

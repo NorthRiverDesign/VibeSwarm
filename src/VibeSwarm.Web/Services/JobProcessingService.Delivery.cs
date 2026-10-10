@@ -21,8 +21,6 @@ public partial class JobProcessingService
     {
         try
         {
-            var shouldCreatePullRequest = ShouldCreatePullRequest(job);
-
             // Check if there are uncommitted changes
             var hasChanges = await _versionControlService.HasUncommittedChangesAsync(workingDirectory, cancellationToken);
             if (!hasChanges)
@@ -41,12 +39,7 @@ public partial class JobProcessingService
                             "Agent already committed changes for job {JobId}. Recorded HEAD {CommitHash} as GitCommitHash.",
                             job.Id, currentHash[..Math.Min(8, currentHash.Length)]);
 
-                        // Determine effective commit mode: use project setting, or default to CommitOnly for IdeasAutoCommit
-                        var effectiveMode = shouldCreatePullRequest
-                            ? AutoCommitMode.CommitAndPush
-                            : job.Project!.AutoCommitMode != AutoCommitMode.Off
-                            ? job.Project.AutoCommitMode
-                            : AutoCommitMode.CommitOnly;
+                        var effectiveMode = GetEffectiveCommitMode(job);
 
                         // Push if configured
                         if (effectiveMode == AutoCommitMode.CommitAndPush)
@@ -66,12 +59,7 @@ public partial class JobProcessingService
                 return;
             }
 
-            // Determine effective commit mode: use project setting, or default to CommitOnly for IdeasAutoCommit
-            var effectiveCommitMode = shouldCreatePullRequest
-                ? AutoCommitMode.CommitAndPush
-                : job.Project!.AutoCommitMode != AutoCommitMode.Off
-                ? job.Project.AutoCommitMode
-                : AutoCommitMode.CommitOnly;
+            var effectiveCommitMode = GetEffectiveCommitMode(job);
 
             var commitMessage = await BuildCommitMessageAsync(job, workingDirectory, cancellationToken);
             var commitOptions = CommitAttributionHelper.BuildGitCommitOptions(job.Provider?.Type, enableCommitAttribution);
@@ -408,7 +396,29 @@ public partial class JobProcessingService
     {
         return job.Project?.AutoCommitMode != AutoCommitMode.Off
             || job.Project?.IdeasAutoCommit == true
+            || job.CommitModeOverride is AutoCommitMode.CommitOnly or AutoCommitMode.CommitAndPush
             || ShouldCreatePullRequest(job);
+    }
+
+    /// <summary>
+    /// How a delivered job's changes go out: a pull request always pushes, then the job's own
+    /// override (auto-pilot), then the project setting, else commit only (ideas auto-commit).
+    /// </summary>
+    internal static AutoCommitMode GetEffectiveCommitMode(Job job)
+    {
+        if (ShouldCreatePullRequest(job))
+        {
+            return AutoCommitMode.CommitAndPush;
+        }
+
+        if (job.CommitModeOverride is AutoCommitMode.CommitOnly or AutoCommitMode.CommitAndPush)
+        {
+            return job.CommitModeOverride.Value;
+        }
+
+        return job.Project?.AutoCommitMode is AutoCommitMode.CommitOnly or AutoCommitMode.CommitAndPush
+            ? job.Project.AutoCommitMode
+            : AutoCommitMode.CommitOnly;
     }
 
     private static bool ShouldCreatePullRequest(Job job)

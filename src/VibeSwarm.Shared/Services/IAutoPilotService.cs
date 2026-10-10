@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using VibeSwarm.Shared.Data;
 
 namespace VibeSwarm.Shared.Services;
@@ -26,28 +27,42 @@ public class AutoPilotConfig
 	/// </summary>
 	public string? ModelId { get; set; }
 
+	public const int MaxIterationsLimit = 1000;
+	public const int MaxConsecutiveFailuresLimit = 20;
+	public const int MinCooldownSeconds = 10;
+	public const int MaxCooldownSeconds = 3600;
+	public const int MaxPolishEveryIterations = 100;
+
 	/// <summary>
 	/// Maximum iterations before the loop stops. 0 = unlimited.
 	/// </summary>
+	[Range(0, MaxIterationsLimit)]
 	public int MaxIterations { get; set; } = 50;
 
 	/// <summary>
 	/// Maximum total cost in USD. Null = no cost limit.
 	/// </summary>
+	[Range(0, 1_000_000)]
 	public decimal? MaxTotalCostUsd { get; set; }
 
 	/// <summary>
 	/// Number of consecutive failures before the loop stops.
 	/// </summary>
+	[Range(1, MaxConsecutiveFailuresLimit)]
 	public int MaxConsecutiveFailures { get; set; } = 3;
 
+	[Range(MinCooldownSeconds, MaxCooldownSeconds)]
 	public int CooldownSeconds { get; set; } = 60;
 
 	/// <summary>
-	/// Whether to auto-commit changes after each successful job.
+	/// After this many successful changes, run a polish pass over them. 0 = never.
 	/// </summary>
-	public bool AutoCommit { get; set; } = true;
+	[Range(0, MaxPolishEveryIterations)]
+	public int PolishEveryIterations { get; set; } = 5;
 
+	/// <summary>
+	/// Whether to push each change after it is committed.
+	/// </summary>
 	public bool AutoPush { get; set; }
 }
 

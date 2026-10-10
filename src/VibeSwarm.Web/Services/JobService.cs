@@ -89,7 +89,8 @@ public partial class JobService : IJobService
              	|| j.MergedAt.HasValue
              	|| (!string.IsNullOrWhiteSpace(j.GitCommitHash)
              		&& (j.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest
-             			|| (j.Project != null && j.Project.AutoCommitMode == AutoCommitMode.CommitAndPush))),
+             			|| j.CommitModeOverride == AutoCommitMode.CommitAndPush
+             			|| (j.CommitModeOverride == null && j.Project != null && j.Project.AutoCommitMode == AutoCommitMode.CommitAndPush))),
              SessionSummary = j.SessionSummary,
              IsScheduled = j.IsScheduled,
             JobScheduleId = j.JobScheduleId,
@@ -527,6 +528,7 @@ public partial class JobService : IJobService
                 Branch = primaryJob.Branch,
                 TargetBranch = primaryJob.TargetBranch,
                 GitChangeDeliveryMode = primaryJob.GitChangeDeliveryMode,
+                CommitModeOverride = primaryJob.CommitModeOverride,
                 Priority = primaryJob.Priority,
                 CreatedAt = DateTime.UtcNow,
                 MaxCostUsd = primaryJob.MaxCostUsd,

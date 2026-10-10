@@ -527,6 +527,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.ModelId).HasMaxLength(200);
 			entity.Property(e => e.InferenceModelId).HasMaxLength(200);
 			entity.Property(e => e.LastStopReason).HasMaxLength(500);
+			entity.Property(e => e.StatusMessage).HasMaxLength(500);
 			entity.HasOne(e => e.Project)
 	.WithMany()
 	.HasForeignKey(e => e.ProjectId)

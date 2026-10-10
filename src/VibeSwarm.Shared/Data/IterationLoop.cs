@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace VibeSwarm.Shared.Data;
 
@@ -30,7 +31,8 @@ public enum IterationLoopStatus
 	Stopped = 4,
 
 	/// <summary>
-	/// Stopped because the provider's usage limit was reached.
+	/// Stopped because the provider's usage limit was reached. Only older loops end here:
+	/// a running loop now waits for the limit to reset instead.
 	/// </summary>
 	Exhausted = 5,
 
@@ -98,10 +100,15 @@ public class IterationLoop
 	public int CooldownSeconds { get; set; } = 60;
 
 	/// <summary>
-	/// Whether to auto-commit changes after each successful job.
+	/// After this many successful changes, the next iteration is a polish pass that reviews and
+	/// tidies them instead of starting something new. 0 = never.
 	/// </summary>
-	public bool AutoCommit { get; set; } = true;
+	public int PolishEveryIterations { get; set; } = 5;
 
+	/// <summary>
+	/// Whether each change is pushed after it is committed. Auto-pilot always commits its
+	/// changes, so every iteration builds on the one before.
+	/// </summary>
 	public bool AutoPush { get; set; }
 
 	#endregion
@@ -122,6 +129,35 @@ public class IterationLoop
 	public Guid? CurrentJobId { get; set; }
 	public Job? CurrentJob { get; set; }
 	public Guid? CurrentIdeaId { get; set; }
+
+	/// <summary>
+	/// Successful changes since the last polish pass.
+	/// </summary>
+	public int IterationsSinceLastPolish { get; set; }
+
+	/// <summary>
+	/// Idea rounds in a row that produced nothing to build, because every suggestion repeated
+	/// earlier work or the idea source did not answer. Each miss moves to the next focus area.
+	/// </summary>
+	public int ConsecutiveIdeaMisses { get; set; }
+
+	/// <summary>
+	/// What the loop is waiting for right now, such as a usage limit reset. Null while it is
+	/// simply working.
+	/// </summary>
+	[StringLength(500)]
+	public string? StatusMessage { get; set; }
+
+	/// <summary>Filled in for status responses; not stored.</summary>
+	[NotMapped]
+	public string? CurrentJobTitle { get; set; }
+
+	[NotMapped]
+	public JobStatus? CurrentJobStatus { get; set; }
+
+	/// <summary>Set while the current job is held in the queue, e.g. until a usage limit resets.</summary>
+	[NotMapped]
+	public DateTime? CurrentJobNotBeforeUtc { get; set; }
 
 	#endregion
 

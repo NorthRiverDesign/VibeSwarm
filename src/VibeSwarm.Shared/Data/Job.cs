@@ -181,6 +181,12 @@ public class Job
     public GitChangeDeliveryMode GitChangeDeliveryMode { get; set; } = GitChangeDeliveryMode.CommitToBranch;
 
     /// <summary>
+    /// Replaces the project's auto-commit mode for this job. Auto-pilot sets it so each change
+    /// is committed, and the next iteration builds on it, whatever the project's setting.
+    /// </summary>
+    public AutoCommitMode? CommitModeOverride { get; set; }
+
+    /// <summary>
     /// Optional target branch used when creating a pull request or merging changes.
     /// </summary>
     [StringLength(250)]

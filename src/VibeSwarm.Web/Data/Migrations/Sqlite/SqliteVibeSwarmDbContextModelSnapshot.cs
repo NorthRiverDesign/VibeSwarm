@@ -657,9 +657,6 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("AutoCommit")
-                        .HasColumnType("INTEGER");
-
                     b.Property<bool>("AutoPush")
                         .HasColumnType("INTEGER");
 
@@ -667,6 +664,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("ConsecutiveFailures")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ConsecutiveIdeaMisses")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("CooldownSeconds")
@@ -687,6 +687,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<Guid?>("InferenceProviderId")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("IterationsSinceLastPolish")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime?>("LastIterationAt")
                         .HasColumnType("TEXT");
@@ -714,6 +717,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<DateTime?>("NextIterationAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("PolishEveryIterations")
+                        .HasColumnType("INTEGER");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("TEXT");
 
@@ -725,6 +731,10 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<string>("Status")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StatusMessage")
+                        .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("StoppedAt")
@@ -779,6 +789,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<string>("CommandUsed")
                         .HasMaxLength(4000)
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("CommitModeOverride")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("TEXT");

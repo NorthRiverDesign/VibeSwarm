@@ -90,6 +90,8 @@ public partial class IdeaService
 				ModelUsed = await ResolveJobModelAsync(idea.ProjectId, defaultProvider.Id, options, cancellationToken),
 				ReasoningEffort = await ResolveJobReasoningAsync(idea.ProjectId, defaultProvider.Id, cancellationToken),
 				AttachedFilesJson = attachmentPaths.Count > 0 ? JsonSerializer.Serialize(attachmentPaths) : null,
+				IterationLoopId = options?.IterationLoopId,
+				CommitModeOverride = options?.CommitModeOverride,
 				Status = JobStatus.New
 			};
 
