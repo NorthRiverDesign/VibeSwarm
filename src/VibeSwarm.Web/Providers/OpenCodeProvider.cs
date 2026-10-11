@@ -18,6 +18,7 @@ public class OpenCodeProvider : CliProviderBase
     private static readonly Version SkipPermissionsVersion = new(1, 4, 0);
     private static readonly Version AutoApproveVersion = new(1, 17, 12);
     private static readonly Version ThinkingVersion = new(1, 4, 0);
+    private static readonly Version OpenCode2Version = new(2, 0, 0);
 
     private readonly string? _apiEndpoint;
     private readonly string? _apiKey;
@@ -39,6 +40,16 @@ public class OpenCodeProvider : CliProviderBase
     {
         _apiEndpoint = config.ApiEndpoint;
         _apiKey = config.ApiKey;
+
+        // OpenCode 2 imports auth.json once, when it first migrates v1 credentials, and ignores it
+        // after that. Both majors read the OpenCode Zen key from OPENCODE_API_KEY.
+        if (ConnectionMode == ProviderConnectionMode.CLI && !string.IsNullOrWhiteSpace(_apiKey))
+        {
+            BaseEnvironmentVariables = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["OPENCODE_API_KEY"] = _apiKey
+            };
+        }
 
         if (ConnectionMode == ProviderConnectionMode.REST && !string.IsNullOrEmpty(_apiEndpoint))
         {
@@ -183,13 +194,27 @@ public class OpenCodeProvider : CliProviderBase
     /// --port          Port for the local server
     /// --dir           Working directory for the session (v1.2.0+)
     /// --variant       Provider-specific model variant / reasoning preset (v1.3.0+)
+    ///
+    /// OpenCode 2 (npm package @opencode/cli) rewrote the CLI and rejects --dir and --variant.
+    /// It takes the variant as provider/model#variant and adds --standalone.
     /// </summary>
     internal List<string> BuildRunCommandArgs(string prompt, string? sessionId)
     {
         var args = new List<string> { "run" };
-        var supportsDirectory = SupportsCliVersion(DirectoryVersion);
-        var supportsVariant = SupportsCliVersion(VariantVersion);
+        var isOpenCode2 = SupportsCliVersion(OpenCode2Version);
+        var supportsDirectory = SupportsCliVersion(DirectoryVersion) && !isOpenCode2;
+        var supportsVariant = SupportsCliVersion(VariantVersion) && !isOpenCode2;
         var supportsForkSession = SupportsCliVersion(ForkSessionVersion);
+
+        // OpenCode 2 runs through a shared background service by default. It outlives the job and
+        // keeps the environment of whichever run started it, so this run's OPENCODE_CONFIG (MCP
+        // servers) and API key would be ignored. A private server per run exits with it.
+        if (isOpenCode2)
+        {
+            args.Add("--standalone");
+        }
+
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "minimal", "low", "medium", "high", "xhigh", "max");
 
         // Session continuation options (--session takes precedence over --continue)
         var isContinuingSession = !string.IsNullOrEmpty(sessionId) || CurrentContinueLastSession;
@@ -211,6 +236,13 @@ public class OpenCodeProvider : CliProviderBase
         }
         if (!string.IsNullOrEmpty(model))
         {
+            // OpenCode 2 has no --variant; the variant rides on the model. Without a model there is
+            // nothing to attach it to, so the CLI's default variant applies.
+            if (isOpenCode2 && !string.IsNullOrEmpty(reasoningEffort) && !model.Contains('#'))
+            {
+                model = $"{model}#{reasoningEffort}";
+            }
+
             args.AddRange(new[] { "--model", model });
         }
 
@@ -226,7 +258,8 @@ public class OpenCodeProvider : CliProviderBase
             args.AddRange(new[] { "--title", CurrentTitle });
         }
 
-        // Working directory override (v1.2.0+)
+        // Working directory override (v1.2.0+). OpenCode 2 opens the session in the process's
+        // working directory instead.
         if (supportsDirectory
             && CurrentAdditionalDirectories != null
             && CurrentAdditionalDirectories.Count > 0)
@@ -256,9 +289,8 @@ public class OpenCodeProvider : CliProviderBase
             args.Add("--fork");
         }
 
-        // Reasoning effort / model variant — current opencode run accepts only --variant (v1.3.0+).
+        // Reasoning effort / model variant — opencode 1.x run accepts only --variant (v1.3.0+).
         // The legacy --reasoning flag was renamed at v1.3.0; passing it on current CLIs is rejected.
-        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "minimal", "low", "medium", "high", "xhigh", "max");
         if (supportsVariant && !string.IsNullOrEmpty(reasoningEffort))
         {
             args.AddRange(new[] { "--variant", reasoningEffort });
@@ -1110,6 +1142,7 @@ public class OpenCodeProvider : CliProviderBase
         if (ConnectionMode == ProviderConnectionMode.CLI)
         {
             var execPath = GetExecutablePath();
+            await EnsureCachedCliVersionAsync(cancellationToken);
 
             // Fetch available models dynamically
             try
@@ -1117,15 +1150,7 @@ public class OpenCodeProvider : CliProviderBase
                 using var modelsTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
                 using var modelsLinkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, modelsTimeoutCts.Token);
 
-                var modelsStartInfo = new ProcessStartInfo
-                {
-                    FileName = execPath,
-                    Arguments = "models --refresh"
-                };
-
-                PlatformHelper.ConfigureForCrossPlatform(modelsStartInfo);
-
-                using var modelsProcess = new Process { StartInfo = modelsStartInfo };
+                using var modelsProcess = CreateCliProcess(execPath, BuildModelsCommandArgs());
                 modelsProcess.Start();
 
                 try
@@ -1189,9 +1214,18 @@ public class OpenCodeProvider : CliProviderBase
             return null;
         }
 
-        var cleaned = versionString.TrimStart('v').Split('-')[0].Split('+')[0].Trim();
-        return Version.TryParse(cleaned, out var version) ? version : null;
+        // 1.x prints a bare "1.19.0"; OpenCode 2 prints "opencode v2.0.26".
+        return ProviderVersionReference.TryParseVersion(versionString, out var version) ? version : null;
     }
+
+    /// <summary>
+    /// Arguments for listing models. OpenCode 2 dropped --refresh and, like run, would otherwise
+    /// start the shared background service.
+    /// </summary>
+    internal List<string> BuildModelsCommandArgs()
+        => SupportsCliVersion(OpenCode2Version)
+            ? ["models", "--standalone"]
+            : ["models", "--refresh"];
 
     internal static OpenCodeUpdatePlan BuildUpdatePlan(string executablePath, string? homeDirectory = null)
     {
@@ -1287,6 +1321,7 @@ public class OpenCodeProvider : CliProviderBase
         if (ConnectionMode == ProviderConnectionMode.CLI)
         {
             await EnsureCliAuthenticationReadyAsync(cancellationToken);
+            await EnsureCachedCliVersionAsync(cancellationToken);
 
             var execPath = GetExecutablePath();
             if (string.IsNullOrEmpty(execPath))
@@ -1297,6 +1332,12 @@ public class OpenCodeProvider : CliProviderBase
             // Build arguments for simple prompt execution
             // Reference: https://opencode.ai/docs/cli#run
             var argsList = new List<string> { "run" };
+
+            // See BuildRunCommandArgs: keep OpenCode 2 off the shared background service.
+            if (SupportsCliVersion(OpenCode2Version))
+            {
+                argsList.Add("--standalone");
+            }
 
             // Add model if specified
             if (!string.IsNullOrEmpty(CurrentModel))

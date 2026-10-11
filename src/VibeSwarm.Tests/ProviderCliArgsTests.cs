@@ -1197,6 +1197,99 @@ public sealed class ProviderCliArgsTests
         Assert.DoesNotContain("--reasoning-effort", args);
     }
 
+    [Theory]
+    [InlineData("1.19.0", "1.19.0")]
+    [InlineData("opencode v2.0.26", "2.0.26")]
+    [InlineData("0.0.0-dev-202610110139", "0.0.0")]
+    public void OpenCode_ParseCliVersion_ReadsBothMajorsVersionOutput(string output, string expected)
+    {
+        Assert.Equal(Version.Parse(expected), OpenCodeProvider.ParseCliVersion(output));
+    }
+
+    [Fact]
+    public void OpenCode2_WithReasoningEffort_PutsTheVariantOnTheModel()
+    {
+        // OpenCode 2 rejects --variant with a usage error; it takes provider/model#variant.
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(2, 0, 26);
+        provider.ApplyOptions(new ExecutionOptions { Model = "anthropic/claude-sonnet-5-5", ReasoningEffort = "high" });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        var idx = args.IndexOf("--model");
+        Assert.True(idx >= 0);
+        Assert.Equal("anthropic/claude-sonnet-5-5#high", args[idx + 1]);
+        Assert.DoesNotContain("--variant", args);
+    }
+
+    [Fact]
+    public void OpenCode2_WithReasoningEffort_AndNoModel_OmitsTheVariant()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(2, 0, 26);
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "high" });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.DoesNotContain("--variant", args);
+        Assert.DoesNotContain("--model", args);
+    }
+
+    [Fact]
+    public void OpenCode2_RunsStandalone_WithOnlyFlagsItAccepts()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(2, 0, 26);
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            AdditionalDirectories = ["/tmp/worktree"],
+            SkipPermissions = true,
+            ShowThinking = true
+        });
+
+        var args = provider.BuildRunCommandArgs("test", "ses_123");
+
+        Assert.Equal(["run", "--standalone"], args.Take(2));
+        Assert.DoesNotContain("--dir", args);
+        Assert.Contains("--auto", args);
+        Assert.Contains("--thinking", args);
+        Assert.Equal("ses_123", args[args.IndexOf("--session") + 1]);
+        Assert.Equal("test", args[^1]);
+    }
+
+    [Fact]
+    public void OpenCode1_DoesNotRunStandalone()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 19, 0);
+        provider.ApplyOptions(new ExecutionOptions());
+
+        Assert.DoesNotContain("--standalone", provider.BuildRunCommandArgs("test", null));
+    }
+
+    [Fact]
+    public void OpenCode_ModelsCommand_DropsRefreshOnOpenCode2()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 19, 0);
+        Assert.Equal(["models", "--refresh"], provider.BuildModelsCommandArgs());
+
+        provider.CachedCliVersion = new Version(2, 0, 26);
+        Assert.Equal(["models", "--standalone"], provider.BuildModelsCommandArgs());
+    }
+
+    [Fact]
+    public void OpenCode_WithApiKey_PassesItThroughOpenCodeApiKey()
+    {
+        // OpenCode 2 stops reading auth.json after its one-time import of v1 credentials.
+        var config = CreateConfig(ProviderType.OpenCode);
+        config.ApiKey = "zen-key";
+        var provider = new OpenCodeProvider(config);
+        provider.ApplyOptions(new ExecutionOptions());
+
+        Assert.Equal("zen-key", provider.GetEffectiveEnvironmentVariables()?["OPENCODE_API_KEY"]);
+    }
+
     [Fact]
     public void OpenCode_WithTitle_AddsTitleFlag()
     {

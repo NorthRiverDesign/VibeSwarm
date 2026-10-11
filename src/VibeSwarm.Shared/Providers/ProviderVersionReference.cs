@@ -19,7 +19,7 @@ public static partial class ProviderVersionReference
 	/// <summary>
 	/// Date the provider integrations were last checked against live CLI releases.
 	/// </summary>
-	public static readonly DateOnly LastReviewed = new(2026, 10, 10);
+	public static readonly DateOnly LastReviewed = new(2026, 10, 11);
 
 	private static readonly Dictionary<ProviderType, ProviderVersionTarget> Targets = new()
 	{
@@ -50,13 +50,17 @@ public static partial class ProviderVersionReference
 		[ProviderType.OpenCode] = new ProviderVersionTarget(
 			ProviderType.OpenCode,
 			Executable: "opencode",
-			VerifiedAgainst: new Version(1, 18, 35),
+			VerifiedAgainst: new Version(2, 0, 26),
 			MinimumSupported: new Version(1, 0, 0),
 			DocumentationUrl: "https://opencode.ai/docs/cli",
 			Notes: "Bring-your-own-model harness with no first-party quota. Reasoning effort maps to "
-				+ "--variant. --auto (1.17.12+) replaced --dangerously-skip-permissions, which stays "
-				+ "as a hidden alias. Metering depends entirely on the configured model provider, so "
-				+ "locally hosted open-source models are unmetered."),
+				+ "--variant on 1.x. --auto (1.17.12+) replaced --dangerously-skip-permissions, which "
+				+ "stays as a hidden alias. OpenCode 2 (npm @opencode/cli, version output "
+				+ "'opencode v2.x') rejects --variant and --dir: the variant goes on the model as "
+				+ "provider/model#variant, and --standalone keeps run off the shared background "
+				+ "service. It reads auth.json only once, so the API key also goes in OPENCODE_API_KEY. "
+				+ "1.x (latest 1.19.0) stays supported. Metering depends entirely on the configured "
+				+ "model provider, so locally hosted open-source models are unmetered."),
 	};
 
 	/// <summary>
