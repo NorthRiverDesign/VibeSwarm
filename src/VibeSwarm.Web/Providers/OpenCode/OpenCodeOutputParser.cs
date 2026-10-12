@@ -293,56 +293,6 @@ public static class OpenCodeOutputParser
 	}
 
 	/// <summary>
-	/// Parses OpenCode session show output to extract summary information.
-	/// </summary>
-	public static string? ParseSessionOutput(string output)
-	{
-		if (string.IsNullOrWhiteSpace(output))
-			return null;
-
-		try
-		{
-			using var doc = JsonDocument.Parse(output);
-			var root = doc.RootElement;
-
-			if (root.TryGetProperty("summary", out var summaryProp))
-			{
-				return summaryProp.GetString();
-			}
-
-			if (root.TryGetProperty("description", out var descProp))
-			{
-				return descProp.GetString();
-			}
-
-			if (root.TryGetProperty("messages", out var messagesProp))
-			{
-				var lastAssistantMessage = string.Empty;
-				foreach (var msg in messagesProp.EnumerateArray())
-				{
-					if (msg.TryGetProperty("role", out var roleProp) &&
-						roleProp.GetString() == "assistant" &&
-						msg.TryGetProperty("content", out var contentProp))
-					{
-						lastAssistantMessage = contentProp.GetString() ?? string.Empty;
-					}
-				}
-
-				if (!string.IsNullOrWhiteSpace(lastAssistantMessage) && lastAssistantMessage.Length <= 500)
-				{
-					return lastAssistantMessage;
-				}
-			}
-		}
-		catch
-		{
-			// Not valid JSON
-		}
-
-		return null;
-	}
-
-	/// <summary>
 	/// Cleans OpenCode CLI output to extract the actual response.
 	/// </summary>
 	public static string CleanOutput(string output, int maxLength = 500)

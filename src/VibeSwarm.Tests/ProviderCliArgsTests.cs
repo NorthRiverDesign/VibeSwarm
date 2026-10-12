@@ -2030,11 +2030,11 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void OpenCode_SessionSummaryArgs_ReadsTheStoredSessionAsJson()
+    public void OpenCode_SessionSummaryArgs_AreNull_BecauseNeitherMajorCanShowASession()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
 
-        Assert.Equal("session show sess-123 --format json", provider.BuildSessionSummaryArgs("sess-123"));
+        Assert.Null(provider.BuildSessionSummaryArgs("ses_123"));
     }
 
     [Fact]
@@ -2055,10 +2055,88 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void OpenCode_ExtractSessionSummary_ReadsTheSummaryField()
+    public void OpenCode_JobRun_DefaultsToJsonFormat_ButAnExplicitFormatWins()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.ApplyOptions(new ExecutionOptions());
 
-        Assert.Equal("Added a test", provider.ExtractSessionSummary("""{"summary":"Added a test"}"""));
+        var jobArgs = provider.BuildRunCommandArgs("test", null, defaultOutputFormat: "json");
+        Assert.Equal("json", jobArgs[jobArgs.IndexOf("--format") + 1]);
+        Assert.DoesNotContain("--format", provider.BuildRunCommandArgs("test", null));
+
+        provider.ApplyOptions(new ExecutionOptions { OutputFormat = "default" });
+        var explicitArgs = provider.BuildRunCommandArgs("test", null, defaultOutputFormat: "json");
+        Assert.Equal("default", explicitArgs[explicitArgs.IndexOf("--format") + 1]);
+    }
+
+    [Fact]
+    public void OpenCode_StreamLines_CaptureSessionMessagesTokensAndCost()
+    {
+        // Lines as `opencode run --format json` writes them (1.x and 2.x share the shape).
+        string[] lines =
+        [
+            """{"type":"step_start","timestamp":1,"sessionID":"ses_abc","part":{"id":"prt_1","type":"step-start"}}""",
+            """{"type":"text","timestamp":2,"sessionID":"ses_abc","part":{"id":"prt_2","type":"text","text":"I'll check why the API key was not found.","time":{"start":1,"end":2}}}""",
+            """{"type":"tool_use","timestamp":3,"sessionID":"ses_abc","part":{"id":"prt_3","type":"tool","callID":"call_1","tool":"bash","state":{"status":"completed","input":{"command":"dotnet build"},"output":"error CS0103: name not found","title":"dotnet build"}}}""",
+            """{"type":"tool_use","timestamp":4,"sessionID":"ses_abc","part":{"id":"prt_4","type":"tool","callID":"call_2","tool":"read","state":{"status":"error","input":{"filePath":"/x"},"error":"File not found: /x"}}}""",
+            """{"type":"step_finish","timestamp":5,"sessionID":"ses_abc","part":{"id":"prt_5","type":"step-finish","reason":"tool-calls","cost":0.0125,"tokens":{"input":1200,"output":300,"reasoning":50,"cache":{"read":900,"write":0}}}}""",
+            """{"type":"text","timestamp":6,"sessionID":"ses_abc","part":{"id":"prt_6","type":"text","text":"Fixed it.","time":{"start":5,"end":6}}}""",
+            """{"type":"step_finish","timestamp":7,"sessionID":"ses_abc","part":{"id":"prt_7","type":"step-finish","reason":"stop","cost":0.0025,"tokens":{"input":100,"output":20,"reasoning":0,"cache":{"read":0,"write":0}}}}""",
+        ];
+        var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
+        var currentMessage = new System.Text.StringBuilder();
+        var reports = new List<ExecutionProgress>();
+        var progress = new SynchronousProgress<ExecutionProgress>(reports.Add);
+
+        foreach (var line in lines)
+        {
+            Assert.True(OpenCodeProvider.TryProcessStreamLine(line, result, currentMessage, progress));
+        }
+
+        Assert.Equal("ses_abc", result.SessionId);
+        Assert.Single(reports, report => report.SessionId == "ses_abc");
+        Assert.Equal(1300, result.InputTokens);
+        Assert.Equal(370, result.OutputTokens);
+        Assert.Equal(0.015m, result.CostUsd);
+        Assert.Null(result.ErrorMessage);
+
+        Assert.Equal(["assistant", "tool_use", "tool_result", "tool_use", "tool_error"], result.Messages.Select(m => m.Role));
+        Assert.Equal("I'll check why the API key was not found.", result.Messages[0].Content);
+        Assert.Equal("bash", result.Messages[1].ToolName);
+        Assert.Equal("""{"command":"dotnet build"}""", result.Messages[1].ToolInput);
+        Assert.Equal("error CS0103: name not found", result.Messages[2].ToolOutput);
+        Assert.Equal("File not found: /x", result.Messages[4].ToolOutput);
+        Assert.Equal("Fixed it.", currentMessage.ToString());
+    }
+
+    [Theory]
+    [InlineData("""{"type":"error","timestamp":1,"sessionID":"ses_abc","error":{"name":"ProviderAuthError","data":{"providerID":"anthropic","message":"Invalid API key"}}}""")]
+    [InlineData("""{"type":"error","timestamp":1,"sessionID":"ses_abc","error":{"type":"provider","message":"Invalid API key"}}""")]
+    public void OpenCode_StreamErrorEvent_FailsTheRunWithItsMessage(string line)
+    {
+        var result = new ExecutionResult { Success = true, Messages = new List<ExecutionMessage>() };
+
+        Assert.True(OpenCodeProvider.TryProcessStreamLine(line, result, new System.Text.StringBuilder(), null));
+
+        Assert.False(result.Success);
+        Assert.Equal("Invalid API key", result.ErrorMessage);
+        Assert.Equal("system", Assert.Single(result.Messages).Role);
+    }
+
+    [Theory]
+    [InlineData("Plain text reply")]
+    [InlineData("{not json")]
+    [InlineData("""{"message":"no type"}""")]
+    public void OpenCode_NonEventLines_AreLeftForPlainTextHandling(string line)
+    {
+        var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
+
+        Assert.False(OpenCodeProvider.TryProcessStreamLine(line, result, new System.Text.StringBuilder(), null));
+        Assert.Empty(result.Messages);
+    }
+
+    private sealed class SynchronousProgress<T>(Action<T> handler) : IProgress<T>
+    {
+        public void Report(T value) => handler(value);
     }
 }

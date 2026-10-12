@@ -197,8 +197,10 @@ public class OpenCodeProvider : CliProviderBase
     ///
     /// OpenCode 2 (npm package @opencode/cli) rewrote the CLI and rejects --dir and --variant.
     /// It takes the variant as provider/model#variant and adds --standalone.
+    ///
+    /// <paramref name="defaultOutputFormat"/> applies when the caller set no OutputFormat.
     /// </summary>
-    internal List<string> BuildRunCommandArgs(string prompt, string? sessionId)
+    internal List<string> BuildRunCommandArgs(string prompt, string? sessionId, string? defaultOutputFormat = null)
     {
         var args = new List<string> { "run" };
         var isOpenCode2 = SupportsCliVersion(OpenCode2Version);
@@ -269,9 +271,10 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         // Output format (default or json)
-        if (!string.IsNullOrEmpty(CurrentOutputFormat))
+        var outputFormat = string.IsNullOrEmpty(CurrentOutputFormat) ? defaultOutputFormat : CurrentOutputFormat;
+        if (!string.IsNullOrEmpty(outputFormat))
         {
-            args.AddRange(new[] { "--format", CurrentOutputFormat });
+            args.AddRange(new[] { "--format", outputFormat });
         }
 
         // File attachments
@@ -432,7 +435,9 @@ public class OpenCodeProvider : CliProviderBase
 
         // Build the full command using the centralized argument builder
         // Reference: https://opencode.ai/docs/cli#run
-        var args = BuildRunCommandArgs(prompt, sessionId);
+        // JSON events are the only output that carries the session ID (needed to resume a
+        // follow-up), tool calls, and token and cost totals.
+        var args = BuildRunCommandArgs(prompt, sessionId, defaultOutputFormat: "json");
         ApplyMcpConfigEnvironmentVariable();
 
         var fullCommand = FormatCommandForDisplay(execPath, args);
@@ -471,6 +476,18 @@ public class OpenCodeProvider : CliProviderBase
                 hasReceivedMeaningfulOutput = true;
             }
 
+            // A JSON event embeds the agent's prose and tool output, so the plain-text error
+            // patterns below would misfire on it ("not found" in a reply, "error" in a build log).
+            if (TryProcessStreamLine(cleanedData, result, currentAssistantMessage, progress))
+            {
+                progress?.Report(new ExecutionProgress
+                {
+                    OutputLine = cleanedData,
+                    IsStreaming = true
+                });
+                return;
+            }
+
             // Check for early error patterns in the output
             // This allows us to detect errors like "model 'x' not found" immediately
             if (!earlyErrorDetected && IsCliErrorLine(cleanedData))
@@ -485,21 +502,6 @@ public class OpenCodeProvider : CliProviderBase
                     CurrentMessage = $"CLI Error: {cleanedData}"
                 });
                 return;
-            }
-
-            // Try to parse as JSON first
-            try
-            {
-                var jsonEvent = JsonSerializer.Deserialize<OpenCodeStreamEvent>(cleanedData, JsonOptions);
-                if (jsonEvent != null && !string.IsNullOrEmpty(jsonEvent.Type))
-                {
-                    ProcessStreamEvent(jsonEvent, result, currentAssistantMessage, progress);
-                    return;
-                }
-            }
-            catch
-            {
-                // Not JSON, continue with plain text handling
             }
 
             // Plain text output
@@ -621,15 +623,7 @@ public class OpenCodeProvider : CliProviderBase
 
         await WaitForOutputStreamsAsync(outputComplete, errorComplete);
 
-        if (currentAssistantMessage.Length > 0)
-        {
-            result.Messages.Add(new ExecutionMessage
-            {
-                Role = "assistant",
-                Content = currentAssistantMessage.ToString(),
-                Timestamp = DateTime.UtcNow
-            });
-        }
+        FlushAssistantMessage(result, currentAssistantMessage);
 
         if (process.ExitCode != 0)
         {
@@ -661,8 +655,12 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         // If exit code is 0 and no error patterns were found, ensure success is true
-        // even if there's content in stderr (likely just tool progress output)
-        if (process.ExitCode == 0 && string.IsNullOrWhiteSpace(errorFromOutput) && string.IsNullOrWhiteSpace(errorFromStderr))
+        // even if there's content in stderr (likely just tool progress output).
+        // An error event (which sets ErrorMessage) still fails the run.
+        if (process.ExitCode == 0
+            && string.IsNullOrWhiteSpace(errorFromOutput)
+            && string.IsNullOrWhiteSpace(errorFromStderr)
+            && string.IsNullOrWhiteSpace(result.ErrorMessage))
         {
             result.Success = true;
         }
@@ -841,107 +839,183 @@ public class OpenCodeProvider : CliProviderBase
         return null;
     }
 
-    private void ProcessStreamEvent(
+    /// <summary>
+    /// Handles one line of <c>--format json</c> output. Returns false for anything that isn't an
+    /// OpenCode event, so the caller can treat it as plain text.
+    /// </summary>
+    internal static bool TryProcessStreamLine(
+        string line,
+        ExecutionResult result,
+        System.Text.StringBuilder currentMessage,
+        IProgress<ExecutionProgress>? progress)
+    {
+        if (!line.StartsWith('{'))
+        {
+            return false;
+        }
+
+        OpenCodeStreamEvent? evt;
+        try
+        {
+            evt = JsonSerializer.Deserialize<OpenCodeStreamEvent>(line, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        if (evt == null || string.IsNullOrEmpty(evt.Type))
+        {
+            return false;
+        }
+
+        ProcessStreamEvent(evt, result, currentMessage, progress);
+        return true;
+    }
+
+    private static void ProcessStreamEvent(
         OpenCodeStreamEvent evt,
         ExecutionResult result,
         System.Text.StringBuilder currentMessage,
         IProgress<ExecutionProgress>? progress)
     {
+        // Every event carries the session ID; report it once.
+        if (!string.IsNullOrEmpty(evt.SessionId) && evt.SessionId != result.SessionId)
+        {
+            result.SessionId = evt.SessionId;
+            progress?.Report(new ExecutionProgress
+            {
+                SessionId = evt.SessionId,
+                IsStreaming = false
+            });
+        }
+
         switch (evt.Type)
         {
-            case "session":
-                if (!string.IsNullOrEmpty(evt.SessionId))
+            // A text part arrives once, when it is complete.
+            case "text":
+            {
+                var text = ReadString(evt.Part, "text")?.Trim();
+                if (!string.IsNullOrEmpty(text))
                 {
-                    result.SessionId = evt.SessionId;
+                    if (currentMessage.Length > 0)
+                    {
+                        currentMessage.AppendLine().AppendLine();
+                    }
+                    currentMessage.Append(text);
                     progress?.Report(new ExecutionProgress
                     {
-                        SessionId = evt.SessionId,
-                        IsStreaming = false
-                    });
-                }
-                break;
-
-            case "message":
-            case "assistant":
-                if (!string.IsNullOrEmpty(evt.Content))
-                {
-                    currentMessage.Append(evt.Content);
-                    progress?.Report(new ExecutionProgress
-                    {
-                        CurrentMessage = evt.Content,
+                        CurrentMessage = text.Length > 100 ? text[..100] + "..." : text,
                         IsStreaming = true
                     });
                 }
                 break;
+            }
 
-            case "tool_call":
-                if (currentMessage.Length > 0)
+            // Only sent with --thinking.
+            case "reasoning":
+            {
+                var text = ReadString(evt.Part, "text")?.Trim();
+                if (!string.IsNullOrEmpty(text))
                 {
+                    FlushAssistantMessage(result, currentMessage);
                     result.Messages.Add(new ExecutionMessage
                     {
-                        Role = "assistant",
-                        Content = currentMessage.ToString(),
+                        Role = "reasoning",
+                        Content = text,
                         Timestamp = DateTime.UtcNow
                     });
-                    currentMessage.Clear();
+                    progress?.Report(new ExecutionProgress
+                    {
+                        CurrentMessage = text.Length > 100 ? text[..100] + "..." : text,
+                        IsStreaming = true,
+                        IsThinkingContent = true,
+                        ContentCategory = "reasoning"
+                    });
                 }
+                break;
+            }
+
+            // Sent when a tool call finishes, with its input and its output or error.
+            case "tool_use":
+            {
+                FlushAssistantMessage(result, currentMessage);
+
+                var toolName = ReadString(evt.Part, "tool") ?? "unknown";
+                var state = evt.Part.ValueKind == JsonValueKind.Object
+                    && evt.Part.TryGetProperty("state", out var stateProp)
+                    && stateProp.ValueKind == JsonValueKind.Object
+                        ? stateProp
+                        : default;
+                var toolInput = state.ValueKind == JsonValueKind.Object
+                    && state.TryGetProperty("input", out var inputProp)
+                    && inputProp.ValueKind != JsonValueKind.Null
+                        ? inputProp.GetRawText()
+                        : null;
+                var failed = ReadString(state, "status") == "error";
+                var toolOutput = failed ? ReadString(state, "error") : ReadString(state, "output");
 
                 result.Messages.Add(new ExecutionMessage
                 {
                     Role = "tool_use",
-                    Content = evt.ToolName ?? "unknown",
-                    ToolName = evt.ToolName,
-                    ToolInput = evt.ToolInput,
+                    Content = toolName,
+                    ToolName = toolName,
+                    ToolInput = toolInput,
+                    Timestamp = DateTime.UtcNow
+                });
+                result.Messages.Add(new ExecutionMessage
+                {
+                    Role = failed ? "tool_error" : "tool_result",
+                    Content = toolOutput ?? string.Empty,
+                    ToolName = toolName,
+                    ToolOutput = toolOutput,
                     Timestamp = DateTime.UtcNow
                 });
                 progress?.Report(new ExecutionProgress
                 {
-                    ToolName = evt.ToolName,
+                    ToolName = toolName,
                     IsStreaming = false
                 });
                 break;
+            }
 
-            case "tool_result":
-                result.Messages.Add(new ExecutionMessage
+            // One per model call: tokens and cost for that step, summed over the run.
+            case "step_finish":
+            {
+                if (evt.Part.ValueKind != JsonValueKind.Object)
                 {
-                    Role = "tool_result",
-                    Content = evt.ToolOutput ?? "",
-                    ToolName = evt.ToolName,
-                    ToolOutput = evt.ToolOutput,
-                    Timestamp = DateTime.UtcNow
-                });
-                break;
+                    break;
+                }
 
-            case "done":
-            case "complete":
-                if (evt.InputTokens.HasValue)
+                if (evt.Part.TryGetProperty("tokens", out var tokens) && tokens.ValueKind == JsonValueKind.Object)
                 {
-                    result.InputTokens = evt.InputTokens;
+                    var input = ReadInt(tokens, "input");
+                    var output = ReadInt(tokens, "output") + ReadInt(tokens, "reasoning");
+                    result.InputTokens = (result.InputTokens ?? 0) + input;
+                    result.OutputTokens = (result.OutputTokens ?? 0) + output;
                 }
-                if (evt.OutputTokens.HasValue)
+
+                if (evt.Part.TryGetProperty("cost", out var cost)
+                    && cost.ValueKind == JsonValueKind.Number
+                    && cost.TryGetDecimal(out var stepCost))
                 {
-                    result.OutputTokens = evt.OutputTokens;
-                }
-                if (evt.CostUsd.HasValue)
-                {
-                    result.CostUsd = evt.CostUsd;
-                }
-                if (!string.IsNullOrEmpty(evt.Model))
-                {
-                    result.ModelUsed = evt.Model;
+                    result.CostUsd = (result.CostUsd ?? 0) + stepCost;
                 }
                 break;
+            }
 
             case "error":
-                var errorContent = evt.Error ?? evt.Message ?? evt.Content ?? "Unknown error";
+            {
+                var errorContent = ReadErrorMessage(evt.Error);
                 result.Success = false;
                 result.ErrorMessage = string.IsNullOrEmpty(result.ErrorMessage)
                     ? errorContent
                     : $"{result.ErrorMessage}\n{errorContent}";
 
+                FlushAssistantMessage(result, currentMessage);
                 result.Messages.Add(new ExecutionMessage
                 {
-                    Role = "error",
+                    Role = "system",
                     Content = errorContent,
                     Timestamp = DateTime.UtcNow
                 });
@@ -953,17 +1027,53 @@ public class OpenCodeProvider : CliProviderBase
                     IsErrorOutput = true
                 });
                 break;
-
-            default:
-                if (!string.IsNullOrEmpty(evt.Error))
-                {
-                    result.ErrorMessage = string.IsNullOrEmpty(result.ErrorMessage)
-                        ? evt.Error
-                        : $"{result.ErrorMessage}\n{evt.Error}";
-                }
-                break;
+            }
         }
     }
+
+    private static void FlushAssistantMessage(ExecutionResult result, System.Text.StringBuilder currentMessage)
+    {
+        if (currentMessage.Length == 0)
+        {
+            return;
+        }
+
+        result.Messages.Add(new ExecutionMessage
+        {
+            Role = "assistant",
+            Content = currentMessage.ToString(),
+            Timestamp = DateTime.UtcNow
+        });
+        currentMessage.Clear();
+    }
+
+    private static string ReadErrorMessage(JsonElement error)
+    {
+        return error.ValueKind switch
+        {
+            JsonValueKind.String => error.GetString() ?? "Unknown error",
+            JsonValueKind.Object =>
+                (error.TryGetProperty("data", out var data) ? ReadString(data, "message") : null)
+                    ?? ReadString(error, "message")
+                    ?? ReadString(error, "name")
+                    ?? error.GetRawText(),
+            _ => "Unknown error"
+        };
+    }
+
+    private static string? ReadString(JsonElement element, string propertyName)
+        => element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(propertyName, out var value)
+            && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+
+    private static int ReadInt(JsonElement element, string propertyName)
+        => element.TryGetProperty(propertyName, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var number)
+                ? number
+                : 0;
 
     private async Task<ExecutionResult> ExecuteRestWithSessionAsync(
         string prompt,
@@ -1302,16 +1412,9 @@ public class OpenCodeProvider : CliProviderBase
         return Task.FromResult(limits);
     }
 
-    protected override TimeSpan SessionSummaryTimeout => TimeSpan.FromSeconds(15);
-
-    protected internal override string? BuildSessionSummaryArgs(string sessionId)
-        => $"session show {sessionId} --format json";
-
-    protected internal override string? ExtractSessionSummary(string output)
-        => OpenCodeOutputParser.ParseSessionOutput(output);
-
-    protected override Task PrepareForSessionSummaryAsync(CancellationToken cancellationToken)
-        => EnsureCliAuthenticationReadyAsync(cancellationToken);
+    // Neither major has a command that summarizes a stored session (there is no
+    // "session show"; export dumps the whole transcript), so the summary comes from the job output.
+    protected internal override string? BuildSessionSummaryArgs(string sessionId) => null;
 
     public override async Task<PromptResponse> GetPromptResponseAsync(
         string prompt,

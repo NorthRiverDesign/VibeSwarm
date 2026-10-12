@@ -1,45 +1,32 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace VibeSwarm.Shared.Providers.OpenCode;
 
 /// <summary>
-/// Represents a streaming event from the OpenCode CLI.
+/// One line of <c>opencode run --format json</c> output. OpenCode 1.x and 2.x write the same shape:
+/// <c>{"type":"text","timestamp":…,"sessionID":"ses_…","part":{…}}</c>, where type is text,
+/// reasoning, tool_use, step_start, step_finish or error. Error events carry <c>error</c>
+/// instead of <c>part</c>.
 /// </summary>
 public class OpenCodeStreamEvent
 {
 	[JsonPropertyName("type")]
 	public string? Type { get; set; }
 
-	[JsonPropertyName("session_id")]
+	[JsonPropertyName("sessionID")]
 	public string? SessionId { get; set; }
 
-	[JsonPropertyName("content")]
-	public string? Content { get; set; }
+	/// <summary>
+	/// The message part: text and reasoning parts have <c>text</c>; tool parts have <c>tool</c> and
+	/// <c>state</c> (status, input, output or error); step-finish parts have <c>cost</c> and <c>tokens</c>.
+	/// </summary>
+	[JsonPropertyName("part")]
+	public JsonElement Part { get; set; }
 
-	[JsonPropertyName("tool_name")]
-	public string? ToolName { get; set; }
-
-	[JsonPropertyName("tool_input")]
-	public string? ToolInput { get; set; }
-
-	[JsonPropertyName("tool_output")]
-	public string? ToolOutput { get; set; }
-
-	[JsonPropertyName("cost_usd")]
-	public decimal? CostUsd { get; set; }
-
-	[JsonPropertyName("input_tokens")]
-	public int? InputTokens { get; set; }
-
-	[JsonPropertyName("output_tokens")]
-	public int? OutputTokens { get; set; }
-
+	/// <summary>
+	/// 1.x sends <c>{"name":…,"data":{"message":…}}</c>; 2.x sends <c>{"message":…}</c>.
+	/// </summary>
 	[JsonPropertyName("error")]
-	public string? Error { get; set; }
-
-	[JsonPropertyName("message")]
-	public string? Message { get; set; }
-
-	[JsonPropertyName("model")]
-	public string? Model { get; set; }
+	public JsonElement Error { get; set; }
 }

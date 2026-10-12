@@ -210,7 +210,8 @@ return providerType switch
 {
 ProviderType.Copilot => $"--additional-mcp-config \"@{configFilePath}\"",
 ProviderType.Claude => $"--mcp-config \"{configFilePath}\"",
-ProviderType.OpenCode => $"--config \"{configFilePath}\"",
+// opencode run has no config flag; OpenCodeProvider passes the file in OPENCODE_CONFIG.
+ProviderType.OpenCode => null,
 _ => null
 };
 }

@@ -121,6 +121,23 @@ public sealed class JobSummaryGeneratorTests
 	}
 
 	[Fact]
+	public void BuildCommitSubject_ReadsCommitSummaryFromOpenCodeTextEvent()
+	{
+		var consoleOutput = string.Join('\n',
+			"""{"type":"tool_use","timestamp":1,"sessionID":"ses_1","part":{"type":"tool","tool":"read","state":{"status":"completed","input":{},"output":"<commit-summary>Add user auth</commit-summary>"}}}""",
+			"""{"type":"text","timestamp":2,"sessionID":"ses_1","part":{"type":"text","text":"All set.\n<commit-summary>Parse OpenCode JSON events</commit-summary>"}}""",
+			"""{"type":"step_finish","timestamp":3,"sessionID":"ses_1","part":{"type":"step-finish","cost":0,"tokens":{"input":1,"output":1}}}""");
+
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: null,
+			title: null,
+			goalPrompt: "fallback prompt",
+			consoleOutput: consoleOutput);
+
+		Assert.Equal("Parse OpenCode JSON events", subject);
+	}
+
+	[Fact]
 	public void BuildCommitSubject_TakesTheLastRealCommitSummaryFromPlainText()
 	{
 		var subject = JobSummaryGenerator.BuildCommitSubject(

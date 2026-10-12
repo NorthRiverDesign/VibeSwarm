@@ -464,6 +464,54 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public async Task RenderedJobSessionPanel_ExpandsOpenCodeJsonEventsInLiveTranscript()
+	{
+		var timestamp = DateTime.UtcNow;
+
+		var html = await RenderPanelHtmlAsync(new Dictionary<string, object?>
+		{
+			[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+			[nameof(JobSessionPanel.IsJobActive)] = true,
+			[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+			{
+				new()
+				{
+					Content = """{"type":"step_start","timestamp":1760000000000,"sessionID":"ses_live1","part":{"id":"prt_1","sessionID":"ses_live1","messageID":"msg_1","type":"step-start"}}""",
+					Timestamp = timestamp.AddSeconds(-4)
+				},
+				new()
+				{
+					Content = """{"type":"text","timestamp":1760000001000,"sessionID":"ses_live1","part":{"id":"prt_2","sessionID":"ses_live1","messageID":"msg_1","type":"text","text":"Running the test suite first.","time":{"start":1,"end":2}}}""",
+					Timestamp = timestamp.AddSeconds(-3)
+				},
+				new()
+				{
+					Content = """{"type":"tool_use","timestamp":1760000002000,"sessionID":"ses_live1","part":{"id":"prt_3","sessionID":"ses_live1","messageID":"msg_1","type":"tool","callID":"call_oc_1","tool":"bash","state":{"status":"error","input":{"command":"dotnet test"},"error":"exit code 1","time":{"start":1,"end":2}}}}""",
+					Timestamp = timestamp.AddSeconds(-2)
+				},
+				new()
+				{
+					Content = """{"type":"step_finish","timestamp":1760000003000,"sessionID":"ses_live1","part":{"id":"prt_4","type":"step-finish","reason":"tool-calls","cost":0.01,"tokens":{"input":10,"output":5,"reasoning":0,"cache":{"read":0,"write":0}}}}""",
+					Timestamp = timestamp.AddSeconds(-1)
+				},
+				new()
+				{
+					Content = """{"type":"error","timestamp":1760000004000,"sessionID":"ses_live1","error":{"name":"APIError","data":{"message":"Model not available"}}}""",
+					Timestamp = timestamp
+				}
+			}
+		});
+
+		Assert.Contains("Running the test suite first.", html);
+		Assert.Contains("dotnet test", html);
+		Assert.Contains("exit code 1", html);
+		Assert.Contains("Model not available", html);
+		Assert.DoesNotContain("ses_live1", html);
+		Assert.DoesNotContain("call_oc_1", html);
+		Assert.DoesNotContain("step-finish", html);
+	}
+
+	[Fact]
 	public async Task RenderedJobSessionPanel_KeepsSystemMessagesSeparateAndStyled()
 	{
 		var services = new ServiceCollection();
