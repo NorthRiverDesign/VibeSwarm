@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
@@ -585,6 +586,72 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ProcessJobAsync_InferenceAnswersTheAgentsQuestion_AndTheJobCarriesOn()
+	{
+		var workingPath = Directory.CreateTempSubdirectory("vibeswarm-question-").FullName;
+		var jobId = Guid.NewGuid();
+		Provider providerConfig;
+		await using (var setupContext = CreateDbContext())
+		{
+			var project = new Project { Id = Guid.NewGuid(), Name = "Question Project", WorkingPath = workingPath };
+			providerConfig = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+			var inferenceProvider = new InferenceProvider { Name = "Desktop", Endpoint = "http://desktop:11434" };
+			inferenceProvider.Models.Add(new InferenceModel { ModelId = "qwen3", TaskType = "default", IsDefault = true });
+			setupContext.AddRange(project, providerConfig, inferenceProvider, new Job
+			{
+				Id = jobId,
+				ProjectId = project.Id,
+				ProviderId = providerConfig.Id,
+				GoalPrompt = "Add a settings page",
+				Status = JobStatus.New
+			});
+			await setupContext.SaveChangesAsync();
+		}
+
+		var agent = new QuestionAskingProvider(providerConfig, "Would you like me to also update the docs?");
+		var jobService = new InteractionJobService();
+		var inference = new ReplyingInferenceService("Yes, update the docs too.");
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		services.AddSingleton<IProjectMemoryService, NoOpProjectMemoryService>();
+		services.AddSingleton<IJobService>(jobService);
+		services.AddSingleton<IProviderService>(new StubProviderService());
+		services.AddSingleton<IInferenceService>(inference);
+		services.AddLogging();
+		services.AddScoped<AgentQuestionAnswerer>();
+		var processingService = new JobProcessingService(
+			services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NotARepositoryVersionControlService(),
+			interactionResponseService: new InMemoryInteractionResponseService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService())
+		{
+			ProviderFactoryOverride = _ => agent
+		};
+
+		try
+		{
+			await using var executionContext = CreateDbContext();
+			var job = await executionContext.Jobs.Include(j => j.Project).Include(j => j.Provider).SingleAsync(j => j.Id == jobId);
+			await InvokeProcessJobAsync(processingService, job, jobService, new StubProviderService(), executionContext, withJobCancellation: true)
+				.WaitAsync(TimeSpan.FromSeconds(60));
+		}
+		finally
+		{
+			Directory.Delete(workingPath, recursive: true);
+		}
+
+		Assert.Equal(2, agent.Prompts.Count);
+		Assert.Contains("Yes, update the docs too.", agent.Prompts[1]);
+		Assert.Contains("without asking again", agent.Prompts[1]);
+		Assert.True(jobService.Paused);
+		Assert.True(jobService.Resumed);
+		var reply = Assert.Single(jobService.Messages, m => m.Role == MessageRole.User);
+		Assert.StartsWith("Yes, update the docs too.", reply.Content);
+		Assert.Contains("Would you like me to also update the docs?", inference.LastRequest?.Prompt);
+	}
+
+	[Fact]
 	public async Task ProcessJobAsync_PausesAJobInterruptedByAServiceStop()
 	{
 		var workingPath = Directory.CreateTempSubdirectory("vibeswarm-interrupted-").FullName;
@@ -950,6 +1017,98 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	private sealed class NotARepositoryVersionControlService : FakeVersionControlServiceBase
 	{
 		public override Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(false);
+	}
+
+	/// <summary>
+	/// An agent that stops to ask a question on its first run, and finishes when run again.
+	/// </summary>
+	private sealed class QuestionAskingProvider(Provider config, string question) : SdkProviderBase(config)
+	{
+		public List<string> Prompts { get; } = [];
+
+		public override ProviderType Type => ProviderType.Claude;
+		public override Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+		public override Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default) => Task.FromResult(string.Empty);
+
+		public override async Task<ExecutionResult> ExecuteWithSessionAsync(
+			string prompt,
+			string? sessionId = null,
+			string? workingDirectory = null,
+			IProgress<ExecutionProgress>? progress = null,
+			CancellationToken cancellationToken = default)
+		{
+			Prompts.Add(prompt);
+			if (Prompts.Count > 1)
+			{
+				return new ExecutionResult { Success = true, Output = "Done." };
+			}
+
+			progress?.Report(new ExecutionProgress { OutputLine = question });
+			await Task.Delay(Timeout.Infinite, cancellationToken);
+			return new ExecutionResult { Success = true };
+		}
+
+		public override Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default) => Task.FromResult(new ProviderInfo());
+		public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new UsageLimits());
+		public override Task<SessionSummary> GetSessionSummaryAsync(string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => Task.FromResult(new SessionSummary());
+		public override Task<PromptResponse> GetPromptResponseAsync(string prompt, string? workingDirectory = null, CancellationToken cancellationToken = default) => Task.FromResult(PromptResponse.Fail("not used"));
+		public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+	}
+
+	private sealed class InteractionJobService : FakeJobServiceBase
+	{
+		public bool Paused { get; private set; }
+		public bool Resumed { get; private set; }
+		public List<JobMessage> Messages { get; } = [];
+
+		public override Task<bool> IsCancellationRequestedAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public override Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<JobChangeSet>());
+
+		public override Task<bool> PauseForInteractionAsync(Guid id, string interactionPrompt, string interactionType, string? choices = null, CancellationToken cancellationToken = default)
+		{
+			Paused = true;
+			return Task.FromResult(true);
+		}
+
+		public override Task AddMessageAsync(Guid jobId, JobMessage message, CancellationToken cancellationToken = default)
+		{
+			lock (Messages)
+			{
+				Messages.Add(message);
+			}
+			return Task.CompletedTask;
+		}
+
+		public override Task AddMessagesAsync(Guid jobId, IEnumerable<JobMessage> messages, CancellationToken cancellationToken = default)
+		{
+			lock (Messages)
+			{
+				Messages.AddRange(messages);
+			}
+			return Task.CompletedTask;
+		}
+
+		public override Task<bool> ResumeJobAsync(Guid id, CancellationToken cancellationToken = default)
+		{
+			Resumed = true;
+			return Task.FromResult(true);
+		}
+	}
+
+	private sealed class ReplyingInferenceService(string reply) : IInferenceService
+	{
+		public InferenceRequest? LastRequest { get; private set; }
+
+		public Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default)
+		{
+			LastRequest = request;
+			return Task.FromResult(new InferenceResponse { Success = true, Response = reply });
+		}
+
+		public Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<InferenceResponse> GenerateForTaskAsync(string taskType, string prompt, string? systemPrompt = null, CancellationToken ct = default) => throw new NotSupportedException();
 	}
 
 	/// <summary>

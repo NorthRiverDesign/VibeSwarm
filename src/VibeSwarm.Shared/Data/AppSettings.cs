@@ -68,6 +68,13 @@ public class AppSettings
 	/// </summary>
 	public bool EnableBrowserTools { get; set; } = true;
 
+	/// <summary>
+	/// Whether an inference model answers when a running agent stops to ask a question, so the job
+	/// carries on instead of waiting for the user. Needs an enabled inference provider; questions
+	/// asking for credentials, or that the model judges only the user can answer, still wait.
+	/// </summary>
+	public bool InferenceAnswersAgentQuestions { get; set; } = true;
+
 	[Range(MinCriticalErrorLogRetentionDays, MaxCriticalErrorLogRetentionDays)]
 	public int CriticalErrorLogRetentionDays { get; set; } = DefaultCriticalErrorLogRetentionDays;
 

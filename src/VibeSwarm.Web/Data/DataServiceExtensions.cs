@@ -72,6 +72,7 @@ public static class DataServiceExtensions
         services.AddScoped<OllamaInferenceService>();
         services.AddScoped<GrokInferenceService>();
         services.AddScoped<IInferenceService, InferenceServiceDispatcher>();
+        services.AddScoped<AgentQuestionAnswerer>();
         services.AddScoped<AgentDetectionService>();
 
 		return services;

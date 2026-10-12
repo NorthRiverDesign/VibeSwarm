@@ -285,6 +285,11 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(12000)
                         .HasColumnType("longtext");
 
+                    b.Property<bool>("InferenceAnswersAgentQuestions")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(true);
+
                     b.Property<bool>("InjectEfficiencyRules")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("tinyint(1)")

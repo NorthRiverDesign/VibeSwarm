@@ -206,6 +206,12 @@ public partial class JobProcessingService : BackgroundService
         public InteractionDetector.InteractionRequest? CurrentInteractionRequest { get; set; }
 
         /// <summary>
+        /// Questions inference has answered in this job, capped at
+        /// <see cref="AgentQuestionAnswerer.MaxAnswersPerJob"/>.
+        /// </summary>
+        public int InferenceAnswerCount { get; set; }
+
+        /// <summary>
         /// Cancellation token source for the currently running provider execution.
         /// </summary>
         public CancellationTokenSource? ActiveExecutionCancellationTokenSource { get; set; }

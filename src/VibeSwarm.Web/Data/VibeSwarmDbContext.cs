@@ -468,6 +468,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.EnableCommitAttribution).HasDefaultValue(true);
 			entity.Property(e => e.EnableHttps).HasDefaultValue(false);
 			entity.Property(e => e.EnableBrowserTools).HasDefaultValue(true);
+			entity.Property(e => e.InferenceAnswersAgentQuestions).HasDefaultValue(true);
 			entity.Property(e => e.JobQueuePaused).HasDefaultValue(false);
 			entity.Property(e => e.JobQueuePausedReason).HasMaxLength(ValidationLimits.JobQueuePausedReasonMaxLength);
 			entity.Property(e => e.CriticalErrorLogRetentionDays).HasDefaultValue(global::VibeSwarm.Shared.Data.AppSettings.DefaultCriticalErrorLogRetentionDays);

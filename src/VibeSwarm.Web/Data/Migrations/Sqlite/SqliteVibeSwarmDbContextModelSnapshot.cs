@@ -276,6 +276,11 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(12000)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("InferenceAnswersAgentQuestions")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
                     b.Property<bool>("InjectEfficiencyRules")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER")

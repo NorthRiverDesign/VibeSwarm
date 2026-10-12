@@ -377,6 +377,10 @@ public partial class JobProcessingService
                     }
 
                     executionContext.ActiveExecutionCancellationTokenSource?.Cancel();
+                    if (executionContext.InferenceAnswerCount < AgentQuestionAnswerer.MaxAnswersPerJob)
+                    {
+                        _ = Task.Run(() => AnswerWithInferenceAsync(interactionRequest), CancellationToken.None);
+                    }
                     return true;
                 }
                 catch (Exception ex)
@@ -384,6 +388,45 @@ public partial class JobProcessingService
                     _logger.LogError(ex, "Failed to pause job {JobId} for interaction", job.Id);
                     ResetInteractionState(cancelPendingWait: true);
                     return false;
+                }
+            }
+
+            // Lets inference reply in the user's place. The user can still answer first; whichever
+            // response arrives first resumes the job.
+            async Task AnswerWithInferenceAsync(InteractionDetector.InteractionRequest interactionRequest)
+            {
+                try
+                {
+                    using var answerScope = _scopeFactory.CreateScope();
+                    var answerer = answerScope.ServiceProvider.GetRequiredService<AgentQuestionAnswerer>();
+                    var answer = await answerer.TryAnswerAsync(
+                        new AgentQuestion(
+                            job.GoalPrompt,
+                            job.Project?.Name,
+                            interactionRequest.Prompt ?? interactionRequest.RawOutput ?? "Interaction required",
+                            interactionRequest.Type,
+                            interactionRequest.Choices,
+                            executionContext.GetRecentOutputLines().ToList()),
+                        cancellationToken);
+                    if (answer == null || _interactionResponseService?.HasPendingWait(job.Id) != true)
+                    {
+                        return;
+                    }
+
+                    if (_interactionResponseService.SubmitResponse(job.Id, AgentQuestionAnswerer.FormatForAgent(answer)))
+                    {
+                        executionContext.InferenceAnswerCount++;
+                        _logger.LogInformation(
+                            "Inference model {ModelId} on {ProviderName} answered the question job {JobId} paused on",
+                            answer.ModelId, answer.ProviderName, job.Id);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Inference could not answer the question job {JobId} paused on", job.Id);
                 }
             }
 
