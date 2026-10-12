@@ -54,18 +54,55 @@ public sealed class SessionLimitPolicyTests
 	}
 
 	[Fact]
-	public void Evaluate_IgnoresWindowsThatAreNotSessions()
+	public void Evaluate_HoldsJobsUntilAWeeklyLimitResets_OnceItReachesItsOwnThreshold()
 	{
-		var weekly = new UsageLimitWindow
-		{
-			Scope = UsageLimitWindowScope.Weekly,
-			CurrentUsage = 95,
-			MaxUsage = 100,
-			ResetTime = Now.AddDays(3)
-		};
+		var weekly = Weekly(95);
 
-		Assert.Null(SessionLimitPolicy.Evaluate([weekly], 90, null, Now));
+		var hold = SessionLimitPolicy.Evaluate([Session(10), weekly], 90, null, Now, longWindowPauseThresholdPercent: 90);
+
+		Assert.NotNull(hold);
+		Assert.Equal(weekly.ResetTime, hold!.Until);
+		Assert.Equal(UsageLimitWindowScope.Weekly, hold.Scope);
+		Assert.Contains("weekly limit is 95% used", hold.Describe("Claude Code"));
 	}
+
+	[Fact]
+	public void Evaluate_KeepsTheWeeklyThresholdSeparateFromTheSessionOne()
+	{
+		Assert.Null(SessionLimitPolicy.Evaluate([Weekly(95)], 90, null, Now, longWindowPauseThresholdPercent: 100));
+		Assert.Null(SessionLimitPolicy.Evaluate([Weekly(85)], 50, null, Now, longWindowPauseThresholdPercent: 90));
+	}
+
+	[Fact]
+	public void Evaluate_DoesNotEstimateJobsAgainstAWeeklyLimit()
+	{
+		Assert.Null(SessionLimitPolicy.Evaluate([Weekly(70)], 90, expectedJobUsagePercent: 40, Now, longWindowPauseThresholdPercent: 90));
+	}
+
+	[Fact]
+	public void Evaluate_WaitsForTheLaterReset_WhenSessionAndWeekBothHold()
+	{
+		var weekly = Weekly(96);
+
+		var hold = SessionLimitPolicy.Evaluate([Session(95), weekly], 90, null, Now, longWindowPauseThresholdPercent: 90);
+
+		Assert.Equal(weekly.ResetTime, hold?.Until);
+	}
+
+	[Fact]
+	public void HasGuardedWindow_CountsLongerLimitsButNotUnknownOnes()
+	{
+		Assert.True(SessionLimitPolicy.HasGuardedWindow([Weekly(10)]));
+		Assert.False(SessionLimitPolicy.HasGuardedWindow([new UsageLimitWindow { Scope = UsageLimitWindowScope.Unknown }]));
+	}
+
+	private static UsageLimitWindow Weekly(int percentUsed) => new()
+	{
+		Scope = UsageLimitWindowScope.Weekly,
+		CurrentUsage = percentUsed,
+		MaxUsage = 100,
+		ResetTime = Now.AddDays(3)
+	};
 
 	[Fact]
 	public void Evaluate_HoldsAReachedSessionEvenAtFullThreshold()

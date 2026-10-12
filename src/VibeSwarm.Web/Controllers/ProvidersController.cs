@@ -72,6 +72,19 @@ public class ProvidersController : ControllerBase
     [HttpPost("{id:guid}/set-default")]
     public async Task<IActionResult> SetDefault(Guid id, CancellationToken ct) { await _providerService.SetDefaultAsync(id, ct); return Ok(); }
 
+    [HttpPut("{id:guid}/usage-limits")]
+    public async Task<IActionResult> UpdateUsageLimits(Guid id, [FromBody] ProviderUsageLimits limits, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _providerService.UpdateUsageLimitsAsync(id, limits, ct));
+        }
+        catch (InvalidOperationException)
+        {
+            return NotFound();
+        }
+    }
+
     [HttpGet("{providerId:guid}/models")]
     public async Task<IActionResult> GetModels(Guid providerId, CancellationToken ct) => Ok(await _providerService.GetModelsAsync(providerId, ct));
 

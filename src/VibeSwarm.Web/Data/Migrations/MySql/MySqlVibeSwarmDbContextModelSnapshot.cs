@@ -2100,6 +2100,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<int?>("WeeklyLimitPauseThresholdPercent")
+                        .HasColumnType("int");
+
                     b.Property<string>("WorkingDirectory")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");

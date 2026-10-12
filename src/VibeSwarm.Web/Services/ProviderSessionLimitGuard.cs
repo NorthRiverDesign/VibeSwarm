@@ -33,15 +33,15 @@ public static class ProviderSessionLimitGuard
 
 		if (summary == null
 			|| ProviderMetering.IsUnmetered(summary.LimitType)
-			|| !SessionLimitPolicy.HasSessionWindow(summary.LimitWindows))
+			|| !SessionLimitPolicy.HasGuardedWindow(summary.LimitWindows))
 		{
 			return null;
 		}
 
-		var configuredThreshold = await dbContext.Providers
+		var configuredThresholds = await dbContext.Providers
 			.AsNoTracking()
 			.Where(p => p.Id == providerId)
-			.Select(p => p.SessionLimitPauseThresholdPercent)
+			.Select(p => new { Session = p.SessionLimitPauseThresholdPercent, Weekly = p.WeeklyLimitPauseThresholdPercent })
 			.FirstOrDefaultAsync(cancellationToken);
 
 		var recentJobRecords = await dbContext.ProviderUsageRecords
@@ -56,22 +56,23 @@ public static class ProviderSessionLimitGuard
 
 		return SessionLimitPolicy.Evaluate(
 			summary.LimitWindows,
-			SessionLimitPolicy.ResolvePauseThreshold(configuredThreshold),
+			SessionLimitPolicy.ResolvePauseThreshold(configuredThresholds?.Session),
 			expectedJobUsage,
-			utcNow);
+			utcNow,
+			SessionLimitPolicy.ResolvePauseThreshold(configuredThresholds?.Weekly));
 	}
 
 	/// <summary>
-	/// Whether the provider's session usage should be read live before a job starts: it has
-	/// reported a session before, no recent live reading exists, and the stored figures don't
-	/// already hold jobs back (usage only grows until the session resets).
+	/// Whether the provider's usage should be read live before a job starts: it has reported a
+	/// session or a longer limit before, no recent live reading exists, and the stored figures
+	/// don't already hold jobs back (usage only grows until a window resets).
 	/// </summary>
 	public static bool NeedsLiveReading(ProviderUsageSummary? summary, SessionLimitHold? storedHold, DateTime utcNow)
 	{
 		return summary != null
 			&& storedHold == null
 			&& !ProviderMetering.IsUnmetered(summary.LimitType)
-			&& SessionLimitPolicy.HasSessionWindow(summary.LimitWindows)
+			&& SessionLimitPolicy.HasGuardedWindow(summary.LimitWindows)
 			&& (summary.LimitsRefreshedAt is not DateTime refreshedAt || utcNow - refreshedAt > LiveReadingFreshness);
 	}
 }

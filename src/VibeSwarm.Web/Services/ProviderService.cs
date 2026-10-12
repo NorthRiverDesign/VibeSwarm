@@ -81,11 +81,33 @@ public class ProviderService : IProviderService
         existing.ConfiguredUsageLimit = provider.ConfiguredUsageLimit;
         existing.ConfiguredLimitType = provider.ConfiguredLimitType;
         existing.SessionLimitPauseThresholdPercent = provider.SessionLimitPauseThresholdPercent;
+        existing.WeeklyLimitPauseThresholdPercent = provider.WeeklyLimitPauseThresholdPercent;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return existing;
     }
+
+    public async Task<Provider> UpdateUsageLimitsAsync(Guid id, ProviderUsageLimits limits, CancellationToken cancellationToken = default)
+    {
+        var existing = await _dbContext.Providers
+            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken)
+            ?? throw new InvalidOperationException($"Provider with ID {id} not found.");
+
+        existing.SessionLimitPauseThresholdPercent = NormalizePauseThreshold(limits.SessionPausePercent);
+        existing.WeeklyLimitPauseThresholdPercent = NormalizePauseThreshold(limits.WeeklyPausePercent);
+        existing.ConfiguredUsageLimit = limits.ConfiguredUsageLimit is > 0 ? limits.ConfiguredUsageLimit : null;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return existing;
+    }
+
+    // The default is stored as null, so a later change to the default reaches this provider too.
+    private static int? NormalizePauseThreshold(int? percent)
+        => percent is int value && value != SessionLimitPolicy.DefaultPauseThresholdPercent
+            ? SessionLimitPolicy.ResolvePauseThreshold(value)
+            : null;
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {

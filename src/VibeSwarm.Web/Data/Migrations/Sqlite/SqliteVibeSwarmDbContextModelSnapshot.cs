@@ -2091,6 +2091,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("WeeklyLimitPauseThresholdPercent")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("WorkingDirectory")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");

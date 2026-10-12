@@ -70,6 +70,14 @@ public class Provider
     [Range(SessionLimitPolicy.MinPauseThresholdPercent, SessionLimitPolicy.MaxPauseThresholdPercent)]
     public int? SessionLimitPauseThresholdPercent { get; set; }
 
+    /// <summary>
+    /// Usage (percent) of a daily, weekly or monthly limit at which new jobs wait for it to reset,
+    /// so unattended jobs never use the whole allowance. Null uses
+    /// <see cref="SessionLimitPolicy.DefaultPauseThresholdPercent"/>.
+    /// </summary>
+    [Range(SessionLimitPolicy.MinPauseThresholdPercent, SessionLimitPolicy.MaxPauseThresholdPercent)]
+    public int? WeeklyLimitPauseThresholdPercent { get; set; }
+
 	/// <summary>
 	/// Override for stall detection timeout in seconds.
 	/// When null, the system uses provider-aware defaults:
