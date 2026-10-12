@@ -1,57 +1,53 @@
-@using VibeSwarm.Shared.Services
+@* The three templates that turn an idea into a job prompt, shown inside Settings' open Idea prompts
+   row. Each saves when the field loses focus. *@
 
-<div class="border rounded-5 p-5 bg-2 d-flex flex-column gap-5">
-	<div class="d-flex flex-column lg:flex-row justify-content-between gap-5">
-		<div class="d-flex flex-column gap-1">
-			<div class="fw-semibold">Idea Prompt Templates</div>
-			<div class="small fg-1">
-				Tune how VibeSwarm turns vague ideas into implementation-ready prompts. Use
-				<code>@PromptBuilder.IdeaToken</code> and <code>@PromptBuilder.SpecificationToken</code> placeholders in the templates.
-			</div>
-		</div>
-		<div class="d-flex align-items-start">
-			<button type="button" class="btn-solid theme-secondary btn-sm" @onclick="RestoreDefaultsRequested">
-				<i class="bi bi-arrow-counterclockwise"></i>Restore Default Templates
-			</button>
-		</div>
+<div class="small fg-1">
+	Tune how VibeSwarm turns a short idea into an implementation-ready prompt. Use
+	<code>@PromptBuilder.IdeaToken</code> and <code>@PromptBuilder.SpecificationToken</code> where the idea and the
+	reviewed specification go.
+</div>
+
+<div>
+	<label for="ideaExpansionPromptTemplate" class="form-label">Expanding an idea</label>
+	<textarea id="ideaExpansionPromptTemplate" class="form-control font-monospace" rows="10"
+			  @bind="Settings.IdeaExpansionPromptTemplate" @bind:after="NotifyChangedAsync"></textarea>
+	<div class="form-text">
+		Turns an idea into a specification to review. Without <code>@PromptBuilder.IdeaToken</code> the idea is added at the end.
 	</div>
+</div>
 
-	<div class="d-flex flex-column gap-5">
-		<div>
-			<label for="ideaExpansionPromptTemplate" class="form-label fw-semibold">Idea expansion template</label>
-			<InputTextArea id="ideaExpansionPromptTemplate" @bind-Value="Settings.IdeaExpansionPromptTemplate" class="form-control font-monospace" rows="12" />
-			<div class="form-text">
-				Used when expanding an idea into a reviewed specification before implementation. Must include <code>@PromptBuilder.IdeaToken</code> or the idea is appended automatically.
-			</div>
-			<ValidationMessage For="@(() => Settings.IdeaExpansionPromptTemplate)" class="fg-danger small" />
-		</div>
-
-		<div>
-			<label for="ideaImplementationPromptTemplate" class="form-label fw-semibold">Direct idea implementation template</label>
-			<InputTextArea id="ideaImplementationPromptTemplate" @bind-Value="Settings.IdeaImplementationPromptTemplate" class="form-control font-monospace" rows="12" />
-			<div class="form-text">
-				Used when an idea is sent straight to implementation without a separate expansion step. Must include <code>@PromptBuilder.IdeaToken</code> or the idea is appended automatically.
-			</div>
-			<ValidationMessage For="@(() => Settings.IdeaImplementationPromptTemplate)" class="fg-danger small" />
-		</div>
-
-		<div>
-			<label for="approvedIdeaImplementationPromptTemplate" class="form-label fw-semibold">Approved specification implementation template</label>
-			<InputTextArea id="approvedIdeaImplementationPromptTemplate" @bind-Value="Settings.ApprovedIdeaImplementationPromptTemplate" class="form-control font-monospace" rows="12" />
-			<div class="form-text">
-				Used when an approved expansion is converted into a job. Include <code>@PromptBuilder.IdeaToken</code> and <code>@PromptBuilder.SpecificationToken</code> for best results; any missing sections are appended automatically.
-			</div>
-			<ValidationMessage For="@(() => Settings.ApprovedIdeaImplementationPromptTemplate)" class="fg-danger small" />
-		</div>
+<div>
+	<label for="ideaImplementationPromptTemplate" class="form-label">Building an idea directly</label>
+	<textarea id="ideaImplementationPromptTemplate" class="form-control font-monospace" rows="10"
+			  @bind="Settings.IdeaImplementationPromptTemplate" @bind:after="NotifyChangedAsync"></textarea>
+	<div class="form-text">
+		Used when an idea goes straight to a job. Without <code>@PromptBuilder.IdeaToken</code> the idea is added at the end.
 	</div>
+</div>
+
+<div>
+	<label for="approvedIdeaImplementationPromptTemplate" class="form-label">Building an approved specification</label>
+	<textarea id="approvedIdeaImplementationPromptTemplate" class="form-control font-monospace" rows="10"
+			  @bind="Settings.ApprovedIdeaImplementationPromptTemplate" @bind:after="NotifyChangedAsync"></textarea>
+	<div class="form-text">
+		Used when an approved specification becomes a job. Missing <code>@PromptBuilder.IdeaToken</code> or
+		<code>@PromptBuilder.SpecificationToken</code> sections are added at the end.
+	</div>
+</div>
+
+<div>
+	<button type="button" class="btn-link text-decoration-none px-0" @onclick="OnRestoreDefaults">
+		<i class="bi bi-arrow-counterclockwise"></i>Restore the default templates
+	</button>
 </div>
 
 @code {
 	[Parameter, EditorRequired] public AppSettings Settings { get; set; } = new();
+
+	/// <summary>Raised after a template changes, so the page can save it.</summary>
+	[Parameter] public EventCallback OnChanged { get; set; }
+
 	[Parameter] public EventCallback OnRestoreDefaults { get; set; }
 
-	private async Task RestoreDefaultsRequested()
-	{
-		await OnRestoreDefaults.InvokeAsync();
-	}
+	private Task NotifyChangedAsync() => OnChanged.InvokeAsync();
 }

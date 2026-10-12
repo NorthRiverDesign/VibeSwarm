@@ -1,0 +1,219 @@
+@inject IProviderService ProviderService
+@inject NotificationService NotificationService
+
+@* One provider in Settings' Usage limits: when its jobs stop so they never use a whole plan, and
+   how much of each limit is used now. Opening the row edits the thresholds; each saves on change. *@
+
+<ListRow Icon="speedometer2" IconClass="@(Provider.IsEnabled ? "fg-primary" : "fg-2")" Title="@Provider.Name"
+		 Subtitle="@Subtitle" AttentionLine="@AttentionLine">
+	<Trailing>
+		@if (!Provider.IsEnabled)
+		{
+			<span class="small fg-2 flex-shrink-0">Off</span>
+		}
+	</Trailing>
+	<ChildContent>
+		@if (UsageWindows.Count > 0)
+		{
+			<dl class="d-flex flex-column gap-3 small mb-0">
+				@foreach (var window in UsageWindows)
+				{
+					<div class="d-flex justify-content-between gap-5">
+						<dt class="fw-normal fg-1 flex-shrink-0">@DescribeWindow(window)</dt>
+						<dd class="mb-0 text-end">@DescribeUsage(window)</dd>
+					</div>
+				}
+			</dl>
+		}
+
+		@if (IsUnmetered)
+		{
+			<div class="small fg-1">
+				@Provider.Name has no plan of its own: the model's provider bills its usage, and models you host
+				yourself cost nothing. Set limits with that provider.
+			</div>
+		}
+		else
+		{
+			<div class="row g-5">
+				@if (IsMonthlyRequestPlan)
+				{
+					<div class="col-6">
+						<label for="@($"monthly-{Provider.Id}")" class="form-label small fg-1 mb-1">Requests a month</label>
+						<input id="@($"monthly-{Provider.Id}")" type="number" class="form-control" min="0" placeholder="300"
+							   @bind="_monthlyRequests" @bind:after="SaveAsync" />
+					</div>
+				}
+				@if (HasSession)
+				{
+					<div class="col-6">
+						<label for="@($"session-{Provider.Id}")" class="form-label small fg-1 mb-1">Session</label>
+						<div class="input-group">
+							<input id="@($"session-{Provider.Id}")" type="number" class="form-control"
+								   min="@SessionLimitPolicy.MinPauseThresholdPercent" max="@SessionLimitPolicy.MaxPauseThresholdPercent"
+								   @bind="_sessionPercent" @bind:after="SaveAsync" />
+							<span class="input-group-text">%</span>
+						</div>
+					</div>
+				}
+				<div class="col-6">
+					<label for="@($"long-{Provider.Id}")" class="form-label small fg-1 mb-1">@Capitalize(LongWindowName)</label>
+					<div class="input-group">
+						<input id="@($"long-{Provider.Id}")" type="number" class="form-control"
+							   min="@SessionLimitPolicy.MinPauseThresholdPercent" max="@SessionLimitPolicy.MaxPauseThresholdPercent"
+							   @bind="_longWindowPercent" @bind:after="SaveAsync" />
+						<span class="input-group-text">%</span>
+					</div>
+				</div>
+			</div>
+			<div class="form-text mt-0">
+				@ThresholdHelp
+			</div>
+		}
+
+		<div>
+			<a href="/providers" class="btn-link text-decoration-none px-0">More settings for @Provider.Name</a>
+		</div>
+	</ChildContent>
+</ListRow>
+
+@code {
+	[Parameter, EditorRequired]
+	public Provider Provider { get; set; } = new();
+
+	[Parameter]
+	public ProviderUsageSummary? Summary { get; set; }
+
+	private int? _sessionPercent;
+	private int? _longWindowPercent;
+	private int? _monthlyRequests;
+	private Guid _loadedProviderId;
+
+	private IReadOnlyList<UsageLimitWindow> Windows => Summary?.LimitWindows ?? [];
+
+	private bool HasSession => SessionLimitPolicy.HasSessionLimit(Provider.Type) || SessionLimitPolicy.HasSessionWindow(Windows);
+
+	private bool IsMonthlyRequestPlan => Provider.Type == ProviderType.Copilot;
+
+	private bool IsUnmetered => Provider.Type == ProviderType.OpenCode
+		|| (Summary != null && ProviderMetering.IsUnmetered(Summary.LimitType));
+
+	private IReadOnlyList<UsageLimitWindow> UsageWindows => Windows
+		.Where(w => SessionLimitPolicy.IsGuardedScope(w.Scope) && w.PercentUsed.HasValue)
+		.ToList();
+
+	private UsageLimitWindowScope LongWindowScope => Windows
+		.Where(w => w.Scope is UsageLimitWindowScope.Daily or UsageLimitWindowScope.Weekly or UsageLimitWindowScope.Monthly)
+		.Select(w => (UsageLimitWindowScope?)w.Scope)
+		.FirstOrDefault()
+		?? (IsMonthlyRequestPlan ? UsageLimitWindowScope.Monthly : UsageLimitWindowScope.Weekly);
+
+	private string LongWindowName => LongWindowScope switch
+	{
+		UsageLimitWindowScope.Daily => "day",
+		UsageLimitWindowScope.Monthly => "month",
+		_ => "week"
+	};
+
+	private int SessionThreshold => SessionLimitPolicy.ResolvePauseThreshold(Provider.SessionLimitPauseThresholdPercent);
+
+	private int LongWindowThreshold => SessionLimitPolicy.ResolvePauseThreshold(Provider.WeeklyLimitPauseThresholdPercent);
+
+	private string? Subtitle
+	{
+		get
+		{
+			if (IsUnmetered)
+			{
+				return "Billed by its model's provider";
+			}
+
+			if (IsMonthlyRequestPlan)
+			{
+				return Provider.ConfiguredUsageLimit is int limit and > 0
+					? $"Jobs wait at {LongWindowThreshold}% of {limit:N0} requests a month"
+					: null;
+			}
+
+			return HasSession
+				? $"Jobs wait at {SessionThreshold}% of a session, {LongWindowThreshold}% of the {LongWindowName}"
+				: $"Jobs wait at {LongWindowThreshold}% of the {LongWindowName}";
+		}
+	}
+
+	private string? AttentionLine
+	{
+		get
+		{
+			if (IsUnmetered)
+			{
+				return null;
+			}
+
+			var hold = SessionLimitPolicy.Evaluate(Windows, SessionThreshold, null, DateTime.UtcNow, LongWindowThreshold);
+			if (hold != null)
+			{
+				var window = hold.Scope == UsageLimitWindowScope.Session ? "session" : LongWindowName;
+				return $"Waiting until {hold.Until.FormatDateTimeShort()}: {hold.PercentUsed}% of the {window} used";
+			}
+
+			return IsMonthlyRequestPlan && Provider.ConfiguredUsageLimit is not > 0
+				? "Set the plan's monthly requests so jobs stop before overage"
+				: null;
+		}
+	}
+
+	protected override void OnParametersSet()
+	{
+		if (_loadedProviderId == Provider.Id)
+		{
+			return;
+		}
+
+		_loadedProviderId = Provider.Id;
+		_sessionPercent = SessionThreshold;
+		_longWindowPercent = LongWindowThreshold;
+		_monthlyRequests = Provider.ConfiguredUsageLimit;
+	}
+
+	private async Task SaveAsync()
+	{
+		try
+		{
+			var saved = await ProviderService.UpdateUsageLimitsAsync(
+				Provider.Id,
+				new ProviderUsageLimits(_sessionPercent, _longWindowPercent, IsMonthlyRequestPlan ? _monthlyRequests : Provider.ConfiguredUsageLimit));
+			Provider.SessionLimitPauseThresholdPercent = saved.SessionLimitPauseThresholdPercent;
+			Provider.WeeklyLimitPauseThresholdPercent = saved.WeeklyLimitPauseThresholdPercent;
+			Provider.ConfiguredUsageLimit = saved.ConfiguredUsageLimit;
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Couldn't save {Provider.Name}'s limits: {ex.Message}");
+		}
+
+		// Show what was kept: the server clamps thresholds to their allowed range.
+		_sessionPercent = SessionThreshold;
+		_longWindowPercent = LongWindowThreshold;
+		_monthlyRequests = Provider.ConfiguredUsageLimit;
+	}
+
+	private string DescribeWindow(UsageLimitWindow window) => window.Scope switch
+	{
+		UsageLimitWindowScope.Session => "Session",
+		UsageLimitWindowScope.Daily => "Today",
+		UsageLimitWindowScope.Weekly => "This week",
+		UsageLimitWindowScope.Monthly => "This month",
+		_ => window.Label ?? "Usage"
+	};
+
+	private string ThresholdHelp => HasSession
+		? "New jobs wait for a limit to reset once this much of it is used, or sooner when the next job would use up the session. Running jobs finish. 100% lets jobs use all of it."
+		: "New jobs wait for the limit to reset once this much of it is used. Running jobs finish. 100% lets jobs use all of it.";
+
+	private static string DescribeUsage(UsageLimitWindow window) => window.ResetTime is DateTime reset
+		? $"{window.PercentUsed}% used · resets {reset.FormatDateTimeShort()}"
+		: $"{window.PercentUsed}% used";
+
+	private static string Capitalize(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
+}

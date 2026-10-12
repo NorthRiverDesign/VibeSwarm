@@ -1,0 +1,29 @@
+@page "/settings/database"
+@attribute [Authorize]
+@inject IDatabaseService DatabaseService
+@inject NotificationService NotificationService
+
+<PageHeader Title="Database" BackHref="/settings" BackLabel="Settings" />
+
+<SettingsDatabaseTab DatabaseSummary="@_databaseSummary" OnDatabaseChanged="LoadDatabaseSummary" />
+
+@code {
+	private DatabaseStorageSummary? _databaseSummary;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadDatabaseSummary();
+	}
+
+	private async Task LoadDatabaseSummary()
+	{
+		try
+		{
+			_databaseSummary = await DatabaseService.GetStorageSummaryAsync();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load database size: {ex.Message}");
+		}
+	}
+}

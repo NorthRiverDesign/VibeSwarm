@@ -34,7 +34,7 @@ public sealed record AgentQuestionAnswer(string Text, string ProviderName, strin
 public sealed partial class AgentQuestionAnswerer
 {
 	/// <summary>The inference task type a model can be assigned to for answering agents.</summary>
-	public const string TaskType = "agent-answer";
+	public const string TaskType = InferenceTaskModels.AgentAnswer;
 
 	/// <summary>
 	/// Answers given in one job before further questions wait for the user, so an agent that keeps
@@ -89,19 +89,11 @@ public sealed partial class AgentQuestionAnswerer
 			.AsNoTracking()
 			.Include(p => p.Models)
 			.Where(p => p.IsEnabled)
-			.OrderBy(p => p.Priority)
-			.ThenBy(p => p.Name)
 			.ToListAsync(cancellationToken);
 
 		var prompt = BuildPrompt(question);
-		foreach (var provider in providers)
+		foreach (var (provider, model) in InferenceTaskModels.Candidates(providers, TaskType))
 		{
-			var model = ResolveModel(provider);
-			if (model == null)
-			{
-				continue;
-			}
-
 			InferenceResponse response;
 			try
 			{
@@ -144,22 +136,6 @@ public sealed partial class AgentQuestionAnswerer
 		}
 
 		return null;
-	}
-
-	/// <summary>
-	/// The model that answers for <paramref name="provider"/>: its <see cref="TaskType"/> model, or its
-	/// default one.
-	/// </summary>
-	internal static InferenceModel? ResolveModel(InferenceProvider provider)
-	{
-		return provider.Models
-			.Where(m => m.IsAvailable && m.IsDefault && string.Equals(m.TaskType, TaskType, StringComparison.OrdinalIgnoreCase))
-			.OrderBy(m => m.ModelId)
-			.FirstOrDefault()
-			?? provider.Models
-				.Where(m => m.IsAvailable && m.IsDefault && string.Equals(m.TaskType, "default", StringComparison.OrdinalIgnoreCase))
-				.OrderBy(m => m.ModelId)
-				.FirstOrDefault();
 	}
 
 	/// <summary>

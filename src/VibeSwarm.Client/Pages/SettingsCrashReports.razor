@@ -1,0 +1,175 @@
+@page "/settings/crash-reports"
+@attribute [Authorize]
+@inject ISettingsService SettingsService
+@inject ICriticalErrorLogService CriticalErrorLogService
+@inject NotificationService NotificationService
+
+@* Errors the app captured in a browser: crashes, failed renders and the refreshes they caused,
+   with how long they are kept. *@
+
+<PageHeader Title="Crash reports" BackHref="/settings" BackLabel="Settings">
+	<Actions>
+		<TitleAction Icon="arrow-clockwise" Label="Check for new reports" IsLoading="_isLoading" OnClick="LoadLogsAsync" />
+	</Actions>
+</PageHeader>
+
+<div class="d-flex flex-column gap-7">
+	<section class="d-flex flex-column gap-3" aria-label="Recorded">
+		<SectionHeader Title="Recorded" />
+		<div class="list-group rounded-9">
+			@if (_logs == null)
+			{
+				<div class="list-group-item"><LoadingSpinner /></div>
+			}
+			else if (_logs.Count == 0)
+			{
+				<div class="list-group-item fg-1">No crashes recorded.</div>
+			}
+			else
+			{
+				@foreach (var entry in _logs)
+				{
+					<ListRow Icon="exclamation-octagon" IconClass="fg-danger" Title="@entry.Message"
+							 Subtitle="@($"{entry.CreatedAt.FormatDateTimeShort()} · {entry.Source} · {entry.Category}")">
+						<dl class="d-flex flex-column gap-3 small mb-0">
+							@if (entry.TriggeredRefresh)
+							{
+								<div class="d-flex justify-content-between gap-5">
+									<dt class="fw-normal fg-1 flex-shrink-0">Recovery</dt>
+									<dd class="mb-0 text-end">@(string.IsNullOrWhiteSpace(entry.RefreshAction) ? "Page refreshed" : entry.RefreshAction)</dd>
+								</div>
+							}
+							@if (!string.IsNullOrWhiteSpace(entry.Url))
+							{
+								<div class="d-flex justify-content-between gap-5">
+									<dt class="fw-normal fg-1 flex-shrink-0">Page</dt>
+									<dd class="mb-0 text-end min-w-0 text-break">@entry.Url</dd>
+								</div>
+							}
+							@if (!string.IsNullOrWhiteSpace(entry.TraceId))
+							{
+								<div class="d-flex justify-content-between gap-5">
+									<dt class="fw-normal fg-1 flex-shrink-0">Trace</dt>
+									<dd class="mb-0 text-end min-w-0 font-monospace text-break">@entry.TraceId</dd>
+								</div>
+							}
+						</dl>
+						<div class="fw-medium text-break">@entry.Message</div>
+						@if (!string.IsNullOrWhiteSpace(entry.Details))
+						{
+							<pre class="mb-0 p-3 bg-2 rounded small font-monospace white-space-pre-wrap text-break overflow-y-auto max-height-50dvh">@entry.Details</pre>
+						}
+					</ListRow>
+				}
+			}
+		</div>
+	</section>
+
+	@if (_settings != null)
+	{
+		<section class="d-flex flex-column gap-3" aria-label="Keep">
+			<SectionHeader Title="Keep" />
+			<div class="list-group rounded-9">
+				<div class="list-group-item d-flex flex-column gap-5 py-5">
+					<div class="row g-5">
+						<div class="col-6">
+							<label for="criticalErrorLogRetentionDays" class="form-label small fg-1 mb-1">Days</label>
+							<input id="criticalErrorLogRetentionDays" type="number" class="form-control"
+								   min="@AppSettings.MinCriticalErrorLogRetentionDays" max="@AppSettings.MaxCriticalErrorLogRetentionDays"
+								   @bind="_settings.CriticalErrorLogRetentionDays" @bind:after="SaveRetentionAsync" />
+						</div>
+						<div class="col-6">
+							<label for="criticalErrorLogMaxEntries" class="form-label small fg-1 mb-1">At most</label>
+							<input id="criticalErrorLogMaxEntries" type="number" class="form-control"
+								   min="@AppSettings.MinCriticalErrorLogMaxEntries" max="@AppSettings.MaxCriticalErrorLogMaxEntries"
+								   @bind="_settings.CriticalErrorLogMaxEntries" @bind:after="SaveRetentionAsync" />
+						</div>
+					</div>
+					<div class="form-text mt-0">
+						Older reports, and the oldest beyond the limit, are removed automatically.
+					</div>
+					<div>
+						<button type="button" class="btn-link text-decoration-none px-0" @onclick="PruneAsync" disabled="@_isPruning">
+							<i class="bi bi-trash3"></i>Remove old reports now
+						</button>
+					</div>
+				</div>
+			</div>
+		</section>
+	}
+</div>
+
+@code {
+	private AppSettings? _settings;
+	private List<CriticalErrorLogEntry>? _logs;
+	private bool _isLoading;
+	private bool _isPruning;
+
+	protected override async Task OnInitializedAsync()
+	{
+		try
+		{
+			_settings = await SettingsService.GetSettingsAsync();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load settings: {ex.Message}");
+		}
+
+		await LoadLogsAsync();
+	}
+
+	private async Task LoadLogsAsync()
+	{
+		_isLoading = true;
+		try
+		{
+			_logs = (await CriticalErrorLogService.GetRecentAsync(AppSettings.MaxCriticalErrorLogMaxEntries)).ToList();
+		}
+		catch (Exception ex)
+		{
+			_logs ??= [];
+			NotificationService.ShowError($"Failed to load crash reports: {ex.Message}");
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private async Task SaveRetentionAsync()
+	{
+		if (_settings == null)
+		{
+			return;
+		}
+
+		try
+		{
+			// The server clamps both numbers to their allowed range; show what it kept.
+			_settings = await SettingsService.UpdateSettingsAsync(_settings);
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Couldn't save that change: {ex.Message}");
+		}
+	}
+
+	private async Task PruneAsync()
+	{
+		_isPruning = true;
+		try
+		{
+			await CriticalErrorLogService.ApplyRetentionPolicyAsync();
+			await LoadLogsAsync();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to remove old reports: {ex.Message}");
+		}
+		finally
+		{
+			_isPruning = false;
+		}
+	}
+}

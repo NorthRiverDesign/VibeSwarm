@@ -1,5 +1,14 @@
-@* Reusable page header component with title, subtitle, and actions *@
+@* Reusable page header component with title, subtitle, and actions. A page below another gets a
+   back link to it above the title, as an iOS navigation bar does. *@
 
+@if (!string.IsNullOrEmpty(BackHref))
+{
+	<div class="mb-1">
+		<a href="@BackHref" class="small fg-1 text-decoration-none d-inline-flex align-items-center gap-1">
+			<i class="bi bi-chevron-left"></i>@BackLabel
+		</a>
+	</div>
+}
 <div class="d-flex @ResolvedAlignItemsClass justify-content-between gap-3 mb-7">
 	<div class="min-w-0">
 		<h1 class="mb-0 text-truncate">@Title</h1>
@@ -26,6 +35,13 @@
 
 	[Parameter]
 	public RenderFragment? Actions { get; set; }
+
+	/// <summary>The page above this one, linked above the title.</summary>
+	[Parameter]
+	public string? BackHref { get; set; }
+
+	[Parameter]
+	public string? BackLabel { get; set; }
 
 	/// <summary>Overrides the alignment; by default a subtitle aligns to the top, a bare title centers.</summary>
 	[Parameter]

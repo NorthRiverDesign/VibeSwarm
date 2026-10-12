@@ -1,77 +1,527 @@
 @page "/settings"
 @attribute [Authorize]
+@inject ISettingsService SettingsService
+@inject IDeveloperModeService DeveloperModeService
+@inject IInferenceProviderService InferenceProviderService
+@inject HttpProviderService ProviderService
 @inject IDatabaseService DatabaseService
+@inject ICriticalErrorLogService CriticalErrorLogService
+@inject AppTimeZoneService AppTimeZoneService
+@inject IFileSystemService FileSystemService
 @inject NotificationService NotificationService
+@inject DeveloperUpdateOverlayService DeveloperUpdateOverlayService
+@inject NavigationManager Navigation
 
-<PageHeader Title="Settings" Subtitle="Defaults that apply across every project and job." />
+@* Every app-wide setting as grouped rows, as iOS Settings lists them. Each change saves as it is
+   made, so there is no Save button; detail that needs its own screen (database, crash reports,
+   about) is a row that links to it. *@
 
-<ul class="nav gap-1 small flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain mb-7" aria-label="Settings section">
-	@foreach (var (key, label) in Sections)
-	{
-		<li class="nav-item">
-			<button type="button" class="nav-link rounded-pill px-5 @(_activeTab == key ? "active" : "")"
-					aria-pressed="@(_activeTab == key ? "true" : "false")" @onclick="() => SetTab(key)">@label</button>
-		</li>
-	}
-</ul>
+<PageHeader Title="Settings" />
 
-@if (_activeTab == "app")
+@if (_isLoading)
 {
-	<SettingsAppTab OnSettingsSaved="RefreshDatabaseSummary" />
-}
-else if (_activeTab == "database")
-{
-<SettingsDatabaseTab DatabaseSummary="@_databaseSummary" OnDatabaseChanged="RefreshDatabaseSummary" />
+	<LoadingSpinner />
 }
 else
 {
 	<div class="d-flex flex-column gap-7">
-		<div class="list-group rounded-9">
-			<div class="list-group-item d-flex align-items-center gap-5 py-5">
-				<img src="img/logo_icon.png" alt="" class="brand-icon flex-shrink-0" />
-				<span class="min-w-0">
-					<span class="d-block fw-medium">@AppBranding.Name</span>
-					<span class="d-block small fg-1">@AppBranding.Tagline</span>
-				</span>
+		@if (_developerModeStatus?.IsEnabled == true)
+		{
+			<section class="d-flex flex-column gap-3" aria-label="Developer mode">
+				<SectionHeader Title="Developer mode" />
+				<div class="list-group rounded-9">
+					<ListRow Icon="arrow-repeat" Title="Rebuild and restart" Subtitle="@_developerModeStatus.StatusMessage"
+							 AttentionLine="@(_developerModeStatus.SupportsSelfUpdate ? null : "Needs a build and restart command in .env")">
+						<Trailing>
+							<span class="@GetDeveloperModeBadgeClass() flex-shrink-0">@GetDeveloperModeBadgeText()</span>
+						</Trailing>
+						<ChildContent>
+							<dl class="d-flex flex-column gap-3 small mb-0">
+								@if (!string.IsNullOrWhiteSpace(_developerModeStatus.WorkingDirectory))
+								{
+									<div class="d-flex justify-content-between gap-5">
+										<dt class="fw-normal fg-1 flex-shrink-0">Folder</dt>
+										<dd class="mb-0 text-end min-w-0 font-monospace text-break">@_developerModeStatus.WorkingDirectory</dd>
+									</div>
+								}
+								@if (!string.IsNullOrWhiteSpace(_developerModeStatus.BuildCommandSummary))
+								{
+									<div class="d-flex justify-content-between gap-5">
+										<dt class="fw-normal fg-1 flex-shrink-0">Build</dt>
+										<dd class="mb-0 text-end min-w-0 font-monospace text-break">@_developerModeStatus.BuildCommandSummary</dd>
+									</div>
+								}
+								@if (!string.IsNullOrWhiteSpace(_developerModeStatus.RestartCommandSummary))
+								{
+									<div class="d-flex justify-content-between gap-5">
+										<dt class="fw-normal fg-1 flex-shrink-0">Restart</dt>
+										<dd class="mb-0 text-end min-w-0 font-monospace text-break">@_developerModeStatus.RestartCommandSummary</dd>
+									</div>
+								}
+							</dl>
+							@if (!_developerModeStatus.SupportsSelfUpdate)
+							{
+								<div class="small fg-emphasis-warning">
+									Set <code>DeveloperMode__BuildCommand</code> and either <code>DeveloperMode__RestartCommand</code> or
+									<code>DeveloperMode__ServiceName</code> in <code>.env</code>.
+								</div>
+							}
+							<div class="small fg-1">
+								Rebuilds VibeSwarm here and restarts it. The page shows an updating screen and reloads once it's back.
+							</div>
+							<div class="d-grid sm:d-flex">
+								<button type="button" class="btn-solid theme-primary" @onclick="StartSelfUpdate"
+										disabled="@(_isStartingSelfUpdate || !_developerModeStatus.CanStartUpdate)">
+									@if (_isStartingSelfUpdate)
+									{
+										<span class="spinner-border spinner-sm" role="status"></span>
+										<span>Starting...</span>
+									}
+									else if (_developerModeStatus.IsUpdateInProgress)
+									{
+										<i class="bi bi-arrow-repeat"></i>
+										<span>Update in progress</span>
+									}
+									else
+									{
+										<i class="bi bi-arrow-repeat"></i>
+										<span>Rebuild and restart</span>
+									}
+								</button>
+							</div>
+						</ChildContent>
+					</ListRow>
+				</div>
+			</section>
+		}
+
+		<section class="d-flex flex-column gap-3" aria-label="Unattended jobs">
+			<SectionHeader Title="Unattended jobs" />
+			<div class="list-group rounded-9">
+				<SwitchRow Id="inferenceAnswersAgentQuestions" Icon="chat-left-dots" Title="Answer agents' questions"
+						   Subtitle="@AgentAnswerSubtitle" AttentionLine="@AgentAnswerAttention"
+						   @bind-Value="_settings.InferenceAnswersAgentQuestions" @bind-Value:after="SaveAsync" />
+				<ListRow Icon="browser-chrome" IconClass="@(_settings.EnableBrowserTools ? "fg-primary" : "fg-2")" Title="Browser for agents"
+						 Subtitle="@(_settings.EnableBrowserTools ? "Every job can open and screenshot web pages" : "Only projects with a web environment")">
+					@* Opening the row checks the host, which runs node, npx and chromium. *@
+					<BrowserToolsPanel>
+						<div class="form-field mb-0">
+							<div class="switch">
+								<input role="switch" switch type="checkbox" id="enableBrowserTools"
+									   @bind="_settings.EnableBrowserTools" @bind:after="SaveAsync" />
+							</div>
+							<label for="enableBrowserTools">Give every job a browser</label>
+						</div>
+						<div class="form-text">
+							Connects Playwright MCP to every job, so Claude Code, Copilot and OpenCode agents can open, click
+							through and screenshot the pages they change. When off, only projects with a web environment get it.
+						</div>
+					</BrowserToolsPanel>
+				</ListRow>
 			</div>
-			<div class="list-group-item d-flex justify-content-between gap-5 small">
-				<span class="fg-1 flex-shrink-0">Runtime</span>
-				<span class="text-end text-break">@System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription</span>
+		</section>
+
+		<section class="d-flex flex-column gap-3" aria-label="Usage limits">
+			<SectionHeader Title="Usage limits" Subtitle="Jobs stop short of each plan's limits, so they never use them up or run into overage." />
+			<div class="list-group rounded-9">
+				@if (_providers == null)
+				{
+					<div class="list-group-item"><LoadingSpinner /></div>
+				}
+				else if (_providers.Count == 0)
+				{
+					<ListRow Icon="plug" Title="Add a provider" Subtitle="Claude Code, GitHub Copilot or OpenCode" Href="/providers" />
+				}
+				else
+				{
+					@foreach (var provider in _providers)
+					{
+						<UsageLimitRow @key="provider.Id" Provider="provider" Summary="@_usageSummaries.GetValueOrDefault(provider.Id)" />
+					}
+				}
 			</div>
-		</div>
-		<ToolDetectionCard />
+		</section>
+
+		<section class="d-flex flex-column gap-3" aria-label="Agent prompts">
+			<SectionHeader Title="Agent prompts" />
+			<div class="list-group rounded-9">
+				<SwitchRow Id="enablePromptStructuring" Icon="braces" Title="Structure prompts"
+						   Subtitle="Wraps each job in XML tags with the project's context"
+						   @bind-Value="_settings.EnablePromptStructuring" @bind-Value:after="SaveAsync" />
+				<SwitchRow Id="injectRepoMap" Icon="diagram-3" Title="Include a repo map"
+						   Subtitle="A compact file tree, so agents find code faster"
+						   @bind-Value="_settings.InjectRepoMap" @bind-Value:after="SaveAsync" />
+				<SwitchRow Id="injectEfficiencyRules" Icon="bullseye" Title="Keep agents on task"
+						   Subtitle="No unrelated edits, extra comments or refactoring"
+						   @bind-Value="_settings.InjectEfficiencyRules" @bind-Value:after="SaveAsync" />
+				<SwitchRow Id="enableCommitAttribution" Icon="person-badge" Title="Credit the provider in commits"
+						   Subtitle="@(_settings.EnableCommitAttribution ? "Commits name the agent that made them" : "Commits use the repository's git identity")"
+						   @bind-Value="_settings.EnableCommitAttribution" @bind-Value:after="SaveAsync" />
+				<ListRow Icon="lightbulb" Title="Idea prompts" Subtitle="@(HasCustomIdeaPrompts ? "Customized" : "Default templates")">
+					<SettingsIdeaPromptTemplatesSection Settings="_settings" OnChanged="SaveAsync" OnRestoreDefaults="RestoreIdeaPromptDefaults" />
+				</ListRow>
+			</div>
+		</section>
+
+		<section class="d-flex flex-column gap-3" aria-label="Projects">
+			<SectionHeader Title="Projects" />
+			<div class="list-group rounded-9">
+				<ListRow Icon="folder" Title="Projects folder"
+						 Subtitle="@(string.IsNullOrWhiteSpace(_settings.DefaultProjectsDirectory) ? "Not set" : _settings.DefaultProjectsDirectory)"
+						 AttentionLine="@(!string.IsNullOrWhiteSpace(_settings.DefaultProjectsDirectory) && !_directoryExists ? "This folder doesn't exist" : null)">
+					<div>
+						<label for="defaultProjectsDirectory" class="form-label">Folder new projects go in</label>
+						<div class="input-group">
+							<input type="text" id="defaultProjectsDirectory" class="form-control font-monospace"
+								   @bind="_settings.DefaultProjectsDirectory" @bind:after="SaveProjectsDirectoryAsync"
+								   placeholder="/home/user/projects" autocomplete="off" />
+							<button type="button" class="btn-solid theme-secondary" @onclick="OpenDirectoryBrowser"
+									title="Browse folders" aria-label="Browse folders">
+								<i class="bi bi-folder2-open"></i>
+							</button>
+						</div>
+						<div class="form-text">A new project named MyApp gets this folder followed by /MyApp.</div>
+					</div>
+					@if (_directoryExists)
+					{
+						<div class="d-grid sm:d-flex">
+							<button type="button" class="btn-solid theme-secondary" @onclick="OpenScanProjectsModal">
+								<i class="bi bi-folder-symlink"></i>Import projects from it
+							</button>
+						</div>
+					}
+				</ListRow>
+				<ListRow Icon="clock" Title="Time zone" Subtitle="@CurrentTimeZoneLabel">
+					<div>
+						<label for="timeZoneId" class="form-label">Time zone</label>
+						<select id="timeZoneId" class="form-control" @bind="_settings.TimeZoneId" @bind:after="SaveAsync">
+							@foreach (var option in _timeZoneOptions)
+							{
+								<option value="@option.Zone.Id">@option.Label</option>
+							}
+						</select>
+						<div class="form-text">Schedules and times use it. Schedules keep the same local clock time when you change it.</div>
+					</div>
+				</ListRow>
+			</div>
+		</section>
+
+		<section class="d-flex flex-column gap-3" aria-label="Connection">
+			<SectionHeader Title="Connection" />
+			<div class="list-group rounded-9">
+				<SwitchRow Id="enableHttps" Icon="shield-lock" Title="Also serve over HTTPS"
+						   Subtitle="Lets phones install it as an app. Applies after a restart."
+						   AttentionLine="@(!_settings.EnableHttps && IsViewingOverHttps ? "After the restart, open the http:// address instead" : null)"
+						   @bind-Value="_settings.EnableHttps" @bind-Value:after="SaveAsync" />
+			</div>
+		</section>
+
+		<section class="d-flex flex-column gap-3" aria-label="Data">
+			<SectionHeader Title="Data" />
+			<div class="list-group rounded-9">
+				<ListRow Icon="database" Title="Database" Subtitle="@DatabaseSubtitle" Href="/settings/database" />
+				<ListRow Icon="exclamation-octagon" Title="Crash reports" Subtitle="@CrashReportsSubtitle" Href="/settings/crash-reports" />
+				<ListRow Icon="github" Title="GitHub token"
+						 Subtitle="@(string.IsNullOrWhiteSpace(_settings.GitHubToken) ? "Not set: browsing skills allows 60 lookups an hour" : "Set: browsing skills allows 5,000 lookups an hour")">
+					<div>
+						<label for="githubToken" class="form-label">Personal access token</label>
+						<div class="input-group">
+							<input type="@(_showGitHubToken ? "text" : "password")" id="githubToken" class="form-control font-monospace"
+								   @bind="_settings.GitHubToken" @bind:after="SaveAsync" placeholder="ghp_..." autocomplete="off" />
+							<button type="button" class="btn-solid theme-secondary" @onclick="ToggleGitHubTokenVisibility"
+									title="@(_showGitHubToken ? "Hide token" : "Show token")" aria-label="@(_showGitHubToken ? "Hide token" : "Show token")">
+								<i class="bi @(_showGitHubToken ? "bi-eye-slash" : "bi-eye")"></i>
+							</button>
+						</div>
+						<div class="form-text">
+							Only used to browse the <code>anthropics/skills</code> marketplace. An unscoped, read-only token is
+							enough. It is never sent to an agent.
+						</div>
+					</div>
+				</ListRow>
+			</div>
+		</section>
+
+		<section class="d-flex flex-column gap-3" aria-label="About">
+			<SectionHeader Title="About" />
+			<div class="list-group rounded-9">
+				<ListRow Icon="info-circle" Title="@($"About {AppBranding.Name}")" Subtitle="Version, runtime and the tools on this host" Href="/settings/about" />
+			</div>
+		</section>
 	</div>
 }
 
-@code {
-	private static readonly (string Key, string Label)[] Sections = [("app", "General"), ("database", "Database"), ("about", "About")];
-	private string _activeTab = "app";
-	private DatabaseStorageSummary? _databaseSummary;
+@if (_showDirectoryBrowser)
+{
+	<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_settings.DefaultProjectsDirectory"
+					  OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
+}
 
-	private void SetTab(string tab)
+<ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="OnProjectsImported" />
+
+@code {
+	private AppSettings _settings = new();
+	private bool _isLoading = true;
+	private IReadOnlyList<TimeZoneOption> _timeZoneOptions = [];
+	private IReadOnlyList<(InferenceProvider Provider, InferenceModel Model)> _answerCandidates = [];
+	private List<Provider>? _providers;
+	private Dictionary<Guid, ProviderUsageSummary> _usageSummaries = [];
+	private DatabaseStorageSummary? _databaseSummary;
+	private int? _crashReportCount;
+	private DeveloperModeStatus? _developerModeStatus;
+	private bool _isStartingSelfUpdate;
+	private bool _showGitHubToken;
+	private bool _directoryExists;
+	private bool _showDirectoryBrowser;
+	private DirectoryBrowser? _directoryBrowser;
+	private ScanProjectsModal? _scanProjectsModal;
+
+	// Saves run one after another, each sending the page's current settings, so quick taps
+	// on several switches all land in order.
+	private Task _pendingSave = Task.CompletedTask;
+
+	private bool IsViewingOverHttps => Navigation.BaseUri.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+	private string? AgentAnswerSubtitle
 	{
-		_activeTab = tab;
+		get
+		{
+			if (!_settings.InferenceAnswersAgentQuestions)
+			{
+				return "Jobs wait for you when an agent asks something";
+			}
+
+			if (_answerCandidates.Count == 0)
+			{
+				return null;
+			}
+
+			var (provider, model) = _answerCandidates[0];
+			return $"{model.DisplayName ?? model.ModelId} on {provider.Name} replies, so jobs keep going";
+		}
 	}
+
+	private string? AgentAnswerAttention => _settings.InferenceAnswersAgentQuestions && _answerCandidates.Count == 0
+		? "Add an inference provider with a default model for this to work"
+		: null;
+
+	private bool HasCustomIdeaPrompts =>
+		!IsDefaultTemplate(_settings.IdeaExpansionPromptTemplate, PromptBuilder.DefaultIdeaExpansionPromptTemplate)
+		|| !IsDefaultTemplate(_settings.IdeaImplementationPromptTemplate, PromptBuilder.DefaultIdeaImplementationPromptTemplate)
+		|| !IsDefaultTemplate(_settings.ApprovedIdeaImplementationPromptTemplate, PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate);
+
+	private string CurrentTimeZoneLabel => _timeZoneOptions.FirstOrDefault(o => o.Zone.Id == _settings.TimeZoneId)?.Label
+		?? _settings.TimeZoneId;
+
+	private string DatabaseSubtitle => _databaseSummary == null
+		? "Back up, restore and clean up"
+		: $"{SettingsDatabaseTab.FormatBytes(_databaseSummary.TotalSizeBytes)} · {_databaseSummary.JobsCount:N0} jobs";
+
+	private string CrashReportsSubtitle => _crashReportCount switch
+	{
+		null => "Errors captured from this app",
+		0 => "None recorded",
+		1 => "1 recorded",
+		var count => $"{count} recorded"
+	};
 
 	protected override async Task OnInitializedAsync()
 	{
-		await LoadDatabaseSummary();
+		_timeZoneOptions = AppTimeZoneService.GetTimeZoneOptions();
+		await AppTimeZoneService.EnsureInitializedAsync();
+		await LoadSettingsAsync();
+		_isLoading = false;
+		await LoadSummariesAsync();
 	}
 
-	private async Task RefreshDatabaseSummary()
+	private async Task LoadSettingsAsync()
 	{
-		await LoadDatabaseSummary();
+		try
+		{
+			_settings = await SettingsService.GetSettingsAsync();
+			_settings.TimeZoneId = DateTimeHelper.ResolveTimeZone(_settings.TimeZoneId).Id;
+			_timeZoneOptions = AppTimeZoneService.GetTimeZoneOptions(_settings.TimeZoneId);
+			_developerModeStatus = await DeveloperModeService.GetStatusAsync();
+			await CheckDirectoryExists();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load settings: {ex.Message}");
+		}
 	}
 
-	private async Task LoadDatabaseSummary()
+	// Second lines that need another request each; the page is usable before they arrive.
+	private async Task LoadSummariesAsync()
 	{
+		try
+		{
+			_providers = (await ProviderService.GetAllAsync())
+				.OrderByDescending(p => p.IsEnabled)
+				.ThenByDescending(p => p.IsDefault)
+				.ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+				.ToList();
+			_usageSummaries = await ProviderService.GetAllUsageSummariesAsync();
+		}
+		catch
+		{
+			_providers ??= [];
+		}
+
+		try
+		{
+			_answerCandidates = InferenceTaskModels.Candidates(await InferenceProviderService.GetAllAsync(), InferenceTaskModels.AgentAnswer);
+		}
+		catch
+		{
+			_answerCandidates = [];
+		}
+
 		try
 		{
 			_databaseSummary = await DatabaseService.GetStorageSummaryAsync();
 		}
+		catch
+		{
+			_databaseSummary = null;
+		}
+
+		try
+		{
+			_crashReportCount = (await CriticalErrorLogService.GetRecentAsync(AppSettings.MaxCriticalErrorLogMaxEntries)).Count;
+		}
+		catch
+		{
+			_crashReportCount = null;
+		}
+	}
+
+	private Task SaveAsync() => _pendingSave = SaveAfterAsync(_pendingSave);
+
+	private async Task SaveAfterAsync(Task previousSave)
+	{
+		await previousSave;
+		try
+		{
+			await SettingsService.UpdateSettingsAsync(_settings);
+			AppTimeZoneService.ApplyTimeZone(_settings.TimeZoneId);
+		}
 		catch (Exception ex)
 		{
-			NotificationService.ShowError($"Failed to load database size: {ex.Message}");
+			NotificationService.ShowError($"Couldn't save that change: {ex.Message}");
+			await LoadSettingsAsync();
+			StateHasChanged();
 		}
+	}
+
+	private async Task SaveProjectsDirectoryAsync()
+	{
+		_settings.DefaultProjectsDirectory = string.IsNullOrWhiteSpace(_settings.DefaultProjectsDirectory)
+			? null
+			: _settings.DefaultProjectsDirectory.Trim();
+		await CheckDirectoryExists();
+		await SaveAsync();
+	}
+
+	private async Task RestoreIdeaPromptDefaults()
+	{
+		_settings.IdeaExpansionPromptTemplate = PromptBuilder.DefaultIdeaExpansionPromptTemplate;
+		_settings.IdeaImplementationPromptTemplate = PromptBuilder.DefaultIdeaImplementationPromptTemplate;
+		_settings.ApprovedIdeaImplementationPromptTemplate = PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate;
+		await SaveAsync();
+	}
+
+	private static bool IsDefaultTemplate(string? template, string defaultTemplate) =>
+		string.IsNullOrWhiteSpace(template)
+		|| string.Equals(template.ReplaceLineEndings().Trim(), defaultTemplate.ReplaceLineEndings().Trim(), StringComparison.Ordinal);
+
+	private void ToggleGitHubTokenVisibility() => _showGitHubToken = !_showGitHubToken;
+
+	private async Task StartSelfUpdate()
+	{
+		_isStartingSelfUpdate = true;
+
+		try
+		{
+			_developerModeStatus = await DeveloperModeService.StartSelfUpdateAsync();
+			DeveloperUpdateOverlayService.SetStatus(_developerModeStatus);
+			NotificationService.ShowInfo("Developer update started. The page will refresh automatically after restart.", "Developer Mode");
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to start developer update: {ex.Message}");
+		}
+		finally
+		{
+			_isStartingSelfUpdate = false;
+		}
+	}
+
+	private async Task CheckDirectoryExists()
+	{
+		_directoryExists = !string.IsNullOrWhiteSpace(_settings.DefaultProjectsDirectory)
+			&& await FileSystemService.DirectoryExistsAsync(_settings.DefaultProjectsDirectory);
+	}
+
+	private async Task OpenDirectoryBrowser()
+	{
+		_showDirectoryBrowser = true;
+		StateHasChanged();
+
+		await Task.Delay(50);
+
+		if (_directoryBrowser != null)
+		{
+			await _directoryBrowser.ShowAsync(_settings.DefaultProjectsDirectory);
+		}
+	}
+
+	private async Task OnDirectorySelected(string path)
+	{
+		_settings.DefaultProjectsDirectory = path;
+		_showDirectoryBrowser = false;
+		await SaveProjectsDirectoryAsync();
+	}
+
+	private void CloseDirectoryBrowser()
+	{
+		_showDirectoryBrowser = false;
+	}
+
+	private async Task OpenScanProjectsModal()
+	{
+		if (_scanProjectsModal != null)
+		{
+			await _scanProjectsModal.ShowAsync(_settings.DefaultProjectsDirectory);
+		}
+	}
+
+	private void OnProjectsImported()
+	{
+		NotificationService.ShowSuccess("Projects imported successfully!");
+		StateHasChanged();
+	}
+
+	private string GetDeveloperModeBadgeClass()
+	{
+		return _developerModeStatus?.Stage switch
+		{
+			DeveloperUpdateStage.Building => "badge badge-subtle theme-primary",
+			DeveloperUpdateStage.Restarting => "badge badge-subtle theme-primary",
+			DeveloperUpdateStage.Failed => "badge badge-subtle theme-danger",
+			_ when _developerModeStatus?.SupportsSelfUpdate == true => "badge badge-subtle theme-success",
+			_ => "badge badge-subtle theme-warning"
+		};
+	}
+
+	private string GetDeveloperModeBadgeText()
+	{
+		return _developerModeStatus?.Stage switch
+		{
+			DeveloperUpdateStage.Building => "Building",
+			DeveloperUpdateStage.Restarting => "Restarting",
+			DeveloperUpdateStage.Failed => "Failed",
+			_ when _developerModeStatus?.SupportsSelfUpdate == true => "Ready",
+			_ => "Needs setup"
+		};
 	}
 }

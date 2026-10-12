@@ -1,0 +1,21 @@
+@page "/settings/about"
+@attribute [Authorize]
+
+<PageHeader Title="About" BackHref="/settings" BackLabel="Settings" />
+
+<div class="d-flex flex-column gap-7">
+	<div class="list-group rounded-9">
+		<div class="list-group-item d-flex align-items-center gap-5 py-5">
+			<img src="img/logo_icon.png" alt="" class="brand-icon flex-shrink-0" />
+			<span class="min-w-0">
+				<span class="d-block fw-medium">@AppBranding.Name</span>
+				<span class="d-block small fg-1">@AppBranding.Tagline</span>
+			</span>
+		</div>
+		<div class="list-group-item d-flex justify-content-between gap-5 small">
+			<span class="fg-1 flex-shrink-0">Runtime</span>
+			<span class="text-end text-break">@System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription</span>
+		</div>
+	</div>
+	<ToolDetectionCard />
+</div>

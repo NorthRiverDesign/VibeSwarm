@@ -383,7 +383,7 @@ OnConfirm="RunDatabaseMigration" />
 			("Jobs", DatabaseSummary.JobsCount, $"{DatabaseSummary.CompletedJobsOlderThanRetentionCount:N0} completed more than {days} days ago"),
 			("Messages", DatabaseSummary.JobMessagesCount, "Stored session transcript rows"),
 			("Usage records", DatabaseSummary.ProviderUsageRecordsCount, $"{DatabaseSummary.ProviderUsageRecordsOlderThanRetentionCount:N0} older than {days} days"),
-			("Critical error logs", DatabaseSummary.CriticalErrorLogsCount, "Kept for the retention period set in General")
+			("Critical error logs", DatabaseSummary.CriticalErrorLogsCount, "Kept for the retention period set in Crash reports")
 		];
 	}
 

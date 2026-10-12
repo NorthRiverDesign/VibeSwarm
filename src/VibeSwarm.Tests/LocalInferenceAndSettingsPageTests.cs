@@ -10,6 +10,7 @@ using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Models;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Tests;
@@ -47,11 +48,16 @@ public async Task RenderedLocalInferencePage_ShowsSetupAction_WhenNoProviderConf
 }
 
 [Fact]
-public async Task RenderedSettingsPage_DoesNotShowLocalInferenceTab()
+public async Task RenderedSettingsPage_GroupsEverySettingAsRows()
 {
 var services = new ServiceCollection();
 	services.AddLogging();
 	services.AddSingleton<ISettingsService>(new FakeSettingsService());
+	var desktop = new InferenceProvider { Name = "Desktop", Endpoint = "http://desktop:11434" };
+	desktop.Models.Add(new InferenceModel { ModelId = "qwen3", TaskType = "default", IsDefault = true });
+	services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService([desktop]));
+	services.AddSingleton(new HttpProviderService(new HttpClient(new SettingsProvidersHandler()) { BaseAddress = new Uri("http://localhost") }));
+	services.AddSingleton<IProviderService>(sp => sp.GetRequiredService<HttpProviderService>());
 	services.AddSingleton<AppTimeZoneService>();
 	services.AddSingleton<IDeveloperModeService>(new FakeDeveloperModeService());
 	services.AddSingleton<IFileSystemService>(new FakeFileSystemService());
@@ -71,24 +77,66 @@ var output = await renderer.RenderComponentAsync<Settings>();
 return output.ToHtmlString();
 });
 
-	Assert.Contains(">General<", html);
-	Assert.Contains("Timezone", html);
-	Assert.Contains(">Eastern (UTC-0", html);
-	Assert.DoesNotContain("Europe/", html);
-	Assert.Contains("Enable provider commit attribution", html);
-	Assert.Contains("Serve over HTTPS", html);
+	Assert.Contains("Unattended jobs", html);
+	Assert.Contains("qwen3 on Desktop replies, so jobs keep going", html);
 	Assert.Contains("Browser for agents", html);
-	Assert.Contains("Idea Prompt Templates", html);
-	Assert.Contains("Idea expansion template", html);
-	Assert.Contains("Direct idea implementation template", html);
-	Assert.Contains("Critical error logs", html);
-	Assert.Contains("Database", html);
+	Assert.Contains("Usage limits", html);
+	Assert.Contains("Jobs wait at 90% of a session, 90% of the week", html);
+	Assert.Contains("95% of the week used", html);
+	Assert.Contains("Set the plan&#x27;s monthly requests so jobs stop before overage", html);
+	Assert.Contains("Keep agents on task", html);
+	Assert.Contains("Credit the provider in commits", html);
+	Assert.Contains("Idea prompts", html);
+	Assert.Contains("Projects folder", html);
+	Assert.Contains("Time zone", html);
+	Assert.Contains("Also serve over HTTPS", html);
+	Assert.Contains("href=\"/settings/database\"", html);
+	Assert.Contains("href=\"/settings/crash-reports\"", html);
+	Assert.Contains("href=\"/settings/about\"", html);
 	Assert.Contains("Developer mode", html);
-	Assert.Contains("Rebuild And Restart", html);
-	Assert.DoesNotContain("Add Provider", html);
-	Assert.DoesNotContain("inference provider", html);
-	Assert.DoesNotContain("Database Size", html);
-	Assert.DoesNotContain("Open Database Tab", html);
+	Assert.Contains("Rebuild and restart", html);
+	// Every change saves as it is made.
+	Assert.DoesNotContain("Save settings", html);
+	// Rows open in place, so their contents stay out of the page until tapped.
+	Assert.DoesNotContain("Expanding an idea", html);
+}
+
+private sealed class SettingsProvidersHandler : HttpMessageHandler
+{
+	private static readonly Guid ClaudeId = Guid.NewGuid();
+	private static readonly Guid CopilotId = Guid.NewGuid();
+
+	protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+	{
+		object body = request.RequestUri!.AbsolutePath switch
+		{
+			"/api/providers" => new List<Provider>
+			{
+				new() { Id = ClaudeId, Name = "Claude Code", Type = ProviderType.Claude, IsEnabled = true },
+				new() { Id = CopilotId, Name = "GitHub Copilot", Type = ProviderType.Copilot, IsEnabled = true },
+				new() { Id = Guid.NewGuid(), Name = "Claude Work", Type = ProviderType.Claude, IsEnabled = true }
+			},
+			"/api/providers/usage-summaries" => new Dictionary<Guid, ProviderUsageSummary>
+			{
+				[ClaudeId] = new()
+				{
+					ProviderId = ClaudeId,
+					LimitType = UsageLimitType.RateLimit,
+					LimitWindows =
+					[
+						new UsageLimitWindow { Scope = UsageLimitWindowScope.Session, CurrentUsage = 10, MaxUsage = 100, ResetTime = DateTime.UtcNow.AddHours(2) },
+						new UsageLimitWindow { Scope = UsageLimitWindowScope.Weekly, CurrentUsage = 95, MaxUsage = 100, ResetTime = DateTime.UtcNow.AddDays(2) }
+					]
+				}
+			},
+			_ => new { }
+		};
+
+		return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+		{
+			Content = System.Net.Http.Json.JsonContent.Create(body, body.GetType())
+		});
+	}
 }
 
 [Fact]
