@@ -526,6 +526,86 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.Contains("session is 93% used", persistedJob.ErrorMessage ?? string.Empty);
 	}
 
+	[Fact]
+	public async Task ProcessJobAsync_WaitsForTheWeekToResetWhenWeeklyUsageIsOverItsThreshold()
+	{
+		var projectId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
+		var jobId = Guid.NewGuid();
+		var sessionReset = DateTime.UtcNow.AddHours(2);
+		var weekReset = DateTime.UtcNow.AddDays(3);
+
+		await using (var setupContext = CreateDbContext())
+		{
+			setupContext.Projects.Add(new Project
+			{
+				Id = projectId,
+				Name = "Session Project",
+				WorkingPath = "/tmp/session-project"
+			});
+			setupContext.Providers.Add(new Provider
+			{
+				Id = providerId,
+				Name = "Claude",
+				Type = ProviderType.Claude,
+				IsEnabled = true,
+				ExecutablePath = "missing-claude",
+				WeeklyLimitPauseThresholdPercent = 80
+			});
+			setupContext.ProviderUsageSummaries.Add(new ProviderUsageSummary
+			{
+				ProviderId = providerId,
+				LimitsRefreshedAt = DateTime.UtcNow,
+				LimitWindows =
+				[
+					SessionWindow(10, sessionReset),
+					new UsageLimitWindow { Scope = UsageLimitWindowScope.Weekly, LimitType = UsageLimitType.RateLimit, Label = "Weekly", CurrentUsage = 84, MaxUsage = 100, ResetTime = weekReset }
+				]
+			});
+			setupContext.Jobs.Add(new Job
+			{
+				Id = jobId,
+				ProjectId = projectId,
+				ProviderId = providerId,
+				GoalPrompt = "Wait for the week to reset",
+				Status = JobStatus.New
+			});
+
+			await setupContext.SaveChangesAsync();
+		}
+
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		var serviceProvider = services.BuildServiceProvider();
+
+		var processingService = new JobProcessingService(
+			serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NoOpVersionControlService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+
+		await using var executionContext = CreateDbContext();
+		var job = await executionContext.Jobs
+			.Include(j => j.Project)
+			.Include(j => j.Provider)
+			.SingleAsync(j => j.Id == jobId);
+
+		await InvokeProcessJobAsync(
+			processingService,
+			job,
+			new StubJobService(isCancellationRequested: false),
+			new StubProviderService(),
+			executionContext);
+
+		await using var verificationContext = CreateDbContext();
+		var persistedJob = await verificationContext.Jobs.SingleAsync(j => j.Id == jobId);
+
+		Assert.Equal(JobStatus.New, persistedJob.Status);
+		Assert.NotNull(persistedJob.NotBeforeUtc);
+		Assert.Equal(weekReset, persistedJob.NotBeforeUtc!.Value, TimeSpan.FromSeconds(1));
+		Assert.Contains("weekly limit is 84% used", persistedJob.ErrorMessage ?? string.Empty);
+	}
+
 	[Theory]
 	[InlineData(true)]
 	[InlineData(false)]
