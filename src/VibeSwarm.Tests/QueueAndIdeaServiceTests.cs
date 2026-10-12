@@ -1401,6 +1401,46 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_SkipsAnOfflineProvider_WhenNoneIsRequested()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project { Id = Guid.NewGuid(), Name = "Suggestion Project", WorkingPath = workingPath };
+			var desktop = new InferenceProvider { Name = "Desktop", Endpoint = "http://desktop:11434", Priority = 0, IsEnabled = true };
+			desktop.Models.Add(new InferenceModel { ModelId = "qwen3", TaskType = "default", IsDefault = true, IsAvailable = true });
+			var cloud = new InferenceProvider { Name = "Cloud", Endpoint = "https://cloud.example/v1", ProviderType = InferenceProviderType.Grok, Priority = 1, IsEnabled = true };
+			cloud.Models.Add(new InferenceModel { ModelId = "grok-4.6", TaskType = "default", IsDefault = true, IsAvailable = true });
+			dbContext.Projects.Add(project);
+			dbContext.InferenceProviders.AddRange(desktop, cloud);
+			await dbContext.SaveChangesAsync();
+
+			var inferenceService = new FakeInferenceService
+			{
+				Response = new InferenceResponse { Success = true, ModelUsed = "grok-4.6", Response = "- Add a weekly performance email" }
+			};
+			inferenceService.UnreachableEndpoints.Add(desktop.Endpoint);
+
+			var ideaService = CreateIdeaService(dbContext, new Provider(), inferenceService: inferenceService);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest { IdeaCount = 1 });
+
+			Assert.True(result.Success, result.Message);
+			Assert.Equal(cloud.Endpoint, inferenceService.LastRequest?.Endpoint);
+			Assert.Equal("grok-4.6", inferenceService.LastRequest?.Model);
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
 	public async Task SuggestIdeasFromCodebaseAsync_IncludesExistingIdeasAndAdditionalContextInPrompt()
 	{
 		await using var dbContext = CreateDbContext();
@@ -4505,11 +4545,19 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public InferenceResponse Response { get; set; } = new() { Success = true };
 		public InferenceRequest? LastRequest { get; private set; }
 
+		/// <summary>Endpoints whose health check fails, like a machine that is switched off.</summary>
+		public HashSet<string> UnreachableEndpoints { get; } = [];
+
 		public Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default)
 			=> CheckHealthAsync(request.Endpoint, request.ProviderType, ct);
 
 		public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 		{
+			if (endpoint != null && UnreachableEndpoints.Contains(endpoint))
+			{
+				return Task.FromResult(new InferenceHealthResult { IsAvailable = false, Error = "Connection refused" });
+			}
+
 			return Task.FromResult(new InferenceHealthResult
 			{
 				IsAvailable = Health.IsAvailable,

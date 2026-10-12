@@ -233,6 +233,11 @@ public partial class IdeaService
 			}
 		}
 
+		else
+		{
+			selectedProvider = await SelectReachableSuggestionProviderAsync(projectId, cancellationToken);
+		}
+
 		var providerDisplayName = selectedProvider?.Name ?? "Inference provider";
 		var providerEndpoint = selectedProvider?.Endpoint;
 		InferenceModel? selectedModel = null;
@@ -732,6 +737,43 @@ public partial class IdeaService
 			IdeaCount = Math.Clamp(request?.IdeaCount ?? SuggestIdeasRequest.DefaultIdeaCount, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount),
 			AdditionalContext = string.IsNullOrWhiteSpace(request?.AdditionalContext) ? null : request.AdditionalContext.Trim()
 		};
+	}
+
+	/// <summary>
+	/// With no provider chosen, the first enabled inference provider, in priority order, that has
+	/// a suggest or default model and answers its health check, so a machine that is switched off
+	/// doesn't stop suggestions while another provider is up. When none answers, the first is
+	/// returned so the failure names it.
+	/// </summary>
+	private async Task<InferenceProvider?> SelectReachableSuggestionProviderAsync(Guid projectId, CancellationToken cancellationToken)
+	{
+		var providers = await _dbContext.InferenceProviders
+			.Include(provider => provider.Models)
+			.Where(provider => provider.IsEnabled)
+			.ToListAsync(cancellationToken);
+		var candidates = InferenceTaskModels.Candidates(providers, "suggest");
+
+		foreach (var (candidate, _) in candidates)
+		{
+			try
+			{
+				var health = await _inferenceService!.CheckHealthAsync(candidate.Endpoint, candidate.ProviderType, cancellationToken);
+				if (health.IsAvailable)
+				{
+					return candidate;
+				}
+
+				_logger.LogInformation("Skipping unreachable inference provider {Provider} for project {ProjectId} suggestions: {Error}",
+					candidate.Name, projectId, health.Error);
+			}
+			catch (Exception ex) when (ex is not OperationCanceledException)
+			{
+				_logger.LogInformation(ex, "Skipping unreachable inference provider {Provider} for project {ProjectId} suggestions",
+					candidate.Name, projectId);
+			}
+		}
+
+		return candidates.Count > 0 ? candidates[0].Provider : null;
 	}
 
 	private static InferenceModel? ResolveSuggestionModel(InferenceProvider provider)
