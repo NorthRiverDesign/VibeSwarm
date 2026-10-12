@@ -78,12 +78,12 @@ return output.ToHtmlString();
 });
 
 	Assert.Contains("Unattended jobs", html);
-	Assert.Contains("qwen3 on Desktop replies, so jobs keep going", html);
+	Assert.Contains("Answered by qwen3 on Desktop", html);
 	Assert.Contains("Browser for agents", html);
 	Assert.Contains("Usage limits", html);
-	Assert.Contains("Jobs wait at 90% of a session, 90% of the week", html);
+	Assert.Contains("Waits at 90% of a session or the week", html);
 	Assert.Contains("95% of the week used", html);
-	Assert.Contains("Set the plan&#x27;s monthly requests so jobs stop before overage", html);
+	Assert.Contains("Set its monthly request allowance", html);
 	Assert.Contains("Keep agents on task", html);
 	Assert.Contains("Credit the provider in commits", html);
 	Assert.Contains("Idea prompts", html);

@@ -31,6 +31,7 @@
 				{
 					<ListRow Icon="exclamation-octagon" IconClass="fg-danger" Title="@entry.Message"
 							 Subtitle="@($"{entry.CreatedAt.FormatDateTimeShort()} · {entry.Source} · {entry.Category}")">
+						<div class="fw-medium text-break">@entry.Message</div>
 						<dl class="d-flex flex-column gap-3 small mb-0">
 							@if (entry.TriggeredRefresh)
 							{
@@ -54,7 +55,6 @@
 								</div>
 							}
 						</dl>
-						<div class="fw-medium text-break">@entry.Message</div>
 						@if (!string.IsNullOrWhiteSpace(entry.Details))
 						{
 							<pre class="mb-0 p-3 bg-2 rounded small font-monospace white-space-pre-wrap text-break overflow-y-auto max-height-50dvh">@entry.Details</pre>

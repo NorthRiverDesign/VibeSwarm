@@ -102,7 +102,7 @@ else
 						   Subtitle="@AgentAnswerSubtitle" AttentionLine="@AgentAnswerAttention"
 						   @bind-Value="_settings.InferenceAnswersAgentQuestions" @bind-Value:after="SaveAsync" />
 				<ListRow Icon="browser-chrome" IconClass="@(_settings.EnableBrowserTools ? "fg-primary" : "fg-2")" Title="Browser for agents"
-						 Subtitle="@(_settings.EnableBrowserTools ? "Every job can open and screenshot web pages" : "Only projects with a web environment")">
+						 Subtitle="@(_settings.EnableBrowserTools ? "Jobs can open and test web pages" : "Only projects with a web environment")">
 					@* Opening the row checks the host, which runs node, npx and chromium. *@
 					<BrowserToolsPanel>
 						<div class="form-field mb-0">
@@ -122,7 +122,7 @@ else
 		</section>
 
 		<section class="d-flex flex-column gap-3" aria-label="Usage limits">
-			<SectionHeader Title="Usage limits" Subtitle="Jobs stop short of each plan's limits, so they never use them up or run into overage." />
+			<SectionHeader Title="Usage limits" Subtitle="Jobs stop short of each plan's limits, so they never use it all up." />
 			<div class="list-group rounded-9">
 				@if (_providers == null)
 				{
@@ -146,16 +146,16 @@ else
 			<SectionHeader Title="Agent prompts" />
 			<div class="list-group rounded-9">
 				<SwitchRow Id="enablePromptStructuring" Icon="braces" Title="Structure prompts"
-						   Subtitle="Wraps each job in XML tags with the project's context"
+						   Subtitle="Wraps jobs in XML tags with context"
 						   @bind-Value="_settings.EnablePromptStructuring" @bind-Value:after="SaveAsync" />
 				<SwitchRow Id="injectRepoMap" Icon="diagram-3" Title="Include a repo map"
-						   Subtitle="A compact file tree, so agents find code faster"
+						   Subtitle="A file tree, so agents find code fast"
 						   @bind-Value="_settings.InjectRepoMap" @bind-Value:after="SaveAsync" />
 				<SwitchRow Id="injectEfficiencyRules" Icon="bullseye" Title="Keep agents on task"
-						   Subtitle="No unrelated edits, extra comments or refactoring"
+						   Subtitle="No unrelated edits or refactoring"
 						   @bind-Value="_settings.InjectEfficiencyRules" @bind-Value:after="SaveAsync" />
 				<SwitchRow Id="enableCommitAttribution" Icon="person-badge" Title="Credit the provider in commits"
-						   Subtitle="@(_settings.EnableCommitAttribution ? "Commits name the agent that made them" : "Commits use the repository's git identity")"
+						   Subtitle="@(_settings.EnableCommitAttribution ? "Commits name the agent that made them" : "Commits use the repo's git identity")"
 						   @bind-Value="_settings.EnableCommitAttribution" @bind-Value:after="SaveAsync" />
 				<ListRow Icon="lightbulb" Title="Idea prompts" Subtitle="@(HasCustomIdeaPrompts ? "Customized" : "Default templates")">
 					<SettingsIdeaPromptTemplatesSection Settings="_settings" OnChanged="SaveAsync" OnRestoreDefaults="RestoreIdeaPromptDefaults" />
@@ -210,7 +210,7 @@ else
 			<SectionHeader Title="Connection" />
 			<div class="list-group rounded-9">
 				<SwitchRow Id="enableHttps" Icon="shield-lock" Title="Also serve over HTTPS"
-						   Subtitle="Lets phones install it as an app. Applies after a restart."
+						   Subtitle="Needed to install as an app; on restart"
 						   AttentionLine="@(!_settings.EnableHttps && IsViewingOverHttps ? "After the restart, open the http:// address instead" : null)"
 						   @bind-Value="_settings.EnableHttps" @bind-Value:after="SaveAsync" />
 			</div>
@@ -222,7 +222,7 @@ else
 				<ListRow Icon="database" Title="Database" Subtitle="@DatabaseSubtitle" Href="/settings/database" />
 				<ListRow Icon="exclamation-octagon" Title="Crash reports" Subtitle="@CrashReportsSubtitle" Href="/settings/crash-reports" />
 				<ListRow Icon="github" Title="GitHub token"
-						 Subtitle="@(string.IsNullOrWhiteSpace(_settings.GitHubToken) ? "Not set: browsing skills allows 60 lookups an hour" : "Set: browsing skills allows 5,000 lookups an hour")">
+						 Subtitle="@(string.IsNullOrWhiteSpace(_settings.GitHubToken) ? "Not set: 60 skill lookups an hour" : "Set: 5,000 skill lookups an hour")">
 					<div>
 						<label for="githubToken" class="form-label">Personal access token</label>
 						<div class="input-group">
@@ -297,12 +297,12 @@ else
 			}
 
 			var (provider, model) = _answerCandidates[0];
-			return $"{model.DisplayName ?? model.ModelId} on {provider.Name} replies, so jobs keep going";
+			return $"Answered by {model.DisplayName ?? model.ModelId} on {provider.Name}";
 		}
 	}
 
 	private string? AgentAnswerAttention => _settings.InferenceAnswersAgentQuestions && _answerCandidates.Count == 0
-		? "Add an inference provider with a default model for this to work"
+		? "Needs an inference provider with a default model"
 		: null;
 
 	private bool HasCustomIdeaPrompts =>

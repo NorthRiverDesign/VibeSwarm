@@ -100,6 +100,7 @@
 
 	private IReadOnlyList<UsageLimitWindow> UsageWindows => Windows
 		.Where(w => SessionLimitPolicy.IsGuardedScope(w.Scope) && w.PercentUsed.HasValue)
+		.OrderBy(w => w.Scope)
 		.ToList();
 
 	private UsageLimitWindowScope LongWindowScope => Windows
@@ -131,13 +132,18 @@
 			if (IsMonthlyRequestPlan)
 			{
 				return Provider.ConfiguredUsageLimit is int limit and > 0
-					? $"Jobs wait at {LongWindowThreshold}% of {limit:N0} requests a month"
+					? $"Waits at {LongWindowThreshold}% of {limit:N0} requests a month"
 					: null;
 			}
 
-			return HasSession
-				? $"Jobs wait at {SessionThreshold}% of a session, {LongWindowThreshold}% of the {LongWindowName}"
-				: $"Jobs wait at {LongWindowThreshold}% of the {LongWindowName}";
+			if (!HasSession)
+			{
+				return $"Waits at {LongWindowThreshold}% of the {LongWindowName}";
+			}
+
+			return SessionThreshold == LongWindowThreshold
+				? $"Waits at {SessionThreshold}% of a session or the {LongWindowName}"
+				: $"Waits at {SessionThreshold}% a session, {LongWindowThreshold}% a {LongWindowName}";
 		}
 	}
 
@@ -154,11 +160,11 @@
 			if (hold != null)
 			{
 				var window = hold.Scope == UsageLimitWindowScope.Session ? "session" : LongWindowName;
-				return $"Waiting until {hold.Until.FormatDateTimeShort()}: {hold.PercentUsed}% of the {window} used";
+				return $"Waiting until {FormatReset(hold.Until)}: {hold.PercentUsed}% of the {window} used";
 			}
 
 			return IsMonthlyRequestPlan && Provider.ConfiguredUsageLimit is not > 0
-				? "Set the plan's monthly requests so jobs stop before overage"
+				? "Set its monthly request allowance"
 				: null;
 		}
 	}
@@ -207,13 +213,29 @@
 		_ => window.Label ?? "Usage"
 	};
 
-	private string ThresholdHelp => HasSession
-		? "New jobs wait for a limit to reset once this much of it is used, or sooner when the next job would use up the session. Running jobs finish. 100% lets jobs use all of it."
-		: "New jobs wait for the limit to reset once this much of it is used. Running jobs finish. 100% lets jobs use all of it.";
+	private string ThresholdHelp => IsMonthlyRequestPlan
+		? "New jobs wait for next month once this much of the allowance is used. Running jobs finish."
+		: "New jobs wait for a limit to reset once this much of it is used. Running jobs finish.";
 
-	private static string DescribeUsage(UsageLimitWindow window) => window.ResetTime is DateTime reset
-		? $"{window.PercentUsed}% used · resets {reset.FormatDateTimeShort()}"
+	// A reset time that has passed belongs to a reading taken before it; the figure is stale.
+	private static string DescribeUsage(UsageLimitWindow window) => window.ResetTime is DateTime reset && reset > DateTime.UtcNow
+		? $"{window.PercentUsed}% used · resets {FormatReset(reset)}"
 		: $"{window.PercentUsed}% used";
+
+	/// <summary>"8:00 PM" today, "Tue 8:00 PM" this week, "Oct 30" after that.</summary>
+	private static string FormatReset(DateTime resetUtc)
+	{
+		var reset = resetUtc.ToConfiguredTime();
+		var today = DateTime.UtcNow.ToConfiguredTime().Date;
+		if (reset.Date == today)
+		{
+			return resetUtc.FormatTimeShort();
+		}
+
+		return reset.Date < today.AddDays(7)
+			? $"{reset.ToString("ddd", System.Globalization.CultureInfo.InvariantCulture)} {resetUtc.FormatTimeShort()}"
+			: resetUtc.FormatDateShort();
+	}
 
 	private static string Capitalize(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
 }
