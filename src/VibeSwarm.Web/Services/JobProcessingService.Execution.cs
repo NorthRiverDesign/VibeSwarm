@@ -440,10 +440,7 @@ public partial class JobProcessingService
                     return null;
                 }
 
-                var finalMessage = runResult.Messages
-                    .LastOrDefault(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase)
-                        && !string.IsNullOrWhiteSpace(m.Content))?.Content
-                    ?? runResult.Output;
+                var finalMessage = AgentQuestionAnswerer.FindFinalMessage(runResult.Messages, runResult.Output);
                 var question = AgentQuestionAnswerer.FindClosingQuestion(finalMessage);
                 if (question == null)
                 {

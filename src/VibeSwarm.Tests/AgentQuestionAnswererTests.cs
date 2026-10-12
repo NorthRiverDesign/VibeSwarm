@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Inference;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
 using VibeSwarm.Web.Services;
@@ -155,6 +156,42 @@ public sealed class AgentQuestionAnswererTests : IDisposable
 	public void FindClosingQuestion_FindsAQuestionOnlyAtTheEnd(string finalMessage, string? expected)
 	{
 		Assert.Equal(expected, AgentQuestionAnswerer.FindClosingQuestion(finalMessage));
+	}
+
+	[Fact]
+	public void FindFinalMessage_ReadsCopilotsTaskCompleteSummary()
+	{
+		// The shape a real Copilot CLI 1.0.95 autopilot run reported: the closing words go to the
+		// task_complete tool, after an opening assistant message.
+		const string summary = "Created hello.txt.\n\nShould I also add a README.md that explains what hello.txt is for?";
+		List<ExecutionMessage> messages =
+		[
+			new() { Role = "assistant", Content = "Creating hello.txt, then verifying it." },
+			new() { Role = "tool_use", ToolName = "create", Content = "create" },
+			new() { Role = "tool_result", ToolName = "create", Content = "Created file hello.txt" },
+			new() { Role = "tool_use", ToolName = "task_complete", Content = "task_complete", ToolInput = "{\"summary\":\"Created hello.txt.\\n\\nShould I also add a README.md that explains what hello.txt is for?\"}" },
+			new() { Role = "tool_result", ToolName = "task_complete", Content = summary }
+		];
+
+		var finalMessage = AgentQuestionAnswerer.FindFinalMessage(messages, "{\"type\":\"result\"}");
+
+		Assert.Equal(summary, finalMessage);
+		Assert.Equal("Should I also add a README.md that explains what hello.txt is for?", AgentQuestionAnswerer.FindClosingQuestion(finalMessage));
+		Assert.Equal(summary, AgentQuestionAnswerer.FindFinalMessage(messages[..4], null));
+	}
+
+	[Fact]
+	public void FindFinalMessage_PrefersALaterAssistantMessage_AndNeverReadsAJsonStream()
+	{
+		List<ExecutionMessage> messages =
+		[
+			new() { Role = "tool_result", ToolName = "task_complete", Content = "Earlier summary?" },
+			new() { Role = "assistant", Content = "All done." }
+		];
+
+		Assert.Equal("All done.", AgentQuestionAnswerer.FindFinalMessage(messages, null));
+		Assert.Null(AgentQuestionAnswerer.FindFinalMessage([], "{\"type\":\"assistant.message\",\"data\":{\"content\":\"Should I?\"}}"));
+		Assert.Equal("Done. Should I push?", AgentQuestionAnswerer.FindFinalMessage([], "Done. Should I push?"));
 	}
 
 	[Fact]

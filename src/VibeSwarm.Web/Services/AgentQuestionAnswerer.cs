@@ -1,8 +1,10 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Inference;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
 
@@ -147,6 +149,12 @@ public sealed partial class AgentQuestionAnswerer
 			{
 				// The model judged that only the user can answer, or that nothing is left to do;
 				// another model won't know better.
+				_logger.LogInformation(
+					"Inference model {ModelId} on {ProviderName} declined to answer the agent's question ({Reply}): {Question}",
+					model.ModelId,
+					provider.Name,
+					response.Response.Contains(NoFollowUpReply, StringComparison.OrdinalIgnoreCase) ? "goal already met" : "left for the user",
+					question.Question);
 				return null;
 			}
 
@@ -225,6 +233,69 @@ public sealed partial class AgentQuestionAnswerer
 		}
 
 		return text;
+	}
+
+	/// <summary>
+	/// What the agent said last in a run: its last text message, or the summary Copilot's
+	/// autopilot hands to its <c>task_complete</c> tool when that came later, which is where
+	/// Copilot puts its closing words. Raw output is used only when it is plain text, since a
+	/// JSON event stream would only mislead the question check.
+	/// </summary>
+	public static string? FindFinalMessage(IReadOnlyList<ExecutionMessage> messages, string? output)
+	{
+		for (var index = messages.Count - 1; index >= 0; index--)
+		{
+			var message = messages[index];
+			if (string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase)
+				&& !string.IsNullOrWhiteSpace(message.Content))
+			{
+				return message.Content;
+			}
+
+			if (!string.Equals(message.ToolName, TaskCompleteTool, StringComparison.OrdinalIgnoreCase))
+			{
+				continue;
+			}
+
+			if (string.Equals(message.Role, "tool_result", StringComparison.OrdinalIgnoreCase)
+				&& !string.IsNullOrWhiteSpace(message.Content))
+			{
+				return message.Content;
+			}
+
+			if (string.Equals(message.Role, "tool_use", StringComparison.OrdinalIgnoreCase)
+				&& ReadSummary(message.ToolInput) is { } summary)
+			{
+				return summary;
+			}
+		}
+
+		return messages.Count == 0 && output?.TrimStart().StartsWith('{') == false ? output : null;
+	}
+
+	private const string TaskCompleteTool = "task_complete";
+
+	private static string? ReadSummary(string? toolInput)
+	{
+		if (string.IsNullOrWhiteSpace(toolInput))
+		{
+			return null;
+		}
+
+		try
+		{
+			using var document = JsonDocument.Parse(toolInput);
+			return document.RootElement.ValueKind == JsonValueKind.Object
+				&& document.RootElement.TryGetProperty("summary", out var summary)
+				&& summary.ValueKind == JsonValueKind.String
+				&& !string.IsNullOrWhiteSpace(summary.GetString())
+					? summary.GetString()
+					: null;
+		}
+		catch (JsonException)
+		{
+			return null;
+		}
 	}
 
 	/// <summary>
