@@ -145,6 +145,36 @@ public sealed class AgentQuestionAnswererTests : IDisposable
 		Assert.EndsWith("- A second stylesheet", prompt);
 	}
 
+	[Theory]
+	[InlineData("Added the page and its tests.\n\nShould I also update the README?", "Should I also update the README?")]
+	[InlineData("Done.\n\n**Want me to wire it into the nav as well?**", "Want me to wire it into the nav as well?")]
+	[InlineData("All green.\n\nLet me know if you'd like the dark theme too.", "Let me know if you'd like the dark theme too.")]
+	[InlineData("Why did the build fail? A missing package.\n\nFixed it and the build passes.", null)]
+	[InlineData("Implemented the change. Tests pass.", null)]
+	[InlineData("", null)]
+	public void FindClosingQuestion_FindsAQuestionOnlyAtTheEnd(string finalMessage, string? expected)
+	{
+		Assert.Equal(expected, AgentQuestionAnswerer.FindClosingQuestion(finalMessage));
+	}
+
+	[Fact]
+	public void FindClosingQuestion_IgnoresALongClosingReport()
+	{
+		Assert.Null(AgentQuestionAnswerer.FindClosingQuestion(new string('x', 700) + "?"));
+	}
+
+	[Fact]
+	public async Task TryAnswerAsync_TellsTheModelItMayEndTheJob_WhenTheRunHasFinished()
+	{
+		await SeedProviderAsync("First", priority: 0, ("a", "default"));
+		var inference = new ScriptedInferenceService(_ => Reply(AgentQuestionAnswerer.NoFollowUpReply));
+
+		var answer = await CreateAnswerer(inference).TryAnswerAsync(CreateQuestion() with { RunFinished = true });
+
+		Assert.Null(answer);
+		Assert.Contains(AgentQuestionAnswerer.NoFollowUpReply, Assert.Single(inference.Requests).SystemPrompt);
+	}
+
 	[Fact]
 	public void FormatForAgent_TellsTheAgentTheUserIsAway()
 	{

@@ -69,8 +69,9 @@ public class AppSettings
 	public bool EnableBrowserTools { get; set; } = true;
 
 	/// <summary>
-	/// Whether an inference model answers when a running agent stops to ask a question, so the job
-	/// carries on instead of waiting for the user. Needs an enabled inference provider; questions
+	/// Whether an inference model answers an agent's question, so the job carries on instead of
+	/// waiting for the user: one the agent stops to ask mid-run, or one it ends its run with ("Should
+	/// I also…?"), which continues the same session. Needs an enabled inference provider; questions
 	/// asking for credentials, or that the model judges only the user can answer, still wait.
 	/// </summary>
 	public bool InferenceAnswersAgentQuestions { get; set; } = true;

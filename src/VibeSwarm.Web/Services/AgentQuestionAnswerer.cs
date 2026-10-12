@@ -9,7 +9,9 @@ using VibeSwarm.Shared.Utilities;
 namespace VibeSwarm.Web.Services;
 
 /// <summary>
-/// A question a running agent stopped to ask, with what the answerer needs to reply to it.
+/// A question an agent asked, with what the answerer needs to reply to it.
+/// <paramref name="RunFinished"/> marks a question the agent ended its run with, which may only
+/// offer optional extra work.
 /// </summary>
 public sealed record AgentQuestion(
 	string GoalPrompt,
@@ -17,7 +19,8 @@ public sealed record AgentQuestion(
 	string Question,
 	InteractionDetector.InteractionType Type,
 	IReadOnlyList<string>? Choices,
-	IReadOnlyList<string> RecentOutput);
+	IReadOnlyList<string> RecentOutput,
+	bool RunFinished = false);
 
 /// <summary>
 /// An inference model's reply to an agent's question, worded for the agent.
@@ -45,6 +48,15 @@ public sealed partial class AgentQuestionAnswerer
 	/// <summary>The reply that tells VibeSwarm to leave the question for the user.</summary>
 	internal const string NeedsUserReply = "NEEDS_USER";
 
+	/// <summary>
+	/// The reply to a closing question that tells VibeSwarm the goal is met, so the job can end.
+	/// </summary>
+	internal const string NoFollowUpReply = "NO_FOLLOW_UP";
+
+	// A closing paragraph longer than this is a report that happens to contain a question mark.
+	private const int MaxClosingQuestionLength = 600;
+	private const int MaxFinalMessageLength = 4000;
+
 	private const int MaxRecentOutputLines = 40;
 	private const int MaxGoalLength = 4000;
 
@@ -56,6 +68,11 @@ public sealed partial class AgentQuestionAnswerer
 		+ "to proceed and to make any further decisions itself. Never ask a question back and never invent "
 		+ "credentials, keys or account details. If answering needs a secret, a payment, deleting real data, or a "
 		+ "decision only the owner can make, reply with exactly " + NeedsUserReply + ".";
+
+	internal const string RunFinishedSystemPromptAddition =
+		" The agent's run has ended and its question came at the end of its final message. If the goal is "
+		+ "already met and the question only offers optional extras or invites feedback, reply with exactly "
+		+ NoFollowUpReply + ". Answer it only when doing so completes or clearly improves the goal.";
 
 	private readonly VibeSwarmDbContext _db;
 	private readonly IInferenceService _inference;
@@ -101,7 +118,7 @@ public sealed partial class AgentQuestionAnswerer
 				{
 					TaskType = TaskType,
 					Prompt = prompt,
-					SystemPrompt = SystemPrompt,
+					SystemPrompt = question.RunFinished ? SystemPrompt + RunFinishedSystemPromptAddition : SystemPrompt,
 					ProviderId = provider.Id,
 					Endpoint = provider.Endpoint,
 					ProviderType = provider.ProviderType,
@@ -128,7 +145,8 @@ public sealed partial class AgentQuestionAnswerer
 			var answer = CleanAnswer(response.Response);
 			if (answer == null)
 			{
-				// The model judged that only the user can answer; another model won't know better.
+				// The model judged that only the user can answer, or that nothing is left to do;
+				// another model won't know better.
 				return null;
 			}
 
@@ -199,7 +217,9 @@ public sealed partial class AgentQuestionAnswerer
 	internal static string? CleanAnswer(string reply)
 	{
 		var text = ThinkBlockRegex().Replace(reply, string.Empty).Trim().Trim('"').Trim();
-		if (text.Length == 0 || text.Contains(NeedsUserReply, StringComparison.OrdinalIgnoreCase))
+		if (text.Length == 0
+			|| text.Contains(NeedsUserReply, StringComparison.OrdinalIgnoreCase)
+			|| text.Contains(NoFollowUpReply, StringComparison.OrdinalIgnoreCase))
 		{
 			return null;
 		}
@@ -207,6 +227,40 @@ public sealed partial class AgentQuestionAnswerer
 		return text;
 	}
 
+	/// <summary>
+	/// The question an agent ended its final message with, or null when the message doesn't end
+	/// by asking the user something. A CLI agent can't wait for a reply, so it finishes its run
+	/// with the question instead ("Should I also add tests?").
+	/// </summary>
+	public static string? FindClosingQuestion(string? finalMessage)
+	{
+		if (string.IsNullOrWhiteSpace(finalMessage))
+		{
+			return null;
+		}
+
+		var lastParagraph = finalMessage
+			.ReplaceLineEndings("\n")
+			.Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+			.LastOrDefault();
+		var text = lastParagraph?.Trim('*', '_', '`', ' ').Trim();
+		if (string.IsNullOrEmpty(text) || text.Length > MaxClosingQuestionLength)
+		{
+			return null;
+		}
+
+		return text.EndsWith('?') || ClosingOfferRegex().IsMatch(text) ? text : null;
+	}
+
+	/// <summary>
+	/// The end of the agent's final message, which the answerer reads as its latest output.
+	/// </summary>
+	public static IReadOnlyList<string> TailOfFinalMessage(string finalMessage)
+		=> [finalMessage.Length > MaxFinalMessageLength ? "…" + finalMessage[^MaxFinalMessageLength..] : finalMessage];
+
 	[GeneratedRegex(@"<think>.*?(</think>|$)", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
 	private static partial Regex ThinkBlockRegex();
+
+	[GeneratedRegex(@"\b(would you like|do you want|should I|shall I|want me to|let me know (if|whether|which))\b", RegexOptions.IgnoreCase)]
+	private static partial Regex ClosingOfferRegex();
 }

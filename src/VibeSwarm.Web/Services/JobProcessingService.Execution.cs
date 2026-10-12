@@ -430,6 +430,63 @@ public partial class JobProcessingService
                 }
             }
 
+            // The follow-up prompt answering the question the agent ended its run with, or null
+            // when it asked nothing, inference couldn't answer, or nothing is left to do.
+            async Task<string?> TryAnswerClosingQuestionAsync(ExecutionResult runResult)
+            {
+                if (executionContext.InferenceAnswerCount >= AgentQuestionAnswerer.MaxAnswersPerJob
+                    || string.IsNullOrEmpty(sessionId))
+                {
+                    return null;
+                }
+
+                var finalMessage = runResult.Messages
+                    .LastOrDefault(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase)
+                        && !string.IsNullOrWhiteSpace(m.Content))?.Content
+                    ?? runResult.Output;
+                var question = AgentQuestionAnswerer.FindClosingQuestion(finalMessage);
+                if (question == null)
+                {
+                    return null;
+                }
+
+                try
+                {
+                    using var answerScope = _scopeFactory.CreateScope();
+                    var answerer = answerScope.ServiceProvider.GetService<AgentQuestionAnswerer>();
+                    if (answerer == null)
+                    {
+                        return null;
+                    }
+
+                    var answer = await answerer.TryAnswerAsync(
+                        new AgentQuestion(
+                            job.GoalPrompt,
+                            job.Project?.Name,
+                            question,
+                            InteractionDetector.InteractionType.Unknown,
+                            null,
+                            AgentQuestionAnswerer.TailOfFinalMessage(finalMessage!),
+                            RunFinished: true),
+                        cancellationToken);
+                    if (answer == null)
+                    {
+                        return null;
+                    }
+
+                    executionContext.InferenceAnswerCount++;
+                    _logger.LogInformation(
+                        "Inference model {ModelId} on {ProviderName} answered the question job {JobId} ended its run with",
+                        answer.ModelId, answer.ProviderName, job.Id);
+                    return AgentQuestionAnswerer.FormatForAgent(answer);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex, "Inference could not answer the question job {JobId} ended its run with", job.Id);
+                    return null;
+                }
+            }
+
             async Task<bool> PersistInteractionResponseAsync(string response)
             {
                 using var interactionScope = _scopeFactory.CreateScope();
@@ -1231,6 +1288,21 @@ public partial class JobProcessingService
                 // Determine if we should continue cycling
                 if (job.CycleMode == CycleMode.SingleCycle || currentCycle >= effectiveMaxCycles)
                 {
+                    // An agent that ended its run with a question gets an answer and carries on
+                    // in the same session, rather than leaving the work for the user to pick up.
+                    var followUp = await TryAnswerClosingQuestionAsync(result);
+                    if (followUp != null)
+                    {
+                        await SaveRunMessagesAsync(cancelCheckService, job.Id, result);
+                        await cancelCheckService.AddMessageAsync(job.Id, new JobMessage { Role = MessageRole.User, Content = followUp }, CancellationToken.None);
+                        await NotifyJobMessageAddedAsync(job.Id);
+                        currentPrompt = followUp;
+                        executionContext.ActivePrompt = currentPrompt;
+                        executionContext.LatestActivity = "Continuing after inference answered the agent's question...";
+                        await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
+                        continue;
+                    }
+
                     cycleComplete = true;
                 }
                 else if (job.CycleMode == CycleMode.Autonomous)

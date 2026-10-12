@@ -651,6 +651,73 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.Contains("Would you like me to also update the docs?", inference.LastRequest?.Prompt);
 	}
 
+	[Theory]
+	[InlineData("Yes, update the docs too.", 2)]
+	[InlineData("NO_FOLLOW_UP", 1)]
+	public async Task ProcessJobAsync_InferenceAnswersTheQuestionAnAgentEndsWith_AndTheSessionContinues(string reply, int expectedRuns)
+	{
+		var workingPath = Directory.CreateTempSubdirectory("vibeswarm-closing-question-").FullName;
+		var jobId = Guid.NewGuid();
+		Provider providerConfig;
+		await using (var setupContext = CreateDbContext())
+		{
+			var project = new Project { Id = Guid.NewGuid(), Name = "Closing Question Project", WorkingPath = workingPath };
+			providerConfig = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+			var inferenceProvider = new InferenceProvider { Name = "Desktop", Endpoint = "http://desktop:11434" };
+			inferenceProvider.Models.Add(new InferenceModel { ModelId = "qwen3", TaskType = "default", IsDefault = true });
+			setupContext.AddRange(project, providerConfig, inferenceProvider, new Job
+			{
+				Id = jobId,
+				ProjectId = project.Id,
+				ProviderId = providerConfig.Id,
+				GoalPrompt = "Add a settings page",
+				Status = JobStatus.New
+			});
+			await setupContext.SaveChangesAsync();
+		}
+
+		var agent = new ClosingQuestionProvider(providerConfig, "Built the page.\n\nShould I also update the docs?");
+		var jobService = new InteractionJobService();
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		services.AddSingleton<IProjectMemoryService, NoOpProjectMemoryService>();
+		services.AddSingleton<IJobService>(jobService);
+		services.AddSingleton<IProviderService>(new StubProviderService());
+		services.AddSingleton<IInferenceService>(new ReplyingInferenceService(reply));
+		services.AddLogging();
+		services.AddScoped<AgentQuestionAnswerer>();
+		var processingService = new JobProcessingService(
+			services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NotARepositoryVersionControlService(),
+			interactionResponseService: new InMemoryInteractionResponseService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService())
+		{
+			ProviderFactoryOverride = _ => agent
+		};
+
+		try
+		{
+			await using var executionContext = CreateDbContext();
+			var job = await executionContext.Jobs.Include(j => j.Project).Include(j => j.Provider).SingleAsync(j => j.Id == jobId);
+			await InvokeProcessJobAsync(processingService, job, jobService, new StubProviderService(), executionContext, withJobCancellation: true)
+				.WaitAsync(TimeSpan.FromSeconds(60));
+		}
+		finally
+		{
+			Directory.Delete(workingPath, recursive: true);
+		}
+
+		Assert.Equal(expectedRuns, agent.Runs.Count);
+		if (expectedRuns == 2)
+		{
+			Assert.StartsWith("Yes, update the docs too.", agent.Runs[1].Prompt);
+			Assert.Equal("session-1", agent.Runs[1].SessionId);
+			Assert.Contains(jobService.Messages, m => m.Role == MessageRole.Assistant && m.Content.Contains("Should I also update the docs?"));
+			Assert.Contains(jobService.Messages, m => m.Role == MessageRole.User && m.Content.StartsWith("Yes, update the docs too."));
+		}
+	}
+
 	[Fact]
 	public async Task ProcessJobAsync_PausesAJobInterruptedByAServiceStop()
 	{
@@ -1046,6 +1113,42 @@ public sealed class JobExecutionSafetyTests : IDisposable
 			progress?.Report(new ExecutionProgress { OutputLine = question });
 			await Task.Delay(Timeout.Infinite, cancellationToken);
 			return new ExecutionResult { Success = true };
+		}
+
+		public override Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default) => Task.FromResult(new ProviderInfo());
+		public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new UsageLimits());
+		public override Task<SessionSummary> GetSessionSummaryAsync(string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => Task.FromResult(new SessionSummary());
+		public override Task<PromptResponse> GetPromptResponseAsync(string prompt, string? workingDirectory = null, CancellationToken cancellationToken = default) => Task.FromResult(PromptResponse.Fail("not used"));
+		public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+	}
+
+	/// <summary>
+	/// An agent whose first run ends by asking a question, and whose later runs just finish.
+	/// </summary>
+	private sealed class ClosingQuestionProvider(Provider config, string finalMessage) : SdkProviderBase(config)
+	{
+		public List<(string Prompt, string? SessionId)> Runs { get; } = [];
+
+		public override ProviderType Type => ProviderType.Claude;
+		public override Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+		public override Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default) => Task.FromResult(string.Empty);
+
+		public override Task<ExecutionResult> ExecuteWithSessionAsync(
+			string prompt,
+			string? sessionId = null,
+			string? workingDirectory = null,
+			IProgress<ExecutionProgress>? progress = null,
+			CancellationToken cancellationToken = default)
+		{
+			Runs.Add((prompt, sessionId));
+			var text = Runs.Count == 1 ? finalMessage : "Updated the docs.";
+			return Task.FromResult(new ExecutionResult
+			{
+				Success = true,
+				SessionId = "session-1",
+				Output = text,
+				Messages = [new ExecutionMessage { Role = "assistant", Content = text }]
+			});
 		}
 
 		public override Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default) => Task.FromResult(new ProviderInfo());
