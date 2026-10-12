@@ -65,10 +65,18 @@ public static class ProviderSessionLimitGuard
 	/// <summary>
 	/// Whether the provider's usage should be read live before a job starts: it has reported a
 	/// session or a longer limit before, no recent live reading exists, and the stored figures
-	/// don't already hold jobs back (usage only grows until a window resets).
+	/// don't already hold jobs back (usage only grows until a window resets). A provider whose
+	/// reading is free (<paramref name="readingIsFree"/>, such as Copilot's account quota) is read
+	/// even before it has reported anything, so its first job is already guarded.
 	/// </summary>
-	public static bool NeedsLiveReading(ProviderUsageSummary? summary, SessionLimitHold? storedHold, DateTime utcNow)
+	public static bool NeedsLiveReading(ProviderUsageSummary? summary, SessionLimitHold? storedHold, DateTime utcNow, bool readingIsFree = false)
 	{
+		if (readingIsFree)
+		{
+			return storedHold == null
+				&& (summary?.LimitsRefreshedAt is not DateTime lastReading || utcNow - lastReading > LiveReadingFreshness);
+		}
+
 		return summary != null
 			&& storedHold == null
 			&& !ProviderMetering.IsUnmetered(summary.LimitType)

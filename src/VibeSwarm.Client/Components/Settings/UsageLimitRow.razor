@@ -36,7 +36,7 @@
 		else
 		{
 			<div class="row g-5">
-				@if (IsMonthlyRequestPlan)
+				@if (IsMonthlyRequestPlan && ReportedMonthlyAllowance == null)
 				{
 					<div class="col-6">
 						<label for="@($"monthly-{Provider.Id}")" class="form-label small fg-1 mb-1">Requests a month</label>
@@ -95,6 +95,15 @@
 
 	private bool IsMonthlyRequestPlan => Provider.Type == ProviderType.Copilot;
 
+	// Copilot reports its plan's allowance, so the user only types one in when it hasn't.
+	private int? ReportedMonthlyAllowance => Windows
+		.Where(w => w.Scope == UsageLimitWindowScope.Monthly && w.MaxUsage is > 0
+			&& w.Message?.StartsWith("Tracked monthly premium requests", StringComparison.Ordinal) != true)
+		.Select(w => w.MaxUsage)
+		.FirstOrDefault();
+
+	private int? MonthlyAllowance => ReportedMonthlyAllowance ?? (Provider.ConfiguredUsageLimit is > 0 ? Provider.ConfiguredUsageLimit : null);
+
 	private bool IsUnmetered => Provider.Type == ProviderType.OpenCode
 		|| (Summary != null && ProviderMetering.IsUnmetered(Summary.LimitType));
 
@@ -131,7 +140,7 @@
 
 			if (IsMonthlyRequestPlan)
 			{
-				return Provider.ConfiguredUsageLimit is int limit and > 0
+				return MonthlyAllowance is int limit
 					? $"Waits at {LongWindowThreshold}% of {limit:N0} requests a month"
 					: null;
 			}
@@ -163,7 +172,7 @@
 				return $"Waiting until {FormatReset(hold.Until)}: {hold.PercentUsed}% of the {window} used";
 			}
 
-			return IsMonthlyRequestPlan && Provider.ConfiguredUsageLimit is not > 0
+			return IsMonthlyRequestPlan && MonthlyAllowance == null
 				? "Set its monthly request allowance"
 				: null;
 		}

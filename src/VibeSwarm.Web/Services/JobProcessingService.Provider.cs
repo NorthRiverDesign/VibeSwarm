@@ -99,7 +99,10 @@ public partial class JobProcessingService
                 .AsNoTracking()
                 .FirstOrDefaultAsync(s => s.ProviderId == providerConfig.Id, cancellationToken);
             var storedHold = await ProviderSessionLimitGuard.GetHoldAsync(dbContext, providerConfig.Id, now, cancellationToken);
-            if (!ProviderSessionLimitGuard.NeedsLiveReading(summary, storedHold, now))
+            // Copilot's account quota comes from its runtime without a model request.
+            var readingIsFree = providerConfig.Type == ProviderType.Copilot
+                && providerConfig.ConnectionMode == ProviderConnectionMode.CLI;
+            if (!ProviderSessionLimitGuard.NeedsLiveReading(summary, storedHold, now, readingIsFree))
             {
                 return;
             }

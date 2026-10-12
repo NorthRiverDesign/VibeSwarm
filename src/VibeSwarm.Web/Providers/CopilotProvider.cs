@@ -6,6 +6,7 @@ using VibeSwarm.Shared.Providers.Claude;
 using VibeSwarm.Shared.Providers.Copilot;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
+using VibeSwarm.Web.Providers.Copilot;
 
 namespace VibeSwarm.Shared.Providers;
 
@@ -1765,6 +1766,48 @@ public class CopilotProvider : CliProviderBase
         }
 
         return info;
+    }
+
+    /// <summary>
+    /// Reads the account's premium-request quota from the Copilot runtime. It makes no model
+    /// request, so it is free, and VibeSwarm reads it before each job: jobs then stop short of the
+    /// plan's allowance without the user entering it. Returns null when the quota can't be read or
+    /// the plan is unlimited.
+    /// </summary>
+    public override async Task<UsageLimits?> RefreshUsageLimitsAsync(CancellationToken cancellationToken = default)
+    {
+        CopilotClient? client = null;
+        try
+        {
+            client = new CopilotClient(BuildMetadataClientOptions());
+            await client.StartAsync(cancellationToken);
+#pragma warning disable GHCP001 // The account quota RPC is marked experimental in the SDK
+            var quota = await client.Rpc.Account.GetQuotaAsync(null!, null!, cancellationToken);
+            var limits = CopilotQuotaReader.ToUsageLimits(quota?.QuotaSnapshots, DateTime.UtcNow);
+#pragma warning restore GHCP001
+            if (limits != null)
+            {
+                _lastObservedUsageLimits = limits;
+            }
+
+            return limits;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            if (client != null)
+            {
+                try { await client.StopAsync(); } catch { }
+                try { await client.DisposeAsync(); } catch { }
+            }
+        }
     }
 
     public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
