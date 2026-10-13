@@ -271,7 +271,8 @@
                                                              ToolName="@toolEntry.Message.ToolName" ToolInput="@toolEntry.Message.ToolInput"
                                                              ToolOutput="@toolEntry.Message.ToolOutput" Timestamp="@toolEntry.Message.CreatedAt"
                                                              Source="@toolEntry.Message.Source" Level="@toolEntry.Message.Level"
-                                                             DisplayVariant="@toolEntry.Message.DisplayVariant" />
+                                                             DisplayVariant="@toolEntry.Message.DisplayVariant"
+                                                             ProviderName="@ProviderName" UserName="@UserName" />
                                             }
                                         </div>
                                     </details>
@@ -286,7 +287,8 @@
                         {
                             <ChatMessage Role="@entry.Message.Role" Content="@entry.Message.Content" ToolName="@entry.Message.ToolName"
                                          ToolInput="@entry.Message.ToolInput" ToolOutput="@entry.Message.ToolOutput" Timestamp="@entry.Message.CreatedAt"
-                                         Source="@entry.Message.Source" Level="@entry.Message.Level" DisplayVariant="@entry.Message.DisplayVariant" />
+                                         Source="@entry.Message.Source" Level="@entry.Message.Level" DisplayVariant="@entry.Message.DisplayVariant"
+                                         ProviderName="@ProviderName" UserName="@UserName" />
                         }
                     }
 
@@ -468,6 +470,14 @@
 
     [Parameter]
     public string? GoalPromptIdeaText { get; set; }
+
+    /// <summary>The job's provider, naming the agent's messages in place of "Provider".</summary>
+    [Parameter]
+    public string? ProviderName { get; set; }
+
+    /// <summary>The signed-in user, naming their messages in place of "User".</summary>
+    [Parameter]
+    public string? UserName { get; set; }
 
     [Parameter]
     public IEnumerable<IdeaAttachment> AttachedIdeaFiles { get; set; } = Array.Empty<IdeaAttachment>();

@@ -261,6 +261,63 @@ public sealed class JobSessionPanelTests
 				< html.IndexOf("Please also cover the remaining edge case.", StringComparison.Ordinal));
 	}
 
+	[Theory]
+	[InlineData("Claude Code", "alex", "Claude Code", "alex")]
+	[InlineData(null, null, "Provider", "User")]
+	[InlineData(" ", "", "Provider", "User")]
+	public async Task RenderedJobSessionPanel_LabelsMessagesWithProviderAndUserNames(
+		string? providerName, string? userName, string expectedProviderLabel, string expectedUserLabel)
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Completed,
+				[nameof(JobSessionPanel.ProviderName)] = providerName,
+				[nameof(JobSessionPanel.UserName)] = userName,
+				[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.Assistant,
+						Content = "Initial implementation is complete.",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-10)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.User,
+						Content = "Please also cover the remaining edge case.",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-5)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains($"bi-stars me-1\"></i>{expectedProviderLabel}</span>", html);
+		Assert.Contains($"bi-person-circle me-1\"></i>{expectedUserLabel}</span>", html);
+		if (expectedProviderLabel != "Provider")
+		{
+			Assert.DoesNotContain("</i>Provider</span>", html);
+		}
+		if (expectedUserLabel != "User")
+		{
+			Assert.DoesNotContain("</i>User</span>", html);
+		}
+	}
+
 	[Fact]
 	public async Task RenderedJobSessionPanel_KeepsEarlierRunAndFollowUpVisibleWhileFollowUpRuns()
 	{

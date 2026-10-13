@@ -75,9 +75,9 @@
 			<div class="@GetContentClasses()">@Content</div>
 		}
 	</div>
-	<div class="d-flex gap-3 mt-1 px-3 small fg-secondary">
-		<span class="fw-medium"><i class="@GetLabelIcon() me-1"></i>@GetLabel()</span>
-		<span class="opacity-75">@Timestamp.FormatTime()</span>
+	<div class="d-flex gap-3 mt-1 px-3 small fg-secondary max-w-100">
+		<span class="fw-medium text-truncate"><i class="@GetLabelIcon() me-1"></i>@GetLabel()</span>
+		<span class="opacity-75 flex-shrink-0">@Timestamp.FormatTime()</span>
 	</div>
 </div>
 
@@ -111,6 +111,14 @@
 
 	[Parameter]
 	public string? LabelOverride { get; set; }
+
+	/// <summary>Labels the agent's messages, such as the job's provider; "Provider" when unset.</summary>
+	[Parameter]
+	public string? ProviderName { get; set; }
+
+	/// <summary>Labels the user's messages, such as the signed-in user; "User" when unset.</summary>
+	[Parameter]
+	public string? UserName { get; set; }
 
 	[Parameter]
 	public string? BubbleClassOverride { get; set; }
@@ -150,19 +158,23 @@
 
 		return Role switch
 		{
-			MessageRole.User => "User",
-			MessageRole.Assistant => "Provider",
+			MessageRole.User => UserLabel,
+			MessageRole.Assistant => ProviderLabel,
 			MessageRole.ToolUse => "Tool Call",
 			MessageRole.ToolResult => "Tool Result",
 			MessageRole.System => Source switch
 			{
-				MessageSource.Provider => "Provider",
-				MessageSource.User => "User",
+				MessageSource.Provider => ProviderLabel,
+				MessageSource.User => UserLabel,
 				_ => "System"
 			},
 			_ => Role.ToString()
 		};
 	}
+
+	private string ProviderLabel => string.IsNullOrWhiteSpace(ProviderName) ? "Provider" : ProviderName;
+
+	private string UserLabel => string.IsNullOrWhiteSpace(UserName) ? "User" : UserName;
 
 	private string GetBubbleClasses()
 	{

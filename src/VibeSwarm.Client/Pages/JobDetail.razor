@@ -169,6 +169,7 @@ else
                               RunStartedAt="@Job.StartedAt"
                               TotalMessageCount="@Job.TotalMessageCount"
                               GoalPrompt="@Job.GoalPrompt" GoalPromptIdeaText="@GetGoalPromptIdeaText()"
+                              ProviderName="@Job.Provider?.Name" UserName="@_userName"
                               AttachedIdeaFiles="@(_linkedIdea?.Attachments ?? Array.Empty<IdeaAttachment>())"
                               GoalPromptTimestamp="@Job.CreatedAt" OnCopyGoalPrompt="CopyPromptToClipboard"
                               OnGoalPromptChanged="UpdateJobPrompt" OnEditQueuedJob="ShowEditJobModal"
@@ -207,6 +208,12 @@ else
 
     [SupplyParameterFromQuery(Name = "returnUrl")]
     public string? ReturnUrl { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    // Names the user's messages in the transcript
+    private string? _userName;
 
     // Shared state accessed by multiple partial files
     private Job? Job { get; set; }
@@ -346,6 +353,8 @@ else
 	{
 		StartAutoRefresh();
 		_ = LoadFollowUpDraftAvailabilityAsync();
+		if (AuthenticationStateTask != null)
+			_userName = (await AuthenticationStateTask).User.Identity?.Name;
 		await EnsureCurrentJobLoadedAsync();
 	}
 
