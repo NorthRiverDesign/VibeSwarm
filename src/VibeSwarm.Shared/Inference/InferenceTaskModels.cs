@@ -14,6 +14,9 @@ public static class InferenceTaskModels
 	/// <summary>Answering a running agent's question while the user is away.</summary>
 	public const string AgentAnswer = "agent-answer";
 
+	/// <summary>Writing a folder's project-manager report.</summary>
+	public const string ProjectManager = "project-manager";
+
 	public static InferenceModel? Resolve(InferenceProvider provider, string taskType)
 	{
 		return provider.Models

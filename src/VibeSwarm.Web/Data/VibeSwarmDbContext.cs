@@ -35,6 +35,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<ProjectEnvironment> ProjectEnvironments { get; set; }
 	public DbSet<ProjectFolder> ProjectFolders { get; set; }
 	public DbSet<ProjectLink> ProjectLinks { get; set; }
+	public DbSet<FolderManagerReport> FolderManagerReports { get; set; }
 	public DbSet<JobSchedule> JobSchedules { get; set; }
 	public DbSet<JobTemplate> JobTemplates { get; set; }
 	public DbSet<Job> Jobs { get; set; }
@@ -157,6 +158,22 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasKey(e => e.Id);
 			entity.Property(e => e.Name).IsRequired().HasMaxLength(ValidationLimits.ProjectFolderNameMaxLength);
 			entity.HasIndex(e => e.Name).IsUnique();
+		});
+
+		modelBuilder.Entity<FolderManagerReport>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Content).IsRequired().HasMaxLength(ValidationLimits.FolderManagerReportMaxLength);
+			entity.Property(e => e.Notes).HasMaxLength(ValidationLimits.FolderManagerNotesMaxLength);
+			entity.Property(e => e.ProjectNames).HasMaxLength(2000);
+			entity.Property(e => e.ProviderName).HasMaxLength(200);
+			entity.Property(e => e.ModelId).HasMaxLength(200);
+			entity.Property(e => e.ProviderType).HasConversion<string>().HasMaxLength(50);
+			entity.HasIndex(e => new { e.FolderId, e.CreatedAt });
+			entity.HasOne<ProjectFolder>()
+				.WithMany()
+				.HasForeignKey(e => e.FolderId)
+				.OnDelete(DeleteBehavior.Cascade);
 		});
 
 		modelBuilder.Entity<ProjectLink>(entity =>

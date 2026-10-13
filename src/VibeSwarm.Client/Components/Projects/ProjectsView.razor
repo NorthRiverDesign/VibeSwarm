@@ -82,6 +82,7 @@
 						<Actions>
 							@if (group.Folder is { } folder)
 							{
+								<a href="@($"/projects/folders/{folder.Id}")" class="btn-sm btn-link text-decoration-none px-0">Open</a>
 								<button type="button" class="btn-sm btn-link text-decoration-none px-0"
 										@onclick="() => ShowRenameFolderModal(folder)">Rename</button>
 								<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0"

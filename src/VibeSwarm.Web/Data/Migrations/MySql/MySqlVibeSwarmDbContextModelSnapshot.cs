@@ -476,6 +476,65 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.ToTable("CriticalErrorLogs");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.FolderManagerReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<int?>("CompletionTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(100000)
+                        .HasColumnType("longtext");
+
+                    b.Property<decimal?>("CostUsd")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long?>("DurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("FolderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ModelId")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("longtext");
+
+                    b.Property<Guid?>("PreviousReportId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ProjectNames")
+                        .HasMaxLength(2000)
+                        .HasColumnType("longtext");
+
+                    b.Property<int?>("PromptTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProviderName")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("ProviderType")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FolderId", "CreatedAt");
+
+                    b.ToTable("FolderManagerReports");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.Idea", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2245,6 +2304,15 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Navigation("Agent");
 
                     b.Navigation("Skill");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.FolderManagerReport", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.ProjectFolder", null)
+                        .WithMany()
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.Idea", b =>

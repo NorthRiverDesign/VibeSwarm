@@ -73,6 +73,7 @@ public static class DataServiceExtensions
         services.AddScoped<GrokInferenceService>();
         services.AddScoped<IInferenceService, InferenceServiceDispatcher>();
         services.AddScoped<AgentQuestionAnswerer>();
+        services.AddScoped<IFolderManagerService, FolderManagerService>();
         services.AddScoped<AgentDetectionService>();
 
 		return services;

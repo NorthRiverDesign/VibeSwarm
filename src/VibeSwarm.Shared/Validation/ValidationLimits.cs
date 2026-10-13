@@ -13,6 +13,8 @@ public static class ValidationLimits
 	public const int ProjectPromptContextMaxLength = 4000;
 	public const int ProjectMemoryMaxLength = 20000;
 	public const int ProjectFolderNameMaxLength = 100;
+	public const int FolderManagerNotesMaxLength = 2000;
+	public const int FolderManagerReportMaxLength = 100000;
 	public const int JobSchedulePromptMaxLength = 2000;
 	public const int JobScheduleModelIdMaxLength = 200;
 	public const int JobScheduleLastErrorMaxLength = 1000;

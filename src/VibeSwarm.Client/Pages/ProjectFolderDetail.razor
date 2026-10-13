@@ -1,0 +1,120 @@
+@page "/projects/folders/{FolderId:guid}"
+@attribute [Authorize]
+@inject IProjectService ProjectService
+@inject IJobService JobService
+@inject NotificationService NotificationService
+
+@* A folder of projects: its projects, and a Manager tab where inference reports on all of them. *@
+
+@if (_isLoading)
+{
+	<LoadingSpinner />
+}
+else if (_folder == null)
+{
+	<Breadcrumb Items="@(new List<Breadcrumb.BreadcrumbItem> { new("Projects", "/projects", "folder"), new("Not Found") })" />
+	<Alert Type="Alert.AlertType.Warning" Message="Folder not found." />
+}
+else
+{
+	<Breadcrumb Items="@(new List<Breadcrumb.BreadcrumbItem> { new("Projects", "/projects", "folder"), new(_folder.Name) })" />
+
+	<div class="d-flex flex-column gap-5">
+		<h1 class="mb-0 text-truncate">@_folder.Name</h1>
+
+		<ul class="nav project-detail-tabs gap-1 small flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain" role="tablist">
+			<li class="nav-item">
+				<button type="button" class="nav-link rounded-pill px-5 @(_activeTab == ProjectsTab ? "active" : "")"
+						@onclick="() => _activeTab = ProjectsTab" role="tab"
+						aria-selected="@(_activeTab == ProjectsTab ? "true" : "false")">Projects</button>
+			</li>
+			<li class="nav-item">
+				<button type="button" class="nav-link rounded-pill px-5 @(_activeTab == ManagerTab ? "active" : "")"
+						@onclick="() => _activeTab = ManagerTab" role="tab"
+						aria-selected="@(_activeTab == ManagerTab ? "true" : "false")">Manager</button>
+			</li>
+		</ul>
+
+		@if (_activeTab == ManagerTab)
+		{
+			<FolderManagerTab FolderId="@_folder.Id" ProjectCount="@_projects.Count" />
+		}
+		else
+		{
+			<div class="list-group rounded-9">
+				@foreach (var info in _projects)
+				{
+					<ProjectListItem @key="info.Project.Id" Project="@info.Project" Stats="@info.Stats" LatestJob="@info.LatestJob"
+									 ActiveJobs="@_activeJobs.Where(job => job.ProjectId == info.Project.Id).ToList()" />
+				}
+				@if (_projects.Count == 0)
+				{
+					<div class="list-group-item small fg-1 py-5">No projects yet. Choose this folder in a project's settings.</div>
+				}
+			</div>
+		}
+	</div>
+}
+
+@code {
+	private const string ProjectsTab = "projects";
+	private const string ManagerTab = "manager";
+
+	[Parameter]
+	public Guid FolderId { get; set; }
+
+	/// <summary>Opens a tab by name, such as <c>?tab=manager</c>.</summary>
+	[SupplyParameterFromQuery(Name = "tab")]
+	public string? Tab { get; set; }
+
+	private ProjectFolder? _folder;
+	private List<ProjectWithStats> _projects = new();
+	private List<JobSummary> _activeJobs = new();
+	private bool _isLoading = true;
+	private string _activeTab = ProjectsTab;
+	private Guid _loadedFolderId;
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (_loadedFolderId == FolderId)
+		{
+			return;
+		}
+
+		_loadedFolderId = FolderId;
+		_activeTab = string.Equals(Tab, ManagerTab, StringComparison.OrdinalIgnoreCase) ? ManagerTab : ProjectsTab;
+		_isLoading = true;
+		try
+		{
+			_folder = (await ProjectService.GetFoldersAsync()).FirstOrDefault(folder => folder.Id == FolderId);
+			if (_folder != null)
+			{
+				_projects = (await ProjectService.GetAllWithStatsAsync())
+					.Where(info => info.Project.FolderId == FolderId)
+					.OrderBy(info => info.Project.Name, StringComparer.OrdinalIgnoreCase)
+					.ToList();
+				await LoadActiveJobsAsync();
+			}
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load the folder: {ex.Message}");
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private async Task LoadActiveJobsAsync()
+	{
+		try
+		{
+			_activeJobs = (await JobService.GetActiveJobsAsync()).ToList();
+		}
+		catch
+		{
+			// The list still shows each project without its running jobs.
+		}
+	}
+}
