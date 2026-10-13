@@ -1,0 +1,96 @@
+@using VibeSwarm.Shared.Validation
+@inject IProjectService ProjectService
+
+@* Names a new project folder, or renames an existing one. *@
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged"
+			 Title="@(IsRename ? "Rename folder" : "New folder")" Icon="folder" Size="ModalDialog.ModalSize.Small">
+	<ChildContent>
+		<form id="project-folder-form" class="d-flex flex-column gap-3" @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
+			<label for="project-folder-name" class="form-label mb-0">Name</label>
+			<input id="project-folder-name" type="text" class="form-control" placeholder="e.g. Storefront"
+				   maxlength="@ValidationLimits.ProjectFolderNameMaxLength" autocomplete="off"
+				   @bind="_name" @bind:event="oninput" disabled="@_isSaving" />
+			<p class="small fg-1 mb-0">Folders group projects on this list. Projects in the same folder aren't linked; link them in each project's settings.</p>
+			@if (!string.IsNullOrEmpty(_errorMessage))
+			{
+				<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mb-0" />
+			}
+		</form>
+	</ChildContent>
+	<FooterContent>
+		<ModalFooterActions OnCancel="CloseAsync" SubmitFormId="project-folder-form"
+							SubmitText="@(IsRename ? "Save" : "Create")" Busy="@_isSaving"
+							SubmitDisabled="@(_isSaving || string.IsNullOrWhiteSpace(_name))" />
+	</FooterContent>
+</ModalDialog>
+
+@code {
+	[Parameter] public bool IsVisible { get; set; }
+	[Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	/// <summary>The folder to rename, or null to create a new one.</summary>
+	[Parameter] public ProjectFolder? Folder { get; set; }
+
+	[Parameter] public EventCallback<ProjectFolder> OnSaved { get; set; }
+
+	private bool IsRename => Folder != null;
+	private string _name = string.Empty;
+	private string? _errorMessage;
+	private bool _isSaving;
+	private bool _wasVisible;
+
+	protected override void OnParametersSet()
+	{
+		if (IsVisible && !_wasVisible)
+		{
+			_name = Folder?.Name ?? string.Empty;
+			_errorMessage = null;
+			_isSaving = false;
+		}
+
+		_wasVisible = IsVisible;
+	}
+
+	private async Task SaveAsync()
+	{
+		if (_isSaving || string.IsNullOrWhiteSpace(_name))
+		{
+			return;
+		}
+
+		_isSaving = true;
+		_errorMessage = null;
+		try
+		{
+			var saved = Folder == null
+				? await ProjectService.CreateFolderAsync(new ProjectFolder { Name = _name.Trim() })
+				: await ProjectService.UpdateFolderAsync(new ProjectFolder { Id = Folder.Id, Name = _name.Trim(), CreatedAt = Folder.CreatedAt });
+			await OnSaved.InvokeAsync(saved);
+			await CloseAsync();
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = ex.Message;
+		}
+		finally
+		{
+			_isSaving = false;
+		}
+	}
+
+	private async Task HandleVisibilityChanged(bool visible)
+	{
+		if (!visible)
+		{
+			await CloseAsync();
+		}
+	}
+
+	private async Task CloseAsync()
+	{
+		IsVisible = false;
+		_wasVisible = false;
+		await IsVisibleChanged.InvokeAsync(false);
+	}
+}

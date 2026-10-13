@@ -80,6 +80,9 @@ public class ProjectService : IProjectService
 			throw new InvalidOperationException($"A project named '{project.Name}' already exists.");
 		}
 		NormalizePlanningSettings(project);
+		project.FolderId = await ResolveFolderIdAsync(project.FolderId, cancellationToken);
+		// Links go both ways, so they are saved through SetLinkedProjectsAsync, never with the project.
+		project.Links = [];
 		project.DefaultTargetBranch = string.IsNullOrWhiteSpace(project.DefaultTargetBranch) ? null : project.DefaultTargetBranch.Trim();
 		project.BuildCommand = string.IsNullOrWhiteSpace(project.BuildCommand) ? null : project.BuildCommand.Trim();
 		project.TestCommand = string.IsNullOrWhiteSpace(project.TestCommand) ? null : project.TestCommand.Trim();
@@ -164,6 +167,7 @@ public class ProjectService : IProjectService
 		existing.BuildCommand = string.IsNullOrWhiteSpace(project.BuildCommand) ? null : project.BuildCommand.Trim();
 		existing.TestCommand = string.IsNullOrWhiteSpace(project.TestCommand) ? null : project.TestCommand.Trim();
 		existing.IsActive = project.IsActive;
+		existing.FolderId = await ResolveFolderIdAsync(project.FolderId, cancellationToken);
 		existing.UpdatedAt = DateTime.UtcNow;
 
 		await _dbContext.Entry(existing)
@@ -204,6 +208,115 @@ public class ProjectService : IProjectService
 			_dbContext.Projects.Remove(project);
 			await _dbContext.SaveChangesAsync(cancellationToken);
 		}
+	}
+
+	public async Task SetLinkedProjectsAsync(Guid projectId, IEnumerable<Guid> linkedProjectIds, CancellationToken cancellationToken = default)
+	{
+		if (!await _dbContext.Projects.AnyAsync(p => p.Id == projectId, cancellationToken))
+		{
+			throw new InvalidOperationException($"Project with ID {projectId} not found.");
+		}
+
+		var requestedIds = (linkedProjectIds ?? [])
+			.Where(id => id != projectId && id != Guid.Empty)
+			.ToHashSet();
+		var existingCount = await _dbContext.Projects
+			.CountAsync(p => requestedIds.Contains(p.Id), cancellationToken);
+		if (existingCount != requestedIds.Count)
+		{
+			throw new InvalidOperationException("One or more linked projects no longer exist.");
+		}
+
+		var currentLinks = await _dbContext.ProjectLinks
+			.Where(link => link.ProjectId == projectId || link.LinkedProjectId == projectId)
+			.ToListAsync(cancellationToken);
+
+		foreach (var link in currentLinks)
+		{
+			var otherProjectId = link.ProjectId == projectId ? link.LinkedProjectId : link.ProjectId;
+			if (!requestedIds.Contains(otherProjectId))
+			{
+				_dbContext.ProjectLinks.Remove(link);
+			}
+		}
+
+		foreach (var otherProjectId in requestedIds)
+		{
+			AddLinkIfMissing(projectId, otherProjectId);
+			AddLinkIfMissing(otherProjectId, projectId);
+		}
+
+		await _dbContext.SaveChangesAsync(cancellationToken);
+
+		void AddLinkIfMissing(Guid fromProjectId, Guid toProjectId)
+		{
+			if (!currentLinks.Any(link => link.ProjectId == fromProjectId && link.LinkedProjectId == toProjectId))
+			{
+				_dbContext.ProjectLinks.Add(new ProjectLink
+				{
+					ProjectId = fromProjectId,
+					LinkedProjectId = toProjectId,
+					CreatedAt = DateTime.UtcNow
+				});
+			}
+		}
+	}
+
+	public async Task<IEnumerable<ProjectFolder>> GetFoldersAsync(CancellationToken cancellationToken = default)
+	{
+		return await _dbContext.ProjectFolders
+			.AsNoTracking()
+			.OrderBy(folder => folder.Name)
+			.ToListAsync(cancellationToken);
+	}
+
+	public async Task<ProjectFolder> CreateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(folder);
+		var created = new ProjectFolder
+		{
+			Id = Guid.NewGuid(),
+			Name = await ValidateFolderNameAsync(folder.Name, null, cancellationToken),
+			CreatedAt = DateTime.UtcNow
+		};
+
+		_dbContext.ProjectFolders.Add(created);
+		await _dbContext.SaveChangesAsync(cancellationToken);
+		return created;
+	}
+
+	public async Task<ProjectFolder> UpdateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(folder);
+		var existing = await _dbContext.ProjectFolders
+			.FirstOrDefaultAsync(f => f.Id == folder.Id, cancellationToken)
+			?? throw new InvalidOperationException($"Folder with ID {folder.Id} not found.");
+
+		existing.Name = await ValidateFolderNameAsync(folder.Name, existing.Id, cancellationToken);
+		existing.UpdatedAt = DateTime.UtcNow;
+		await _dbContext.SaveChangesAsync(cancellationToken);
+		return existing;
+	}
+
+	public async Task DeleteFolderAsync(Guid id, CancellationToken cancellationToken = default)
+	{
+		var folder = await _dbContext.ProjectFolders
+			.FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
+		if (folder == null)
+		{
+			return;
+		}
+
+		var projectsInFolder = await _dbContext.Projects
+			.Where(p => p.FolderId == id)
+			.ToListAsync(cancellationToken);
+		foreach (var project in projectsInFolder)
+		{
+			project.FolderId = null;
+		}
+
+		_dbContext.ProjectFolders.Remove(folder);
+		await _dbContext.SaveChangesAsync(cancellationToken);
 	}
 
 	public async Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default)
@@ -483,6 +596,7 @@ public class ProjectService : IProjectService
 	private IQueryable<Project> BuildProjectQuery()
 	{
 		return _dbContext.Projects
+			.Include(p => p.Links)
 			.Include(p => p.Environments.OrderBy(environment => environment.SortOrder))
 			.Include(p => p.ProviderSelections.OrderBy(pp => pp.Priority))
 				.ThenInclude(pp => pp.Provider)
@@ -497,6 +611,38 @@ public class ProjectService : IProjectService
 	private static void ValidateProject(Project project)
 	{
 		ValidationHelper.ValidateObject(project);
+	}
+
+	/// <summary>
+	/// A folder deleted while a project page was open must not fail that project's next save,
+	/// so a folder that no longer exists just leaves the project outside any folder.
+	/// </summary>
+	private async Task<Guid?> ResolveFolderIdAsync(Guid? folderId, CancellationToken cancellationToken)
+	{
+		if (!folderId.HasValue || folderId.Value == Guid.Empty)
+		{
+			return null;
+		}
+
+		return await _dbContext.ProjectFolders.AnyAsync(folder => folder.Id == folderId.Value, cancellationToken)
+			? folderId
+			: null;
+	}
+
+	private async Task<string> ValidateFolderNameAsync(string? name, Guid? folderId, CancellationToken cancellationToken)
+	{
+		var trimmed = name?.Trim() ?? string.Empty;
+		ValidationHelper.ValidateObject(new ProjectFolder { Name = trimmed });
+
+		var lowered = trimmed.ToLower();
+		var nameExists = await _dbContext.ProjectFolders
+			.AnyAsync(folder => folder.Name.ToLower() == lowered && folder.Id != folderId, cancellationToken);
+		if (nameExists)
+		{
+			throw new InvalidOperationException($"A folder named '{trimmed}' already exists.");
+		}
+
+		return trimmed;
 	}
 
 	private static void ValidateProjectCreationRequest(ProjectCreationRequest request)

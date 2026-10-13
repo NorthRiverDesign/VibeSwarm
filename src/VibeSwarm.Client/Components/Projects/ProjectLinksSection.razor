@@ -1,0 +1,80 @@
+@* Project settings: the folder this project is grouped under, and the other projects it is
+   linked to. Folders only organise the list; links are what jobs are told about. *@
+
+@if (Project != null)
+{
+	<div class="mb-5">
+		<label for="modal-projectFolder" class="form-label">Folder</label>
+		<InputSelect TValue="Guid?" id="modal-projectFolder" @bind-Value="Project.FolderId" class="form-control">
+			<option value="">No folder</option>
+			@foreach (var folder in Folders)
+			{
+				<option value="@folder.Id">@folder.Name</option>
+			}
+		</InputSelect>
+		<div class="form-text">
+			Groups this project with others on the Projects page. Add folders from the + menu there.
+		</div>
+	</div>
+
+	<div class="d-flex flex-column gap-3" role="group" aria-labelledby="modal-linkedProjects-label">
+		<div id="modal-linkedProjects-label" class="form-label mb-0">Linked projects</div>
+		<p class="small fg-1 mb-0">
+			Jobs on this project are told where linked projects live, so agents can read them for context.
+			Links go both ways. Projects in the same folder aren't linked unless you check them here.
+		</p>
+		@if (OrderedProjects.Count == 0)
+		{
+			<p class="small fg-2 mb-0">There are no other projects to link yet.</p>
+		}
+		else
+		{
+			@foreach (var other in OrderedProjects)
+			{
+				<div class="form-field">
+					<input class="check" type="checkbox" id="modal-linkedProject-@other.Id"
+						   checked="@Project.LinkedProjectIds.Contains(other.Id)"
+						   @onchange="@(e => ToggleLink(other.Id, e.Value is true))" />
+					<label for="modal-linkedProject-@other.Id" class="min-w-0">
+						<span class="d-block text-truncate">@other.Name</span>
+						<span class="d-block small fg-1 text-truncate">@DescribeProject(other)</span>
+					</label>
+				</div>
+			}
+		}
+	</div>
+}
+
+@code {
+	[Parameter] public ProjectModalFormModel? Project { get; set; }
+	[Parameter] public IReadOnlyList<ProjectFolder> Folders { get; set; } = [];
+
+	/// <summary>Every project; this one is left out of the list.</summary>
+	[Parameter] public IReadOnlyList<Project> AllProjects { get; set; } = [];
+
+	/// <summary>Other projects in this project's folder come first, then the rest by name.</summary>
+	private List<Project> OrderedProjects => AllProjects
+		.Where(other => Project != null && other.Id != Project.Id)
+		.OrderByDescending(other => Project!.FolderId.HasValue && other.FolderId == Project.FolderId)
+		.ThenBy(other => other.Name, StringComparer.OrdinalIgnoreCase)
+		.ToList();
+
+	private string DescribeProject(Project other)
+	{
+		var folderName = Folders.FirstOrDefault(folder => folder.Id == other.FolderId)?.Name;
+		var location = other.GitHubRepository ?? other.WorkingPath;
+		return folderName == null ? location : $"{folderName} · {location}";
+	}
+
+	private void ToggleLink(Guid projectId, bool isLinked)
+	{
+		if (isLinked)
+		{
+			Project?.LinkedProjectIds.Add(projectId);
+		}
+		else
+		{
+			Project?.LinkedProjectIds.Remove(projectId);
+		}
+	}
+}

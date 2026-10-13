@@ -1523,6 +1523,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<bool>("EnableTeamSwarm")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<Guid?>("FolderId")
+                        .HasColumnType("char(36)");
+
                     b.Property<int>("GitChangeDeliveryMode")
                         .HasColumnType("int");
 
@@ -1599,6 +1602,8 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasColumnType("varchar(500)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FolderId");
 
                     b.HasIndex("Name")
                         .IsUnique();
@@ -1712,6 +1717,49 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.HasIndex("ProjectId", "SortOrder");
 
                     b.ToTable("ProjectEnvironments");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectFolder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("ProjectFolders");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectLink", b =>
+                {
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("LinkedProjectId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("ProjectId", "LinkedProjectId");
+
+                    b.HasIndex("LinkedProjectId");
+
+                    b.ToTable("ProjectLinks");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectProvider", b =>
@@ -2408,6 +2456,14 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Navigation("Provider");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.Project", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.ProjectFolder", null)
+                        .WithMany()
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectAgent", b =>
                 {
                     b.HasOne("VibeSwarm.Shared.Data.Agent", "Agent")
@@ -2444,6 +2500,23 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .IsRequired();
 
                     b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectLink", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.Project", "LinkedProject")
+                        .WithMany()
+                        .HasForeignKey("LinkedProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("VibeSwarm.Shared.Data.Project", null)
+                        .WithMany("Links")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LinkedProject");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectProvider", b =>
@@ -2556,6 +2629,8 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Navigation("Ideas");
 
                     b.Navigation("Jobs");
+
+                    b.Navigation("Links");
 
                     b.Navigation("ProviderSelections");
                 });

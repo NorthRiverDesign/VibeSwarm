@@ -537,6 +537,11 @@ public sealed class DashboardPageTests
 			});
 		public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default)
 			=> Task.FromResult<IEnumerable<DashboardRunningJobInfo>>(_runningJobs);
+		public Task SetLinkedProjectsAsync(Guid projectId, IEnumerable<Guid> linkedProjectIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IEnumerable<ProjectFolder>> GetFoldersAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectFolder>>([]);
+		public Task<ProjectFolder> CreateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<ProjectFolder> UpdateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task DeleteFolderAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
 	private sealed class FakeVersionControlService : FakeVersionControlServiceBase

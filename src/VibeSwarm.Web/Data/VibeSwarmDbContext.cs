@@ -33,6 +33,8 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<ProjectProvider> ProjectProviders { get; set; }
 	public DbSet<ProjectAgent> ProjectAgents { get; set; }
 	public DbSet<ProjectEnvironment> ProjectEnvironments { get; set; }
+	public DbSet<ProjectFolder> ProjectFolders { get; set; }
+	public DbSet<ProjectLink> ProjectLinks { get; set; }
 	public DbSet<JobSchedule> JobSchedules { get; set; }
 	public DbSet<JobTemplate> JobTemplates { get; set; }
 	public DbSet<Job> Jobs { get; set; }
@@ -144,6 +146,30 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.BuildCommand).HasMaxLength(500);
 			entity.Property(e => e.TestCommand).HasMaxLength(500);
 			entity.HasIndex(e => e.Name).IsUnique();
+			entity.HasOne<ProjectFolder>()
+				.WithMany()
+				.HasForeignKey(e => e.FolderId)
+				.OnDelete(DeleteBehavior.SetNull);
+		});
+
+		modelBuilder.Entity<ProjectFolder>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Name).IsRequired().HasMaxLength(ValidationLimits.ProjectFolderNameMaxLength);
+			entity.HasIndex(e => e.Name).IsUnique();
+		});
+
+		modelBuilder.Entity<ProjectLink>(entity =>
+		{
+			entity.HasKey(e => new { e.ProjectId, e.LinkedProjectId });
+			entity.HasOne<Project>()
+				.WithMany(p => p.Links)
+				.HasForeignKey(e => e.ProjectId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.HasOne(e => e.LinkedProject)
+				.WithMany()
+				.HasForeignKey(e => e.LinkedProjectId)
+				.OnDelete(DeleteBehavior.Cascade);
 		});
 
 		modelBuilder.Entity<ProjectProvider>(entity =>

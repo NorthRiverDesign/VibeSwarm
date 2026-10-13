@@ -111,6 +111,11 @@ public class Project
 	[StringLength(200)]
 	public string? CommitSummaryInferenceModelId { get; set; }
 
+	/// <summary>
+	/// Optional folder the project is grouped under on the projects list.
+	/// </summary>
+	public Guid? FolderId { get; set; }
+
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? UpdatedAt { get; set; }
@@ -119,6 +124,11 @@ public class Project
     public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
     public ICollection<ProjectAgent> AgentAssignments { get; set; } = new List<ProjectAgent>();
     public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
+
+    /// <summary>
+    /// Other projects linked to this one. Jobs are told about them for context.
+    /// </summary>
+    public ICollection<ProjectLink> Links { get; set; } = new List<ProjectLink>();
 
     /// <summary>
     /// Optional per-project instructions injected into every job prompt.

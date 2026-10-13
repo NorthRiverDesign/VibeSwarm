@@ -102,6 +102,12 @@ Badge="@(HasInstructions ? "Set" : null)" @bind-IsOpen="_openInstructions">
 <ProjectInstructionsSection Project="@FormModel" />
 </AccordionSection>
 
+<AccordionSection Title="Folder and linked projects" Icon="link-45deg"
+Summary="Group this project and link related repositories"
+Badge="@LinksSummary" @bind-IsOpen="_openLinks">
+<ProjectLinksSection Project="@FormModel" Folders="@_folders" AllProjects="@_allProjects" />
+</AccordionSection>
+
 <AccordionSection Title="Build verification" Icon="shield-check"
 Summary="Run build and tests before committing"
 Badge="@(FormModel.BuildVerificationEnabled ? "On" : null)"
@@ -203,6 +209,10 @@ private bool _openExecution;
 private bool _openIdeas;
 private bool _openInstructions;
 private bool _openBuildVerification;
+private bool _openLinks;
+private List<ProjectFolder> _folders = [];
+private List<Project> _allProjects = [];
+private HashSet<Guid> _initialLinkedProjectIds = [];
 private ProjectModalFormModel FormModel { get; set; } = new();
 
 protected override async Task OnInitializedAsync()
@@ -221,11 +231,13 @@ await LoadProvidersAsync();
 await LoadAgentsAsync();
 ResetState();
 await LoadExistingProjectPathsAsync();
+await LoadFoldersAsync();
 
 if (EditProject != null)
 {
 var editableProject = await ProjectService.GetByIdAsync(EditProject.Id) ?? EditProject;
 FormModel = ProjectModalFormModel.FromProject(CloneProjectForEditing(editableProject));
+_initialLinkedProjectIds = FormModel.LinkedProjectIds.ToHashSet();
 _formState.LoadFromProject(FormModel);
 EnsurePlanningProviderSelection();
 await LoadPlanningModelsAsync();
@@ -283,6 +295,10 @@ Guid? newProjectId = null;
 if (IsEdit)
 {
 await ProjectService.UpdateAsync(FormModel.ToProject());
+if (!FormModel.LinkedProjectIds.SetEquals(_initialLinkedProjectIds))
+{
+await ProjectService.SetLinkedProjectsAsync(FormModel.Id, FormModel.LinkedProjectIds);
+}
 NotificationService.ShowProjectSuccess(notificationProjectName, "Project updated successfully.");
 }
 else
@@ -293,6 +309,18 @@ StateHasChanged();
 var created = await ProjectService.CreateProjectAsync(_formState.BuildProjectCreationRequest(FormModel));
 newProjectId = created.Id;
 NotificationService.ShowProjectSuccess(notificationProjectName, _formState.GetSuccessMessage(FormModel));
+if (FormModel.LinkedProjectIds.Count > 0)
+{
+// The project exists by now, so a failed link must not read as a failed create.
+try
+{
+await ProjectService.SetLinkedProjectsAsync(created.Id, FormModel.LinkedProjectIds);
+}
+catch (Exception ex)
+{
+NotificationService.ShowError($"The project was created, but its links weren't saved: {ex.Message}");
+}
+}
 }
 
 await OnSaved.InvokeAsync(newProjectId);
@@ -349,6 +377,8 @@ ResetState();
 		_openIdeas = false;
 		_openInstructions = false;
 		_openBuildVerification = false;
+		_openLinks = false;
+		_initialLinkedProjectIds = [];
 		_cloneProgressMessage = null;
 		_showGitHubRepositoryBrowser = false;
 		_planningModels = [];
@@ -892,6 +922,15 @@ BuildVerificationEnabled = source.BuildVerificationEnabled,
 	CommitSummaryInferenceProviderId = source.CommitSummaryInferenceProviderId,
 	CommitSummaryInferenceModelId = source.CommitSummaryInferenceModelId,
 	IsActive = source.IsActive,
+	FolderId = source.FolderId,
+	Links = (source.Links ?? [])
+	.Select(link => new ProjectLink
+	{
+		ProjectId = link.ProjectId,
+		LinkedProjectId = link.LinkedProjectId,
+		CreatedAt = link.CreatedAt
+	})
+	.ToList(),
 CreatedAt = source.CreatedAt,
 	UpdatedAt = source.UpdatedAt,
 	ProviderSelections = source.ProviderSelections
@@ -993,7 +1032,8 @@ UpdatedAt = environment.UpdatedAt
 	{
 		try
 		{
-			var projects = await ProjectService.GetAllAsync();
+			var projects = (await ProjectService.GetAllAsync()).ToList();
+			_allProjects = projects;
 			_existingProjectPaths = projects
 				.Where(project => !string.IsNullOrWhiteSpace(project.WorkingPath) && project.Id != FormModel.Id)
 				.GroupBy(project => project.WorkingPath.TrimEnd('/', '\\'), StringComparer.OrdinalIgnoreCase)
@@ -1001,7 +1041,34 @@ UpdatedAt = environment.UpdatedAt
 		}
 		catch
 		{
+			_allProjects = [];
 			_existingProjectPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		}
+	}
+
+	private async Task LoadFoldersAsync()
+	{
+		try
+		{
+			_folders = (await ProjectService.GetFoldersAsync()).ToList();
+		}
+		catch
+		{
+			_folders = [];
+		}
+	}
+
+	private string? LinksSummary
+	{
+		get
+		{
+			var linkedCount = FormModel.LinkedProjectIds.Count;
+			if (linkedCount > 0)
+			{
+				return $"{linkedCount} linked";
+			}
+
+			return _folders.FirstOrDefault(folder => folder.Id == FormModel.FolderId)?.Name;
 		}
 	}
 

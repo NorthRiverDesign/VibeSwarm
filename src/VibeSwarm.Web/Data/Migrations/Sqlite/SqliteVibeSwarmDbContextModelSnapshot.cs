@@ -1514,6 +1514,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<bool>("EnableTeamSwarm")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("FolderId")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("GitChangeDeliveryMode")
                         .HasColumnType("INTEGER");
 
@@ -1590,6 +1593,8 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FolderId");
 
                     b.HasIndex("Name")
                         .IsUnique();
@@ -1703,6 +1708,49 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.HasIndex("ProjectId", "SortOrder");
 
                     b.ToTable("ProjectEnvironments");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectFolder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("ProjectFolders");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectLink", b =>
+                {
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("LinkedProjectId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ProjectId", "LinkedProjectId");
+
+                    b.HasIndex("LinkedProjectId");
+
+                    b.ToTable("ProjectLinks");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectProvider", b =>
@@ -2399,6 +2447,14 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Navigation("Provider");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.Project", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.ProjectFolder", null)
+                        .WithMany()
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectAgent", b =>
                 {
                     b.HasOne("VibeSwarm.Shared.Data.Agent", "Agent")
@@ -2435,6 +2491,23 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .IsRequired();
 
                     b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectLink", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.Project", "LinkedProject")
+                        .WithMany()
+                        .HasForeignKey("LinkedProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("VibeSwarm.Shared.Data.Project", null)
+                        .WithMany("Links")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LinkedProject");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectProvider", b =>
@@ -2547,6 +2620,8 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Navigation("Ideas");
 
                     b.Navigation("Jobs");
+
+                    b.Navigation("Links");
 
                     b.Navigation("ProviderSelections");
                 });

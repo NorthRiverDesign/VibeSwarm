@@ -1000,6 +1000,7 @@ public partial class JobProcessingService
             }
 
             await EnsureProjectSkillsMaterializedAsync(job.Project, skillStorage, cancellationToken);
+            await LoadLinkedProjectsAsync(job.Project, dbContext, cancellationToken);
             var currentPrompt = PromptBuilder.BuildExecutionPrompt(job, planningOutput, enableStructuring);
             var shouldRunRecoveryFlow = JobRecoveryHelper.IsResumeCandidate(job);
             executionContext.ActivePrompt = currentPrompt;
@@ -1710,6 +1711,26 @@ public partial class JobProcessingService
     /// been materialized to disk so <see cref="PromptBuilder.BuildSkillSection"/> can surface
     /// its absolute SKILL.md path to the agent. Idempotent for already-materialized skills.
     /// </summary>
+    /// <summary>
+    /// Loads the projects linked to the job's project so the prompt can tell the agent about them.
+    /// </summary>
+    private static async Task LoadLinkedProjectsAsync(
+        Project? project,
+        VibeSwarmDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (project == null)
+        {
+            return;
+        }
+
+        await dbContext.Entry(project)
+            .Collection(p => p.Links)
+            .Query()
+            .Include(link => link.LinkedProject)
+            .LoadAsync(cancellationToken);
+    }
+
     private async Task EnsureProjectSkillsMaterializedAsync(
         Project? project,
         ISkillStorageService skillStorage,

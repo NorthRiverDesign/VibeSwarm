@@ -58,6 +58,11 @@ internal abstract class FakeProjectServiceBase : IProjectService
 	public virtual Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task SetLinkedProjectsAsync(Guid projectId, IEnumerable<Guid> linkedProjectIds, CancellationToken cancellationToken = default) => Task.CompletedTask;
+	public virtual Task<IEnumerable<ProjectFolder>> GetFoldersAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectFolder>>([]);
+	public virtual Task<ProjectFolder> CreateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<ProjectFolder> UpdateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task DeleteFolderAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 }
 
 internal abstract class FakeInferenceProviderServiceBase : IInferenceProviderService

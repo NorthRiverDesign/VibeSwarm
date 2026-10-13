@@ -143,6 +143,57 @@ public class ProjectsController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { await _projectService.DeleteAsync(id, ct); return Ok(); }
 
+    [HttpPut("{id:guid}/links")]
+    public Task<IActionResult> SetLinkedProjects(Guid id, [FromBody] List<Guid> linkedProjectIds, CancellationToken ct)
+        => RunFolderOrLinkActionAsync(async () =>
+        {
+            await _projectService.SetLinkedProjectsAsync(id, linkedProjectIds ?? [], ct);
+            return Ok();
+        }, "These projects were linked by another change at the same time. Reload and try again.");
+
+    [HttpGet("folders")]
+    public async Task<IActionResult> GetFolders(CancellationToken ct) => Ok(await _projectService.GetFoldersAsync(ct));
+
+    [HttpPost("folders")]
+    public Task<IActionResult> CreateFolder([FromBody] ProjectFolder folder, CancellationToken ct)
+        => RunFolderOrLinkActionAsync(async () => Ok(await _projectService.CreateFolderAsync(folder, ct)), DuplicateFolderError);
+
+    [HttpPut("folders/{id:guid}")]
+    public Task<IActionResult> UpdateFolder(Guid id, [FromBody] ProjectFolder folder, CancellationToken ct)
+        => RunFolderOrLinkActionAsync(async () =>
+        {
+            folder.Id = id;
+            return Ok(await _projectService.UpdateFolderAsync(folder, ct));
+        }, DuplicateFolderError);
+
+    [HttpDelete("folders/{id:guid}")]
+    public async Task<IActionResult> DeleteFolder(Guid id, CancellationToken ct) { await _projectService.DeleteFolderAsync(id, ct); return Ok(); }
+
+    private const string DuplicateFolderError = "A folder with this name already exists.";
+
+    private async Task<IActionResult> RunFolderOrLinkActionAsync(Func<Task<IActionResult>> action, string duplicateError)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase)
+                ? NotFound(new { error = ex.Message })
+                : BadRequest(new { error = ex.Message });
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) == true ||
+                                           ex.InnerException?.Message.Contains("Duplicate", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return BadRequest(new { error = duplicateError });
+        }
+        catch (DbUpdateException ex)
+        {
+            return BadRequest(new { error = ex.InnerException?.Message ?? ex.Message });
+        }
+    }
+
     [HttpGet("with-stats")]
     public async Task<IActionResult> GetAllWithStats(CancellationToken ct) => Ok(await _projectService.GetAllWithStatsAsync(ct));
 

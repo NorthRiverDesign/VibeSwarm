@@ -13,6 +13,8 @@ public static class PromptBuilder
 {
 	private const int MaxEnvironmentEntriesLength = 1200;
 	private const int MaxSkillSummaryLength = 160;
+	private const int MaxLinkedProjectEntriesLength = 1200;
+	private const int MaxLinkedProjectDescriptionLength = 160;
 	public const string IdeaToken = "{{idea}}";
 	public const string SpecificationToken = "{{specification}}";
 	public const string RequestToken = "{{request}}";
@@ -117,6 +119,7 @@ public static class PromptBuilder
 			return job.GoalPrompt;
 		}
 
+		var linkedProjectsSection = BuildLinkedProjectsSection(job.Project);
 		var environmentSection = BuildEnvironmentSection(job.Project);
 		var teamSection = BuildTeamSection(job.Project);
 		var skillSection = BuildSkillSection(job.Project);
@@ -133,6 +136,11 @@ public static class PromptBuilder
 			sb.AppendLine($"  <description>{EscapeXml(job.Project.Description)}</description>");
 		}
 		sb.AppendLine("</project>");
+
+		if (!string.IsNullOrWhiteSpace(linkedProjectsSection))
+		{
+			sb.Append(linkedProjectsSection);
+		}
 
 		if (!string.IsNullOrWhiteSpace(environmentSection))
 		{
@@ -521,6 +529,69 @@ public static class PromptBuilder
 		return sb.ToString().TrimEnd();
 	}
 
+	/// <summary>
+	/// Lists the projects the user linked to this one, so the agent knows where related
+	/// repositories live. Needs <see cref="ProjectLink.LinkedProject"/> loaded.
+	/// </summary>
+	private static string BuildLinkedProjectsSection(Project project)
+	{
+		var linkedProjects = (project.Links ?? [])
+			.Select(link => link.LinkedProject)
+			.OfType<Project>()
+			.Where(linked => linked.Id != project.Id)
+			.DistinctBy(linked => linked.Id)
+			.OrderBy(linked => linked.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		if (linkedProjects.Count == 0)
+		{
+			return string.Empty;
+		}
+
+		var sb = new StringBuilder();
+		sb.AppendLine("<linked-projects>");
+		sb.AppendLine("  Related repositories linked to this project. Read them for context when the task touches them. Change files only in this project: VibeSwarm delivers nothing from the others.");
+
+		var includedCount = 0;
+		var entriesLength = 0;
+		foreach (var linked in linkedProjects)
+		{
+			var lineBuilder = new StringBuilder();
+			lineBuilder.Append("  - ");
+			lineBuilder.Append(linked.Name);
+			lineBuilder.Append(": ");
+			lineBuilder.Append(linked.WorkingPath);
+			if (!string.IsNullOrWhiteSpace(linked.GitHubRepository))
+			{
+				lineBuilder.Append(" | GitHub: ");
+				lineBuilder.Append(linked.GitHubRepository);
+			}
+			if (!string.IsNullOrWhiteSpace(linked.Description))
+			{
+				lineBuilder.Append(" | ");
+				lineBuilder.Append(Summarize(linked.Description, MaxLinkedProjectDescriptionLength));
+			}
+
+			var escapedLine = EscapeXml(lineBuilder.ToString());
+			if (entriesLength + escapedLine.Length > MaxLinkedProjectEntriesLength)
+			{
+				break;
+			}
+
+			sb.AppendLine(escapedLine);
+			entriesLength += escapedLine.Length;
+			includedCount++;
+		}
+
+		var omittedCount = linkedProjects.Count - includedCount;
+		if (omittedCount > 0)
+		{
+			sb.AppendLine($"  {omittedCount} additional linked project(s) omitted for brevity.");
+		}
+
+		sb.AppendLine("</linked-projects>");
+		return sb.ToString();
+	}
+
 	private static string BuildEnvironmentSection(Project project)
 	{
 		if (project.Environments == null || project.Environments.Count == 0)
@@ -862,13 +933,18 @@ public static class PromptBuilder
 			return null;
 		}
 
-		var summary = string.Join(" ", skill.Description.Split([' ', '\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries));
-		if (summary.Length <= MaxSkillSummaryLength)
+		return Summarize(skill.Description, MaxSkillSummaryLength);
+	}
+
+	private static string Summarize(string text, int maxLength)
+	{
+		var summary = string.Join(" ", text.Split([' ', '\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries));
+		if (summary.Length <= maxLength)
 		{
 			return summary;
 		}
 
-		return $"{summary[..(MaxSkillSummaryLength - 3)].TrimEnd()}...";
+		return $"{summary[..(maxLength - 3)].TrimEnd()}...";
 	}
 
 	private static string EscapeXml(string value)

@@ -61,6 +61,14 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
 
+	public Guid? FolderId { get; set; }
+
+	/// <summary>
+	/// Projects checked under Linked projects. Saved separately from the project, because a
+	/// link also changes the project at its other end.
+	/// </summary>
+	public HashSet<Guid> LinkedProjectIds { get; set; } = [];
+
 	[StringLength(ValidationLimits.ProjectPromptContextMaxLength)]
 	public string? PromptContext { get; set; }
 
@@ -120,6 +128,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			ProviderSelections = source.ProviderSelections.ToList(),
 			AgentAssignments = source.AgentAssignments.ToList(),
 			Environments = source.Environments.ToList(),
+			FolderId = source.FolderId,
+			LinkedProjectIds = (source.Links ?? []).Select(link => link.LinkedProjectId).ToHashSet(),
 			PromptContext = source.PromptContext,
 			Memory = source.Memory,
 			IsActive = source.IsActive,
@@ -178,6 +188,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 				UpdatedAt = a.UpdatedAt
 			}).ToList(),
 			Environments = Environments.ToList(),
+			FolderId = FolderId,
 			PromptContext = string.IsNullOrWhiteSpace(PromptContext) ? null : PromptContext.Trim(),
 			Memory = string.IsNullOrWhiteSpace(Memory) ? null : Memory.Trim(),
 			EnableTeamSwarm = EnableTeamSwarm,

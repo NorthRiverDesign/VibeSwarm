@@ -9,8 +9,18 @@
 <div class="d-flex flex-column gap-5">
 	<div class="d-flex align-items-center gap-3">
 		<h1 class="mb-0 me-auto">Projects</h1>
-		<TitleAction Icon="folder-symlink" Label="Import folders already on this host" OnClick="ShowScanModal" />
-		<TitleAction Icon="plus-lg" Label="New project" Primary="true" OnClick="ShowAddModal" />
+		@* Every way to add a project or a folder sits behind the one + button. *@
+		<div>
+			<button type="button" class="btn-solid theme-primary rounded-circle p-0 icon-button-round"
+					data-bs-toggle="menu" data-bs-placement="bottom-end" aria-expanded="false" title="Add" aria-label="Add">
+				<i class="bi bi-plus-lg"></i>
+			</button>
+			<div class="menu">
+				<button type="button" class="menu-item" @onclick="ShowAddModal"><i class="bi bi-plus-lg"></i>New project</button>
+				<button type="button" class="menu-item" @onclick="ShowScanModal"><i class="bi bi-folder-symlink"></i>Import folders already on this host</button>
+				<button type="button" class="menu-item" @onclick="ShowNewFolderModal"><i class="bi bi-folder-plus"></i>New folder</button>
+			</div>
+		</div>
 	</div>
 
 	@if (ProjectsWithInfo.Any())
@@ -39,7 +49,7 @@
 	{
 		<LoadingSpinner Text="Loading projects..." />
 	}
-	else if (!ProjectsWithInfo.Any())
+	else if (!ProjectsWithInfo.Any() && !Folders.Any())
 	{
 		<EmptyState Icon="folder" Title="No projects yet"
 					Message="Point VibeSwarm at a folder on this host, or import repositories it already finds there.">
@@ -47,7 +57,7 @@
 			<ActionButton Icon="folder-symlink" Text="Import from disk" OnClick="ShowScanModal" />
 		</EmptyState>
 	}
-	else if (!GetFilteredProjects().Any())
+	else if (!GetProjectGroups().Any())
 	{
 		@if (!string.IsNullOrWhiteSpace(_projectSearchQuery))
 		{
@@ -63,16 +73,47 @@
 	}
 	else
 	{
-		<div class="list-group rounded-9">
-			@foreach (var projectInfo in GetFilteredProjects())
-			{
-				var project = projectInfo.Project;
-				<ProjectListItem @key="project.Id" Project="@project" Stats="@projectInfo.Stats" LatestJob="@projectInfo.LatestJob"
-								 ActiveJobs="@ActiveJobs.Where(job => job.ProjectId == project.Id).ToList()" />
-			}
-		</div>
+		@foreach (var group in GetProjectGroups())
+		{
+			<section @key="@(group.Folder?.Id ?? Guid.Empty)" class="d-flex flex-column gap-3">
+				@if (Folders.Any())
+				{
+					<SectionHeader Title="@(group.Folder?.Name ?? "Other projects")">
+						<Actions>
+							@if (group.Folder is { } folder)
+							{
+								<button type="button" class="btn-sm btn-link text-decoration-none px-0"
+										@onclick="() => ShowRenameFolderModal(folder)">Rename</button>
+								<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0"
+										@onclick="() => ShowDeleteFolderModal(folder)">Delete</button>
+							}
+						</Actions>
+					</SectionHeader>
+				}
+				<div class="list-group rounded-9">
+					@foreach (var projectInfo in group.Projects)
+					{
+						var project = projectInfo.Project;
+						<ProjectListItem @key="project.Id" Project="@project" Stats="@projectInfo.Stats" LatestJob="@projectInfo.LatestJob"
+										 ActiveJobs="@ActiveJobs.Where(job => job.ProjectId == project.Id).ToList()" />
+					}
+					@if (group.Projects.Count == 0)
+					{
+						<div class="list-group-item small fg-1 py-5">No projects yet. Choose this folder in a project's settings.</div>
+					}
+				</div>
+			</section>
+		}
 	}
 </div>
+
+<ProjectFolderModal @bind-IsVisible="_showFolderModal" Folder="@_folderBeingRenamed" OnSaved="HandleFolderSaved" />
+
+<ConfirmationModal @bind-IsVisible="_showDeleteFolderModal" Title="Delete folder"
+				   Message="@($"Delete the folder \"{_folderBeingDeleted?.Name}\"?")"
+				   SubMessage="Its projects stay, outside any folder. Links between projects don't change."
+				   ConfirmText="Delete" IsProcessing="_isDeletingFolder" ErrorMessage="@_deleteFolderError"
+				   OnConfirm="DeleteFolderAsync" OnCancel="() => _showDeleteFolderModal = false" />
 
 <ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="HandleProjectsImported" />
 
@@ -81,6 +122,13 @@
 
 @code {
 	private List<ProjectInfoWithStats> ProjectsWithInfo { get; set; } = new();
+	private List<ProjectFolder> Folders { get; set; } = new();
+	private bool _showFolderModal;
+	private ProjectFolder? _folderBeingRenamed;
+	private bool _showDeleteFolderModal;
+	private ProjectFolder? _folderBeingDeleted;
+	private bool _isDeletingFolder;
+	private string? _deleteFolderError;
 	private List<JobSummary> ActiveJobs { get; set; } = new();
 	private bool IsLoading { get; set; } = true;
 	private bool HasLoadedProjectsInitially { get; set; }
@@ -96,6 +144,7 @@
 
 	protected override async Task OnInitializedAsync()
 	{
+		await LoadFolders();
 		await LoadProjects();
 		await LoadActiveJobs();
 		StartAutoRefresh();
@@ -170,6 +219,106 @@
 			 p.Project.GitHubRepository.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
 			(!string.IsNullOrEmpty(p.Project.WorkingPath) &&
 			 p.Project.WorkingPath.Contains(term, StringComparison.OrdinalIgnoreCase)));
+	}
+
+	/// <summary>
+	/// One section per folder, by name, then the projects outside any folder. A folder that
+	/// holds no projects at all still shows (so it can be renamed or deleted) unless searching.
+	/// </summary>
+	private List<ProjectGroup> GetProjectGroups()
+	{
+		var filtered = GetFilteredProjects().ToList();
+		if (!Folders.Any())
+		{
+			return filtered.Count == 0 ? [] : [new ProjectGroup(null, filtered)];
+		}
+
+		var folderIds = Folders.Select(folder => folder.Id).ToHashSet();
+		var groups = new List<ProjectGroup>();
+		foreach (var folder in Folders.OrderBy(folder => folder.Name, StringComparer.OrdinalIgnoreCase))
+		{
+			var projects = filtered.Where(info => info.Project.FolderId == folder.Id).ToList();
+			var isEmptyFolder = !ProjectsWithInfo.Any(info => info.Project.FolderId == folder.Id);
+			if (projects.Count > 0 || (isEmptyFolder && string.IsNullOrWhiteSpace(_projectSearchQuery)))
+			{
+				groups.Add(new ProjectGroup(folder, projects));
+			}
+		}
+
+		var ungrouped = filtered
+			.Where(info => !info.Project.FolderId.HasValue || !folderIds.Contains(info.Project.FolderId.Value))
+			.ToList();
+		if (ungrouped.Count > 0)
+		{
+			groups.Add(new ProjectGroup(null, ungrouped));
+		}
+
+		return groups;
+	}
+
+	private sealed record ProjectGroup(ProjectFolder? Folder, List<ProjectInfoWithStats> Projects);
+
+	private async Task LoadFolders()
+	{
+		try
+		{
+			Folders = (await ProjectService.GetFoldersAsync()).ToList();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load folders: {ex.Message}");
+		}
+	}
+
+	private void ShowNewFolderModal()
+	{
+		_folderBeingRenamed = null;
+		_showFolderModal = true;
+	}
+
+	private void ShowRenameFolderModal(ProjectFolder folder)
+	{
+		_folderBeingRenamed = folder;
+		_showFolderModal = true;
+	}
+
+	private async Task HandleFolderSaved(ProjectFolder folder)
+	{
+		await LoadFolders();
+	}
+
+	private void ShowDeleteFolderModal(ProjectFolder folder)
+	{
+		_folderBeingDeleted = folder;
+		_deleteFolderError = null;
+		_showDeleteFolderModal = true;
+	}
+
+	private async Task DeleteFolderAsync()
+	{
+		if (_folderBeingDeleted == null)
+		{
+			return;
+		}
+
+		_isDeletingFolder = true;
+		_deleteFolderError = null;
+		try
+		{
+			await ProjectService.DeleteFolderAsync(_folderBeingDeleted.Id);
+			_showDeleteFolderModal = false;
+			_folderBeingDeleted = null;
+			await LoadFolders();
+			await LoadProjects();
+		}
+		catch (Exception ex)
+		{
+			_deleteFolderError = ex.Message;
+		}
+		finally
+		{
+			_isDeletingFolder = false;
+		}
 	}
 
 	private async Task LoadProjects()

@@ -399,6 +399,64 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 		}, WaitTimeout);
 	}
 
+	[Fact]
+	public void EditProject_PicksFolderAndSavesLinksSeparately()
+	{
+		var folder = new ProjectFolder { Id = Guid.NewGuid(), Name = "Storefront" };
+		var project = new Project { Id = Guid.NewGuid(), Name = "Web", WorkingPath = "/tmp/web", FolderId = folder.Id };
+		var sameFolder = new Project { Id = Guid.NewGuid(), Name = "Zeta Api", WorkingPath = "/tmp/api", FolderId = folder.Id };
+		var elsewhere = new Project { Id = Guid.NewGuid(), Name = "Alpha Docs", WorkingPath = "/tmp/docs" };
+		project.Links = [new ProjectLink { ProjectId = project.Id, LinkedProjectId = sameFolder.Id }];
+		var projectService = new FakeProjectService
+		{
+			AllProjects = [project, sameFolder, elsewhere],
+			Folders = [folder]
+		};
+
+		using var context = CreateBunitContext(projectService);
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditProject, project));
+
+		Assert.Equal(folder.Id.ToString(), cut.Find("#modal-projectFolder").GetAttribute("value"));
+		Assert.Empty(cut.FindAll($"#modal-linkedProject-{project.Id}"));
+		var checkboxes = cut.FindAll("input[id^='modal-linkedProject-']");
+		Assert.Equal([$"modal-linkedProject-{sameFolder.Id}", $"modal-linkedProject-{elsewhere.Id}"], checkboxes.Select(box => box.Id));
+		Assert.True(checkboxes[0].HasAttribute("checked"));
+		Assert.False(checkboxes[1].HasAttribute("checked"));
+
+		cut.Find($"#modal-linkedProject-{sameFolder.Id}").Change(false);
+		cut.Find($"#modal-linkedProject-{elsewhere.Id}").Change(true);
+		cut.Find("#modal-projectFolder").Change(string.Empty);
+		cut.Find("form").Submit();
+
+		cut.WaitForAssertion(() =>
+		{
+			var update = Assert.Single(projectService.LinkUpdates);
+			Assert.Equal(project.Id, update.ProjectId);
+			Assert.Equal([elsewhere.Id], update.LinkedProjectIds);
+			Assert.Null(projectService.LastUpdatedProject!.FolderId);
+		}, WaitTimeout);
+	}
+
+	[Fact]
+	public void EditProject_LeavesLinksAlone_WhenTheyDidNotChange()
+	{
+		var project = new Project { Id = Guid.NewGuid(), Name = "Web", WorkingPath = "/tmp/web" };
+		var projectService = new FakeProjectService { AllProjects = [project] };
+
+		using var context = CreateBunitContext(projectService);
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditProject, project));
+
+		Assert.Contains("There are no other projects to link yet.", cut.Markup);
+		cut.Find("form").Submit();
+
+		cut.WaitForAssertion(() => Assert.NotNull(projectService.LastUpdatedProject), WaitTimeout);
+		Assert.Empty(projectService.LinkUpdates);
+	}
+
 private static BunitContext CreateBunitContext(
 	FakeProjectService? projectService = null,
 	IReadOnlyList<Agent>? agents = null,
@@ -432,7 +490,17 @@ private sealed class FakeProjectService : FakeProjectServiceBase
 public GitHubRepositoryBrowserResult RepositoryBrowserResult { get; set; } = new();
 public Project? CreateProjectResult { get; set; }
 public Project? UpdateResult { get; set; }
-public override Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
+public List<Project> AllProjects { get; set; } = [];
+public List<ProjectFolder> Folders { get; set; } = [];
+public Project? LastUpdatedProject { get; private set; }
+public List<(Guid ProjectId, List<Guid> LinkedProjectIds)> LinkUpdates { get; } = [];
+public override Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>(AllProjects);
+public override Task<IEnumerable<ProjectFolder>> GetFoldersAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectFolder>>(Folders);
+public override Task SetLinkedProjectsAsync(Guid projectId, IEnumerable<Guid> linkedProjectIds, CancellationToken cancellationToken = default)
+{
+	LinkUpdates.Add((projectId, linkedProjectIds.ToList()));
+	return Task.CompletedTask;
+}
 public override Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
 public override Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
 public override Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
@@ -444,7 +512,11 @@ public override Task<Project> CreateProjectAsync(ProjectCreationRequest request,
 		WorkingPath = request.Project.WorkingPath
 	});
 public override Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default) => Task.FromResult(RepositoryBrowserResult);
-public override Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => Task.FromResult(UpdateResult ?? project);
+public override Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default)
+{
+	LastUpdatedProject = project;
+	return Task.FromResult(UpdateResult ?? project);
+}
 public override Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
 public override Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
 public override Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => Task.FromResult(new DashboardJobMetrics { RangeDays = rangeDays, Buckets = [] });
