@@ -16,6 +16,7 @@ namespace VibeSwarm.Web.Services;
 public class GrokInferenceService : IInferenceService
 {
 	private const string DefaultEndpoint = "https://api.x.ai/v1";
+	private const decimal UsdTicksPerDollar = 10_000_000_000m;
 
 	private readonly IHttpClientFactory _httpClientFactory;
 	private readonly IInferenceProviderService _providerService;
@@ -240,6 +241,7 @@ public class GrokInferenceService : IInferenceService
 			ModelUsed = chatResponse.Model ?? model,
 			PromptTokens = chatResponse.Usage?.PromptTokens,
 			CompletionTokens = chatResponse.Usage?.CompletionTokens,
+			CostUsd = chatResponse.Usage?.CostInUsdTicks / UsdTicksPerDollar,
 			FinishReason = choice?.FinishReason
 		};
 	}
@@ -379,6 +381,8 @@ public class GrokInferenceService : IInferenceService
 	{
 		public int? PromptTokens { get; set; }
 		public int? CompletionTokens { get; set; }
+		// What xAI billed for the request, after discounts, in units of 1e-10 USD.
+		public long? CostInUsdTicks { get; set; }
 	}
 
 	private class ModelsListResponse

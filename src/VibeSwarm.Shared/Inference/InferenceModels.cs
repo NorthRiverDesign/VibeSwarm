@@ -83,6 +83,8 @@ public class InferenceResponse
 	public long? DurationMs { get; set; }
 	public int? PromptTokens { get; set; }
 	public int? CompletionTokens { get; set; }
+	/// <summary>What the provider billed for the request, when it reports it (local models cost nothing).</summary>
+	public decimal? CostUsd { get; set; }
 	/// <summary>Why the model stopped, as the provider reports it ("stop", "length", ...).</summary>
 	public string? FinishReason { get; set; }
 }

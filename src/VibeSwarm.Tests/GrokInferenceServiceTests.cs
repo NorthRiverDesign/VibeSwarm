@@ -63,7 +63,7 @@ public sealed class GrokInferenceServiceTests
 			return new HttpResponseMessage(HttpStatusCode.OK)
 			{
 				Content = new StringContent("""
-{"model":"selected-model","choices":[{"message":{"content":"Hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":1}}
+{"model":"selected-model","choices":[{"message":{"content":"Hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":1,"cost_in_usd_ticks":37756000}}
 """, Encoding.UTF8, "application/json")
 			};
 		});
@@ -87,6 +87,9 @@ public sealed class GrokInferenceServiceTests
 		Assert.Contains("\"max_completion_tokens\":4096", requestBody, StringComparison.Ordinal);
 		Assert.DoesNotContain("\"max_tokens\"", requestBody, StringComparison.Ordinal);
 		Assert.Equal("stop", response.FinishReason);
+		Assert.Equal(2, response.PromptTokens);
+		Assert.Equal(1, response.CompletionTokens);
+		Assert.Equal(0.0037756m, response.CostUsd);
 	}
 
 	private sealed class FakeHttpClientFactory(HttpClient httpClient) : IHttpClientFactory

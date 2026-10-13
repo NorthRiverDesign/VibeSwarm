@@ -178,7 +178,8 @@ else
                              LiveMessages="@_pendingSessionMessages.ToList()" MaxOutputLines="@MaxOutputLines"
                              CurrentActivity="@Job.CurrentActivity"
                              OnClearLiveOutput="ClearLiveOutput" OnSendFollowUp="ContinueJobWithFollowUp"
-                             DraftFollowUp="@(_canDraftFollowUp ? DraftFollowUpAsync : null)" />
+                             DraftFollowUp="@(_followUpDraftModel != null ? DraftFollowUpAsync : null)"
+                             DraftFollowUpModel="@_followUpDraftModel" />
         </div>
     </div>
 

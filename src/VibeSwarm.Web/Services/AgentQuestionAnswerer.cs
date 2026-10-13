@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -182,16 +183,29 @@ public sealed partial class AgentQuestionAnswerer
 			return new FollowUpDraft { Error = "No inference provider replied. Check that one is enabled and online on the Inference page." };
 		}
 
+		// The request was spent either way, so a declined draft still reports what it used.
 		var text = CleanAnswer(reply.Text);
-		if (text == null)
+		return new FollowUpDraft
 		{
-			return new FollowUpDraft { Error = "Inference left this reply to you: it needs a decision only you can make." };
-		}
-
-		return new FollowUpDraft { Text = text, ProviderName = reply.ProviderName, ModelId = reply.ModelId };
+			Text = text,
+			Error = text == null ? "Inference left this reply to you: it needs a decision only you can make." : null,
+			ProviderName = reply.ProviderName,
+			ProviderType = reply.ProviderType,
+			ModelId = reply.ModelId,
+			PromptTokens = reply.Response.PromptTokens,
+			CompletionTokens = reply.Response.CompletionTokens,
+			DurationMs = reply.DurationMs,
+			CostUsd = reply.Response.CostUsd
+		};
 	}
 
-	private sealed record ModelReply(string Text, string ProviderName, string ModelId);
+	private sealed record ModelReply(
+		string Text,
+		string ProviderName,
+		InferenceProviderType ProviderType,
+		string ModelId,
+		InferenceResponse Response,
+		long DurationMs);
 
 	/// <summary>
 	/// The first reply from the enabled inference providers, tried in priority order so an offline
@@ -208,6 +222,7 @@ public sealed partial class AgentQuestionAnswerer
 		foreach (var (provider, model) in InferenceTaskModels.Candidates(providers, TaskType))
 		{
 			InferenceResponse response;
+			var startedAt = Stopwatch.GetTimestamp();
 			try
 			{
 				response = await _inference.GenerateAsync(new InferenceRequest
@@ -238,7 +253,13 @@ public sealed partial class AgentQuestionAnswerer
 				continue;
 			}
 
-			return new ModelReply(response.Response, provider.Name, response.ModelUsed ?? model.ModelId);
+			return new ModelReply(
+				response.Response,
+				provider.Name,
+				provider.ProviderType,
+				response.ModelUsed ?? model.ModelId,
+				response,
+				response.DurationMs ?? (long)Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
 		}
 
 		return null;

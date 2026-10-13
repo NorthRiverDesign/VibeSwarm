@@ -434,18 +434,12 @@
                 <div class="d-flex flex-column gap-3 align-self-end flex-shrink-0">
                     @if (DraftFollowUp != null)
                     {
-                        @* Inference writes the reply, building on anything typed, and the user confirms it before it is sent *@
-                        <button class="btn-outline theme-secondary" @onclick="DraftFollowUpReply"
+                        @* Asks before inference writes a reply (building on anything typed), then the user
+                           reviews the reply and what it used before it is sent *@
+                        <button class="btn-outline theme-secondary" @onclick="OpenFollowUpDraft"
                                 disabled="@(_isSendingFollowUp || _isDraftingFollowUp)"
                                 title="Write a reply with inference" aria-label="Write a reply with inference">
-                            @if (_isDraftingFollowUp)
-                            {
-                                <span class="spinner-border spinner-sm" role="status"></span>
-                            }
-                            else
-                            {
-                                <i class="bi bi-stars"></i>
-                            }
+                            <i class="bi bi-stars"></i>
                         </button>
                     }
                     <button class="btn-solid theme-primary" @onclick="SendFollowUp"
@@ -461,10 +455,6 @@
                     </button>
                 </div>
             </div>
-            @if (!string.IsNullOrEmpty(_followUpDraftError))
-            {
-                <p class="small fg-danger mt-3 mb-0" role="alert">@_followUpDraftError</p>
-            }
         </div>
     }
 </div>
@@ -541,6 +531,10 @@
     [Parameter]
     public Func<string?, Task<FollowUpDraft>>? DraftFollowUp { get; set; }
 
+    /// <summary>The inference model tried first for <see cref="DraftFollowUp"/>, named in its confirmation.</summary>
+    [Parameter]
+    public string? DraftFollowUpModel { get; set; }
+
     [Parameter]
     public EventCallback OnCopyGoalPrompt { get; set; }
 
@@ -559,8 +553,9 @@
     private bool _isDraftingFollowUp;
     private bool _showFollowUpDraft;
     private string _followUpDraft = string.Empty;
-    private string? _followUpDraftModel;
+    private FollowUpDraft? _followUpDraftResult;
     private string? _followUpDraftError;
+    private int _followUpDraftRequest;
     private HashSet<MessageRole> _hiddenRoles = new();
     private ElementReference _sessionOutputContainer;
     private string? _lastAutoScrollStateKey;
@@ -796,15 +791,36 @@
         }
     }
 
-    private async Task DraftFollowUpReply()
+    // A draft to review once inference has written one; until then the dialog asks before writing it.
+    private bool IsReviewingFollowUpDraft => !string.IsNullOrWhiteSpace(_followUpDraftResult?.Text);
+
+    private void OpenFollowUpDraft()
     {
         if (DraftFollowUp == null || _isDraftingFollowUp || _isSendingFollowUp) return;
 
+        _followUpDraftResult = null;
+        _followUpDraftError = null;
+        _followUpDraft = string.Empty;
+        _showFollowUpDraft = true;
+    }
+
+    private async Task WriteFollowUpDraft()
+    {
+        if (DraftFollowUp == null || _isDraftingFollowUp) return;
+
+        var request = ++_followUpDraftRequest;
         _isDraftingFollowUp = true;
+        _followUpDraftResult = null;
         _followUpDraftError = null;
         try
         {
             var draft = await DraftFollowUp(string.IsNullOrWhiteSpace(_followUpPrompt) ? null : _followUpPrompt);
+            if (request != _followUpDraftRequest)
+            {
+                return;
+            }
+
+            _followUpDraftResult = draft;
             if (string.IsNullOrWhiteSpace(draft.Text))
             {
                 _followUpDraftError = draft.Error ?? "Inference didn't write a reply.";
@@ -812,24 +828,49 @@
             }
 
             _followUpDraft = draft.Text.Trim();
-            _followUpDraftModel = draft.ModelId;
-            _showFollowUpDraft = true;
         }
         catch (Exception ex)
         {
-            _followUpDraftError = $"Could not draft a reply: {ex.Message}";
+            if (request == _followUpDraftRequest)
+            {
+                _followUpDraftError = $"Could not draft a reply: {ex.Message}";
+            }
         }
         finally
         {
-            _isDraftingFollowUp = false;
+            if (request == _followUpDraftRequest)
+            {
+                _isDraftingFollowUp = false;
+            }
         }
     }
 
+    // Closing the dialog while inference is writing drops that reply when it arrives.
     private void CancelFollowUpDraft()
     {
+        _followUpDraftRequest++;
+        _isDraftingFollowUp = false;
         _showFollowUpDraft = false;
         _followUpDraft = string.Empty;
+        _followUpDraftResult = null;
+        _followUpDraftError = null;
     }
+
+    private string FollowUpDraftConfirmation
+        => $"{(string.IsNullOrEmpty(DraftFollowUpModel) ? "Inference" : DraftFollowUpModel)} will read the goal, how this run ended"
+            + (string.IsNullOrWhiteSpace(_followUpPrompt) ? " and the agent's last message" : ", the agent's last message and what you typed")
+            + ", then write a reply. You review it before anything is sent.";
+
+    private static string? FollowUpDraftTokens(FollowUpDraft draft)
+        => draft.PromptTokens is null && draft.CompletionTokens is null
+            ? null
+            : $"{TokenHelper.FormatTokenCount(draft.PromptTokens ?? 0)} in · {TokenHelper.FormatTokenCount(draft.CompletionTokens ?? 0)} out";
+
+    // A reported cost, or free for a self-hosted Ollama model; null when the provider reports none.
+    private static string? FollowUpDraftCost(FollowUpDraft draft)
+        => draft.CostUsd is { } cost ? TokenHelper.FormatCost(cost)
+            : draft.ProviderType == InferenceProviderType.Ollama ? "Free (self-hosted)"
+            : null;
 
     // Sends the confirmed draft through the follow-up box, which keeps it there if sending fails.
     private async Task SendFollowUpDraft()
@@ -1296,18 +1337,68 @@
     }
 }
 
-<ModalDialog IsVisible="_showFollowUpDraft" Title="Send this reply?" Icon="stars" Size="ModalDialog.ModalSize.Small"
-             OnClose="CancelFollowUpDraft">
+<ModalDialog IsVisible="_showFollowUpDraft" Title="@(IsReviewingFollowUpDraft ? "Send this reply?" : "Write a reply with inference?")"
+             Icon="stars" Size="ModalDialog.ModalSize.Small" OnClose="CancelFollowUpDraft">
     <ChildContent>
-        <p class="small fg-1 mb-3">
-            @(string.IsNullOrEmpty(_followUpDraftModel) ? "Inference" : _followUpDraftModel) wrote this reply. Edit it if needed; sending it continues the job.
-        </p>
-        <textarea id="follow-up-draft" class="form-control textarea-autogrow" rows="3" aria-label="Reply to send"
-                  @bind="_followUpDraft" @bind:event="oninput"></textarea>
+        <div class="d-flex flex-column gap-5">
+            @if (IsReviewingFollowUpDraft)
+            {
+                <p class="small fg-1 mb-0">Edit the reply if needed. Sending it continues the job.</p>
+                <textarea id="follow-up-draft" class="form-control textarea-autogrow" rows="3" aria-label="Reply to send"
+                          @bind="_followUpDraft" @bind:event="oninput"></textarea>
+            }
+            else
+            {
+                <p class="mb-0">@FollowUpDraftConfirmation</p>
+                @if (!string.IsNullOrEmpty(_followUpDraftError))
+                {
+                    <Alert Type="Alert.AlertType.Danger" Message="@_followUpDraftError" Class="mb-0" />
+                }
+            }
+            @if (_followUpDraftResult is { ModelId: not null } stats)
+            {
+                <dl id="follow-up-draft-stats" class="small mb-0 d-flex flex-column gap-1">
+                    <div class="d-flex justify-content-between gap-5">
+                        <dt class="fw-normal fg-1 flex-shrink-0">Model</dt>
+                        <dd class="mb-0 text-end text-break">@stats.ModelId on @stats.ProviderName</dd>
+                    </div>
+                    @if (FollowUpDraftTokens(stats) is { } tokens)
+                    {
+                        <div class="d-flex justify-content-between gap-5">
+                            <dt class="fw-normal fg-1 flex-shrink-0">Tokens</dt>
+                            <dd class="mb-0 text-end">@tokens</dd>
+                        </div>
+                    }
+                    @if (stats.DurationMs is { } durationMs)
+                    {
+                        <div class="d-flex justify-content-between gap-5">
+                            <dt class="fw-normal fg-1 flex-shrink-0">Time</dt>
+                            <dd class="mb-0 text-end">@TokenHelper.FormatDuration(TimeSpan.FromMilliseconds(durationMs))</dd>
+                        </div>
+                    }
+                    @if (FollowUpDraftCost(stats) is { } cost)
+                    {
+                        <div class="d-flex justify-content-between gap-5">
+                            <dt class="fw-normal fg-1 flex-shrink-0">Cost</dt>
+                            <dd class="mb-0 text-end">@cost</dd>
+                        </div>
+                    }
+                </dl>
+            }
+        </div>
     </ChildContent>
     <FooterContent>
-        <ModalFooterActions OnCancel="CancelFollowUpDraft" OnSubmit="SendFollowUpDraft" SubmitText="Send" SubmitIcon="send"
-                            SubmitDisabled="@string.IsNullOrWhiteSpace(_followUpDraft)" />
+        @if (IsReviewingFollowUpDraft)
+        {
+            <ModalFooterActions OnCancel="CancelFollowUpDraft" OnSubmit="SendFollowUpDraft" SubmitText="Send" SubmitIcon="send"
+                                SubmitDisabled="@string.IsNullOrWhiteSpace(_followUpDraft)" />
+        }
+        else
+        {
+            <ModalFooterActions OnCancel="CancelFollowUpDraft" OnSubmit="WriteFollowUpDraft"
+                                SubmitText="@(_followUpDraftError == null ? "Write reply" : "Try again")" SubmitIcon="stars"
+                                SubmitLoadingText="Writing..." Busy="@_isDraftingFollowUp" />
+        }
     </FooterContent>
 </ModalDialog>
 

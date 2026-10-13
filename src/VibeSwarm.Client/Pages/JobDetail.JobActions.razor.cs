@@ -341,23 +341,25 @@ public partial class JobDetail : ComponentBase
         }
     }
 
-    // Whether an inference model can write follow-ups; the same models answer agents' questions.
-    private bool _canDraftFollowUp;
+    // The inference model tried first for follow-ups ("qwen3 on Desktop"), or null when none can
+    // write them; the same models answer agents' questions.
+    private string? _followUpDraftModel;
 
     private async Task LoadFollowUpDraftAvailabilityAsync()
     {
         try
         {
             var providers = await InferenceProviderService.GetAllAsync();
-            _canDraftFollowUp = InferenceTaskModels.Candidates(providers, InferenceTaskModels.AgentAnswer).Count > 0;
-            if (_canDraftFollowUp && !_disposed)
+            var (provider, model) = InferenceTaskModels.Candidates(providers, InferenceTaskModels.AgentAnswer).FirstOrDefault();
+            _followUpDraftModel = provider == null ? null : $"{model.ModelId} on {provider.Name}";
+            if (_followUpDraftModel != null && !_disposed)
             {
                 await InvokeAsync(StateHasChanged);
             }
         }
         catch
         {
-            _canDraftFollowUp = false;
+            _followUpDraftModel = null;
         }
     }
 

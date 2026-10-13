@@ -232,14 +232,26 @@ public sealed class AgentQuestionAnswererTests : IDisposable
 			await dbContext.SaveChangesAsync();
 		}
 		var jobId = await SeedJobAsync(JobStatus.Failed, "dotnet test failed", "Tests fail on the new page. Should I mock the clock?");
-		var inference = new ScriptedInferenceService(_ => Reply("<think>Notes say mock it.</think>Yes, mock the clock and rerun the tests."));
+		var inference = new ScriptedInferenceService(_ => new InferenceResponse
+		{
+			Success = true,
+			Response = "<think>Notes say mock it.</think>Yes, mock the clock and rerun the tests.",
+			PromptTokens = 412,
+			CompletionTokens = 38,
+			DurationMs = 2300
+		});
 
 		var draft = await CreateAnswerer(inference).DraftFollowUpAsync(jobId, "  mock it  ");
 
 		Assert.Null(draft.Error);
 		Assert.Equal("Yes, mock the clock and rerun the tests.", draft.Text);
 		Assert.Equal("Desktop", draft.ProviderName);
+		Assert.Equal(InferenceProviderType.Ollama, draft.ProviderType);
 		Assert.Equal("qwen3", draft.ModelId);
+		Assert.Equal(412, draft.PromptTokens);
+		Assert.Equal(38, draft.CompletionTokens);
+		Assert.Equal(2300, draft.DurationMs);
+		Assert.Null(draft.CostUsd);
 		var request = Assert.Single(inference.Requests);
 		Assert.Equal(AgentQuestionAnswerer.FollowUpSystemPrompt, request.SystemPrompt);
 		Assert.Contains("Add a settings page", request.Prompt);
@@ -269,12 +281,24 @@ public sealed class AgentQuestionAnswererTests : IDisposable
 
 		var noProvider = await CreateAnswerer(new ScriptedInferenceService(_ => Reply("Deploy."))).DraftFollowUpAsync(jobId, null);
 		await SeedProviderAsync("Desktop", priority: 0, ("qwen3", "default"));
-		var declined = await CreateAnswerer(new ScriptedInferenceService(_ => Reply(AgentQuestionAnswerer.NeedsUserReply))).DraftFollowUpAsync(jobId, null);
+		var declined = await CreateAnswerer(new ScriptedInferenceService(_ => new InferenceResponse
+		{
+			Success = true,
+			Response = AgentQuestionAnswerer.NeedsUserReply,
+			CompletionTokens = 3,
+			CostUsd = 0.0004m
+		})).DraftFollowUpAsync(jobId, null);
 
 		Assert.Null(noProvider.Text);
 		Assert.Contains("No inference provider replied", noProvider.Error);
+		Assert.Null(noProvider.ModelId);
 		Assert.Null(declined.Text);
 		Assert.Contains("only you can make", declined.Error);
+		// The declined request was still spent, so its usage is reported.
+		Assert.Equal("qwen3", declined.ModelId);
+		Assert.Equal(3, declined.CompletionTokens);
+		Assert.Equal(0.0004m, declined.CostUsd);
+		Assert.NotNull(declined.DurationMs);
 	}
 
 	private static AgentQuestion CreateQuestion(
