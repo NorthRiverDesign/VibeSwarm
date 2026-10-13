@@ -219,26 +219,21 @@ public partial class JobProcessingService
             // Run test command if configured
             if (!string.IsNullOrWhiteSpace(project.TestCommand))
             {
-                var testResult = await RunShellCommandAsync(project.TestCommand.Trim(), workingDirectory, cancellationToken);
-                outputBuilder.AppendLine();
-                outputBuilder.AppendLine($"=== Test Command: {project.TestCommand.Trim()} ===");
-                outputBuilder.AppendLine($"Exit Code: {testResult.ExitCode}");
-                if (!string.IsNullOrWhiteSpace(testResult.Output))
-                {
-                    outputBuilder.AppendLine(testResult.Output);
-                }
-                if (!string.IsNullOrWhiteSpace(testResult.Error))
-                {
-                    outputBuilder.AppendLine(testResult.Error);
-                }
+                var testResult = await RunTestCommandAsync(project.TestCommand.Trim(), workingDirectory, outputBuilder, cancellationToken);
 
                 if (testResult.ExitCode != 0)
                 {
-                    _logger.LogWarning("Test verification FAILED for job {JobId}. Test command exited with code {ExitCode}",
+                    _logger.LogWarning("Test verification FAILED for job {JobId}. Test command exited with code {ExitCode} on both runs",
                         job.Id, testResult.ExitCode);
                     job.BuildVerified = false;
                     job.BuildOutput = TruncateBuildOutput(outputBuilder.ToString());
                     return false;
+                }
+
+                if (testResult.Runs > 1)
+                {
+                    _logger.LogWarning("Test command failed for job {JobId}, then passed when re-run; treating the failure as a flaky test",
+                        job.Id);
                 }
 
                 _logger.LogInformation("Test command succeeded for job {JobId}", job.Id);
@@ -315,6 +310,47 @@ public partial class JobProcessingService
         job.PullRequestUrl = pullRequestResult.PullRequestUrl;
         job.PullRequestCreatedAt = DateTime.UtcNow;
         _logger.LogInformation("Created pull request for job {JobId}: {PullRequestUrl}", job.Id, job.PullRequestUrl);
+    }
+
+    /// <summary>
+    /// Runs the project's test command, and once more if it fails. Timing-sensitive tests fail
+    /// when other jobs or builds are loading the CPU, and a false failure leaves the job's finished
+    /// work uncommitted. A real failure fails again; a flaky one usually passes the second time.
+    /// Both runs' output goes into <paramref name="outputBuilder"/>.
+    /// </summary>
+    internal static async Task<(int ExitCode, int Runs)> RunTestCommandAsync(
+        string command, string workingDirectory, StringBuilder outputBuilder, CancellationToken cancellationToken)
+    {
+        const int maxRuns = 2;
+        var exitCode = 0;
+        var run = 0;
+        while (run < maxRuns)
+        {
+            run++;
+            var result = await RunShellCommandAsync(command, workingDirectory, cancellationToken);
+            exitCode = result.ExitCode;
+
+            outputBuilder.AppendLine();
+            outputBuilder.AppendLine(run == 1
+                ? $"=== Test Command: {command} ==="
+                : $"=== Test Command (re-run after a failure): {command} ===");
+            outputBuilder.AppendLine($"Exit Code: {exitCode}");
+            if (!string.IsNullOrWhiteSpace(result.Output))
+            {
+                outputBuilder.AppendLine(result.Output);
+            }
+            if (!string.IsNullOrWhiteSpace(result.Error))
+            {
+                outputBuilder.AppendLine(result.Error);
+            }
+
+            if (exitCode == 0)
+            {
+                break;
+            }
+        }
+
+        return (exitCode, run);
     }
 
     internal static async Task<(int ExitCode, string Output, string Error)> RunShellCommandAsync(

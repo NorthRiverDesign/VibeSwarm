@@ -44,6 +44,13 @@
         <div class="flex-grow-1 min-w-0">
             <div class="fw-semibold">@BannerHeadline</div>
             <div class="small">@BannerBody</div>
+            @if (ChecksFailed && !string.IsNullOrWhiteSpace(Job.BuildOutput))
+            {
+                <details class="pt-3">
+                    <summary class="small fw-medium cursor-pointer user-select-none">Check output</summary>
+                    <pre class="mb-0 mt-3 p-3 bg-2 rounded small font-monospace white-space-pre-wrap text-break overflow-y-auto max-height-50dvh">@CheckOutputTail</pre>
+                </details>
+            }
             <div class="d-flex flex-wrap gap-3 align-items-center pt-3">
                 @if (Job.ChangedFilesCount > 0)
                 {
@@ -71,8 +78,28 @@
     [Parameter] public bool IsPushed { get; set; }
     [Parameter] public string? BranchName { get; set; }
 
+    // The run finished, but the project's build or test command failed afterwards, so VibeSwarm
+    // left the changes uncommitted instead of committing broken code.
+    private bool ChecksFailed => Job is { Status: JobStatus.Completed, BuildVerified: false }
+        && string.IsNullOrEmpty(Job.GitCommitHash);
+
+    private const int CheckOutputTailLines = 80;
+
+    // The failing build step or test summary is at the end of the output.
+    private string CheckOutputTail
+    {
+        get
+        {
+            var lines = (Job?.BuildOutput ?? string.Empty).TrimEnd().Split('\n');
+            return lines.Length <= CheckOutputTailLines
+                ? string.Join('\n', lines)
+                : string.Join('\n', lines[^CheckOutputTailLines..]);
+        }
+    }
+
     private string BannerVariant => Job?.Status switch
     {
+        JobStatus.Completed when ChecksFailed => "warning",
         JobStatus.Completed => "success",
         JobStatus.Failed => "danger",
         JobStatus.Cancelled or JobStatus.Stalled or JobStatus.Paused => "warning",
@@ -81,6 +108,7 @@
 
     private string BannerIcon => Job?.Status switch
     {
+        JobStatus.Completed when ChecksFailed => "bi-shield-exclamation",
         JobStatus.Completed => "bi-cloud-check",
         JobStatus.Failed => "bi-x-octagon",
         JobStatus.Cancelled => "bi-slash-circle",
@@ -91,6 +119,7 @@
 
     private string BannerHeadline => Job?.Status switch
     {
+        JobStatus.Completed when ChecksFailed => "Checks failed, not committed",
         JobStatus.Completed => "Job completed",
         JobStatus.Failed => "Job failed",
         JobStatus.Cancelled => "Job cancelled",
@@ -101,6 +130,7 @@
 
     private string BannerBody => Job?.Status switch
     {
+        JobStatus.Completed when ChecksFailed => "The run finished, but the project's build or tests failed afterwards, so its changes were left uncommitted. Send a follow-up to fix them, or review and commit them from the project page.",
         JobStatus.Completed when IsPushed => "Run completed successfully. Branch is updated and ready for review.",
         JobStatus.Completed when !string.IsNullOrEmpty(Job.GitCommitHash) => "Changes committed locally. Push to share.",
         JobStatus.Completed => "Run completed successfully.",
@@ -125,7 +155,9 @@
             new("Queued", Job.CreatedAt.ToLocalTime().ToString("h:mm tt"), State.Done),
             new("Running", Job.StartedAt?.ToLocalTime().ToString("h:mm tt"),
                 hasCommit || completed ? State.Done : active ? State.Current : failed ? State.Failed : State.Pending),
-            new("Committed", shortSha, hasCommit ? State.Done : completed ? State.Current : State.Pending, Mono: hasCommit),
+            ChecksFailed
+                ? new("Committed", "Checks failed", State.Failed)
+                : new("Committed", shortSha, hasCommit ? State.Done : completed ? State.Current : State.Pending, Mono: hasCommit),
             new("Pushed", IsPushed ? $"to {BranchName ?? "remote"}" : null,
                 IsPushed ? State.Done : hasCommit && completed ? State.Current : State.Pending)
         };
