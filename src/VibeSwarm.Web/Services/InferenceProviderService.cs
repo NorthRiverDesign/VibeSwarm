@@ -65,6 +65,7 @@ public class InferenceProviderService : IInferenceProviderService
 		existing.ProviderType = provider.ProviderType;
 		existing.Endpoint = provider.Endpoint;
 		existing.ApiKey = provider.ApiKey;
+		existing.ManagementApiKey = provider.ManagementApiKey;
 		existing.IsEnabled = provider.IsEnabled;
 		existing.UpdatedAt = DateTime.UtcNow;
 

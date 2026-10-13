@@ -66,6 +66,16 @@
 				</div>
 			</div>
 
+			@if (Provider.ProviderType == InferenceProviderType.Grok)
+			{
+				<div class="mb-5">
+					<label for="inference-management-key" class="form-label">Management Key</label>
+					<input type="password" id="inference-management-key" class="form-control font-monospace"
+						   @bind="Provider.ManagementApiKey" @bind:event="oninput" placeholder="(optional)" />
+					<div class="form-text">Shows how much prepaid credit is left. Create one in the xAI Console under Settings, Management Keys.</div>
+				</div>
+			}
+
 			<div class="row g-5 mb-5">
 				<div class="col-12 md:col-8">
 					<label for="inference-model" class="form-label">Default Model</label>
@@ -183,6 +193,7 @@
 					ProviderType = EditProvider.ProviderType,
 					Endpoint = EditProvider.Endpoint,
 					ApiKey = EditProvider.ApiKey,
+					ManagementApiKey = EditProvider.ManagementApiKey,
 					IsEnabled = EditProvider.IsEnabled,
 					CreatedAt = EditProvider.CreatedAt,
 					UpdatedAt = EditProvider.UpdatedAt
@@ -224,6 +235,12 @@
 
 		try
 		{
+			// Only Grok reads a balance; don't keep a key the provider type can't use.
+			if (Provider.ProviderType != InferenceProviderType.Grok)
+			{
+				Provider.ManagementApiKey = null;
+			}
+
 			InferenceProvider saved;
 			if (IsEdit)
 			{

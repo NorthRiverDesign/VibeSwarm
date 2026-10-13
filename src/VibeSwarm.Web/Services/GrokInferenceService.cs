@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -16,7 +17,9 @@ namespace VibeSwarm.Web.Services;
 public class GrokInferenceService : IInferenceService
 {
 	private const string DefaultEndpoint = "https://api.x.ai/v1";
+	private const string ManagementEndpoint = "https://management-api.x.ai";
 	private const decimal UsdTicksPerDollar = 10_000_000_000m;
+	private const decimal CentsPerDollar = 100m;
 
 	private readonly IHttpClientFactory _httpClientFactory;
 	private readonly IInferenceProviderService _providerService;
@@ -26,6 +29,9 @@ public class GrokInferenceService : IInferenceService
 		PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
 		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 	};
+
+	// The management API speaks camelCase and sends cent amounts as strings.
+	private static readonly JsonSerializerOptions ManagementJsonOptions = new(JsonSerializerDefaults.Web);
 
 	public GrokInferenceService(
 		IHttpClientFactory httpClientFactory,
@@ -183,6 +189,81 @@ public class GrokInferenceService : IInferenceService
 		return await GenerateAsync(request, ct);
 	}
 
+	public async Task<InferenceBalanceResult> GetBalanceAsync(Guid providerId, CancellationToken ct = default)
+	{
+		var provider = await _providerService.GetByIdAsync(providerId, ct);
+		if (provider == null || provider.ProviderType != InferenceProviderType.Grok)
+		{
+			return new InferenceBalanceResult { Error = "This provider has no prepaid balance." };
+		}
+
+		if (string.IsNullOrWhiteSpace(provider.ManagementApiKey))
+		{
+			return new InferenceBalanceResult { Error = "Add an xAI management key to see prepaid credit." };
+		}
+
+		var result = new InferenceBalanceResult { IsSupported = true };
+		if (string.IsNullOrWhiteSpace(provider.ApiKey))
+		{
+			result.Error = "An X.AI API key is required to find the team's balance.";
+			return result;
+		}
+
+		try
+		{
+			// The balance belongs to a team; the API key knows which one it was issued for.
+			using var client = CreateClient(TimeSpan.FromSeconds(10));
+			using var keyRequest = CreateAuthorizedGet($"{NormalizeEndpoint(provider.Endpoint)}/api-key", provider.ApiKey);
+			var keyResponse = await client.SendAsync(keyRequest, ct);
+			if (!keyResponse.IsSuccessStatusCode)
+			{
+				result.Error = $"X.AI returned {(int)keyResponse.StatusCode} ({keyResponse.ReasonPhrase}) looking up the API key's team.";
+				return result;
+			}
+
+			var keyInfo = await keyResponse.Content.ReadFromJsonAsync<ApiKeyInfo>(JsonOptions, ct);
+			if (string.IsNullOrWhiteSpace(keyInfo?.TeamId))
+			{
+				result.Error = "X.AI didn't say which team the API key belongs to.";
+				return result;
+			}
+
+			using var balanceRequest = CreateAuthorizedGet(
+				$"{ManagementEndpoint}/v1/billing/teams/{Uri.EscapeDataString(keyInfo.TeamId)}/prepaid/balance",
+				provider.ManagementApiKey);
+			var balanceResponse = await client.SendAsync(balanceRequest, ct);
+			if (!balanceResponse.IsSuccessStatusCode)
+			{
+				result.Error = balanceResponse.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+					? $"X.AI rejected the management key ({(int)balanceResponse.StatusCode})."
+					: $"X.AI returned {(int)balanceResponse.StatusCode} ({balanceResponse.ReasonPhrase}) for the prepaid balance.";
+				return result;
+			}
+
+			var balance = await balanceResponse.Content.ReadFromJsonAsync<PrepaidBalanceResponse>(ManagementJsonOptions, ct);
+			var amounts = balance?.Changes?
+				.Select(change => change.Amount?.Val)
+				.OfType<decimal>()
+				.ToList() ?? [];
+
+			// The ledger counts from the team's side: purchases and refunds are negative, spending is positive.
+			var totalCents = balance?.Total?.Val ?? amounts.Sum();
+			result.RemainingUsd = -totalCents / CentsPerDollar;
+			result.AddedUsd = -amounts.Where(amount => amount < 0).Sum() / CentsPerDollar;
+			result.SpentUsd = amounts.Where(amount => amount > 0).Sum() / CentsPerDollar;
+		}
+		catch (OperationCanceledException) when (ct.IsCancellationRequested)
+		{
+			throw;
+		}
+		catch (Exception ex)
+		{
+			result.Error = ex.Message;
+		}
+
+		return result;
+	}
+
 	private async Task<InferenceResponse> SendChatCompletionAsync(
 		string endpoint,
 		string apiKey,
@@ -288,6 +369,14 @@ public class GrokInferenceService : IInferenceService
 		}
 	}
 
+	// The API key and the management key go to different hosts, so each request carries its own.
+	private static HttpRequestMessage CreateAuthorizedGet(string url, string apiKey)
+	{
+		var request = new HttpRequestMessage(HttpMethod.Get, url);
+		request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+		return request;
+	}
+
 	private async Task<string> ResolveEndpointAsync(CancellationToken ct)
 	{
 		var providers = await _providerService.GetEnabledAsync(ct);
@@ -383,6 +472,27 @@ public class GrokInferenceService : IInferenceService
 		public int? CompletionTokens { get; set; }
 		// What xAI billed for the request, after discounts, in units of 1e-10 USD.
 		public long? CostInUsdTicks { get; set; }
+	}
+
+	private class ApiKeyInfo
+	{
+		public string? TeamId { get; set; }
+	}
+
+	private class PrepaidBalanceResponse
+	{
+		public List<PrepaidBalanceChange>? Changes { get; set; }
+		public UsdCents? Total { get; set; }
+	}
+
+	private class PrepaidBalanceChange
+	{
+		public UsdCents? Amount { get; set; }
+	}
+
+	private class UsdCents
+	{
+		public decimal? Val { get; set; }
 	}
 
 	private class ModelsListResponse

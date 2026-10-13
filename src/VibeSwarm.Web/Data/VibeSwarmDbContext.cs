@@ -528,6 +528,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.ProviderType).HasConversion<string>();
 			entity.Property(e => e.Endpoint).IsRequired().HasMaxLength(500);
 			entity.Property(e => e.ApiKey).HasMaxLength(200);
+			entity.Property(e => e.ManagementApiKey).HasMaxLength(200);
 			entity.HasIndex(e => e.Name).IsUnique();
 		});
 

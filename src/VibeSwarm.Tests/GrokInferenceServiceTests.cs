@@ -92,6 +92,102 @@ public sealed class GrokInferenceServiceTests
 		Assert.Equal(0.0037756m, response.CostUsd);
 	}
 
+	[Fact]
+	public async Task GetBalanceAsync_ReadsTeamFromApiKeyAndPrepaidBalanceWithManagementKey()
+	{
+		var provider = CreateGrokProvider(managementApiKey: "management-key");
+		var requests = new List<(string Uri, string? Key)>();
+		var handler = new StubHttpMessageHandler((request, _) =>
+		{
+			var uri = request.RequestUri!.ToString();
+			requests.Add((uri, request.Headers.Authorization?.Parameter));
+			var body = uri.EndsWith("/api-key", StringComparison.Ordinal)
+				? """{"team_id":"team-1","name":"My API Key"}"""
+				: """
+{"changes":[
+{"teamId":"team-1","changeOrigin":"PURCHASE","amount":{"val":"-2500"}},
+{"teamId":"team-1","changeOrigin":"SPEND","amount":{"val":"1266"}}
+],"total":{"val":"-1234"}}
+""";
+			return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+			{
+				Content = new StringContent(body, Encoding.UTF8, "application/json")
+			});
+		});
+		var service = new GrokInferenceService(
+			new FakeHttpClientFactory(new HttpClient(handler)),
+			new FakeInferenceProviderService([provider]));
+
+		var balance = await service.GetBalanceAsync(provider.Id);
+
+		Assert.True(balance.IsSupported);
+		Assert.Null(balance.Error);
+		Assert.Equal(12.34m, balance.RemainingUsd);
+		Assert.Equal(25m, balance.AddedUsd);
+		Assert.Equal(12.66m, balance.SpentUsd);
+		Assert.Equal(
+			[
+				("https://api.x.ai/v1/api-key", "api-key"),
+				("https://management-api.x.ai/v1/billing/teams/team-1/prepaid/balance", "management-key")
+			],
+			requests);
+	}
+
+	[Fact]
+	public async Task GetBalanceAsync_WithoutManagementKey_ReportsNoBalanceWithoutCallingXai()
+	{
+		var provider = CreateGrokProvider(managementApiKey: null);
+		var calls = 0;
+		var handler = new StubHttpMessageHandler((_, _) =>
+		{
+			calls++;
+			return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+		});
+		var service = new GrokInferenceService(
+			new FakeHttpClientFactory(new HttpClient(handler)),
+			new FakeInferenceProviderService([provider]));
+
+		var balance = await service.GetBalanceAsync(provider.Id);
+
+		Assert.False(balance.IsSupported);
+		Assert.Null(balance.RemainingUsd);
+		Assert.Contains("management key", balance.Error, StringComparison.Ordinal);
+		Assert.Equal(0, calls);
+	}
+
+	[Fact]
+	public async Task GetBalanceAsync_RejectedManagementKey_ReportsTheRejection()
+	{
+		var provider = CreateGrokProvider(managementApiKey: "wrong-key");
+		var handler = new StubHttpMessageHandler((request, _) => Task.FromResult(
+			request.RequestUri!.ToString().EndsWith("/api-key", StringComparison.Ordinal)
+				? new HttpResponseMessage(HttpStatusCode.OK)
+				{
+					Content = new StringContent("""{"team_id":"team-1"}""", Encoding.UTF8, "application/json")
+				}
+				: new HttpResponseMessage(HttpStatusCode.Forbidden)));
+		var service = new GrokInferenceService(
+			new FakeHttpClientFactory(new HttpClient(handler)),
+			new FakeInferenceProviderService([provider]));
+
+		var balance = await service.GetBalanceAsync(provider.Id);
+
+		Assert.True(balance.IsSupported);
+		Assert.Null(balance.RemainingUsd);
+		Assert.Equal("X.AI rejected the management key (403).", balance.Error);
+	}
+
+	private static InferenceProvider CreateGrokProvider(string? managementApiKey) => new()
+	{
+		Id = Guid.NewGuid(),
+		Name = "Grok",
+		ProviderType = InferenceProviderType.Grok,
+		Endpoint = "https://api.x.ai/v1/",
+		ApiKey = "api-key",
+		ManagementApiKey = managementApiKey,
+		IsEnabled = true
+	};
+
 	private sealed class FakeHttpClientFactory(HttpClient httpClient) : IHttpClientFactory
 	{
 		public HttpClient CreateClient(string name) => httpClient;

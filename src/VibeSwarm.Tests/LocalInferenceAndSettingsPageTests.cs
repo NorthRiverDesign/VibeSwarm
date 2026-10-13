@@ -424,10 +424,128 @@ public void LocalInferencePage_MoveUpMakesTheProviderTheDefault()
 	});
 }
 
-private static void AddInferenceComponentServices(BunitContext context, IInferenceProviderService providerService)
+[Fact]
+public void LocalInferencePage_ShowsPrepaidCreditLeftForGrokWithManagementKey()
+{
+	var grok = new InferenceProvider
+	{
+		Id = Guid.NewGuid(),
+		Name = "Grok (X.AI)",
+		ProviderType = InferenceProviderType.Grok,
+		Endpoint = "https://api.x.ai/v1",
+		ApiKey = "xai-key",
+		ManagementApiKey = "management-key",
+		IsEnabled = true
+	};
+	var inferenceService = new FakeInferenceService
+	{
+		Balance = new InferenceBalanceResult { IsSupported = true, RemainingUsd = 12.34m, AddedUsd = 25m, SpentUsd = 12.66m }
+	};
+
+	using var context = new BunitContext();
+	AddInferenceComponentServices(context, new FakeInferenceProviderService([grok]), inferenceService);
+
+	var cut = context.Render<LocalInference>();
+
+	cut.WaitForAssertion(() =>
+	{
+		Assert.Contains("$12.34 left", cut.Markup);
+		Assert.Contains("$12.66 of $25.00 added", cut.Markup);
+	});
+	Assert.Equal(1, inferenceService.BalanceRequests);
+
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Check credit", StringComparison.Ordinal))
+		.Click();
+
+	cut.WaitForAssertion(() => Assert.Equal(2, inferenceService.BalanceRequests));
+}
+
+[Fact]
+public void InferenceProvidersSection_FlagsLowCreditAndAsksForAManagementKey()
+{
+	var lowGrok = new InferenceProvider
+	{
+		Id = Guid.NewGuid(),
+		Name = "Grok low",
+		ProviderType = InferenceProviderType.Grok,
+		Endpoint = "https://api.x.ai/v1",
+		ManagementApiKey = "management-key",
+		IsEnabled = true
+	};
+	var keylessGrok = new InferenceProvider
+	{
+		Id = Guid.NewGuid(),
+		Name = "Grok keyless",
+		ProviderType = InferenceProviderType.Grok,
+		Endpoint = "https://api.x.ai/v1",
+		IsEnabled = true
+	};
+
+	using var context = new BunitContext();
+	AddInferenceComponentServices(context, new FakeInferenceProviderService([lowGrok, keylessGrok]));
+
+	var cut = context.Render<InferenceProvidersSection>(parameters => parameters
+		.Add(component => component.Providers, [lowGrok, keylessGrok])
+		.Add(component => component.InitiallyOpenProviderId, keylessGrok.Id)
+		.Add(component => component.HealthStatus, new Dictionary<Guid, bool> { [lowGrok.Id] = true })
+		.Add(component => component.HealthChecked, [lowGrok.Id])
+		.Add(component => component.Balances, new Dictionary<Guid, InferenceBalanceResult>
+		{
+			[lowGrok.Id] = new() { IsSupported = true, RemainingUsd = 0.42m, AddedUsd = 10m, SpentUsd = 9.58m }
+		}));
+
+	Assert.Contains("Only $0.42 of prepaid credit left", cut.Markup);
+	Assert.Contains("$0.42 left", cut.Markup);
+	Assert.Contains("Needs a management key", cut.Markup);
+	Assert.DoesNotContain("Check credit", cut.Markup);
+}
+
+[Fact]
+public void InferenceProvidersSection_ShowsWhyCreditCouldNotBeChecked()
+{
+	var grok = new InferenceProvider
+	{
+		Id = Guid.NewGuid(),
+		Name = "Grok (X.AI)",
+		ProviderType = InferenceProviderType.Grok,
+		Endpoint = "https://api.x.ai/v1",
+		ManagementApiKey = "wrong-key",
+		IsEnabled = true
+	};
+
+	using var context = new BunitContext();
+	AddInferenceComponentServices(context, new FakeInferenceProviderService([grok]));
+
+	var cut = context.Render<InferenceProvidersSection>(parameters => parameters
+		.Add(component => component.Providers, [grok])
+		.Add(component => component.InitiallyOpenProviderId, grok.Id)
+		.Add(component => component.Balances, new Dictionary<Guid, InferenceBalanceResult>
+		{
+			[grok.Id] = new() { IsSupported = true, Error = "X.AI rejected the management key (403)." }
+		}));
+
+	Assert.Contains("Couldn't check", cut.Markup);
+	Assert.Contains("X.AI rejected the management key (403).", cut.Markup);
+	Assert.Contains("Check credit", cut.Markup);
+}
+
+[Theory]
+[InlineData(5, 10, null)]
+[InlineData(0, 0, null)]
+[InlineData(0.42, 10, "Only $0.42 of prepaid credit left")]
+[InlineData(0, 10, "Out of prepaid credit")]
+public void InferenceProvidersSection_LowCreditLine_OnlyForTeamsThatBuyCredit(double remaining, double added, string? expected)
+{
+	var balance = new InferenceBalanceResult { IsSupported = true, RemainingUsd = (decimal)remaining, AddedUsd = (decimal)added };
+
+	Assert.Equal(expected, InferenceProvidersSection.GetLowCreditLine(balance));
+}
+
+private static void AddInferenceComponentServices(BunitContext context, IInferenceProviderService providerService, FakeInferenceService? inferenceService = null)
 {
 	context.Services.AddSingleton(providerService);
-	context.Services.AddSingleton<IInferenceService>(new FakeInferenceService());
+	context.Services.AddSingleton<IInferenceService>(inferenceService ?? new FakeInferenceService());
 	context.Services.AddSingleton<NotificationService>();
 	context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 }
@@ -596,6 +714,13 @@ private sealed class FakeInferenceService : IInferenceService
 {
 public InferenceRequest? LastRequest { get; private set; }
 public InferenceResponse GenerateResponse { get; set; } = new() { Success = true, Response = "OK" };
+public InferenceBalanceResult Balance { get; set; } = new();
+public int BalanceRequests { get; private set; }
+public Task<InferenceBalanceResult> GetBalanceAsync(Guid providerId, CancellationToken ct = default)
+{
+	BalanceRequests++;
+	return Task.FromResult(Balance);
+}
 public Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default) => Task.FromResult(new InferenceHealthResult());
 public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => Task.FromResult(new InferenceHealthResult());
 public Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => Task.FromResult(new List<DiscoveredModel>());

@@ -88,3 +88,27 @@ public class InferenceResponse
 	/// <summary>Why the model stopped, as the provider reports it ("stop", "length", ...).</summary>
 	public string? FinishReason { get; set; }
 }
+
+/// <summary>
+/// What is left of a provider's prepaid credit. Local providers have no balance, so they report
+/// <see cref="IsSupported"/> false.
+/// </summary>
+public class InferenceBalanceResult
+{
+	/// <summary>Whether this provider can report a balance at all, as configured.</summary>
+	public bool IsSupported { get; set; }
+
+	/// <summary>Credit left to spend, in USD. Null when the lookup failed.</summary>
+	public decimal? RemainingUsd { get; set; }
+
+	/// <summary>Credit bought, refunded or granted over the account's life, in USD.</summary>
+	public decimal? AddedUsd { get; set; }
+
+	/// <summary>Credit spent over the account's life, in USD.</summary>
+	public decimal? SpentUsd { get; set; }
+
+	/// <summary>Why there is no balance: not set up, or the lookup failed.</summary>
+	public string? Error { get; set; }
+
+	public DateTime CheckedAt { get; set; } = DateTime.UtcNow;
+}

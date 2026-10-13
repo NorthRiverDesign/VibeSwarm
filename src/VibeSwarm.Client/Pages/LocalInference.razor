@@ -22,7 +22,10 @@
 						   OnMoveProvider="MoveProvider"
 						   IsReordering="_isReordering"
 						   RefreshingModelsProviderId="_refreshingModelsProviderId"
-						   ModelRefreshVersions="_modelRefreshVersions" />
+						   ModelRefreshVersions="_modelRefreshVersions"
+						   Balances="_balances"
+						   CheckingBalanceProviderIds="_checkingBalanceProviderIds"
+						   OnCheckBalance="CheckBalance" />
 
 <InferenceProviderModal @bind-IsVisible="_showModal" EditProvider="@_editingProvider"
 						OnSaved="HandleProviderSaved" OnCancelled="HandleModalCancelled" OnClosed="HandleModalClosed" />
@@ -39,6 +42,8 @@
 	private Dictionary<Guid, bool> _healthStatus = new();
 	private HashSet<Guid> _healthChecked = new();
 	private Dictionary<Guid, int> _modelRefreshVersions = new();
+	private Dictionary<Guid, InferenceBalanceResult> _balances = new();
+	private HashSet<Guid> _checkingBalanceProviderIds = new();
 	private bool _isLoading = true;
 	private Guid? _initiallyOpenProviderId;
 	private Guid? _refreshingModelsProviderId;
@@ -77,6 +82,10 @@
 			foreach (var provider in _providers)
 			{
 				_ = CheckHealth(provider);
+				if (InferenceProvidersSection.CanCheckCredit(provider))
+				{
+					_ = CheckBalance(provider);
+				}
 			}
 		}
 		catch (Exception ex)
@@ -122,6 +131,25 @@
 		}
 	}
 
+	private async Task CheckBalance(InferenceProvider provider)
+	{
+		if (!_checkingBalanceProviderIds.Add(provider.Id)) return;
+
+		try
+		{
+			_balances[provider.Id] = await InferenceService.GetBalanceAsync(provider.Id);
+		}
+		catch (Exception ex)
+		{
+			_balances[provider.Id] = new InferenceBalanceResult { IsSupported = true, Error = ex.Message };
+		}
+		finally
+		{
+			_checkingBalanceProviderIds.Remove(provider.Id);
+			await InvokeAsync(StateHasChanged);
+		}
+	}
+
 	// Modal handlers
 
 	private void ShowAddModal()
@@ -142,6 +170,7 @@
 		_editingProvider = null;
 		_healthStatus.Clear();
 		_healthChecked.Clear();
+		_balances.Clear();
 		await LoadProviders(newProviderId);
 	}
 
@@ -183,6 +212,7 @@
 			_providers.Remove(_providerToDelete);
 			_healthStatus.Remove(_providerToDelete.Id);
 			_healthChecked.Remove(_providerToDelete.Id);
+			_balances.Remove(_providerToDelete.Id);
 			_modelRefreshVersions.Remove(_providerToDelete.Id);
 			SelectInitiallyOpenProvider();
 

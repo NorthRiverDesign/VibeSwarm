@@ -33,4 +33,14 @@ public interface IInferenceService
 	/// Resolves provider config and model assignment automatically.
 	/// </summary>
 	Task<InferenceResponse> GenerateForTaskAsync(string taskType, string prompt, string? systemPrompt = null, CancellationToken ct = default);
+
+	/// <summary>
+	/// Reads how much prepaid credit a stored provider has left. Providers without a balance
+	/// (local models) report it as not supported.
+	/// </summary>
+	Task<InferenceBalanceResult> GetBalanceAsync(Guid providerId, CancellationToken ct = default)
+		=> Task.FromResult(new InferenceBalanceResult
+		{
+			Error = "This provider has no prepaid balance."
+		});
 }

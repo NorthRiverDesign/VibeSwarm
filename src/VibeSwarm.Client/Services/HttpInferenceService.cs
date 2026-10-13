@@ -96,4 +96,19 @@ public class HttpInferenceService : IInferenceService
 
 		return await GenerateAsync(request, ct);
 	}
+
+	public async Task<InferenceBalanceResult> GetBalanceAsync(Guid providerId, CancellationToken ct = default)
+	{
+		try
+		{
+			return await _http.GetJsonAsync(
+				$"/api/inference/providers/{providerId}/balance",
+				new InferenceBalanceResult { Error = "Empty response from server." },
+				ct);
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			return new InferenceBalanceResult { IsSupported = true, Error = ex.Message };
+		}
+	}
 }
