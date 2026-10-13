@@ -298,6 +298,31 @@ public class ProjectService : IProjectService
 		return existing;
 	}
 
+	public async Task MoveToFolderAsync(Guid projectId, Guid? folderId, CancellationToken cancellationToken = default)
+	{
+		var project = await _dbContext.Projects
+			.FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken)
+			?? throw new InvalidOperationException($"Project with ID {projectId} not found.");
+
+		// Unlike a full project save, an explicit move into a folder deleted meanwhile fails,
+		// so the user isn't told the project moved when it didn't.
+		var targetFolderId = folderId == Guid.Empty ? null : folderId;
+		if (targetFolderId.HasValue &&
+			!await _dbContext.ProjectFolders.AnyAsync(folder => folder.Id == targetFolderId.Value, cancellationToken))
+		{
+			throw new InvalidOperationException("That folder was not found. It may have been deleted.");
+		}
+
+		if (project.FolderId == targetFolderId)
+		{
+			return;
+		}
+
+		project.FolderId = targetFolderId;
+		project.UpdatedAt = DateTime.UtcNow;
+		await _dbContext.SaveChangesAsync(cancellationToken);
+	}
+
 	public async Task DeleteFolderAsync(Guid id, CancellationToken cancellationToken = default)
 	{
 		var folder = await _dbContext.ProjectFolders

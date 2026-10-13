@@ -82,6 +82,8 @@
 						<Actions>
 							@if (group.Folder is { } folder)
 							{
+								<button type="button" class="btn-sm btn-link text-decoration-none px-0"
+										@onclick="() => ShowAddToFolderModal(folder)">Add</button>
 								<a href="@($"/projects/folders/{folder.Id}")" class="btn-sm btn-link text-decoration-none px-0">Open</a>
 								<button type="button" class="btn-sm btn-link text-decoration-none px-0"
 										@onclick="() => ShowRenameFolderModal(folder)">Rename</button>
@@ -100,7 +102,7 @@
 					}
 					@if (group.Projects.Count == 0)
 					{
-						<div class="list-group-item small fg-1 py-5">No projects yet. Choose this folder in a project's settings.</div>
+						<div class="list-group-item small fg-1 py-5">No projects yet. Use Add to move one in.</div>
 					}
 				</div>
 			</section>
@@ -109,6 +111,10 @@
 </div>
 
 <ProjectFolderModal @bind-IsVisible="_showFolderModal" Folder="@_folderBeingRenamed" OnSaved="HandleFolderSaved" />
+
+<AddProjectToFolderModal @bind-IsVisible="_showAddToFolderModal" Folder="@_folderAddingTo"
+						 Projects="@ProjectsWithInfo.Select(info => info.Project).ToList()" Folders="@Folders"
+						 OnMoved="HandleProjectMoved" />
 
 <ConfirmationModal @bind-IsVisible="_showDeleteFolderModal" Title="Delete folder"
 				   Message="@($"Delete the folder \"{_folderBeingDeleted?.Name}\"?")"
@@ -126,6 +132,8 @@
 	private List<ProjectFolder> Folders { get; set; } = new();
 	private bool _showFolderModal;
 	private ProjectFolder? _folderBeingRenamed;
+	private bool _showAddToFolderModal;
+	private ProjectFolder? _folderAddingTo;
 	private bool _showDeleteFolderModal;
 	private ProjectFolder? _folderBeingDeleted;
 	private bool _isDeletingFolder;
@@ -286,6 +294,17 @@
 	private async Task HandleFolderSaved(ProjectFolder folder)
 	{
 		await LoadFolders();
+	}
+
+	private void ShowAddToFolderModal(ProjectFolder folder)
+	{
+		_folderAddingTo = folder;
+		_showAddToFolderModal = true;
+	}
+
+	private async Task HandleProjectMoved(Project project)
+	{
+		await LoadProjects();
 	}
 
 	private void ShowDeleteFolderModal(ProjectFolder folder)

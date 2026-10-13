@@ -63,6 +63,7 @@ internal abstract class FakeProjectServiceBase : IProjectService
 	public virtual Task<ProjectFolder> CreateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<ProjectFolder> UpdateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task DeleteFolderAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task MoveToFolderAsync(Guid projectId, Guid? folderId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 }
 
 internal abstract class FakeInferenceProviderServiceBase : IInferenceProviderService

@@ -542,6 +542,7 @@ public sealed class DashboardPageTests
 		public Task<ProjectFolder> CreateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<ProjectFolder> UpdateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteFolderAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task MoveToFolderAsync(Guid projectId, Guid? folderId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
 	private sealed class FakeVersionControlService : FakeVersionControlServiceBase

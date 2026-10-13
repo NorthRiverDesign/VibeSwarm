@@ -151,6 +151,14 @@ public class ProjectsController : ControllerBase
             return Ok();
         }, "These projects were linked by another change at the same time. Reload and try again.");
 
+    [HttpPut("{id:guid}/folder")]
+    public Task<IActionResult> MoveToFolder(Guid id, [FromBody] ProjectFolderMoveRequest request, CancellationToken ct)
+        => RunFolderOrLinkActionAsync(async () =>
+        {
+            await _projectService.MoveToFolderAsync(id, request?.FolderId, ct);
+            return Ok();
+        }, "The project could not be moved. Reload and try again.");
+
     [HttpGet("folders")]
     public async Task<IActionResult> GetFolders(CancellationToken ct) => Ok(await _projectService.GetFoldersAsync(ct));
 

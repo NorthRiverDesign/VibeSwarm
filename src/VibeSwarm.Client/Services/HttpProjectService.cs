@@ -85,6 +85,12 @@ public class HttpProjectService : IProjectService
 		return await response.ReadJsonAsync(folder, ct);
 	}
 
+	public async Task MoveToFolderAsync(Guid projectId, Guid? folderId, CancellationToken ct = default)
+	{
+		var response = await _http.PutAsJsonAsync($"/api/projects/{projectId}/folder", new ProjectFolderMoveRequest { FolderId = folderId }, ct);
+		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct, "Project not found.");
+	}
+
 	public async Task DeleteFolderAsync(Guid id, CancellationToken ct = default)
 	{
 		var response = await _http.DeleteAsync($"/api/projects/folders/{id}", ct);

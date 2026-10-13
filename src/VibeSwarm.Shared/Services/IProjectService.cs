@@ -130,6 +130,12 @@ public interface IProjectService
 	Task<ProjectFolder> UpdateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Move a project into a folder, or out of every folder when <paramref name="folderId"/> is null.
+	/// Only the project's folder changes.
+	/// </summary>
+	Task MoveToFolderAsync(Guid projectId, Guid? folderId, CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Delete a folder. Its projects stay, outside any folder.
 	/// </summary>
 	Task DeleteFolderAsync(Guid id, CancellationToken cancellationToken = default);

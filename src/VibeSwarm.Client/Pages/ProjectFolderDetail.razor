@@ -20,7 +20,10 @@ else
 	<Breadcrumb Items="@(new List<Breadcrumb.BreadcrumbItem> { new("Projects", "/projects", "folder"), new(_folder.Name) })" />
 
 	<div class="d-flex flex-column gap-5">
-		<h1 class="mb-0 text-truncate">@_folder.Name</h1>
+		<div class="d-flex align-items-center gap-3">
+			<h1 class="mb-0 me-auto min-w-0 text-truncate">@_folder.Name</h1>
+			<TitleAction Icon="plus-lg" Label="Add a project" Primary="true" OnClick="() => _showAddModal = true" />
+		</div>
 
 		<ul class="nav project-detail-tabs gap-1 small flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain" role="tablist">
 			<li class="nav-item">
@@ -49,11 +52,14 @@ else
 				}
 				@if (_projects.Count == 0)
 				{
-					<div class="list-group-item small fg-1 py-5">No projects yet. Choose this folder in a project's settings.</div>
+					<div class="list-group-item small fg-1 py-5">No projects yet. Use + to move one in.</div>
 				}
 			</div>
 		}
 	</div>
+
+	<AddProjectToFolderModal @bind-IsVisible="_showAddModal" Folder="@_folder" Projects="@_allProjects" Folders="@_folders"
+							 OnMoved="HandleProjectMoved" />
 }
 
 @code {
@@ -68,7 +74,10 @@ else
 	public string? Tab { get; set; }
 
 	private ProjectFolder? _folder;
+	private List<ProjectFolder> _folders = new();
 	private List<ProjectWithStats> _projects = new();
+	private List<Project> _allProjects = new();
+	private bool _showAddModal;
 	private List<JobSummary> _activeJobs = new();
 	private bool _isLoading = true;
 	private string _activeTab = ProjectsTab;
@@ -86,13 +95,11 @@ else
 		_isLoading = true;
 		try
 		{
-			_folder = (await ProjectService.GetFoldersAsync()).FirstOrDefault(folder => folder.Id == FolderId);
+			_folders = (await ProjectService.GetFoldersAsync()).ToList();
+			_folder = _folders.FirstOrDefault(folder => folder.Id == FolderId);
 			if (_folder != null)
 			{
-				_projects = (await ProjectService.GetAllWithStatsAsync())
-					.Where(info => info.Project.FolderId == FolderId)
-					.OrderBy(info => info.Project.Name, StringComparer.OrdinalIgnoreCase)
-					.ToList();
+				await LoadProjectsAsync();
 				await LoadActiveJobsAsync();
 			}
 		}
@@ -103,6 +110,28 @@ else
 		finally
 		{
 			_isLoading = false;
+		}
+	}
+
+	private async Task LoadProjectsAsync()
+	{
+		var all = (await ProjectService.GetAllWithStatsAsync()).ToList();
+		_allProjects = all.Select(info => info.Project).ToList();
+		_projects = all
+			.Where(info => info.Project.FolderId == FolderId)
+			.OrderBy(info => info.Project.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+	}
+
+	private async Task HandleProjectMoved(Project project)
+	{
+		try
+		{
+			await LoadProjectsAsync();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to reload the folder: {ex.Message}");
 		}
 	}
 

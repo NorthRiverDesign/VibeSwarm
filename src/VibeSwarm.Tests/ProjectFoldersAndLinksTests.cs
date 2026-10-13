@@ -129,6 +129,50 @@ public sealed class ProjectFoldersAndLinksTests : IDisposable
 	}
 
 	[Fact]
+	public async Task MoveToFolderAsync_MovesIntoAFolder_BetweenFolders_AndOutOfEveryFolder()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = CreateProjectService(dbContext);
+		var shop = await service.CreateFolderAsync(new ProjectFolder { Name = "Shop" });
+		var tools = await service.CreateFolderAsync(new ProjectFolder { Name = "Tools" });
+		var api = await CreateProjectAsync(service, "Api");
+		var web = await CreateProjectAsync(service, "Web");
+		await service.SetLinkedProjectsAsync(api.Id, [web.Id]);
+
+		await service.MoveToFolderAsync(api.Id, shop.Id);
+		Assert.Equal(shop.Id, (await service.GetByIdAsync(api.Id))!.FolderId);
+
+		await service.MoveToFolderAsync(api.Id, tools.Id);
+		Assert.Equal(tools.Id, (await service.GetByIdAsync(api.Id))!.FolderId);
+
+		await service.MoveToFolderAsync(api.Id, null);
+		var moved = await service.GetByIdAsync(api.Id);
+		Assert.Null(moved!.FolderId);
+		Assert.Equal("Api", moved.Name);
+		Assert.Equal([web.Id], await GetLinkedIdsAsync(service, api.Id));
+		Assert.Null((await service.GetByIdAsync(web.Id))!.FolderId);
+	}
+
+	[Fact]
+	public async Task MoveToFolderAsync_RejectsAMissingFolderOrProject_WithoutMovingAnything()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = CreateProjectService(dbContext);
+		var shop = await service.CreateFolderAsync(new ProjectFolder { Name = "Shop" });
+		var api = await CreateProjectAsync(service, "Api", shop.Id);
+
+		var folderError = await Assert.ThrowsAsync<InvalidOperationException>(
+			() => service.MoveToFolderAsync(api.Id, Guid.NewGuid()));
+		var projectError = await Assert.ThrowsAsync<InvalidOperationException>(
+			() => service.MoveToFolderAsync(Guid.NewGuid(), shop.Id));
+
+		Assert.Contains("not found", folderError.Message);
+		Assert.Contains("not found", projectError.Message);
+		var reloaded = await dbContext.Projects.AsNoTracking().SingleAsync(p => p.Id == api.Id);
+		Assert.Equal(shop.Id, reloaded.FolderId);
+	}
+
+	[Fact]
 	public async Task UpdateAsync_DropsAFolderThatNoLongerExists()
 	{
 		await using var dbContext = CreateDbContext();

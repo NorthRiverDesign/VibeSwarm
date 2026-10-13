@@ -1,0 +1,162 @@
+@inject IProjectService ProjectService
+@inject NotificationService NotificationService
+
+@* Picks a project to move into a folder. Projects outside any folder come first; one in another
+   folder moves out of it, since a project sits in one folder at a time. *@
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged"
+			 Title="@($"Add to {Folder?.Name}")" Icon="folder-plus">
+	<ChildContent>
+		<div class="d-flex flex-column gap-5">
+			@if (Candidates.Count == 0)
+			{
+				<p class="small fg-1 mb-0">Every project is already in this folder.</p>
+			}
+			else
+			{
+				<p class="small fg-1 mb-0">Choose a project to move into this folder. A project in another folder moves out of it.</p>
+				<div class="position-relative" role="search">
+					<i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-5 fg-2 pe-none"></i>
+					<input id="add-to-folder-search" type="search" class="form-control rounded-pill bg-2 border-0 ps-12"
+						   placeholder="Search projects" aria-label="Search projects" autocomplete="off"
+						   @bind="_searchQuery" @bind:event="oninput" />
+				</div>
+				@if (!string.IsNullOrEmpty(_errorMessage))
+				{
+					<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mb-0" />
+				}
+				<div class="list-group rounded-9">
+					@foreach (var project in FilteredCandidates)
+					{
+						<button type="button" @key="project.Id" class="list-group-item list-group-item-action d-flex align-items-center gap-5"
+								disabled="@_movingProjectId.HasValue" @onclick="() => MoveAsync(project)">
+							<ProjectMark Name="@project.Name" CssClass="@(project.IsActive ? null : "opacity-50")" />
+							<span class="flex-grow-1 min-w-0 text-start">
+								<span class="d-block fw-medium text-truncate">@project.Name</span>
+								<span class="d-block small fg-1 text-truncate">@DescribeProject(project)</span>
+							</span>
+							@if (_movingProjectId == project.Id)
+							{
+								<span class="spinner-border spinner-sm fg-primary flex-shrink-0" role="status" aria-label="Moving"></span>
+							}
+							else
+							{
+								<i class="bi bi-plus-lg fg-2 flex-shrink-0"></i>
+							}
+						</button>
+					}
+					@if (FilteredCandidates.Count == 0)
+					{
+						<div class="list-group-item small fg-1 py-5">No projects match your search.</div>
+					}
+				</div>
+			}
+		</div>
+	</ChildContent>
+</ModalDialog>
+
+@code {
+	[Parameter] public bool IsVisible { get; set; }
+	[Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	/// <summary>The folder projects are added to.</summary>
+	[Parameter] public ProjectFolder? Folder { get; set; }
+
+	/// <summary>Every project; those already in <see cref="Folder"/> are left out.</summary>
+	[Parameter] public IReadOnlyList<Project> Projects { get; set; } = [];
+
+	/// <summary>Every folder, to say which one a project is in now.</summary>
+	[Parameter] public IReadOnlyList<ProjectFolder> Folders { get; set; } = [];
+
+	/// <summary>Raised after a project moves into the folder, before the dialog closes.</summary>
+	[Parameter] public EventCallback<Project> OnMoved { get; set; }
+
+	private string _searchQuery = string.Empty;
+	private string? _errorMessage;
+	private Guid? _movingProjectId;
+	private bool _wasVisible;
+
+	private List<Project> Candidates => Projects
+		.Where(project => Folder != null && project.FolderId != Folder.Id)
+		.OrderBy(project => GetFolderName(project) != null)
+		.ThenBy(project => project.Name, StringComparer.OrdinalIgnoreCase)
+		.ToList();
+
+	private List<Project> FilteredCandidates
+	{
+		get
+		{
+			var term = _searchQuery.Trim();
+			return term.Length == 0
+				? Candidates
+				: Candidates.Where(project =>
+					project.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+					(project.GitHubRepository?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false) ||
+					(project.WorkingPath?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false))
+				.ToList();
+		}
+	}
+
+	protected override void OnParametersSet()
+	{
+		if (IsVisible && !_wasVisible)
+		{
+			_searchQuery = string.Empty;
+			_errorMessage = null;
+			_movingProjectId = null;
+		}
+
+		_wasVisible = IsVisible;
+	}
+
+	/// <summary>A folder that no longer exists counts as no folder, as on the Projects list.</summary>
+	private string? GetFolderName(Project project)
+		=> Folders.FirstOrDefault(folder => folder.Id == project.FolderId)?.Name;
+
+	private string DescribeProject(Project project)
+	{
+		var location = GetFolderName(project) is { } folderName ? $"In {folderName}" : "No folder";
+		return project.IsActive ? location : $"{location} · Inactive";
+	}
+
+	private async Task MoveAsync(Project project)
+	{
+		if (Folder == null || _movingProjectId.HasValue)
+		{
+			return;
+		}
+
+		_movingProjectId = project.Id;
+		_errorMessage = null;
+		try
+		{
+			await ProjectService.MoveToFolderAsync(project.Id, Folder.Id);
+			NotificationService.ShowSuccess($"Moved {project.Name} to {Folder.Name}.");
+			await OnMoved.InvokeAsync(project);
+			await CloseAsync();
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = ex.Message;
+		}
+		finally
+		{
+			_movingProjectId = null;
+		}
+	}
+
+	private async Task HandleVisibilityChanged(bool visible)
+	{
+		if (!visible)
+		{
+			await CloseAsync();
+		}
+	}
+
+	private async Task CloseAsync()
+	{
+		IsVisible = false;
+		_wasVisible = false;
+		await IsVisibleChanged.InvokeAsync(false);
+	}
+}
