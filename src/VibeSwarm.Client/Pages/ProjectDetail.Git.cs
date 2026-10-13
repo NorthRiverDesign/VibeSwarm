@@ -41,18 +41,22 @@ public partial class ProjectDetail
         }
 
         _isLoadingGitInfo = true;
+        var workingPath = Project.WorkingPath;
 
         try
         {
-            IsGitRepository = await VersionControlService.IsGitRepositoryAsync(Project.WorkingPath);
+            IsGitRepository = await VersionControlService.IsGitRepositoryAsync(workingPath);
 
             if (IsGitRepository)
             {
-                CurrentBranch = await VersionControlService.GetCurrentBranchAsync(Project.WorkingPath);
-                CurrentCommitHash = await VersionControlService.GetCurrentCommitHashAsync(Project.WorkingPath);
+                // Independent reads: one round trip instead of four in a row.
+                var branchTask = VersionControlService.GetCurrentBranchAsync(workingPath);
+                var commitHashTask = VersionControlService.GetCurrentCommitHashAsync(workingPath);
+                await Task.WhenAll(branchTask, commitHashTask, LoadBranches(), RefreshUncommittedChangesStatus());
+
+                CurrentBranch = branchTask.Result;
+                CurrentCommitHash = commitHashTask.Result;
                 NewJob.Branch = CurrentBranch;
-                await LoadBranches();
-                await RefreshUncommittedChangesStatus();
             }
             else
             {
@@ -68,6 +72,38 @@ public partial class ProjectDetail
         {
             _isLoadingGitInfo = false;
         }
+    }
+
+    // Asking origin is slow next to the local reads, so it runs after them and renders on its own.
+    private async Task LoadRemoteSyncStatusAsync()
+    {
+        var version = ++_remoteSyncStatusVersion;
+        var workingPath = Project?.WorkingPath;
+        GitRemoteSyncStatus? status = null;
+
+        if (IsGitRepository && !string.IsNullOrEmpty(workingPath))
+        {
+            try
+            {
+                status = await VersionControlService.GetRemoteSyncStatusAsync(workingPath);
+            }
+            catch
+            {
+            }
+        }
+
+        // A newer check (after a sync or branch switch) owns the result.
+        if (_disposed || version != _remoteSyncStatusVersion)
+            return;
+
+        _remoteSyncStatus = status;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void RefreshRemoteSyncStatus()
+    {
+        _remoteSyncStatus = null;
+        _ = LoadRemoteSyncStatusAsync();
     }
 
     private async Task RefreshUncommittedChangesStatus()
@@ -120,6 +156,7 @@ public partial class ProjectDetail
                 await LoadBranches();
                 CurrentBranch = await VersionControlService.GetCurrentBranchAsync(Project.WorkingPath);
                 CurrentCommitHash = await VersionControlService.GetCurrentCommitHashAsync(Project.WorkingPath);
+                RefreshRemoteSyncStatus();
             }
         }
         catch (Exception ex)
@@ -526,6 +563,7 @@ public partial class ProjectDetail
                 CurrentCommitHash = result.CommitHash;
                 await LoadBranches();
                 await RefreshUncommittedChangesStatus();
+                RefreshRemoteSyncStatus();
                 CloseBranchSwitchModal();
             }
             else
@@ -562,6 +600,7 @@ public partial class ProjectDetail
             {
                 CurrentCommitHash = result.CommitHash;
                 await RefreshUncommittedChangesStatus();
+                RefreshRemoteSyncStatus();
                 await PopulateGitHubRepositoryIfMissing();
                 NotificationService.ShowProjectSuccess(
                     Project.Name,
@@ -635,6 +674,7 @@ public partial class ProjectDetail
                 CurrentBranch = branchName.Trim();
                 CurrentCommitHash = result.CommitHash;
                 await LoadBranches();
+                RefreshRemoteSyncStatus();
                 _showCreateBranchModal = false;
             }
             else

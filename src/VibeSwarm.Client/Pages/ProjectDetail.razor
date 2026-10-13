@@ -31,7 +31,7 @@ else
                                 IsLoadingGitInfo="@_isLoadingGitInfo" Branches="@Branches" CurrentBranch="@CurrentBranch"
                                 CurrentCommitHash="@CurrentCommitHash" IsGitOperationInProgress="@IsGitOperationInProgress"
                                 GitProgressMessage="@GitProgressMessage" HasUncommittedChanges="@_hasUncommittedChangesHeader"
-                                UncommittedFilesCount="@_uncommittedFilesCount"
+                                UncommittedFilesCount="@_uncommittedFilesCount" RemoteSyncStatus="@_remoteSyncStatus"
                                 OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
                                 OnRefresh="RefreshBranches" OnBranchSelected="RequestBranchSwitch"
                                 OnUncommittedChangesClick="ShowUncommittedChangesModal"
@@ -335,6 +335,8 @@ else
     private string? CurrentCommitHash { get; set; }
     private bool IsGitOperationInProgress { get; set; }
     private string? GitProgressMessage { get; set; }
+    private GitRemoteSyncStatus? _remoteSyncStatus;
+    private int _remoteSyncStatusVersion;
 
     // Create branch modal state
     private bool _showCreateBranchModal { get; set; }

@@ -22,7 +22,6 @@ public partial class ProjectDetail
 	{
 		await LoadData();
 
-		_ = LoadGitInfoSafe();
 		_ = InitializeSignalRSafe();
 		StartAutoRefresh();
 	}
@@ -42,6 +41,8 @@ public partial class ProjectDetail
 		{
 			await InvokeAsync(StateHasChanged);
 		}
+
+		await LoadRemoteSyncStatusAsync();
 	}
 
 	private async Task InitializeSignalRSafe()
@@ -184,6 +185,7 @@ public partial class ProjectDetail
 					await RefreshJobs();
 					await LoadIdeas();
 					await RefreshUncommittedChangesStatus();
+					_ = LoadRemoteSyncStatusAsync();
 					ProcessingIdeaIds.Clear();
 
 					if (success && (_activeTab == "changes" || _hasUncommittedChangesHeader))
@@ -433,6 +435,9 @@ public partial class ProjectDetail
 		{
 			Project = await ProjectService.GetByIdAsync(ProjectId);
 			if (Project == null) return;
+
+			// Git runs alongside the rest so the header doesn't wait for jobs, ideas and providers.
+			_ = LoadGitInfoSafe();
 
 			IsLoading = false;
 			_isLoadingJobs = true;

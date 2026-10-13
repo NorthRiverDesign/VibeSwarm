@@ -74,6 +74,9 @@ public class GitController : ControllerBase
     [HttpPost("fetch")]
     public async Task<IActionResult> Fetch([FromBody] FetchRequest req, CancellationToken ct) => Ok(await _gitService.FetchAsync(req.Path, req.Remote ?? "origin", req.Prune, ct));
 
+    [HttpGet("remote-sync-status")]
+    public async Task<IActionResult> GetRemoteSyncStatus([FromQuery] string path, [FromQuery] string remote = "origin", CancellationToken ct = default) => Ok(await _gitService.GetRemoteSyncStatusAsync(path, remote, ct));
+
     [HttpPost("checkout")]
     public async Task<IActionResult> Checkout([FromBody] CheckoutRequest req, CancellationToken ct) => Ok(await _gitService.HardCheckoutBranchAsync(req.Path, req.Branch, req.Remote ?? "origin", null, ct));
 

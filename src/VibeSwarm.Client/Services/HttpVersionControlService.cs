@@ -220,6 +220,18 @@ public class HttpVersionControlService : IVersionControlService
         return await response.ReadJsonAsync(new GitOperationResult { Success = false }, ct);
     }
 
+    public async Task<GitRemoteSyncStatus> GetRemoteSyncStatusAsync(string workingDirectory, string remoteName = "origin", CancellationToken ct = default)
+    {
+        try
+        {
+            return await _http.GetJsonAsync($"/api/git/remote-sync-status?path={Enc(workingDirectory)}&remote={Uri.EscapeDataString(remoteName)}", new GitRemoteSyncStatus(), ct);
+        }
+        catch
+        {
+            return new GitRemoteSyncStatus();
+        }
+    }
+
     public async Task<GitOperationResult> HardCheckoutBranchAsync(string workingDirectory, string branchName, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/checkout", new { Path = workingDirectory, Branch = branchName, Remote = remoteName }, ct);

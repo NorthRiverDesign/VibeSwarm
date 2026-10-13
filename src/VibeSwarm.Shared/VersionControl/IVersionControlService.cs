@@ -164,6 +164,13 @@ public interface IVersionControlService
 	Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Compares the checked-out branch with the remote without fetching: asks the remote for the
+	/// branch's tip (read-only, so it can't disturb a running job's git work) and counts the
+	/// commits the checkout is missing. Falls back to the last fetch when the remote can't be reached.
+	/// </summary>
+	Task<GitRemoteSyncStatus> GetRemoteSyncStatusAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Checks out a branch at the latest commit on the remote: git fetch, git checkout branch,
 	/// then git reset --hard origin/branch. Uncommitted changes are stashed first. Commits that
 	/// were never pushed are replayed on top of the remote branch, or kept on a recovery branch

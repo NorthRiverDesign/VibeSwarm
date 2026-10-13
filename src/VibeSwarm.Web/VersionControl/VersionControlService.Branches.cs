@@ -572,6 +572,86 @@ public sealed partial class VersionControlService
 	}
 
 	/// <inheritdoc />
+	public async Task<GitRemoteSyncStatus> GetRemoteSyncStatusAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var branch = await GetCurrentBranchAsync(workingDirectory, cancellationToken);
+			if (string.IsNullOrEmpty(branch) || branch == "HEAD")
+			{
+				return new GitRemoteSyncStatus();
+			}
+
+			var remoteBranch = $"{remoteName}/{branch}";
+			var branchRef = $"refs/heads/{branch}";
+
+			// ls-remote only reads, unlike fetch, which would race a running job's fetch for ref locks.
+			var lsRemote = await _commandExecutor.ExecuteAsync(
+				$"ls-remote --heads {remoteName} {branchRef}",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 20);
+
+			if (lsRemote.Success)
+			{
+				var remoteHash = ParseNonEmptyGitOutputLines(lsRemote.Output)
+					.Select(line => line.Split('\t', 2))
+					.Where(parts => parts.Length == 2 && parts[1].Trim() == branchRef)
+					.Select(parts => parts[0].Trim())
+					.FirstOrDefault();
+
+				if (string.IsNullOrEmpty(remoteHash))
+				{
+					return new GitRemoteSyncStatus { IsRemoteReachable = true };
+				}
+
+				return new GitRemoteSyncStatus
+				{
+					RemoteBranch = remoteBranch,
+					// Null when the remote tip hasn't been fetched, so its commits aren't here to count.
+					CommitsBehind = await CountCommitsMissingFromHeadAsync(workingDirectory, remoteHash, cancellationToken),
+					IsRemoteReachable = true
+				};
+			}
+
+			// Offline: compare with what the last fetch recorded.
+			var trackingRef = $"refs/remotes/{remoteName}/{branch}";
+			var tracking = await _commandExecutor.ExecuteAsync(
+				$"rev-parse --verify --quiet {trackingRef}",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 10);
+
+			if (!tracking.Success)
+			{
+				return new GitRemoteSyncStatus();
+			}
+
+			return new GitRemoteSyncStatus
+			{
+				RemoteBranch = remoteBranch,
+				CommitsBehind = await CountCommitsMissingFromHeadAsync(workingDirectory, trackingRef, cancellationToken)
+			};
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to compare {Directory} with {Remote}", workingDirectory, remoteName);
+			return new GitRemoteSyncStatus();
+		}
+	}
+
+	private async Task<int?> CountCommitsMissingFromHeadAsync(string workingDirectory, string target, CancellationToken cancellationToken)
+	{
+		var result = await _commandExecutor.ExecuteAsync(
+			$"rev-list --count HEAD..{target}",
+			workingDirectory,
+			cancellationToken,
+			timeoutSeconds: 30);
+
+		return result.Success && int.TryParse(result.Output.Trim(), out var count) ? count : null;
+	}
+
+	/// <inheritdoc />
 	public async Task<GitOperationResult> PruneRemoteBranchesAsync(
 		string workingDirectory,
 		string remoteName = "origin",

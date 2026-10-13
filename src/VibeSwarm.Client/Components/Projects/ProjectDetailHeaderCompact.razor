@@ -45,6 +45,15 @@
 					@UncommittedChangesLabel
 				</button>
 			}
+
+			@if (RemoteSyncStatus?.IsBehind == true)
+			{
+				<span class="fg-2" aria-hidden="true">·</span>
+				<button type="button" class="btn-sm btn-link fg-warning text-decoration-none px-0"
+						@onclick="OnSync" disabled="@IsGitOperationInProgress" title="@BehindOriginTitle">
+					@BehindOriginLabel
+				</button>
+			}
 		</div>
 	}
 	else if (IsLoadingGitInfo)
@@ -91,6 +100,9 @@
 	public int UncommittedFilesCount { get; set; }
 
 	[Parameter]
+	public GitRemoteSyncStatus? RemoteSyncStatus { get; set; }
+
+	[Parameter]
 	public EventCallback OnCreateBranch { get; set; }
 
 	[Parameter]
@@ -135,6 +147,17 @@
 		1 => "1 uncommitted change",
 		_ => $"{UncommittedFilesCount} uncommitted changes"
 	};
+
+	private string BehindOriginLabel => RemoteSyncStatus?.CommitsBehind switch
+	{
+		null => "Behind origin",
+		1 => "1 commit behind origin",
+		var count => $"{count} commits behind origin"
+	};
+
+	private string BehindOriginTitle => RemoteSyncStatus?.IsRemoteReachable == false
+		? $"Behind {RemoteSyncStatus.RemoteBranch} as of the last fetch (origin couldn't be reached). Sync with origin"
+		: $"{RemoteSyncStatus?.RemoteBranch} has commits this checkout doesn't. Sync with origin";
 
 	private string? _currentGitOperation => IsGitOperationInProgress
 		? GitProgressMessage?.Contains("Pruning") == true ? "prune"
