@@ -104,6 +104,16 @@ public sealed class ProjectDetailTabMergeTests
 		});
 		cut.FindAll("button.list-group-item").Single(button => button.TextContent.Contains("Set up local environment", StringComparison.Ordinal)).Click();
 
+		// The row only asks: confirming is what starts the job.
+		cut.WaitForAssertion(() =>
+		{
+			var dialog = cut.Find("dialog");
+			Assert.Contains("Start a job now to get VibeSwarm running on this machine?", dialog.TextContent);
+			Assert.Contains("GitHub Copilot sets up config", dialog.TextContent);
+		});
+		Assert.Empty(jobService.CreatedJobs);
+		cut.FindAll("dialog button").Single(button => button.TextContent.Trim() == "Start job").Click();
+
 		cut.WaitForAssertion(() =>
 		{
 			var job = Assert.Single(jobService.CreatedJobs);
@@ -112,6 +122,29 @@ public sealed class ProjectDetailTabMergeTests
 			Assert.True(LocalEnvironmentSetup.IsSetupJob(job));
 			Assert.EndsWith($"/jobs/view/{job.Id}", navigation.Uri);
 		});
+	}
+
+	[Fact]
+	public void ProjectDetail_SetUpLocalEnvironment_CancelLeavesNoJob()
+	{
+		var jobService = new FakeJobService([]);
+		using var context = CreateContext(ideas: [], jobs: [], jobService);
+
+		var cut = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
+		cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("ul.nav button.nav-link")));
+		cut.FindAll("ul.nav button.nav-link").Single(button => button.TextContent.Trim() == "Environments").Click();
+
+		cut.WaitForAssertion(() =>
+		{
+			var setupRow = cut.FindAll("button.list-group-item").Single(button => button.TextContent.Contains("Set up local environment", StringComparison.Ordinal));
+			Assert.Contains("so it runs on this machine", setupRow.TextContent);
+		});
+		cut.FindAll("button.list-group-item").Single(button => button.TextContent.Contains("Set up local environment", StringComparison.Ordinal)).Click();
+		cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("dialog")));
+		cut.FindAll("dialog button").Single(button => button.TextContent.Trim() == "Cancel").Click();
+
+		cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("dialog")));
+		Assert.Empty(jobService.CreatedJobs);
 	}
 
 	private static readonly Project TestProject = new()

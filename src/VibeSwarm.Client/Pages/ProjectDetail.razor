@@ -184,7 +184,7 @@ else
                     <div class="list-group rounded-9">
                         <ListRow Icon="laptop" Title="Set up local environment" Subtitle="@GetLocalSetupSubtitle()"
                                  AttentionLine="@(HasDefaultProvider ? null : "Enable a provider for this project first")"
-                                 OnClick="StartLocalEnvironmentSetup">
+                                 OnClick="ShowLocalSetupConfirmation">
                             <Trailing>
                                 @if (_isStartingLocalSetup)
                                 {
@@ -292,6 +292,12 @@ else
         </FooterContent>
     </ModalDialog>
 
+    @* Local Environment Setup Confirmation *@
+    <ConfirmationModal @bind-IsVisible="_showLocalSetupConfirmation" Title="Set up local environment"
+                       Message="@GetLocalSetupConfirmationMessage()" SubMessage="@GetLocalSetupConfirmationSubMessage()"
+                       ConfirmText="Start job" ButtonClass="btn-solid theme-primary" IsProcessing="@_isStartingLocalSetup"
+                       OnConfirm="StartLocalEnvironmentSetup" />
+
     @* Edit Project Modal *@
     <ProjectModal @bind-IsVisible="_showEditProjectModal" EditProject="@Project" OnSaved="HandleProjectSaved"
                   OnCancelled="HandleProjectModalCancelled" OnClosed="HandleProjectModalClosed" />
@@ -391,6 +397,7 @@ else
     // Environment editing state
     private bool _isSavingEnvironments;
     private bool _isStartingLocalSetup;
+    private bool _showLocalSetupConfirmation;
     private string? _environmentError;
 
     // Changes tab component
