@@ -430,19 +430,41 @@
             <div class="d-flex gap-3">
                 <textarea class="form-control textarea-autogrow" rows="3"
                           placeholder="@(Status is JobStatus.Stalled or JobStatus.Failed ? "Describe what to try next..." : "Add follow-up instructions...")"
-                          @bind="_followUpPrompt" @bind:event="oninput" disabled="@_isSendingFollowUp"></textarea>
-                <button class="btn-solid theme-primary align-self-end flex-shrink-0" @onclick="SendFollowUp"
-                        disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp)" title="Send follow-up">
-                    @if (_isSendingFollowUp)
+                          @bind="_followUpPrompt" @bind:event="oninput" disabled="@(_isSendingFollowUp || _isDraftingFollowUp)"></textarea>
+                <div class="d-flex flex-column gap-3 align-self-end flex-shrink-0">
+                    @if (DraftFollowUp != null)
                     {
-                        <span class="spinner-border spinner-sm" role="status"></span>
+                        @* Inference writes the reply, building on anything typed, and the user confirms it before it is sent *@
+                        <button class="btn-outline theme-secondary" @onclick="DraftFollowUpReply"
+                                disabled="@(_isSendingFollowUp || _isDraftingFollowUp)"
+                                title="Write a reply with inference" aria-label="Write a reply with inference">
+                            @if (_isDraftingFollowUp)
+                            {
+                                <span class="spinner-border spinner-sm" role="status"></span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-stars"></i>
+                            }
+                        </button>
                     }
-                    else
-                    {
-                        <i class="bi bi-send"></i>
-                    }
-                </button>
+                    <button class="btn-solid theme-primary" @onclick="SendFollowUp"
+                            disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp || _isDraftingFollowUp)" title="Send follow-up">
+                        @if (_isSendingFollowUp)
+                        {
+                            <span class="spinner-border spinner-sm" role="status"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-send"></i>
+                        }
+                    </button>
+                </div>
             </div>
+            @if (!string.IsNullOrEmpty(_followUpDraftError))
+            {
+                <p class="small fg-danger mt-3 mb-0" role="alert">@_followUpDraftError</p>
+            }
         </div>
     }
 </div>
@@ -512,6 +534,13 @@
     [Parameter]
     public EventCallback<string> OnSendFollowUp { get; set; }
 
+    /// <summary>
+    /// Has inference write a follow-up from what the user typed, if anything. Null hides the button,
+    /// as when no inference model is set up.
+    /// </summary>
+    [Parameter]
+    public Func<string?, Task<FollowUpDraft>>? DraftFollowUp { get; set; }
+
     [Parameter]
     public EventCallback OnCopyGoalPrompt { get; set; }
 
@@ -527,6 +556,11 @@
     private string _activeTab = "session";
     private string _followUpPrompt = string.Empty;
     private bool _isSendingFollowUp = false;
+    private bool _isDraftingFollowUp;
+    private bool _showFollowUpDraft;
+    private string _followUpDraft = string.Empty;
+    private string? _followUpDraftModel;
+    private string? _followUpDraftError;
     private HashSet<MessageRole> _hiddenRoles = new();
     private ElementReference _sessionOutputContainer;
     private string? _lastAutoScrollStateKey;
@@ -760,6 +794,51 @@
         {
             _isSendingFollowUp = false;
         }
+    }
+
+    private async Task DraftFollowUpReply()
+    {
+        if (DraftFollowUp == null || _isDraftingFollowUp || _isSendingFollowUp) return;
+
+        _isDraftingFollowUp = true;
+        _followUpDraftError = null;
+        try
+        {
+            var draft = await DraftFollowUp(string.IsNullOrWhiteSpace(_followUpPrompt) ? null : _followUpPrompt);
+            if (string.IsNullOrWhiteSpace(draft.Text))
+            {
+                _followUpDraftError = draft.Error ?? "Inference didn't write a reply.";
+                return;
+            }
+
+            _followUpDraft = draft.Text.Trim();
+            _followUpDraftModel = draft.ModelId;
+            _showFollowUpDraft = true;
+        }
+        catch (Exception ex)
+        {
+            _followUpDraftError = $"Could not draft a reply: {ex.Message}";
+        }
+        finally
+        {
+            _isDraftingFollowUp = false;
+        }
+    }
+
+    private void CancelFollowUpDraft()
+    {
+        _showFollowUpDraft = false;
+        _followUpDraft = string.Empty;
+    }
+
+    // Sends the confirmed draft through the follow-up box, which keeps it there if sending fails.
+    private async Task SendFollowUpDraft()
+    {
+        if (string.IsNullOrWhiteSpace(_followUpDraft)) return;
+
+        _followUpPrompt = _followUpDraft;
+        CancelFollowUpDraft();
+        await SendFollowUp();
     }
 
 
@@ -1216,6 +1295,21 @@
     {
     }
 }
+
+<ModalDialog IsVisible="_showFollowUpDraft" Title="Send this reply?" Icon="stars" Size="ModalDialog.ModalSize.Small"
+             OnClose="CancelFollowUpDraft">
+    <ChildContent>
+        <p class="small fg-1 mb-3">
+            @(string.IsNullOrEmpty(_followUpDraftModel) ? "Inference" : _followUpDraftModel) wrote this reply. Edit it if needed; sending it continues the job.
+        </p>
+        <textarea id="follow-up-draft" class="form-control textarea-autogrow" rows="3" aria-label="Reply to send"
+                  @bind="_followUpDraft" @bind:event="oninput"></textarea>
+    </ChildContent>
+    <FooterContent>
+        <ModalFooterActions OnCancel="CancelFollowUpDraft" OnSubmit="SendFollowUpDraft" SubmitText="Send" SubmitIcon="send"
+                            SubmitDisabled="@string.IsNullOrWhiteSpace(_followUpDraft)" />
+    </FooterContent>
+</ModalDialog>
 
 <ModalDialog IsVisible="_showGoalPromptModal" Title="Full Goal Prompt" Icon="bullseye" Size="ModalDialog.ModalSize.Large" OnClose="CloseGoalPromptModal">
     <ChildContent>

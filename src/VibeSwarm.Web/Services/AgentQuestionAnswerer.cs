@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Inference;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
@@ -76,6 +77,19 @@ public sealed partial class AgentQuestionAnswerer
 		+ "already met and the question only offers optional extras or invites feedback, reply with exactly "
 		+ NoFollowUpReply + ". Answer it only when doing so completes or clearly improves the goal.";
 
+	internal const string FollowUpSystemPrompt =
+		"You write the follow-up message a project's owner sends to a coding agent whose run has ended. Read the "
+		+ "goal, how the run ended and the agent's final message. If the agent asked something, answer it, agreeing "
+		+ "with an option it recommended unless that conflicts with the goal. If the run failed or timed out, tell it "
+		+ "how to recover and finish the goal; otherwise give it the most useful next step toward the goal. When the "
+		+ "owner wrote notes, turn them into the message and keep their intent. Reply with the message only, in one "
+		+ "to three sentences, addressed to the agent. Never ask a question back and never invent credentials, keys "
+		+ "or account details. If the message needs a secret, a payment, deleting real data, or a decision only the "
+		+ "owner can make, reply with exactly " + NeedsUserReply + ".";
+
+	private const int MaxErrorLength = 1000;
+	private const int MaxNotesLength = 2000;
+
 	private readonly VibeSwarmDbContext _db;
 	private readonly IInferenceService _inference;
 	private readonly ILogger<AgentQuestionAnswerer> _logger;
@@ -104,13 +118,93 @@ public sealed partial class AgentQuestionAnswerer
 			return null;
 		}
 
+		var reply = await AskAsync(
+			BuildPrompt(question),
+			question.RunFinished ? SystemPrompt + RunFinishedSystemPromptAddition : SystemPrompt,
+			cancellationToken);
+		if (reply == null)
+		{
+			return null;
+		}
+
+		var answer = CleanAnswer(reply.Text);
+		if (answer == null)
+		{
+			// The model judged that only the user can answer, or that nothing is left to do;
+			// another model won't know better.
+			_logger.LogInformation(
+				"Inference model {ModelId} on {ProviderName} declined to answer the agent's question ({Reply}): {Question}",
+				reply.ModelId,
+				reply.ProviderName,
+				reply.Text.Contains(NoFollowUpReply, StringComparison.OrdinalIgnoreCase) ? "goal already met" : "left for the user",
+				question.Question);
+			return null;
+		}
+
+		return new AgentQuestionAnswer(answer, reply.ProviderName, reply.ModelId);
+	}
+
+	/// <summary>
+	/// Writes the follow-up message for a job whose run has ended, for the user to confirm before
+	/// it is sent. The user asked for it, so unlike <see cref="TryAnswerAsync"/> it ignores the
+	/// setting for answering unattended agents. <paramref name="notes"/> is what the user had typed
+	/// in the follow-up box, which the model turns into the message.
+	/// </summary>
+	public async Task<FollowUpDraft> DraftFollowUpAsync(Guid jobId, string? notes, CancellationToken cancellationToken = default)
+	{
+		var job = await _db.Jobs
+			.AsNoTracking()
+			.Include(j => j.Project)
+			.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+		if (job == null)
+		{
+			return new FollowUpDraft { Error = "Job not found." };
+		}
+
+		if (job.Status is not (JobStatus.Completed or JobStatus.Stalled or JobStatus.Failed))
+		{
+			return new FollowUpDraft { Error = "The job is still running. Draft a reply once this run ends." };
+		}
+
+		var finalMessage = await _db.JobMessages
+			.AsNoTracking()
+			.Where(m => m.JobId == jobId && m.Role == MessageRole.Assistant && m.Content != string.Empty)
+			.OrderByDescending(m => m.CreatedAt)
+			.Select(m => m.Content)
+			.FirstOrDefaultAsync(cancellationToken);
+
+		var reply = await AskAsync(
+			BuildFollowUpPrompt(job, finalMessage ?? job.SessionSummary, notes),
+			FollowUpSystemPrompt,
+			cancellationToken);
+		if (reply == null)
+		{
+			return new FollowUpDraft { Error = "No inference provider replied. Check that one is enabled and online on the Inference page." };
+		}
+
+		var text = CleanAnswer(reply.Text);
+		if (text == null)
+		{
+			return new FollowUpDraft { Error = "Inference left this reply to you: it needs a decision only you can make." };
+		}
+
+		return new FollowUpDraft { Text = text, ProviderName = reply.ProviderName, ModelId = reply.ModelId };
+	}
+
+	private sealed record ModelReply(string Text, string ProviderName, string ModelId);
+
+	/// <summary>
+	/// The first reply from the enabled inference providers, tried in priority order so an offline
+	/// provider falls through to the next, or null when none replies.
+	/// </summary>
+	private async Task<ModelReply?> AskAsync(string prompt, string systemPrompt, CancellationToken cancellationToken)
+	{
 		var providers = await _db.InferenceProviders
 			.AsNoTracking()
 			.Include(p => p.Models)
 			.Where(p => p.IsEnabled)
 			.ToListAsync(cancellationToken);
 
-		var prompt = BuildPrompt(question);
 		foreach (var (provider, model) in InferenceTaskModels.Candidates(providers, TaskType))
 		{
 			InferenceResponse response;
@@ -120,7 +214,7 @@ public sealed partial class AgentQuestionAnswerer
 				{
 					TaskType = TaskType,
 					Prompt = prompt,
-					SystemPrompt = question.RunFinished ? SystemPrompt + RunFinishedSystemPromptAddition : SystemPrompt,
+					SystemPrompt = systemPrompt,
 					ProviderId = provider.Id,
 					Endpoint = provider.Endpoint,
 					ProviderType = provider.ProviderType,
@@ -131,34 +225,20 @@ public sealed partial class AgentQuestionAnswerer
 			}
 			catch (Exception ex) when (ex is not OperationCanceledException)
 			{
-				_logger.LogWarning(ex, "Inference provider {ProviderName} failed to answer an agent question", provider.Name);
+				_logger.LogWarning(ex, "Inference provider {ProviderName} failed to reply to an agent", provider.Name);
 				continue;
 			}
 
 			if (!response.Success || string.IsNullOrWhiteSpace(response.Response))
 			{
 				_logger.LogWarning(
-					"Inference provider {ProviderName} could not answer an agent question: {Error}",
+					"Inference provider {ProviderName} could not reply to an agent: {Error}",
 					provider.Name,
 					response.Error ?? "No response");
 				continue;
 			}
 
-			var answer = CleanAnswer(response.Response);
-			if (answer == null)
-			{
-				// The model judged that only the user can answer, or that nothing is left to do;
-				// another model won't know better.
-				_logger.LogInformation(
-					"Inference model {ModelId} on {ProviderName} declined to answer the agent's question ({Reply}): {Question}",
-					model.ModelId,
-					provider.Name,
-					response.Response.Contains(NoFollowUpReply, StringComparison.OrdinalIgnoreCase) ? "goal already met" : "left for the user",
-					question.Question);
-				return null;
-			}
-
-			return new AgentQuestionAnswer(answer, provider.Name, response.ModelUsed ?? model.ModelId);
+			return new ModelReply(response.Response, provider.Name, response.ModelUsed ?? model.ModelId);
 		}
 
 		return null;
@@ -213,6 +293,49 @@ public sealed partial class AgentQuestionAnswerer
 			{
 				builder.Append("- ").AppendLine(choice);
 			}
+		}
+
+		return builder.ToString().Trim();
+	}
+
+	internal static string BuildFollowUpPrompt(Job job, string? finalMessage, string? notes)
+	{
+		var builder = new StringBuilder();
+		if (!string.IsNullOrWhiteSpace(job.Project?.Name))
+		{
+			builder.Append("Project: ").AppendLine(job.Project.Name.Trim());
+			builder.AppendLine();
+		}
+
+		builder.AppendLine("Goal the agent is working on:");
+		var goal = job.GoalPrompt.Trim();
+		builder.AppendLine(goal.Length > MaxGoalLength ? goal[..MaxGoalLength] + " …" : goal);
+		builder.AppendLine();
+
+		builder.Append("How the run ended: ");
+		var error = job.ErrorMessage?.Trim();
+		builder.AppendLine(job.Status switch
+		{
+			JobStatus.Failed when !string.IsNullOrEmpty(error)
+				=> "it failed with this error: " + (error.Length > MaxErrorLength ? error[..MaxErrorLength] + " …" : error),
+			JobStatus.Failed => "it failed.",
+			JobStatus.Stalled => "it timed out before finishing.",
+			_ => "it completed."
+		});
+
+		if (!string.IsNullOrWhiteSpace(finalMessage))
+		{
+			builder.AppendLine();
+			builder.AppendLine("The agent's final message:");
+			builder.AppendLine(TailOfFinalMessage(finalMessage.Trim())[0]);
+		}
+
+		var trimmedNotes = notes?.Trim();
+		if (!string.IsNullOrEmpty(trimmedNotes))
+		{
+			builder.AppendLine();
+			builder.AppendLine("The owner's notes for the message:");
+			builder.AppendLine(trimmedNotes.Length > MaxNotesLength ? trimmedNotes[..MaxNotesLength] + " …" : trimmedNotes);
 		}
 
 		return builder.ToString().Trim();

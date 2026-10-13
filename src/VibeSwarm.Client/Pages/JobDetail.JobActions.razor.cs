@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Components;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Inference;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.VersionControl;
 
 namespace VibeSwarm.Client.Pages;
@@ -338,6 +340,29 @@ public partial class JobDetail : ComponentBase
             IsForceResetting = false;
         }
     }
+
+    // Whether an inference model can write follow-ups; the same models answer agents' questions.
+    private bool _canDraftFollowUp;
+
+    private async Task LoadFollowUpDraftAvailabilityAsync()
+    {
+        try
+        {
+            var providers = await InferenceProviderService.GetAllAsync();
+            _canDraftFollowUp = InferenceTaskModels.Candidates(providers, InferenceTaskModels.AgentAnswer).Count > 0;
+            if (_canDraftFollowUp && !_disposed)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch
+        {
+            _canDraftFollowUp = false;
+        }
+    }
+
+    private Task<FollowUpDraft> DraftFollowUpAsync(string? notes)
+        => JobService.DraftFollowUpAsync(Job!.Id, notes);
 
     private async Task ContinueJobWithFollowUp(string followUpPrompt)
     {

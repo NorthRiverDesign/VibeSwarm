@@ -6,6 +6,7 @@
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @inject NotificationService NotificationService
+@inject IInferenceProviderService InferenceProviderService
 @using System.Threading
 
 @if (IsLoading)
@@ -176,7 +177,8 @@ else
                              SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()"
                              LiveMessages="@_pendingSessionMessages.ToList()" MaxOutputLines="@MaxOutputLines"
                              CurrentActivity="@Job.CurrentActivity"
-                             OnClearLiveOutput="ClearLiveOutput" OnSendFollowUp="ContinueJobWithFollowUp" />
+                             OnClearLiveOutput="ClearLiveOutput" OnSendFollowUp="ContinueJobWithFollowUp"
+                             DraftFollowUp="@(_canDraftFollowUp ? DraftFollowUpAsync : null)" />
         </div>
     </div>
 
@@ -342,6 +344,7 @@ else
 	protected override async Task OnInitializedAsync()
 	{
 		StartAutoRefresh();
+		_ = LoadFollowUpDraftAvailabilityAsync();
 		await EnsureCurrentJobLoadedAsync();
 	}
 

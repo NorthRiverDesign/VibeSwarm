@@ -8,6 +8,7 @@ using Microsoft.JSInterop;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Client.Models;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 
 namespace VibeSwarm.Tests;
 
@@ -1817,6 +1818,80 @@ public sealed class JobSessionPanelTests
 		sendButton.Click();
 
 		Assert.Equal("Fix the null reference on line 42.", followUpPrompt);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_DraftsAFollowUpWithInference_AndSendsItOnlyOnceConfirmed()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+		string? notesSent = null;
+		string? followUpPrompt = null;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.DraftFollowUp, notes =>
+			{
+				notesSent = notes;
+				return Task.FromResult(new FollowUpDraft { Text = "Yes, mock the clock.", ModelId = "qwen3" });
+			})
+			.Add(panel => panel.OnSendFollowUp, async (string prompt) =>
+			{
+				followUpPrompt = prompt;
+				await Task.CompletedTask;
+			}));
+
+		cut.Find("textarea").Input("mock it");
+		cut.Find("button[title='Write a reply with inference']").Click();
+
+		Assert.Equal("mock it", notesSent);
+		Assert.Null(followUpPrompt);
+		Assert.Contains("qwen3 wrote this reply", cut.Find("dialog").TextContent);
+		Assert.Equal("Yes, mock the clock.", cut.Find("#follow-up-draft").GetAttribute("value"));
+
+		cut.Find("#follow-up-draft").Input("Yes, mock the clock and rerun the tests.");
+		cut.FindAll(".dialog-footer button").Single(button => button.TextContent.Trim() == "Send").Click();
+
+		Assert.Equal("Yes, mock the clock and rerun the tests.", followUpPrompt);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_ShowsWhyInferenceCouldNotDraftAFollowUp()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+		var sent = false;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Failed)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.DraftFollowUp, _ => Task.FromResult(new FollowUpDraft { Error = "No inference provider replied." }))
+			.Add(panel => panel.OnSendFollowUp, async (string _) =>
+			{
+				sent = true;
+				await Task.CompletedTask;
+			}));
+
+		cut.Find("button[title='Write a reply with inference']").Click();
+
+		Assert.Equal("No inference provider replied.", cut.Find("[role='alert']").TextContent.Trim());
+		Assert.Empty(cut.FindAll("dialog"));
+		Assert.False(sent);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_HidesTheInferenceButton_WhenNoModelCanDraft()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.OnSendFollowUp, async (string _) => await Task.CompletedTask));
+
+		Assert.Single(cut.FindAll("button[title='Send follow-up']"));
+		Assert.Empty(cut.FindAll("button[title='Write a reply with inference']"));
 	}
 
 	[Fact]

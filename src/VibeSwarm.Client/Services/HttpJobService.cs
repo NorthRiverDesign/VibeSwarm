@@ -163,6 +163,17 @@ public class HttpJobService : IJobService
 		return response.IsSuccessStatusCode;
 	}
 
+	public async Task<FollowUpDraft> DraftFollowUpAsync(Guid id, string? notes, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/follow-up-draft", new { Notes = notes }, ct);
+		if (!response.IsSuccessStatusCode)
+		{
+			return new FollowUpDraft { Error = $"Could not draft a reply ({(int)response.StatusCode} {response.ReasonPhrase})." };
+		}
+
+		return await response.ReadJsonAsync(new FollowUpDraft { Error = "The server sent an empty reply." }, ct);
+	}
+
 	public async Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken ct = default)
 		=> await _http.GetJsonAsync("/api/jobs/paused", new List<Job>(), ct);
 

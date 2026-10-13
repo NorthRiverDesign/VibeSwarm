@@ -222,6 +222,61 @@ public sealed class AgentQuestionAnswererTests : IDisposable
 		Assert.Contains("without asking again", text);
 	}
 
+	[Fact]
+	public async Task DraftFollowUpAsync_WritesAReplyFromTheFinalMessageAndNotes_EvenWhenAutomaticAnswersAreOff()
+	{
+		await SeedProviderAsync("Desktop", priority: 0, ("qwen3", "default"));
+		await using (var dbContext = CreateDbContext())
+		{
+			dbContext.AppSettings.Add(new AppSettings { Id = Guid.NewGuid(), InferenceAnswersAgentQuestions = false });
+			await dbContext.SaveChangesAsync();
+		}
+		var jobId = await SeedJobAsync(JobStatus.Failed, "dotnet test failed", "Tests fail on the new page. Should I mock the clock?");
+		var inference = new ScriptedInferenceService(_ => Reply("<think>Notes say mock it.</think>Yes, mock the clock and rerun the tests."));
+
+		var draft = await CreateAnswerer(inference).DraftFollowUpAsync(jobId, "  mock it  ");
+
+		Assert.Null(draft.Error);
+		Assert.Equal("Yes, mock the clock and rerun the tests.", draft.Text);
+		Assert.Equal("Desktop", draft.ProviderName);
+		Assert.Equal("qwen3", draft.ModelId);
+		var request = Assert.Single(inference.Requests);
+		Assert.Equal(AgentQuestionAnswerer.FollowUpSystemPrompt, request.SystemPrompt);
+		Assert.Contains("Add a settings page", request.Prompt);
+		Assert.Contains("failed with this error: dotnet test failed", request.Prompt);
+		Assert.Contains("Should I mock the clock?", request.Prompt);
+		Assert.EndsWith("The owner's notes for the message:\nmock it", request.Prompt.ReplaceLineEndings("\n"));
+	}
+
+	[Fact]
+	public async Task DraftFollowUpAsync_DoesNotAskInference_WhileTheJobIsRunning()
+	{
+		await SeedProviderAsync("Desktop", priority: 0, ("qwen3", "default"));
+		var jobId = await SeedJobAsync(JobStatus.Processing, null, "Working on it.");
+		var inference = new ScriptedInferenceService(_ => Reply("Proceed."));
+
+		var draft = await CreateAnswerer(inference).DraftFollowUpAsync(jobId, null);
+
+		Assert.Null(draft.Text);
+		Assert.Contains("still running", draft.Error);
+		Assert.Empty(inference.Requests);
+	}
+
+	[Fact]
+	public async Task DraftFollowUpAsync_ExplainsWhyThereIsNoDraft()
+	{
+		var jobId = await SeedJobAsync(JobStatus.Completed, null, "Done. Should I deploy to production?");
+
+		var noProvider = await CreateAnswerer(new ScriptedInferenceService(_ => Reply("Deploy."))).DraftFollowUpAsync(jobId, null);
+		await SeedProviderAsync("Desktop", priority: 0, ("qwen3", "default"));
+		var declined = await CreateAnswerer(new ScriptedInferenceService(_ => Reply(AgentQuestionAnswerer.NeedsUserReply))).DraftFollowUpAsync(jobId, null);
+
+		Assert.Null(noProvider.Text);
+		Assert.Contains("No inference provider replied", noProvider.Error);
+		Assert.Null(declined.Text);
+		Assert.Contains("only you can make", declined.Error);
+	}
+
 	private static AgentQuestion CreateQuestion(
 		string question = "Would you like me to also update the docs?",
 		InteractionDetector.InteractionType type = InteractionDetector.InteractionType.Confirmation)
@@ -233,6 +288,29 @@ public sealed class AgentQuestionAnswererTests : IDisposable
 		=> new(CreateDbContext(), inference, NullLogger<AgentQuestionAnswerer>.Instance);
 
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
+
+	private async Task<Guid> SeedJobAsync(JobStatus status, string? errorMessage, string finalMessage)
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "VibeSwarm", WorkingPath = "/tmp/vibeswarm" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Add a settings page",
+			Status = status,
+			ErrorMessage = errorMessage
+		};
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		dbContext.JobMessages.Add(new JobMessage { Id = Guid.NewGuid(), JobId = job.Id, Role = MessageRole.Assistant, Content = "Started on the page.", CreatedAt = DateTime.UtcNow.AddMinutes(-5) });
+		dbContext.JobMessages.Add(new JobMessage { Id = Guid.NewGuid(), JobId = job.Id, Role = MessageRole.Assistant, Content = finalMessage, CreatedAt = DateTime.UtcNow });
+		await dbContext.SaveChangesAsync();
+		return job.Id;
+	}
 
 	private Task SeedProviderAsync(string name, int priority, params (string ModelId, string TaskType)[] models)
 		=> SeedProviderAsync(name, priority, true, models);

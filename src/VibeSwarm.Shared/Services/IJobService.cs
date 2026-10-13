@@ -59,6 +59,13 @@ public interface IJobService
 	/// <param name="followUpPrompt">The follow-up instructions to send</param>
 	Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default);
 
+	/// <summary>
+	/// Has inference write a follow-up message for a job whose run has ended, for the user to
+	/// confirm before it is sent with <see cref="ContinueJobAsync"/>.
+	/// </summary>
+	/// <param name="notes">What the user typed in the follow-up box, if anything, for the message to build on</param>
+	Task<FollowUpDraft> DraftFollowUpAsync(Guid id, string? notes, CancellationToken cancellationToken = default);
+
     Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

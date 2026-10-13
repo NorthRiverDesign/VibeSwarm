@@ -3,6 +3,7 @@ using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.VersionControl;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -246,6 +247,14 @@ public partial class JobService
         _jobProcessingService?.TriggerProcessing();
 
         return true;
+    }
+
+    public async Task<FollowUpDraft> DraftFollowUpAsync(Guid id, string? notes, CancellationToken cancellationToken = default)
+    {
+        var answerer = _serviceProvider.GetService<AgentQuestionAnswerer>();
+        return answerer == null
+            ? new FollowUpDraft { Error = "Inference isn't available on this server." }
+            : await answerer.DraftFollowUpAsync(id, notes, cancellationToken);
     }
 
     public async Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default)
