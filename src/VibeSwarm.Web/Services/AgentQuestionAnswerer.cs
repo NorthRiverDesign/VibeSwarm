@@ -83,8 +83,9 @@ public sealed partial class AgentQuestionAnswerer
 		+ "goal, how the run ended and the agent's final message. If the agent asked something, answer it, agreeing "
 		+ "with an option it recommended unless that conflicts with the goal. If the run failed or timed out, tell it "
 		+ "how to recover and finish the goal; otherwise give it the most useful next step toward the goal. When the "
-		+ "owner wrote notes, turn them into the message and keep their intent. Reply with the message only, in one "
-		+ "to three sentences, addressed to the agent. Never ask a question back and never invent credentials, keys "
+		+ "owner wrote notes, turn them into the message and keep their intent. When the owner picked actions for the "
+		+ "agent, ask it to do each of them, in the order given. Reply with the message only, addressed to the agent, "
+		+ "in one to three sentences plus one per picked action. Never ask a question back and never invent credentials, keys "
 		+ "or account details. If the message needs a secret, a payment, deleting real data, or a decision only the "
 		+ "owner can make, reply with exactly " + NeedsUserReply + ".";
 
@@ -148,10 +149,10 @@ public sealed partial class AgentQuestionAnswerer
 	/// <summary>
 	/// Writes the follow-up message for a job whose run has ended, for the user to confirm before
 	/// it is sent. The user asked for it, so unlike <see cref="TryAnswerAsync"/> it ignores the
-	/// setting for answering unattended agents. <paramref name="notes"/> is what the user had typed
-	/// in the follow-up box, which the model turns into the message.
+	/// setting for answering unattended agents. The model turns what the user typed in the follow-up
+	/// box into the message, and asks the agent for each action they picked.
 	/// </summary>
-	public async Task<FollowUpDraft> DraftFollowUpAsync(Guid jobId, string? notes, CancellationToken cancellationToken = default)
+	public async Task<FollowUpDraft> DraftFollowUpAsync(Guid jobId, FollowUpDraftRequest request, CancellationToken cancellationToken = default)
 	{
 		var job = await _db.Jobs
 			.AsNoTracking()
@@ -175,7 +176,7 @@ public sealed partial class AgentQuestionAnswerer
 			.FirstOrDefaultAsync(cancellationToken);
 
 		var reply = await AskAsync(
-			BuildFollowUpPrompt(job, finalMessage ?? job.SessionSummary, notes),
+			BuildFollowUpPrompt(job, finalMessage ?? job.SessionSummary, request.Notes, FollowUpDraftActions.Resolve(request.Actions)),
 			FollowUpSystemPrompt,
 			cancellationToken);
 		if (reply == null)
@@ -319,7 +320,7 @@ public sealed partial class AgentQuestionAnswerer
 		return builder.ToString().Trim();
 	}
 
-	internal static string BuildFollowUpPrompt(Job job, string? finalMessage, string? notes)
+	internal static string BuildFollowUpPrompt(Job job, string? finalMessage, string? notes, IReadOnlyList<FollowUpDraftAction> actions)
 	{
 		var builder = new StringBuilder();
 		if (!string.IsNullOrWhiteSpace(job.Project?.Name))
@@ -357,6 +358,16 @@ public sealed partial class AgentQuestionAnswerer
 			builder.AppendLine();
 			builder.AppendLine("The owner's notes for the message:");
 			builder.AppendLine(trimmedNotes.Length > MaxNotesLength ? trimmedNotes[..MaxNotesLength] + " …" : trimmedNotes);
+		}
+
+		if (actions.Count > 0)
+		{
+			builder.AppendLine();
+			builder.AppendLine("Actions the owner picked for the agent:");
+			foreach (var action in actions)
+			{
+				builder.Append("- ").AppendLine(action.Instruction);
+			}
 		}
 
 		return builder.ToString().Trim();

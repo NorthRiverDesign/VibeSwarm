@@ -525,11 +525,11 @@
     public EventCallback<string> OnSendFollowUp { get; set; }
 
     /// <summary>
-    /// Has inference write a follow-up from what the user typed, if anything. Null hides the button,
-    /// as when no inference model is set up.
+    /// Has inference write a follow-up from what the user typed, if anything, and the actions they
+    /// picked for the agent. Null hides the button, as when no inference model is set up.
     /// </summary>
     [Parameter]
-    public Func<string?, Task<FollowUpDraft>>? DraftFollowUp { get; set; }
+    public Func<FollowUpDraftRequest, Task<FollowUpDraft>>? DraftFollowUp { get; set; }
 
     /// <summary>The inference model tried first for <see cref="DraftFollowUp"/>, named in its confirmation.</summary>
     [Parameter]
@@ -556,6 +556,8 @@
     private FollowUpDraft? _followUpDraftResult;
     private string? _followUpDraftError;
     private int _followUpDraftRequest;
+    // Kept between drafts on the page, so the same actions are ready to ask for again.
+    private readonly HashSet<string> _followUpDraftActions = new(StringComparer.Ordinal);
     private HashSet<MessageRole> _hiddenRoles = new();
     private ElementReference _sessionOutputContainer;
     private string? _lastAutoScrollStateKey;
@@ -814,7 +816,11 @@
         _followUpDraftError = null;
         try
         {
-            var draft = await DraftFollowUp(string.IsNullOrWhiteSpace(_followUpPrompt) ? null : _followUpPrompt);
+            var draft = await DraftFollowUp(new FollowUpDraftRequest
+            {
+                Notes = string.IsNullOrWhiteSpace(_followUpPrompt) ? null : _followUpPrompt,
+                Actions = FollowUpDraftActions.All.Select(a => a.Key).Where(_followUpDraftActions.Contains).ToList()
+            });
             if (request != _followUpDraftRequest)
             {
                 return;
@@ -842,6 +848,18 @@
             {
                 _isDraftingFollowUp = false;
             }
+        }
+    }
+
+    private void ToggleFollowUpDraftAction(string key, bool picked)
+    {
+        if (picked)
+        {
+            _followUpDraftActions.Add(key);
+        }
+        else
+        {
+            _followUpDraftActions.Remove(key);
         }
     }
 
@@ -1350,6 +1368,18 @@
             else
             {
                 <p class="mb-0">@FollowUpDraftConfirmation</p>
+                <div class="d-flex flex-column gap-3" role="group" aria-labelledby="follow-up-actions-label">
+                    <div id="follow-up-actions-label" class="text-eyebrow fg-1">Ask the agent to (optional)</div>
+                    @foreach (var action in FollowUpDraftActions.All)
+                    {
+                        <div class="form-field">
+                            <input class="check" type="checkbox" id="follow-up-action-@action.Key"
+                                   checked="@_followUpDraftActions.Contains(action.Key)" disabled="@_isDraftingFollowUp"
+                                   @onchange="@(e => ToggleFollowUpDraftAction(action.Key, e.Value is true))" />
+                            <label for="follow-up-action-@action.Key">@action.Label</label>
+                        </div>
+                    }
+                </div>
                 @if (!string.IsNullOrEmpty(_followUpDraftError))
                 {
                     <Alert Type="Alert.AlertType.Danger" Message="@_followUpDraftError" Class="mb-0" />

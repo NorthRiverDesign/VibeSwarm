@@ -1826,7 +1826,7 @@ public sealed class JobSessionPanelTests
 	{
 		using var context = new BunitContext();
 		context.JSInterop.Mode = JSRuntimeMode.Loose;
-		string? notesSent = null;
+		FollowUpDraftRequest? draftRequest = null;
 		var draftRequests = 0;
 		string? followUpPrompt = null;
 
@@ -1834,10 +1834,10 @@ public sealed class JobSessionPanelTests
 			.Add(panel => panel.Status, JobStatus.Completed)
 			.Add(panel => panel.Messages, new List<JobMessage>())
 			.Add(panel => panel.DraftFollowUpModel, "grok-4 on Cloud")
-			.Add(panel => panel.DraftFollowUp, notes =>
+			.Add(panel => panel.DraftFollowUp, request =>
 			{
 				draftRequests++;
-				notesSent = notes;
+				draftRequest = request;
 				return Task.FromResult(new FollowUpDraft
 				{
 					Text = "Yes, mock the clock.",
@@ -1864,10 +1864,15 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("grok-4 on Cloud will read", cut.Find("dialog").TextContent);
 		Assert.Contains("what you typed", cut.Find("dialog").TextContent);
 
+		cut.Find($"#follow-up-action-{FollowUpDraftActions.TestAndVerify}").Change(true);
+		cut.Find($"#follow-up-action-{FollowUpDraftActions.KeepGoing}").Change(true);
+		cut.Find($"#follow-up-action-{FollowUpDraftActions.KeepGoing}").Change(false);
+		cut.Find($"#follow-up-action-{FollowUpDraftActions.CodeReview}").Change(true);
 		cut.FindAll(".dialog-footer button").Single(button => button.TextContent.Trim() == "Write reply").Click();
 
 		Assert.Equal(1, draftRequests);
-		Assert.Equal("mock it", notesSent);
+		Assert.Equal("mock it", draftRequest?.Notes);
+		Assert.Equal([FollowUpDraftActions.CodeReview, FollowUpDraftActions.TestAndVerify], draftRequest?.Actions);
 		Assert.Null(followUpPrompt);
 		Assert.Equal("Yes, mock the clock.", cut.Find("#follow-up-draft").GetAttribute("value"));
 		var stats = cut.Find("#follow-up-draft-stats").TextContent;
@@ -1936,7 +1941,7 @@ public sealed class JobSessionPanelTests
 
 		Assert.Contains("Inference left this reply to you.", cut.Find("dialog .alert").TextContent);
 		Assert.Contains("Free (self-hosted)", cut.Find("#follow-up-draft-stats").TextContent);
-		Assert.Single(cut.FindAll(".dialog-footer button").Where(button => button.TextContent.Trim() == "Try again"));
+		Assert.Single(cut.FindAll(".dialog-footer button"), button => button.TextContent.Trim() == "Try again");
 		Assert.Empty(cut.FindAll("#follow-up-draft"));
 		Assert.False(sent);
 	}

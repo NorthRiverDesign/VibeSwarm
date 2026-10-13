@@ -249,12 +249,12 @@ public partial class JobService
         return true;
     }
 
-    public async Task<FollowUpDraft> DraftFollowUpAsync(Guid id, string? notes, CancellationToken cancellationToken = default)
+    public async Task<FollowUpDraft> DraftFollowUpAsync(Guid id, FollowUpDraftRequest request, CancellationToken cancellationToken = default)
     {
         var answerer = _serviceProvider.GetService<AgentQuestionAnswerer>();
         return answerer == null
             ? new FollowUpDraft { Error = "Inference isn't available on this server." }
-            : await answerer.DraftFollowUpAsync(id, notes, cancellationToken);
+            : await answerer.DraftFollowUpAsync(id, request, cancellationToken);
     }
 
     public async Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default)

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Inference;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
@@ -241,7 +242,11 @@ public sealed class AgentQuestionAnswererTests : IDisposable
 			DurationMs = 2300
 		});
 
-		var draft = await CreateAnswerer(inference).DraftFollowUpAsync(jobId, "  mock it  ");
+		var draft = await CreateAnswerer(inference).DraftFollowUpAsync(jobId, new FollowUpDraftRequest
+		{
+			Notes = "  mock it  ",
+			Actions = [FollowUpDraftActions.TestAndVerify, "unknown", FollowUpDraftActions.CodeReview]
+		});
 
 		Assert.Null(draft.Error);
 		Assert.Equal("Yes, mock the clock and rerun the tests.", draft.Text);
@@ -257,7 +262,12 @@ public sealed class AgentQuestionAnswererTests : IDisposable
 		Assert.Contains("Add a settings page", request.Prompt);
 		Assert.Contains("failed with this error: dotnet test failed", request.Prompt);
 		Assert.Contains("Should I mock the clock?", request.Prompt);
-		Assert.EndsWith("The owner's notes for the message:\nmock it", request.Prompt.ReplaceLineEndings("\n"));
+		// Picked actions follow the notes in catalogue order; unknown keys are dropped.
+		var codeReview = FollowUpDraftActions.All.Single(a => a.Key == FollowUpDraftActions.CodeReview).Instruction;
+		var testAndVerify = FollowUpDraftActions.All.Single(a => a.Key == FollowUpDraftActions.TestAndVerify).Instruction;
+		Assert.EndsWith(
+			$"The owner's notes for the message:\nmock it\n\nActions the owner picked for the agent:\n- {codeReview}\n- {testAndVerify}",
+			request.Prompt.ReplaceLineEndings("\n"));
 	}
 
 	[Fact]
@@ -267,7 +277,7 @@ public sealed class AgentQuestionAnswererTests : IDisposable
 		var jobId = await SeedJobAsync(JobStatus.Processing, null, "Working on it.");
 		var inference = new ScriptedInferenceService(_ => Reply("Proceed."));
 
-		var draft = await CreateAnswerer(inference).DraftFollowUpAsync(jobId, null);
+		var draft = await CreateAnswerer(inference).DraftFollowUpAsync(jobId, new FollowUpDraftRequest());
 
 		Assert.Null(draft.Text);
 		Assert.Contains("still running", draft.Error);
@@ -279,7 +289,7 @@ public sealed class AgentQuestionAnswererTests : IDisposable
 	{
 		var jobId = await SeedJobAsync(JobStatus.Completed, null, "Done. Should I deploy to production?");
 
-		var noProvider = await CreateAnswerer(new ScriptedInferenceService(_ => Reply("Deploy."))).DraftFollowUpAsync(jobId, null);
+		var noProvider = await CreateAnswerer(new ScriptedInferenceService(_ => Reply("Deploy."))).DraftFollowUpAsync(jobId, new FollowUpDraftRequest());
 		await SeedProviderAsync("Desktop", priority: 0, ("qwen3", "default"));
 		var declined = await CreateAnswerer(new ScriptedInferenceService(_ => new InferenceResponse
 		{
@@ -287,7 +297,7 @@ public sealed class AgentQuestionAnswererTests : IDisposable
 			Response = AgentQuestionAnswerer.NeedsUserReply,
 			CompletionTokens = 3,
 			CostUsd = 0.0004m
-		})).DraftFollowUpAsync(jobId, null);
+		})).DraftFollowUpAsync(jobId, new FollowUpDraftRequest());
 
 		Assert.Null(noProvider.Text);
 		Assert.Contains("No inference provider replied", noProvider.Error);

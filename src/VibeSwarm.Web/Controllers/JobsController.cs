@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Controllers;
@@ -158,8 +159,8 @@ public class JobsController : ControllerBase
         => await _jobService.ContinueJobAsync(id, req.FollowUpPrompt, ct) ? Ok() : BadRequest();
 
     [HttpPost("{id:guid}/follow-up-draft")]
-    public async Task<IActionResult> DraftFollowUp(Guid id, [FromBody] DraftFollowUpRequest req, CancellationToken ct)
-        => Ok(await _jobService.DraftFollowUpAsync(id, req.Notes, ct));
+    public async Task<IActionResult> DraftFollowUp(Guid id, [FromBody] FollowUpDraftRequest req, CancellationToken ct)
+        => Ok(await _jobService.DraftFollowUpAsync(id, req, ct));
 
     [HttpGet("last-model")]
     public async Task<IActionResult> GetLastUsedModel([FromQuery] Guid projectId, [FromQuery] Guid providerId, CancellationToken ct)
@@ -231,7 +232,6 @@ public class JobsController : ControllerBase
     public record UpdateGitDeliveryRequest(string? CommitHash, int? PullRequestNumber, string? PullRequestUrl, DateTime? PullRequestCreatedAt, DateTime? MergedAt);
     public record PauseInteractionRequest(string InteractionPrompt, string InteractionType, string? Choices);
     public record ContinueJobRequest(string FollowUpPrompt);
-    public record DraftFollowUpRequest(string? Notes);
     public record RetryRequest(Guid? ProviderId, string? ModelId, string? ReasoningEffort);
     public record UpdatePromptRequest(string Prompt);
     public record SelectedJobsRequest(List<Guid> JobIds);

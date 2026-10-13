@@ -163,9 +163,9 @@ public class HttpJobService : IJobService
 		return response.IsSuccessStatusCode;
 	}
 
-	public async Task<FollowUpDraft> DraftFollowUpAsync(Guid id, string? notes, CancellationToken ct = default)
+	public async Task<FollowUpDraft> DraftFollowUpAsync(Guid id, FollowUpDraftRequest request, CancellationToken ct = default)
 	{
-		var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/follow-up-draft", new { Notes = notes }, ct);
+		var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/follow-up-draft", request, ct);
 		if (!response.IsSuccessStatusCode)
 		{
 			return new FollowUpDraft { Error = $"Could not draft a reply ({(int)response.StatusCode} {response.ReasonPhrase})." };

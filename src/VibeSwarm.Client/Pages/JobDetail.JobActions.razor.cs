@@ -363,8 +363,8 @@ public partial class JobDetail : ComponentBase
         }
     }
 
-    private Task<FollowUpDraft> DraftFollowUpAsync(string? notes)
-        => JobService.DraftFollowUpAsync(Job!.Id, notes);
+    private Task<FollowUpDraft> DraftFollowUpAsync(FollowUpDraftRequest request)
+        => JobService.DraftFollowUpAsync(Job!.Id, request);
 
     private async Task ContinueJobWithFollowUp(string followUpPrompt)
     {
