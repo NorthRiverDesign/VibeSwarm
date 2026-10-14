@@ -121,6 +121,25 @@ public sealed class AutoPilotPanelTests
 	}
 
 	[Fact]
+	public void Running_LeavesOutAPolishPassTheRunEndsBefore()
+	{
+		using var context = CreateContext(new FakeAutoPilotService(new IterationLoop
+		{
+			ProjectId = ProjectId,
+			Status = IterationLoopStatus.Running,
+			MaxIterations = 2,
+			CompletedIterations = 1,
+			PolishEveryIterations = 5,
+			IterationsSinceLastPolish = 1
+		}));
+
+		var cut = context.Render<AutoPilotPanel>(parameters => parameters.Add(p => p.ProjectId, ProjectId));
+
+		cut.WaitForAssertion(() => Assert.Contains("1 of 2 changes", cut.Markup));
+		Assert.DoesNotContain("Polish pass", cut.Markup);
+	}
+
+	[Fact]
 	public void Running_StopAsksFirst()
 	{
 		var service = new FakeAutoPilotService(new IterationLoop { ProjectId = ProjectId, Status = IterationLoopStatus.Running });

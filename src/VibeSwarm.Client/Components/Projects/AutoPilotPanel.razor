@@ -30,7 +30,7 @@
 				<div class="list-group-item d-flex align-items-center gap-5">
 					<i class="bi bi-lightbulb fg-primary flex-shrink-0"></i>
 					<label for="ap-idea-source" class="flex-grow-1 min-w-0 fw-medium">Ideas</label>
-					<select id="ap-idea-source" class="form-control w-auto min-w-0 setting-value" value="@IdeaSource" @onchange="OnIdeaSourceChanged">
+					<select id="ap-idea-source" class="form-control w-auto min-w-0" value="@IdeaSource" @onchange="OnIdeaSourceChanged">
 						@if (AvailableInferenceProviders.Count > 0)
 						{
 							<option value="@AnyInferenceSource">Any inference provider</option>
@@ -45,7 +45,7 @@
 				<div class="list-group-item d-flex align-items-center gap-5">
 					<i class="bi bi-terminal fg-primary flex-shrink-0"></i>
 					<label for="ap-coding-provider" class="flex-grow-1 min-w-0 fw-medium">Built by</label>
-					<select id="ap-coding-provider" class="form-control w-auto min-w-0 setting-value" @bind="_config.ProviderId">
+					<select id="ap-coding-provider" class="form-control w-auto min-w-0" @bind="_config.ProviderId">
 						<option value="">Project default</option>
 						@foreach (var provider in AvailableProviders)
 						{
@@ -58,7 +58,7 @@
 					<label for="ap-max-iterations" class="flex-grow-1 min-w-0 fw-medium">Stop after</label>
 					<input id="ap-max-iterations" type="number" inputmode="numeric" class="form-control w-auto text-end setting-value"
 						   @bind="_config.MaxIterations" min="0" max="@AutoPilotConfig.MaxIterationsLimit" />
-					<span class="fg-1 flex-shrink-0">@(_config.MaxIterations == 0 ? "no limit" : "changes")</span>
+					<span class="fg-1 flex-shrink-0">@(_config.MaxIterations switch { 0 => "no limit", 1 => "change", _ => "changes" })</span>
 				</div>
 				<SwitchRow Id="ap-autopush" Icon="cloud-arrow-up" Title="Push each change"
 						   Subtitle="@(_config.AutoPush ? "Each commit goes to the remote" : "Commits stay on this machine")"
@@ -193,7 +193,7 @@
 						</div>
 						@if (_loop.Status == IterationLoopStatus.Running)
 						{
-							<button type="button" class="btn-sm btn-outline theme-secondary rounded-pill flex-shrink-0" @onclick="PauseAutoPilot" disabled="@_isToggling">
+							<button type="button" class="btn-sm btn-solid theme-secondary rounded-pill flex-shrink-0" @onclick="PauseAutoPilot" disabled="@_isToggling">
 								<i class="bi bi-pause-fill"></i>Pause
 							</button>
 						}
@@ -529,7 +529,7 @@
 	private static string GetProgressSummary(IterationLoop loop)
 	{
 		var changes = loop.MaxIterations > 0
-			? $"{loop.CompletedIterations} of {loop.MaxIterations} changes"
+			? $"{loop.CompletedIterations} of {loop.MaxIterations} change{(loop.MaxIterations == 1 ? "" : "s")}"
 			: $"{loop.CompletedIterations} change{(loop.CompletedIterations == 1 ? "" : "s")}";
 		var cost = loop.MaxTotalCostUsd.HasValue
 			? $"${loop.TotalCostUsd:F2} of ${loop.MaxTotalCostUsd.Value:F2}"
@@ -568,12 +568,19 @@
 		if (!string.IsNullOrWhiteSpace(loop.StatusMessage) && loop.NextIterationAt > DateTime.UtcNow)
 			return $"Resumes at {FormatLocalTime(loop.NextIterationAt.Value)}";
 
-		return loop.PolishEveryIterations > 0 ? GetPolishLine(loop) : null;
+		return GetPolishLine(loop);
 	}
 
-	private static string GetPolishLine(IterationLoop loop)
+	/// <summary>When the next polish pass comes, or null when the run ends before it.</summary>
+	private static string? GetPolishLine(IterationLoop loop)
 	{
+		if (loop.PolishEveryIterations <= 0)
+			return null;
+
 		var remaining = loop.PolishEveryIterations - loop.IterationsSinceLastPolish;
+		if (loop.MaxIterations > 0 && loop.CompletedIterations + Math.Max(remaining, 0) >= loop.MaxIterations)
+			return null;
+
 		return remaining <= 0
 			? "Polish pass next"
 			: $"Polish pass after {remaining} more change{(remaining == 1 ? "" : "s")}";

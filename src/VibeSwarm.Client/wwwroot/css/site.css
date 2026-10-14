@@ -281,13 +281,10 @@ textarea.textarea-autogrow {
 	max-height: 40dvh;
 }
 
-/* A setting's value at the end of a list row, as in iOS Settings: as wide as what it shows,
-   and never wider than the row has room for. */
-.list-group-item .setting-value {
-	field-sizing: content;
-	max-width: 65%;
-}
+/* A number at the end of a list row, as in iOS Settings: the box is as wide as its number.
+   (Not for selects: sized to content they leave out the room their arrow takes.) */
 .list-group-item input.setting-value {
+	field-sizing: content;
 	min-width: 4.5rem;
 }
 
