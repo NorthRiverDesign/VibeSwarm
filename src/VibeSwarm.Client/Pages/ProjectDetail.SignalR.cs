@@ -108,6 +108,8 @@ public partial class ProjectDetail
 					if (_disposed) return;
 					await RefreshJobs();
 					await LoadIdeas();
+					if (IsAutoPilotRunning)
+						await RefreshAutoPilotAsync();
 					StateHasChanged();
 				});
 			}
@@ -125,6 +127,8 @@ public partial class ProjectDetail
 					if (_disposed) return;
 					await RefreshJobs();
 					await LoadIdeas();
+					if (IsAutoPilotRunning && projectId == ProjectId.ToString())
+						await RefreshAutoPilotAsync();
 					StateHasChanged();
 				});
 			}
@@ -187,6 +191,8 @@ public partial class ProjectDetail
 					await RefreshUncommittedChangesStatus();
 					_ = LoadRemoteSyncStatusAsync();
 					ProcessingIdeaIds.Clear();
+					if (IsAutoPilotRunning)
+						await RefreshAutoPilotAsync();
 
 					if (success && (_activeTab == "changes" || _hasUncommittedChangesHeader))
 					{
@@ -358,9 +364,7 @@ public partial class ProjectDetail
 					if (_disposed) return;
 					if (projectId == ProjectId.ToString())
 					{
-						try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { }
-						if (_autoPilotPanel != null)
-							await _autoPilotPanel.RefreshAsync();
+						await RefreshAutoPilotAsync();
 						StateHasChanged();
 					}
 				});
@@ -368,6 +372,25 @@ public partial class ProjectDetail
 			catch (ObjectDisposedException) { }
 			catch (Exception) { }
 		});
+	}
+
+	/// <summary>
+	/// Reloads the auto-pilot status for the header card and the Auto-Pilot tab. The loop announces
+	/// its job when it queues it, so the job's own events refresh it too: otherwise the tab says
+	/// Queued for as long as the job runs.
+	/// </summary>
+	private async Task RefreshAutoPilotAsync()
+	{
+		try
+		{
+			_autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId);
+		}
+		catch
+		{
+			return;
+		}
+
+		_autoPilotPanel?.ShowStatus(_autoPilotStatus);
 	}
 
 	private async Task SubscribeToSignalRGroups()
@@ -391,7 +414,7 @@ public partial class ProjectDetail
 			if (_disposed) return;
 			try
 			{
-				if (HasActiveJobs || IsIdeasProcessingActive)
+				if (HasActiveJobs || IsIdeasProcessingActive || IsAutoPilotRunning)
 				{
 					if (IsSignalRConnected)
 					{
@@ -405,6 +428,8 @@ public partial class ProjectDetail
 						if (_disposed) return;
 						await RefreshJobs();
 						await LoadIdeas();
+						if (IsAutoPilotRunning)
+							await RefreshAutoPilotAsync();
 						StateHasChanged();
 					});
 				}

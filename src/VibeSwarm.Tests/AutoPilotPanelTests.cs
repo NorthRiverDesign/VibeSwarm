@@ -140,6 +140,35 @@ public sealed class AutoPilotPanelTests
 	}
 
 	[Fact]
+	public async Task Running_ShowsTheJobRunningOnceThePageReportsIt()
+	{
+		var jobId = Guid.NewGuid();
+		using var context = CreateContext(new FakeAutoPilotService(new IterationLoop
+		{
+			ProjectId = ProjectId,
+			Status = IterationLoopStatus.Running,
+			CurrentJobId = jobId,
+			CurrentJobTitle = "Add CSV export",
+			CurrentJobStatus = JobStatus.New
+		}));
+		var cut = context.Render<AutoPilotPanel>(parameters => parameters.Add(p => p.ProjectId, ProjectId));
+		cut.WaitForAssertion(() => Assert.Contains("Queued", cut.Markup));
+
+		await cut.InvokeAsync(() => cut.Instance.ShowStatus(new IterationLoop
+		{
+			ProjectId = ProjectId,
+			Status = IterationLoopStatus.Running,
+			CurrentJobId = jobId,
+			CurrentJobTitle = "Add CSV export",
+			CurrentJobStatus = JobStatus.Processing
+		}));
+
+		Assert.DoesNotContain("Queued", cut.Markup);
+		Assert.Contains("Running", cut.Find("a[href='/jobs/view/" + jobId + "']").TextContent);
+		Assert.DoesNotContain("Loading auto-pilot status", cut.Markup);
+	}
+
+	[Fact]
 	public void Running_StopAsksFirst()
 	{
 		var service = new FakeAutoPilotService(new IterationLoop { ProjectId = ProjectId, Status = IterationLoopStatus.Running });

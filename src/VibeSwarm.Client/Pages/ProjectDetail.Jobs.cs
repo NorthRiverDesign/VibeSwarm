@@ -1104,9 +1104,7 @@ public partial class ProjectDetail
         try
         {
             try { await AutoPilotService.StopAsync(ProjectId); } catch { }
-            try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { }
-            if (_autoPilotPanel != null)
-                await _autoPilotPanel.RefreshAsync();
+            await RefreshAutoPilotAsync();
         }
         finally
         {

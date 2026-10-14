@@ -349,11 +349,11 @@
 			_config.InferenceModelId = null;
 	}
 
+	// Shows the spinner only until the first load: a refresh keeps what's on screen meanwhile.
 	private async Task LoadStatusAsync()
 	{
 		try
 		{
-			_isLoading = true;
 			_loop = await AutoPilotService.GetStatusAsync(ProjectId);
 		}
 		catch (Exception ex)
@@ -445,11 +445,12 @@
 	}
 
 	/// <summary>
-	/// Called by the parent page when a SignalR AutoPilotStateChanged event is received.
+	/// Shows a status the parent page just loaded, when the loop or its current job changed.
 	/// </summary>
-	public async Task RefreshAsync()
+	public void ShowStatus(IterationLoop? loop)
 	{
-		await LoadStatusAsync();
+		_loop = loop;
+		_isLoading = false;
 		StateHasChanged();
 	}
 
