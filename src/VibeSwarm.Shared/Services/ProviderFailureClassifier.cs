@@ -41,10 +41,6 @@ public static class ProviderFailureClassifier
 		// any code. Every retry produces the same empty run.
 		"permission mode forced to default",
 		"refused to run with bypasspermissions",
-		// The run touched nothing. Every provider in the plan is tried before the job
-		// fails, so by the time this is classified the work has already been attempted
-		// everywhere it could be; looping the idea round again would only repeat it.
-		"finished without changing any code",
 		// The CLI binary itself is missing or not executable.
 		"claude: command not found",
 		"executable path is not configured",
@@ -61,6 +57,14 @@ public static class ProviderFailureClassifier
 		"authentication_error"
 	];
 
+	/// <summary>
+	/// The run touched nothing. Every provider in the plan is tried before the job fails, so by
+	/// the time this is classified the work has already been attempted everywhere it could be;
+	/// looping the idea round again would only repeat it. It says nothing about the host, though:
+	/// the next, different task can still succeed.
+	/// </summary>
+	private const string NoChangesMarker = "finished without changing any code";
+
 	/// <summary>Lines from a bundled-JavaScript stack trace, which say nothing useful.</summary>
 	private static readonly Regex NoiseLine = new(
 		@"^\s*(\d+\s*\|| *at\s|\^|Bun v|node:internal)",
@@ -73,14 +77,26 @@ public static class ProviderFailureClassifier
 			return ProviderFailureKind.Retryable;
 		}
 
-		return UnrecoverableMarkers.Any(marker =>
-			errorText.Contains(marker, StringComparison.OrdinalIgnoreCase))
+		return IsHostFault(errorText) || IsNoChangeRun(errorText)
 			? ProviderFailureKind.Unrecoverable
 			: ProviderFailureKind.Retryable;
 	}
 
 	public static bool IsUnrecoverable(string? errorText) =>
 		Classify(errorText) == ProviderFailureKind.Unrecoverable;
+
+	/// <summary>Whether the run ended without changing any code, so the job was recorded as failed.</summary>
+	public static bool IsNoChangeRun(string? errorText) =>
+		!string.IsNullOrWhiteSpace(errorText) && errorText.Contains(NoChangesMarker, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Whether the CLI or host can't run any job at all: a missing package or binary, a CLI that
+	/// rejects its arguments, or missing credentials. Unlike <see cref="IsUnrecoverable"/>, a run
+	/// that changed nothing doesn't count, since a different task may well succeed.
+	/// </summary>
+	public static bool IsHostFault(string? errorText) =>
+		!string.IsNullOrWhiteSpace(errorText)
+		&& UnrecoverableMarkers.Any(marker => errorText.Contains(marker, StringComparison.OrdinalIgnoreCase));
 
 	/// <summary>
 	/// Reduces raw CLI output to the line worth showing: the reported error if there is

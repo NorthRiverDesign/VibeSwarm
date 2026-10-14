@@ -9,8 +9,15 @@ namespace VibeSwarm.Shared.Services;
 public class AutoPilotConfig
 {
 	/// <summary>
-	/// Inference provider for idea generation (e.g., Grok, Ollama).
-	/// Null = fall back to coding provider or project default.
+	/// Whether ideas come from inference rather than the coding provider. With no
+	/// <see cref="InferenceProviderId"/>, the first enabled inference provider that answers is used.
+	/// </summary>
+	public bool UseInferenceForIdeas { get; set; }
+
+	/// <summary>
+	/// Inference provider for idea generation (e.g., Grok, Ollama). Setting it also means ideas
+	/// come from inference. Null = any inference provider, or the coding provider when
+	/// <see cref="UseInferenceForIdeas"/> is off.
 	/// </summary>
 	public Guid? InferenceProviderId { get; set; }
 

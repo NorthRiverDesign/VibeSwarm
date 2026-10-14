@@ -1,5 +1,6 @@
 @* Auto-Pilot panel for autonomous project iteration *@
 @inject IAutoPilotService AutoPilotService
+@inject ISettingsService SettingsService
 @inject NavigationManager NavigationManager
 @inject NotificationService NotificationService
 
@@ -13,157 +14,137 @@
 	}
 	else if (_loop == null || IsTerminal(_loop.Status))
 	{
-		@* IDLE / STOPPED STATE — the settings, grouped like the rest of the project page *@
-		<div class="d-flex flex-column gap-3 px-1">
-			<p class="small fg-1 mb-0">
-				Auto-Pilot reads the code, picks an improvement, builds and commits it, and repeats until it reaches one of the limits below.
-				It waits out usage limits, looks at new areas when ideas run dry, and tidies up its own work every few changes.
-			</p>
-			@if (_loop != null && (_loop.CompletedIterations > 0 || !string.IsNullOrEmpty(_loop.LastStopReason)))
-			{
-				<p class="small mb-0 @GetLastRunTextClass(_loop.Status)">
-					<i class="bi @GetStatusIcon(_loop.Status) me-1"></i>Last run @_loop.Status.ToString().ToLowerInvariant()
-					@if (!string.IsNullOrEmpty(_loop.LastStopReason))
-					{
-						<span class="fg-1">: @_loop.LastStopReason</span>
-					}
-					<span class="fg-1">
-						· @_loop.CompletedIterations iteration@(_loop.CompletedIterations == 1 ? "" : "s") · $@_loop.TotalCostUsd.ToString("F2")
-					</span>
-				</p>
-			}
-		</div>
+		@* IDLE / STOPPED STATE — the choices that change a run, with tuning folded away *@
+		<p class="small fg-1 mb-0 px-1">
+			Picks an improvement, builds and commits it, then the next. It waits out usage limits and tidies its own work every few changes.
+		</p>
 
 		@if (!string.IsNullOrEmpty(_error))
 		{
 			<Alert Type="Alert.AlertType.Danger" Class="mb-0">@_error</Alert>
 		}
 
-		<section class="d-flex flex-column gap-3" aria-label="Ideas">
-			<h2 class="text-eyebrow mb-0 px-1">Ideas</h2>
+		<section class="d-flex flex-column gap-3" aria-label="Run">
+			<SectionHeader Title="Run" />
 			<div class="list-group rounded-9">
-				<div class="list-group-item d-flex flex-column gap-5 py-5">
-					<div>
-						<label for="ap-inference-provider" class="form-label small fg-1 mb-1">Come up with ideas using</label>
-						<select id="ap-inference-provider" class="form-control" @bind="_config.InferenceProviderId">
-							<option value="">The coding provider</option>
+				<div class="list-group-item d-flex align-items-center gap-5">
+					<i class="bi bi-lightbulb fg-primary flex-shrink-0"></i>
+					<label for="ap-idea-source" class="flex-grow-1 min-w-0 fw-medium">Ideas</label>
+					<select id="ap-idea-source" class="form-control w-auto min-w-0 setting-value" value="@IdeaSource" @onchange="OnIdeaSourceChanged">
+						@if (AvailableInferenceProviders.Count > 0)
+						{
+							<option value="@AnyInferenceSource">Any inference provider</option>
 							@foreach (var provider in AvailableInferenceProviders)
-							{
-								<option value="@provider.Id">@provider.Name (@provider.ProviderType)</option>
-							}
-						</select>
-					</div>
-					<div>
-						<label for="ap-inference-model" class="form-label small fg-1 mb-1">Model</label>
-						<div class="input-group">
-							<select id="ap-inference-model" class="form-control" @bind="_config.InferenceModelId">
-								<option value="">Provider default</option>
-								@foreach (var model in GetInferenceModelsForSelectedProvider())
-								{
-									<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
-								}
-							</select>
-							<ModelRefreshButton ProviderId="@_config.InferenceProviderId" IsInference="true"
-												OnInferenceRefreshed="HandleInferenceModelsRefreshed" />
-						</div>
-					</div>
-				</div>
-			</div>
-		</section>
-
-		<section class="d-flex flex-column gap-3" aria-label="Coding">
-			<h2 class="text-eyebrow mb-0 px-1">Coding</h2>
-			<div class="list-group rounded-9">
-				<div class="list-group-item d-flex flex-column gap-5 py-5">
-					<div>
-						<label for="ap-coding-provider" class="form-label small fg-1 mb-1">Build each idea with</label>
-						<select id="ap-coding-provider" class="form-control" @bind="_config.ProviderId">
-							<option value="">Project default</option>
-							@foreach (var provider in AvailableProviders)
 							{
 								<option value="@provider.Id">@provider.Name</option>
 							}
-						</select>
-					</div>
-					<div>
-						<label for="ap-coding-model" class="form-label small fg-1 mb-1">Model</label>
-						<div class="input-group">
-							<select id="ap-coding-model" class="form-control" @bind="_config.ModelId">
-								<option value="">Provider default</option>
-								@foreach (var model in GetCodingModelsForSelectedProvider())
-								{
-									<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
-								}
-							</select>
-							<ModelRefreshButton ProviderId="@_config.ProviderId" OnRefreshed="HandleCodingModelsRefreshed" />
-						</div>
-					</div>
+						}
+						<option value="@CodingAgentSource">The coding agent</option>
+					</select>
 				</div>
+				<div class="list-group-item d-flex align-items-center gap-5">
+					<i class="bi bi-terminal fg-primary flex-shrink-0"></i>
+					<label for="ap-coding-provider" class="flex-grow-1 min-w-0 fw-medium">Built by</label>
+					<select id="ap-coding-provider" class="form-control w-auto min-w-0 setting-value" @bind="_config.ProviderId">
+						<option value="">Project default</option>
+						@foreach (var provider in AvailableProviders)
+						{
+							<option value="@provider.Id">@provider.Name</option>
+						}
+					</select>
+				</div>
+				<div class="list-group-item d-flex align-items-center gap-5">
+					<i class="bi bi-flag fg-primary flex-shrink-0"></i>
+					<label for="ap-max-iterations" class="flex-grow-1 min-w-0 fw-medium">Stop after</label>
+					<input id="ap-max-iterations" type="number" inputmode="numeric" class="form-control w-auto text-end setting-value"
+						   @bind="_config.MaxIterations" min="0" max="@AutoPilotConfig.MaxIterationsLimit" />
+					<span class="fg-1 flex-shrink-0">@(_config.MaxIterations == 0 ? "no limit" : "changes")</span>
+				</div>
+				<SwitchRow Id="ap-autopush" Icon="cloud-arrow-up" Title="Push each change"
+						   Subtitle="@(_config.AutoPush ? "Each commit goes to the remote" : "Commits stay on this machine")"
+						   @bind-Value="_config.AutoPush" />
 			</div>
 		</section>
 
-		<section class="d-flex flex-column gap-3" aria-label="Limits">
-			<h2 class="text-eyebrow mb-0 px-1">Limits</h2>
+		<section class="d-flex flex-column gap-3" aria-label="More options">
 			<div class="list-group rounded-9">
-				<div class="list-group-item py-5">
+				<ListRow Icon="sliders" IconClass="fg-2" Title="More options" Subtitle="@GetMoreOptionsSummary()">
+					@if (_config.InferenceProviderId.HasValue)
+					{
+						<div class="form-field mb-0">
+							<label for="ap-inference-model">Idea model</label>
+							<div class="input-group">
+								<select id="ap-inference-model" class="form-control" @bind="_config.InferenceModelId">
+									<option value="">Provider default</option>
+									@foreach (var model in GetInferenceModelsForSelectedProvider())
+									{
+										<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+									}
+								</select>
+								<ModelRefreshButton ProviderId="@_config.InferenceProviderId" IsInference="true"
+													OnInferenceRefreshed="HandleInferenceModelsRefreshed" />
+							</div>
+						</div>
+					}
+					@if (_config.ProviderId.HasValue)
+					{
+						<div class="form-field mb-0">
+							<label for="ap-coding-model">Coding model</label>
+							<div class="input-group">
+								<select id="ap-coding-model" class="form-control" @bind="_config.ModelId">
+									<option value="">Provider default</option>
+									@foreach (var model in GetCodingModelsForSelectedProvider())
+									{
+										<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+									}
+								</select>
+								<ModelRefreshButton ProviderId="@_config.ProviderId" OnRefreshed="HandleCodingModelsRefreshed" />
+							</div>
+						</div>
+					}
 					<div class="row g-5">
 						<div class="col-6">
-							<label for="ap-max-iterations" class="form-label small fg-1 mb-1">Iterations</label>
-							<input id="ap-max-iterations" type="number" class="form-control" @bind="_config.MaxIterations" min="0" max="1000" />
-							<div class="form-text">0 = no limit</div>
-						</div>
-						<div class="col-6">
 							<label for="ap-max-cost" class="form-label small fg-1 mb-1">Spend up to ($)</label>
-							<input id="ap-max-cost" type="number" class="form-control" @bind="_config.MaxTotalCostUsd" min="0" step="1" placeholder="No limit" />
+							<input id="ap-max-cost" type="number" inputmode="decimal" class="form-control" @bind="_config.MaxTotalCostUsd" min="0" step="1" placeholder="No limit" />
 						</div>
 						<div class="col-6">
 							<label for="ap-max-failures" class="form-label small fg-1 mb-1">Failures in a row</label>
-							<input id="ap-max-failures" type="number" class="form-control" @bind="_config.MaxConsecutiveFailures" min="1" max="20" />
+							<input id="ap-max-failures" type="number" inputmode="numeric" class="form-control" @bind="_config.MaxConsecutiveFailures"
+								   min="1" max="@AutoPilotConfig.MaxConsecutiveFailuresLimit" />
 						</div>
 						<div class="col-6">
 							<label for="ap-cooldown" class="form-label small fg-1 mb-1">Pause between (sec)</label>
-							<input id="ap-cooldown" type="number" class="form-control" @bind="_config.CooldownSeconds" min="10" max="3600" />
+							<input id="ap-cooldown" type="number" inputmode="numeric" class="form-control" @bind="_config.CooldownSeconds"
+								   min="@AutoPilotConfig.MinCooldownSeconds" max="@AutoPilotConfig.MaxCooldownSeconds" />
+						</div>
+						<div class="col-6">
+							<label for="ap-polish-every" class="form-label small fg-1 mb-1">Polish every</label>
+							<input id="ap-polish-every" type="number" inputmode="numeric" class="form-control" @bind="_config.PolishEveryIterations"
+								   min="0" max="@AutoPilotConfig.MaxPolishEveryIterations" />
 						</div>
 					</div>
-				</div>
-			</div>
-		</section>
-
-		<section class="d-flex flex-column gap-3" aria-label="Polish">
-			<h2 class="text-eyebrow mb-0 px-1">Polish</h2>
-			<div class="list-group rounded-9">
-				<div class="list-group-item py-5">
-					<label for="ap-polish-every" class="form-label small fg-1 mb-1">Review and tidy up after every</label>
-					<div class="input-group">
-						<input id="ap-polish-every" type="number" class="form-control" @bind="_config.PolishEveryIterations"
-							   min="0" max="@AutoPilotConfig.MaxPolishEveryIterations" />
-						<span class="input-group-text">changes</span>
+					<div class="small fg-1">
+						A polish pass fixes, refactors and tests the recent changes without adding features. 0 = never.
 					</div>
-					<div class="form-text">A polish pass fixes, refactors and tests the recent changes without adding features. 0 = never.</div>
-				</div>
+				</ListRow>
 			</div>
 		</section>
 
-		<section class="d-flex flex-column gap-3" aria-label="After each change">
-			<h2 class="text-eyebrow mb-0 px-1">After each change</h2>
-			<div class="list-group rounded-9">
-				<label class="list-group-item d-flex align-items-center justify-content-between gap-5 py-5 cursor-pointer" for="ap-autopush">
-					<span class="min-w-0">
-						<span class="d-block">Push the commit</span>
-						<span class="d-block small fg-1">Every change is committed, so the next one builds on it</span>
-					</span>
-					<span class="switch">
-						<input type="checkbox" role="switch" switch id="ap-autopush" @bind="_config.AutoPush" />
-					</span>
-				</label>
-			</div>
-		</section>
-
-		<div class="d-grid sm:d-flex sm:justify-content-end">
+		<div class="d-flex flex-column gap-3">
+			@if (GetAgentQuestionsNote() is { } note)
+			{
+				<p class="small mb-0 px-1 @(note.NeedsAttention ? "fg-emphasis-warning" : "fg-1")">
+					<i class="bi bi-chat-left-dots me-1"></i>@note.Text
+					@if (note.NeedsAttention)
+					{
+						<a href="/settings" class="text-nowrap">Settings</a>
+					}
+				</p>
+			}
 			<button type="button" class="btn-solid theme-primary" @onclick="StartAutoPilot" disabled="@_isStarting">
 				@if (_isStarting)
 				{
-					<span class="spinner-border spinner-sm me-1" role="status" aria-hidden="true"></span>
+					<span class="spinner-border spinner-sm" role="status" aria-hidden="true"></span>
 				}
 				else
 				{
@@ -171,95 +152,111 @@
 				}
 				Start Auto-Pilot
 			</button>
+			@if (_loop != null && (_loop.CompletedIterations > 0 || !string.IsNullOrEmpty(_loop.LastStopReason)))
+			{
+				<p class="small mb-0 px-1 @GetLastRunTextClass(_loop.Status)">
+					Last run @_loop.Status.ToString().ToLowerInvariant()@(string.IsNullOrEmpty(_loop.LastStopReason) ? "" : $": {_loop.LastStopReason}")
+					<span class="fg-1">
+						· @_loop.CompletedIterations change@(_loop.CompletedIterations == 1 ? "" : "s") · $@_loop.TotalCostUsd.ToString("F2")
+					</span>
+				</p>
+			}
 		</div>
 	}
 	else
 	{
-		@* RUNNING / PAUSED / STOPPING STATE — one status card *@
+		@* RUNNING / PAUSED / STOPPING STATE — one status card with one action; Stop is a quiet link *@
 		<section class="d-flex flex-column gap-3" aria-label="Auto-Pilot status">
-			<h2 class="text-eyebrow mb-0 px-1">Auto-Pilot</h2>
+			<SectionHeader Title="Auto-Pilot" />
 			<div class="list-group rounded-9">
-				<div class="list-group-item d-flex align-items-center gap-5 py-5">
-					@if (_loop.Status == IterationLoopStatus.Paused)
-					{
-						<i class="bi bi-pause-circle-fill fg-warning fs-lg flex-shrink-0"></i>
-					}
-					else
-					{
-						<span class="spinner-border spinner-sm @(_loop.Status == IterationLoopStatus.Stopping ? "fg-warning" : "fg-primary") flex-shrink-0"
-							  role="status" aria-hidden="true"></span>
-					}
-					<div class="flex-grow-1 min-w-0">
-						<div class="fw-medium">@GetStatusHeadline(_loop.Status)</div>
-						<div class="small fg-1 text-truncate">@GetProgressSummary(_loop)</div>
+				<div class="list-group-item d-flex flex-column gap-5 py-5">
+					<div class="d-flex align-items-center gap-5">
+						@if (_loop.Status == IterationLoopStatus.Paused)
+						{
+							<i class="bi bi-pause-circle-fill fg-warning fs-lg flex-shrink-0"></i>
+						}
+						else
+						{
+							<span class="spinner-border spinner-sm @(_loop.Status == IterationLoopStatus.Stopping ? "fg-warning" : "fg-primary") flex-shrink-0"
+								  role="status" aria-hidden="true"></span>
+						}
+						<div class="flex-grow-1 min-w-0">
+							<div class="fw-medium">@GetStatusHeadline(_loop.Status)</div>
+							@if (_loop.ConsecutiveFailures > 0)
+							{
+								<div class="small fg-emphasis-warning">@_loop.ConsecutiveFailures failed in a row · stops at @_loop.MaxConsecutiveFailures</div>
+							}
+							else
+							{
+								<div class="small fg-1 text-truncate">@GetProgressSummary(_loop)</div>
+							}
+						</div>
+						@if (_loop.Status == IterationLoopStatus.Running)
+						{
+							<button type="button" class="btn-sm btn-outline theme-secondary rounded-pill flex-shrink-0" @onclick="PauseAutoPilot" disabled="@_isToggling">
+								<i class="bi bi-pause-fill"></i>Pause
+							</button>
+						}
+						else if (_loop.Status == IterationLoopStatus.Paused)
+						{
+							<button type="button" class="btn-sm btn-solid theme-primary rounded-pill flex-shrink-0" @onclick="ResumeAutoPilot" disabled="@_isToggling">
+								<i class="bi bi-play-fill"></i>Resume
+							</button>
+						}
 					</div>
-					@if (_loop.Status == IterationLoopStatus.Running)
+					@if (_loop.MaxIterations > 0)
 					{
-						<button type="button" class="btn-sm btn-outline theme-warning rounded-pill flex-shrink-0" @onclick="PauseAutoPilot" disabled="@_isToggling">Pause</button>
-						<button type="button" class="btn-sm btn-outline theme-danger rounded-pill flex-shrink-0" @onclick="StopAutoPilot" disabled="@_isToggling">Stop</button>
-					}
-					else if (_loop.Status == IterationLoopStatus.Paused)
-					{
-						<button type="button" class="btn-sm btn-outline theme-success rounded-pill flex-shrink-0" @onclick="ResumeAutoPilot" disabled="@_isToggling">Resume</button>
-						<button type="button" class="btn-sm btn-outline theme-danger rounded-pill flex-shrink-0" @onclick="StopAutoPilot" disabled="@_isToggling">Stop</button>
-					}
-				</div>
-				@if (_loop.MaxIterations > 0)
-				{
-					<div class="list-group-item py-3">
-						<div class="progress progress-xs" role="progressbar" aria-label="Iterations done"
+						<div class="progress progress-xs" role="progressbar" aria-label="Changes made"
 							 aria-valuenow="@_loop.CompletedIterations" aria-valuemin="0" aria-valuemax="@_loop.MaxIterations">
 							<div class="progress-bar" style="width: @(Math.Min(100, _loop.CompletedIterations * 100 / _loop.MaxIterations))%"></div>
 						</div>
-					</div>
-				}
+					}
+				</div>
 				@if (_loop.CurrentJobId.HasValue)
 				{
-					<ListRow Icon="terminal" IconClass="fg-1" Href="@($"/jobs/view/{_loop.CurrentJobId}")"
+					<ListRow Icon="terminal" Href="@($"/jobs/view/{_loop.CurrentJobId}")"
 							 Title="@(string.IsNullOrWhiteSpace(_loop.CurrentJobTitle) ? "Current job" : _loop.CurrentJobTitle)"
 							 Subtitle="@GetCurrentJobLine(_loop)"
 							 AttentionLine="@(_loop.CurrentJobStatus == JobStatus.Paused ? "Waiting for your answer" : null)" />
 				}
-				else if (!string.IsNullOrWhiteSpace(_loop.StatusMessage))
+				else
 				{
-					<div class="list-group-item d-flex align-items-start gap-3 small fg-1">
-						<i class="bi bi-hourglass-split flex-shrink-0"></i>
+					<div class="list-group-item d-flex align-items-start gap-5">
+						<i class="bi @(string.IsNullOrWhiteSpace(_loop.StatusMessage) ? "bi-stars" : "bi-hourglass-split") fg-2 flex-shrink-0"></i>
 						<span class="min-w-0">
-							<span class="d-block">@_loop.StatusMessage</span>
-							@if (_loop.NextIterationAt > DateTime.UtcNow)
+							<span class="d-block">@GetUpNextTitle(_loop)</span>
+							@if (GetUpNextLine(_loop) is { } upNextLine)
 							{
-								<span class="d-block">Resumes at @FormatLocalTime(_loop.NextIterationAt.Value)</span>
+								<span class="d-block small fg-1">@upNextLine</span>
 							}
 						</span>
 					</div>
 				}
-				else if (_loop.Status == IterationLoopStatus.Running && _loop.NextIterationAt > DateTime.UtcNow)
-				{
-					<div class="list-group-item small fg-1">Next iteration at @FormatLocalTime(_loop.NextIterationAt.Value)</div>
-				}
-				@if (_loop.PolishEveryIterations > 0)
-				{
-					<div class="list-group-item small fg-1">
-						<i class="bi bi-stars me-1"></i>@GetPolishLine(_loop)
-					</div>
-				}
-				@if (_loop.ConsecutiveFailures > 0)
-				{
-					<div class="list-group-item small fg-warning">
-						<i class="bi bi-exclamation-triangle me-1"></i>@_loop.ConsecutiveFailures failed in a row · stops at @_loop.MaxConsecutiveFailures
-					</div>
-				}
 			</div>
+			@if (_loop.Status != IterationLoopStatus.Stopping)
+			{
+				<button type="button" class="btn-link fg-danger text-decoration-none align-self-center" @onclick="() => _showStopConfirmation = true"
+						disabled="@_isToggling">
+					Stop Auto-Pilot
+				</button>
+			}
 		</section>
 
 		@if (!string.IsNullOrEmpty(_error))
 		{
 			<Alert Type="Alert.AlertType.Danger" Class="mb-0">@_error</Alert>
 		}
+
+		<ConfirmationModal @bind-IsVisible="_showStopConfirmation" Title="Stop Auto-Pilot?"
+						   Message="@(_loop.CurrentJobId.HasValue ? "The current job finishes first, and nothing new starts after it." : "Nothing new will start.")"
+						   ConfirmText="Stop" IsProcessing="@_isToggling" OnConfirm="StopAutoPilot" />
 	}
 </div>
 
 @code {
+	private const string AnyInferenceSource = "any";
+	private const string CodingAgentSource = "coding";
+
 	[Parameter, EditorRequired]
 	public Guid ProjectId { get; set; }
 
@@ -277,12 +274,27 @@
 	private bool _isLoading = true;
 	private bool _isStarting;
 	private bool _isToggling;
+	private bool _showStopConfirmation;
 	private string? _error;
 	private bool _defaultsApplied;
+	private bool? _inferenceAnswersQuestions;
+
+	// Null until the user picks one: the default depends on the inference providers, which
+	// the page may load after the project.
+	private string? _ideaSource;
 
 	protected override async Task OnInitializedAsync()
 	{
 		await LoadStatusAsync();
+
+		try
+		{
+			_inferenceAnswersQuestions = (await SettingsService.GetSettingsAsync()).InferenceAnswersAgentQuestions;
+		}
+		catch
+		{
+			_inferenceAnswersQuestions = null;
+		}
 	}
 
 	protected override void OnParametersSet()
@@ -292,9 +304,49 @@
 			_defaultsApplied = true;
 			// Pre-fill from project settings
 			_config.AutoPush = Project.AutoCommitMode == AutoCommitMode.CommitAndPush;
-			_config.InferenceProviderId = Project.IdeaInferenceProviderId;
 			_config.InferenceModelId = Project.IdeaInferenceModelId;
 		}
+
+		// Follow the default idea source until the user picks one, so its model field shows.
+		if (_ideaSource == null)
+			ApplyIdeaSource();
+	}
+
+	/// <summary>
+	/// Where ideas come from: a chosen inference provider, any that answers, or the coding agent.
+	/// Defaults to the project's idea provider, else any inference provider when one is enabled.
+	/// </summary>
+	private string IdeaSource
+	{
+		get
+		{
+			if (_ideaSource != null)
+				return _ideaSource;
+
+			if (Project?.IdeaInferenceProviderId is Guid projectProviderId
+				&& AvailableInferenceProviders.Any(p => p.Id == projectProviderId))
+				return projectProviderId.ToString();
+
+			return AvailableInferenceProviders.Count > 0 ? AnyInferenceSource : CodingAgentSource;
+		}
+	}
+
+	private void OnIdeaSourceChanged(ChangeEventArgs e)
+	{
+		var previousProviderId = _config.InferenceProviderId;
+		_ideaSource = e.Value?.ToString() ?? CodingAgentSource;
+		ApplyIdeaSource();
+		if (_config.InferenceProviderId != previousProviderId)
+			_config.InferenceModelId = null;
+	}
+
+	private void ApplyIdeaSource()
+	{
+		var source = IdeaSource;
+		_config.UseInferenceForIdeas = source != CodingAgentSource;
+		_config.InferenceProviderId = Guid.TryParse(source, out var providerId) ? providerId : null;
+		if (!_config.InferenceProviderId.HasValue)
+			_config.InferenceModelId = null;
 	}
 
 	private async Task LoadStatusAsync()
@@ -320,6 +372,7 @@
 		{
 			_isStarting = true;
 			_error = null;
+			ApplyIdeaSource();
 			_loop = await AutoPilotService.StartAsync(ProjectId, _config);
 		}
 		catch (Exception ex)
@@ -339,10 +392,12 @@
 			_isToggling = true;
 			_error = null;
 			await AutoPilotService.StopAsync(ProjectId);
+			_showStopConfirmation = false;
 			await LoadStatusAsync();
 		}
 		catch (Exception ex)
 		{
+			_showStopConfirmation = false;
 			_error = ex.Message;
 		}
 		finally
@@ -430,6 +485,30 @@
 		return provider?.AvailableModels?.Where(m => m.IsAvailable).ToList() ?? [];
 	}
 
+	private string GetMoreOptionsSummary()
+	{
+		var spend = _config.MaxTotalCostUsd is decimal cost && cost > 0 ? $"up to ${cost:0.##}" : "no spend limit";
+		var polish = _config.PolishEveryIterations > 0 ? $"polish every {_config.PolishEveryIterations}" : "no polish";
+		return $"{spend} · {polish}";
+	}
+
+	/// <summary>
+	/// Whether a job that asks something keeps going: inference answers in the user's place when
+	/// the setting is on and a provider has a model for it. Null until the settings load.
+	/// </summary>
+	private (string Text, bool NeedsAttention)? GetAgentQuestionsNote()
+	{
+		if (_inferenceAnswersQuestions == null)
+			return null;
+
+		if (_inferenceAnswersQuestions == false)
+			return ("When the agent asks something, the job waits for you. Inference can answer it instead:", true);
+
+		return InferenceTaskModels.Candidates(AvailableInferenceProviders, InferenceTaskModels.AgentAnswer).Count > 0
+			? ("Inference answers the agent's questions, so jobs keep going while you're away.", false)
+			: ("Agent questions wait for you until an inference provider has a default model:", true);
+	}
+
 	public static bool IsTerminal(IterationLoopStatus status) =>
 		status is IterationLoopStatus.Stopped or IterationLoopStatus.Exhausted
 			or IterationLoopStatus.Failed or IterationLoopStatus.Idle;
@@ -437,26 +516,25 @@
 	private static string GetLastRunTextClass(IterationLoopStatus status) => status switch
 	{
 		IterationLoopStatus.Failed => "fg-danger",
-		IterationLoopStatus.Exhausted => "fg-info",
 		_ => "fg-1"
 	};
 
 	private static string GetStatusHeadline(IterationLoopStatus status) => status switch
 	{
 		IterationLoopStatus.Paused => "Paused",
-		IterationLoopStatus.Stopping => "Stopping…",
+		IterationLoopStatus.Stopping => "Stopping after this job",
 		_ => "Running"
 	};
 
 	private static string GetProgressSummary(IterationLoop loop)
 	{
-		var iterations = loop.MaxIterations > 0
-			? $"Iteration {loop.CompletedIterations} of {loop.MaxIterations}"
-			: $"{loop.CompletedIterations} iteration{(loop.CompletedIterations == 1 ? "" : "s")} done";
+		var changes = loop.MaxIterations > 0
+			? $"{loop.CompletedIterations} of {loop.MaxIterations} changes"
+			: $"{loop.CompletedIterations} change{(loop.CompletedIterations == 1 ? "" : "s")}";
 		var cost = loop.MaxTotalCostUsd.HasValue
 			? $"${loop.TotalCostUsd:F2} of ${loop.MaxTotalCostUsd.Value:F2}"
 			: $"${loop.TotalCostUsd:F2} spent";
-		return $"{iterations} · {cost}";
+		return $"{changes} · {cost}";
 	}
 
 	private static string? GetCurrentJobLine(IterationLoop loop)
@@ -469,8 +547,28 @@
 			JobStatus.New or JobStatus.Pending => "Queued",
 			JobStatus.Planning => "Planning",
 			JobStatus.Started or JobStatus.Processing => "Running",
+			JobStatus.Stalled => "Interrupted, resuming where it left off",
 			_ => null
 		};
+	}
+
+	private static string GetUpNextTitle(IterationLoop loop)
+	{
+		if (!string.IsNullOrWhiteSpace(loop.StatusMessage))
+			return loop.StatusMessage;
+
+		if (loop.Status == IterationLoopStatus.Running && loop.NextIterationAt > DateTime.UtcNow)
+			return $"Next change at {FormatLocalTime(loop.NextIterationAt.Value)}";
+
+		return loop.Status == IterationLoopStatus.Paused ? "Nothing new starts while paused" : "Picking the next change";
+	}
+
+	private static string? GetUpNextLine(IterationLoop loop)
+	{
+		if (!string.IsNullOrWhiteSpace(loop.StatusMessage) && loop.NextIterationAt > DateTime.UtcNow)
+			return $"Resumes at {FormatLocalTime(loop.NextIterationAt.Value)}";
+
+		return loop.PolishEveryIterations > 0 ? GetPolishLine(loop) : null;
 	}
 
 	private static string GetPolishLine(IterationLoop loop)
@@ -486,12 +584,4 @@
 		var local = DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime();
 		return local.Date == DateTime.Now.Date ? local.ToString("h:mm tt") : local.ToString("MMM d, h:mm tt");
 	}
-
-	private static string GetStatusIcon(IterationLoopStatus status) => status switch
-	{
-		IterationLoopStatus.Stopped => "bi-stop-circle",
-		IterationLoopStatus.Exhausted => "bi-exclamation-triangle",
-		IterationLoopStatus.Failed => "bi-x-circle",
-		_ => "bi-circle"
-	};
 }

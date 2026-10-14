@@ -1076,7 +1076,7 @@ public partial class ProjectDetail
 
         var iterations = _autoPilotStatus.CompletedIterations;
         var summary = iterations > 0
-            ? $"{_autoPilotStatus.Status} · {iterations} iteration{(iterations == 1 ? "" : "s")} done"
+            ? $"{_autoPilotStatus.Status} · {iterations} change{(iterations == 1 ? "" : "s")}"
             : _autoPilotStatus.Status.ToString();
         return string.IsNullOrWhiteSpace(_autoPilotStatus.StatusMessage) || _autoPilotStatus.CurrentJobId.HasValue
             ? summary

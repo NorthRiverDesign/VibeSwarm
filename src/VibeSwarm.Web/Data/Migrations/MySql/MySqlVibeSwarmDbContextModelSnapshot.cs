@@ -758,6 +758,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<Guid?>("CurrentJobId")
                         .HasColumnType("char(36)");
 
+                    b.Property<int>("CurrentJobResumeCount")
+                        .HasColumnType("int");
+
                     b.Property<string>("InferenceModelId")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
@@ -819,6 +822,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
                     b.Property<decimal>("TotalCostUsd")
                         .HasColumnType("decimal(65,30)");
+
+                    b.Property<bool>("UseInferenceForIdeas")
+                        .HasColumnType("tinyint(1)");
 
                     b.HasKey("Id");
 

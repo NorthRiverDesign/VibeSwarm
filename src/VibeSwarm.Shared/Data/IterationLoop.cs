@@ -62,8 +62,15 @@ public class IterationLoop
 	#region Configuration
 
 	/// <summary>
-	/// Inference provider (e.g., Grok, Ollama) used for idea generation.
-	/// If null, falls back to the coding provider or project default.
+	/// Whether ideas come from inference rather than the coding provider. With no
+	/// <see cref="InferenceProviderId"/>, the first enabled inference provider that answers is used.
+	/// When inference can't answer, the coding provider is asked instead.
+	/// </summary>
+	public bool UseInferenceForIdeas { get; set; }
+
+	/// <summary>
+	/// Inference provider (e.g., Grok, Ollama) used for idea generation. Setting it also means
+	/// ideas come from inference, for loops started before <see cref="UseInferenceForIdeas"/>.
 	/// </summary>
 	public Guid? InferenceProviderId { get; set; }
 
@@ -131,6 +138,12 @@ public class IterationLoop
 	public Guid? CurrentIdeaId { get; set; }
 
 	/// <summary>
+	/// How many times the loop resumed its current job after a restart, crash or power loss
+	/// interrupted it. Capped, so a job that keeps getting interrupted stops the loop instead.
+	/// </summary>
+	public int CurrentJobResumeCount { get; set; }
+
+	/// <summary>
 	/// Successful changes since the last polish pass.
 	/// </summary>
 	public int IterationsSinceLastPolish { get; set; }
@@ -158,6 +171,12 @@ public class IterationLoop
 	/// <summary>Set while the current job is held in the queue, e.g. until a usage limit resets.</summary>
 	[NotMapped]
 	public DateTime? CurrentJobNotBeforeUtc { get; set; }
+
+	/// <summary>
+	/// Ideas come from inference, for status responses and the start form.
+	/// </summary>
+	[NotMapped]
+	public bool IdeasFromInference => UseInferenceForIdeas || InferenceProviderId.HasValue;
 
 	#endregion
 

@@ -749,6 +749,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<Guid?>("CurrentJobId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("CurrentJobResumeCount")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("InferenceModelId")
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
@@ -810,6 +813,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<decimal>("TotalCostUsd")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("UseInferenceForIdeas")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 

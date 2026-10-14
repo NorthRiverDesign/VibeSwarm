@@ -226,6 +226,171 @@ public sealed class AutoPilotServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task Tick_WhenARestartInterruptedTheJob_ResumesItInsteadOfMovingOn()
+	{
+		using var harness = await CreateHarnessAsync();
+		var loop = await harness.AddLoopAsync();
+		var job = await harness.AddJobAsync("Add CSV export", JobStatus.Stalled, loop.Id);
+		await harness.UpdateLoopAsync(loop.Id, l => l.CurrentJobId = job.Id);
+
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		var saved = await harness.ReloadAsync(loop.Id);
+		Assert.Equal([job.Id], harness.Jobs.Resumed);
+		Assert.Equal(job.Id, saved.CurrentJobId);
+		Assert.Equal(1, saved.CurrentJobResumeCount);
+		Assert.Equal(0, saved.CompletedIterations);
+		Assert.Equal(0, saved.ConsecutiveFailures);
+		Assert.Empty(harness.Ideas.SuggestRequests);
+	}
+
+	[Fact]
+	public async Task Tick_PicksUpAnInterruptedJobThatWasNeverRecorded()
+	{
+		using var harness = await CreateHarnessAsync();
+		var loop = await harness.AddLoopAsync();
+		var job = await harness.AddJobAsync("Add CSV export", JobStatus.Stalled, loop.Id);
+
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		Assert.Equal(job.Id, (await harness.ReloadAsync(loop.Id)).CurrentJobId);
+		Assert.Equal([job.Id], harness.Jobs.Resumed);
+	}
+
+	[Fact]
+	public async Task Tick_WhenTheJobKeepsGettingInterrupted_StopsAndLeavesItsWorkOnTheJob()
+	{
+		using var harness = await CreateHarnessAsync();
+		var loop = await harness.AddLoopAsync();
+		var job = await harness.AddJobAsync("Add CSV export", JobStatus.Stalled, loop.Id);
+		await harness.UpdateLoopAsync(loop.Id, l =>
+		{
+			l.CurrentJobId = job.Id;
+			l.CurrentJobResumeCount = AutoPilotService.MaxJobResumes;
+		});
+
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		var saved = await harness.ReloadAsync(loop.Id);
+		Assert.Equal(IterationLoopStatus.Failed, saved.Status);
+		Assert.Contains("Add CSV export", saved.LastStopReason);
+		Assert.Contains("interrupted", saved.LastStopReason);
+		Assert.Empty(harness.Jobs.Resumed);
+	}
+
+	[Fact]
+	public async Task Tick_WhenTheJobCannotRunAtAll_StopsAtOnceAndSaysWhy()
+	{
+		using var harness = await CreateHarnessAsync();
+		var loop = await harness.AddLoopAsync(l => l.MaxConsecutiveFailures = 5);
+		var job = await harness.AddJobAsync("Add CSV export", JobStatus.Failed, loop.Id);
+		await harness.UpdateLoopAsync(loop.Id, l => l.CurrentJobId = job.Id);
+		await harness.SetJobErrorAsync(job.Id, "Claude Code failed: Invalid API key · Please run /login");
+
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		var saved = await harness.ReloadAsync(loop.Id);
+		Assert.Equal(IterationLoopStatus.Failed, saved.Status);
+		Assert.Contains("Invalid API key", saved.LastStopReason);
+	}
+
+	[Fact]
+	public async Task Tick_WhenTheJobFoundNothingToChange_KeepsGoingWithoutCountingAFailure()
+	{
+		using var harness = await CreateHarnessAsync();
+		var loop = await harness.AddLoopAsync();
+		var job = await harness.AddJobAsync("Add CSV export", JobStatus.Failed, loop.Id);
+		await harness.UpdateLoopAsync(loop.Id, l => l.CurrentJobId = job.Id);
+		await harness.SetJobErrorAsync(job.Id, "The run finished without changing any code. A job has to end in code changes.");
+
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		var saved = await harness.ReloadAsync(loop.Id);
+		Assert.Equal(IterationLoopStatus.Running, saved.Status);
+		Assert.Equal(0, saved.ConsecutiveFailures);
+		Assert.Equal(1, saved.CompletedIterations);
+
+		harness.Ideas.SuggestResults.Enqueue(harness.Ideas.CreateIdeaResult("Add PDF export"));
+		await harness.ExpireCooldownAsync(loop.Id);
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		Assert.Contains("already there, nothing to change: Add CSV export", harness.Ideas.SuggestRequests.Single().AdditionalContext);
+	}
+
+	[Fact]
+	public async Task Tick_WhenTheChangeFailedItsChecks_CountsAFailureAndNoPolishCredit()
+	{
+		using var harness = await CreateHarnessAsync();
+		var loop = await harness.AddLoopAsync();
+		var job = await harness.AddJobAsync("Add CSV export", JobStatus.Completed, loop.Id);
+		await harness.UpdateLoopAsync(loop.Id, l => l.CurrentJobId = job.Id);
+		await harness.Db.Jobs.Where(j => j.Id == job.Id).ExecuteUpdateAsync(s => s.SetProperty(j => j.BuildVerified, false));
+
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		var saved = await harness.ReloadAsync(loop.Id);
+		Assert.Equal(1, saved.ConsecutiveFailures);
+		Assert.Equal(0, saved.IterationsSinceLastPolish);
+	}
+
+	[Fact]
+	public async Task Tick_AfterTooManyFailuresInARow_StopsAndNamesTheLastError()
+	{
+		using var harness = await CreateHarnessAsync();
+		var loop = await harness.AddLoopAsync(l => l.ConsecutiveFailures = 3);
+		var job = await harness.AddJobAsync("Add CSV export", JobStatus.Failed, loop.Id);
+		await harness.SetJobErrorAsync(job.Id, "dotnet test failed: 2 tests failed");
+
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		var saved = await harness.ReloadAsync(loop.Id);
+		Assert.Equal(IterationLoopStatus.Failed, saved.Status);
+		Assert.Contains("2 tests failed", saved.LastStopReason);
+	}
+
+	[Fact]
+	public async Task Tick_WithAnyInferenceProvider_LetsTheFirstThatAnswersSuggestTheIdea()
+	{
+		using var harness = await CreateHarnessAsync();
+		harness.Ideas.SuggestResults.Enqueue(harness.Ideas.CreateIdeaResult("Add CSV export"));
+		var loop = await harness.AddLoopAsync(l =>
+		{
+			l.UseInferenceForIdeas = true;
+			l.InferenceModelId = "left-over-model";
+		});
+
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		var request = harness.Ideas.SuggestRequests.Single();
+		Assert.True(request.UseInference);
+		Assert.Null(request.ProviderId);
+		Assert.Null(request.ModelId);
+		Assert.NotNull((await harness.ReloadAsync(loop.Id)).CurrentJobId);
+	}
+
+	[Fact]
+	public async Task Tick_WhenStoppedWhileAskingForAnIdea_StartsNoJob()
+	{
+		using var harness = await CreateHarnessAsync();
+		var loop = await harness.AddLoopAsync();
+		var createIdea = harness.Ideas.CreateIdeaResult("Add CSV export");
+		harness.Ideas.SuggestResults.Enqueue(request =>
+		{
+			harness.Db.IterationLoops.Where(l => l.Id == loop.Id)
+				.ExecuteUpdate(s => s.SetProperty(l => l.Status, IterationLoopStatus.Stopped));
+			return createIdea(request);
+		});
+
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		var saved = await harness.ReloadAsync(loop.Id);
+		Assert.Equal(IterationLoopStatus.Stopped, saved.Status);
+		Assert.Null(saved.CurrentJobId);
+		Assert.Empty(harness.Ideas.ConvertOptions);
+		Assert.Single(harness.Ideas.DeletedIds);
+	}
+
+	[Fact]
 	public async Task Start_RejectsACodingProviderThatIsDisabled()
 	{
 		using var harness = await CreateHarnessAsync();
@@ -376,6 +541,9 @@ public sealed class AutoPilotServiceTests : IDisposable
 			await Db.SaveChangesAsync();
 		}
 
+		public Task SetJobErrorAsync(Guid jobId, string error) =>
+			Db.Jobs.Where(j => j.Id == jobId).ExecuteUpdateAsync(s => s.SetProperty(j => j.ErrorMessage, error));
+
 		public Task ExpireCooldownAsync(Guid loopId) =>
 			UpdateLoopAsync(loopId, l => l.NextIterationAt = DateTime.UtcNow.AddSeconds(-1));
 
@@ -438,6 +606,14 @@ public sealed class AutoPilotServiceTests : IDisposable
 	private sealed class FakeJobService(VibeSwarmDbContext db) : FakeJobServiceBase
 	{
 		public List<Job> Created { get; } = [];
+		public List<Guid> Resumed { get; } = [];
+
+		public override async Task<bool> ResumeJobAsync(Guid id, CancellationToken cancellationToken = default)
+		{
+			Resumed.Add(id);
+			await db.Jobs.Where(j => j.Id == id).ExecuteUpdateAsync(s => s.SetProperty(j => j.Status, JobStatus.New), cancellationToken);
+			return true;
+		}
 
 		public override async Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)
 		{

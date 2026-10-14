@@ -30,6 +30,13 @@ public class AutoPilotService : IAutoPilotService
 	/// <summary>How many earlier auto-pilot jobs the idea source is told about.</summary>
 	private const int RecentWorkCount = 20;
 
+	/// <summary>
+	/// How many times one job is resumed after an interruption before the loop gives up on it.
+	/// A restart or power loss interrupts a job once; one interrupted again and again is likely
+	/// what brings VibeSwarm down.
+	/// </summary>
+	internal const int MaxJobResumes = 3;
+
 	private readonly VibeSwarmDbContext _dbContext;
 	private readonly IIdeaService _ideaService;
 	private readonly IJobService _jobService;
@@ -53,14 +60,15 @@ public class AutoPilotService : IAutoPilotService
 	];
 
 	/// <summary>
-	/// Terminal job statuses — the job has finished executing.
+	/// Terminal job statuses — the job has finished executing. A Stalled job is not finished: a
+	/// restart, crash or power loss interrupted it, its work is saved, and it holds the project's
+	/// queue until it is resumed, so the loop resumes it.
 	/// </summary>
 	private static readonly JobStatus[] TerminalJobStatuses =
 	[
 		JobStatus.Completed,
 		JobStatus.Failed,
-		JobStatus.Cancelled,
-		JobStatus.Stalled
+		JobStatus.Cancelled
 	];
 
 	public AutoPilotService(
@@ -256,10 +264,24 @@ public class AutoPilotService : IAutoPilotService
 			if (!loop.CurrentJobId.HasValue)
 				await AdoptUntrackedJobAsync(loop, cancellationToken);
 
-			// 2. STOPPING CHECK — if stop requested and no job or job is done
+			// 2. INTERRUPTED JOB — a restart, crash or power loss left the current job Stalled with
+			// its work saved. It holds the project's queue, so it is resumed rather than left behind.
+			var currentJobStatus = loop.CurrentJobId is Guid currentJobId
+				? await GetJobStatusAsync(currentJobId, cancellationToken)
+				: null;
+			if (currentJobStatus == JobStatus.Stalled)
+			{
+				await ResumeInterruptedJobAsync(loop, cancellationToken);
+				return;
+			}
+
+			var currentJobFinished = loop.CurrentJobId.HasValue
+				&& (currentJobStatus == null || TerminalJobStatuses.Contains(currentJobStatus.Value));
+
+			// 3. STOPPING CHECK — if stop requested and no job or job is done
 			if (loop.Status == IterationLoopStatus.Stopping)
 			{
-				if (!loop.CurrentJobId.HasValue || await IsJobTerminalAsync(loop.CurrentJobId.Value, cancellationToken))
+				if (!loop.CurrentJobId.HasValue || currentJobFinished)
 				{
 					if (loop.CurrentJobId.HasValue)
 						await EvaluateJobResultAsync(loop, cancellationToken);
@@ -269,23 +291,25 @@ public class AutoPilotService : IAutoPilotService
 				return;
 			}
 
-			// 3. CURRENT JOB CHECK
+			// 4. CURRENT JOB CHECK
 			if (loop.CurrentJobId.HasValue)
 			{
-				if (await IsJobTerminalAsync(loop.CurrentJobId.Value, cancellationToken))
+				if (currentJobFinished)
 				{
 					// EvaluateJobResultAsync sets NextIterationAt, so the next iteration
 					// waits for the cooldown instead of starting in this same tick.
-					await EvaluateJobResultAsync(loop, cancellationToken);
+					var haltReason = await EvaluateJobResultAsync(loop, cancellationToken);
+					if (haltReason != null)
+						await StopLoopAsync(loop, haltReason, IterationLoopStatus.Failed);
 				}
 				return;
 			}
 
-			// 4. COOLDOWN CHECK — also covers waiting for a usage limit to reset
+			// 5. COOLDOWN CHECK — also covers waiting for a usage limit to reset
 			if (loop.NextIterationAt.HasValue && loop.NextIterationAt.Value > DateTime.UtcNow)
 				return;
 
-			// 5. GUARDRAILS
+			// 6. GUARDRAILS
 			if (loop.MaxIterations > 0 && loop.CompletedIterations >= loop.MaxIterations)
 			{
 				await StopLoopAsync(loop, $"Max iterations reached ({loop.MaxIterations})", IterationLoopStatus.Stopped);
@@ -300,11 +324,14 @@ public class AutoPilotService : IAutoPilotService
 
 			if (loop.ConsecutiveFailures >= loop.MaxConsecutiveFailures)
 			{
-				await StopLoopAsync(loop, $"Too many consecutive failures ({loop.ConsecutiveFailures})", IterationLoopStatus.Failed);
+				var lastError = await GetLastJobErrorAsync(loop, cancellationToken);
+				await StopLoopAsync(loop, lastError == null
+					? $"{loop.ConsecutiveFailures} jobs failed in a row"
+					: $"{loop.ConsecutiveFailures} jobs failed in a row. Last error: {lastError}", IterationLoopStatus.Failed);
 				return;
 			}
 
-			// 6. CODING PROVIDER — wait out usage limits instead of stopping
+			// 7. CODING PROVIDER — wait out usage limits instead of stopping
 			var candidates = await GetCodingProviderCandidatesAsync(loop, cancellationToken);
 			if (candidates.Count == 0)
 			{
@@ -319,15 +346,25 @@ public class AutoPilotService : IAutoPilotService
 			if (codingProvider == null)
 				return;
 
-			// 7. POLISH PASS
+			// 8. POLISH PASS
 			if (IsPolishDue(loop))
 			{
 				await StartPolishPassAsync(loop, cancellationToken);
 				return;
 			}
 
-			// 8. GENERATE IDEA
+			// 9. GENERATE IDEA
 			var ideaResult = await GenerateIdeaAsync(loop, codingProvider.Value, cancellationToken);
+
+			// Asking for an idea can take minutes. A loop paused or stopped meanwhile must not
+			// start a job: the stop would otherwise leave that job running on its own.
+			if (await GetStoredStatusAsync(loop.Id, cancellationToken) != IterationLoopStatus.Running)
+			{
+				if (ideaResult.Idea != null)
+					await RemoveLeftoverIdeaAsync(ideaResult.Idea.Id, null, cancellationToken);
+				return;
+			}
+
 			if (ideaResult.Idea == null)
 			{
 				if (ideaResult.IsFatal)
@@ -337,7 +374,7 @@ public class AutoPilotService : IAutoPilotService
 				return;
 			}
 
-			// 9. CREATE JOB FROM IDEA
+			// 10. CREATE JOB FROM IDEA
 			var job = await _ideaService.ConvertToJobAsync(ideaResult.Idea.Id, new IdeaProcessingOptions
 			{
 				ProviderId = loop.ProviderId,
@@ -356,7 +393,7 @@ public class AutoPilotService : IAutoPilotService
 				return;
 			}
 
-			// 10. UPDATE LOOP STATE
+			// 11. UPDATE LOOP STATE
 			await BeginIterationAsync(loop, job.Id, ideaResult.Idea.Id, cancellationToken);
 		}
 		catch (Exception ex)
@@ -376,6 +413,7 @@ public class AutoPilotService : IAutoPilotService
 
 	private static void ApplyConfig(IterationLoop loop, AutoPilotConfig config)
 	{
+		loop.UseInferenceForIdeas = config.UseInferenceForIdeas || config.InferenceProviderId.HasValue;
 		loop.InferenceProviderId = config.InferenceProviderId;
 		loop.InferenceModelId = string.IsNullOrWhiteSpace(config.InferenceModelId) ? null : config.InferenceModelId.Trim();
 		loop.ProviderId = config.ProviderId;
@@ -440,21 +478,80 @@ public class AutoPilotService : IAutoPilotService
 		}
 	}
 
-	private async Task<bool> IsJobTerminalAsync(Guid jobId, CancellationToken cancellationToken)
-	{
-		var status = await _dbContext.Jobs
+	/// <summary>A job's status, or null when it was deleted: it will never finish, so the loop moves on.</summary>
+	private async Task<JobStatus?> GetJobStatusAsync(Guid jobId, CancellationToken cancellationToken) =>
+		await _dbContext.Jobs
 			.AsNoTracking()
 			.Where(j => j.Id == jobId)
 			.Select(j => (JobStatus?)j.Status)
 			.FirstOrDefaultAsync(cancellationToken);
 
-		// A job that was deleted will never finish, so the loop moves on.
-		return status == null || TerminalJobStatuses.Contains(status.Value);
+	/// <summary>The loop's status as stored, which the user may have changed since this tick loaded it.</summary>
+	private async Task<IterationLoopStatus?> GetStoredStatusAsync(Guid loopId, CancellationToken cancellationToken) =>
+		await _dbContext.IterationLoops
+			.AsNoTracking()
+			.Where(l => l.Id == loopId)
+			.Select(l => (IterationLoopStatus?)l.Status)
+			.FirstOrDefaultAsync(cancellationToken);
+
+	/// <summary>
+	/// Resumes the current job after a restart, crash or power loss stalled it. It picks up its
+	/// agent session and saved work, as the job page's Resume button does. A job interrupted
+	/// <see cref="MaxJobResumes"/> times stops the loop instead; it keeps its saved work and waits
+	/// on its page for the user.
+	/// </summary>
+	private async Task ResumeInterruptedJobAsync(IterationLoop loop, CancellationToken cancellationToken)
+	{
+		var jobId = loop.CurrentJobId!.Value;
+		if (loop.CurrentJobResumeCount >= MaxJobResumes)
+		{
+			var title = await _dbContext.Jobs
+				.AsNoTracking()
+				.Where(j => j.Id == jobId)
+				.Select(j => j.Title)
+				.FirstOrDefaultAsync(cancellationToken);
+			var reason = $"\"{AutoPilotPrompts.Shorten(title ?? "The current job")}\" was interrupted {loop.CurrentJobResumeCount + 1} times. " +
+				"Its work is saved: resume or cancel it from its page.";
+			await StopLoopAsync(loop, reason, loop.Status == IterationLoopStatus.Stopping ? IterationLoopStatus.Stopped : IterationLoopStatus.Failed);
+			return;
+		}
+
+		// Counted before trying, so a resume that keeps being refused also ends in a stop.
+		loop.CurrentJobResumeCount++;
+		var resumed = await _jobService.ResumeJobAsync(jobId, cancellationToken);
+		loop.StatusMessage = resumed ? null : "Couldn't resume the interrupted job. Trying again shortly.";
+		await _dbContext.SaveChangesAsync(cancellationToken);
+
+		if (resumed)
+			_logger.LogInformation("Auto-pilot resumed its interrupted job {JobId} for project {ProjectId} (resume {Count} of {Max})",
+				jobId, loop.ProjectId, loop.CurrentJobResumeCount, MaxJobResumes);
+		else
+			_logger.LogWarning("Auto-pilot could not resume its interrupted job {JobId} for project {ProjectId}", jobId, loop.ProjectId);
+
+		await NotifyStateChanged(loop);
 	}
 
-	private async Task EvaluateJobResultAsync(IterationLoop loop, CancellationToken cancellationToken)
+	/// <summary>Why the loop's most recent failed job failed, shortened to its telling line.</summary>
+	private async Task<string?> GetLastJobErrorAsync(IterationLoop loop, CancellationToken cancellationToken)
 	{
-		if (!loop.CurrentJobId.HasValue) return;
+		var error = await _dbContext.Jobs
+			.AsNoTracking()
+			.Where(j => j.IterationLoopId == loop.Id && j.Status != JobStatus.Completed && j.ErrorMessage != null)
+			.OrderByDescending(j => j.CompletedAt ?? j.CreatedAt)
+			.Select(j => j.ErrorMessage)
+			.FirstOrDefaultAsync(cancellationToken);
+		var summary = ProviderFailureClassifier.Summarize(error);
+		return string.IsNullOrWhiteSpace(summary) ? null : Truncate(summary.Trim(), 300);
+	}
+
+	/// <summary>
+	/// Records how the current job ended. Returns why the loop must stop now, when the job failed
+	/// in a way every later job would repeat (the CLI or host can't run at all); otherwise null.
+	/// </summary>
+	private async Task<string?> EvaluateJobResultAsync(IterationLoop loop, CancellationToken cancellationToken)
+	{
+		if (!loop.CurrentJobId.HasValue) return null;
+		string? haltReason = null;
 
 		var jobId = loop.CurrentJobId.Value;
 		var job = await _dbContext.Jobs
@@ -464,11 +561,14 @@ public class AutoPilotService : IAutoPilotService
 
 		loop.CurrentJobId = null;
 		loop.CurrentIdeaId = null;
+		loop.CurrentJobResumeCount = 0;
 		loop.CompletedIterations++;
 		loop.LastIterationAt = DateTime.UtcNow;
 		loop.TotalCostUsd += job?.TotalCostUsd ?? 0;
 
-		if (job?.Status == JobStatus.Completed)
+		// A change that failed the project's build or test checks wasn't committed, so the next
+		// iteration can't build on it. It counts as a failure.
+		if (job?.Status == JobStatus.Completed && job.BuildVerified != false)
 		{
 			loop.ConsecutiveFailures = 0;
 			if (!AutoPilotPrompts.IsPolishJob(job))
@@ -482,13 +582,34 @@ public class AutoPilotService : IAutoPilotService
 			// A run cut short by its provider's usage limit says nothing about the idea. It
 			// doesn't count toward the failure limit; the next tick waits for the reset.
 			var hitUsageLimit = job != null && await GetProviderWaitAsync(job.ProviderId, cancellationToken) != null;
-			if (!hitUsageLimit)
+
+			// A run that changed nothing usually found the idea already built. That is a miss
+			// of the idea source, not a fault, so it doesn't count toward the failure limit;
+			// the next round looks at the next focus area and is told the idea was there.
+			var changedNothing = job?.Status == JobStatus.Failed && ProviderFailureClassifier.IsNoChangeRun(job.ErrorMessage);
+			if (changedNothing)
+			{
+				loop.StatusMessage = "The last idea needed no change. Looking at another area next.";
+			}
+			else if (!hitUsageLimit)
+			{
 				loop.ConsecutiveFailures++;
+				if (job?.Status == JobStatus.Completed)
+					loop.StatusMessage = "The last change failed its build or test checks, so it wasn't committed.";
+			}
 
 			// The failed idea went back to the project's backlog. Auto-pilot already knows
 			// it tried it, and leaving it there would let the ideas queue run it again.
 			if (ideaId.HasValue)
 				await RemoveLeftoverIdeaAsync(ideaId.Value, jobId, cancellationToken);
+
+			// A CLI that can't start, or has no credentials, fails every later job the same way
+			// within seconds. Stop now and say why, rather than spend the failure limit on it.
+			if (job?.Status == JobStatus.Failed && ProviderFailureClassifier.IsHostFault(job.ErrorMessage))
+			{
+				var error = ProviderFailureClassifier.Summarize(job.ErrorMessage) ?? job.ErrorMessage!;
+				haltReason = $"Stopped because the job couldn't run: {Truncate(error.Trim(), 300)}";
+			}
 
 			_logger.LogWarning("Auto-pilot iteration {Iteration} failed for project {ProjectId} (status: {Status}, usage limited: {UsageLimited}, error: {Error})",
 				loop.CompletedIterations, loop.ProjectId, job?.Status, hitUsageLimit, job?.ErrorMessage);
@@ -497,6 +618,7 @@ public class AutoPilotService : IAutoPilotService
 		loop.NextIterationAt = DateTime.UtcNow.AddSeconds(loop.CooldownSeconds);
 		await _dbContext.SaveChangesAsync(cancellationToken);
 		await NotifyStateChanged(loop);
+		return haltReason;
 	}
 
 	/// <summary>
@@ -705,6 +827,7 @@ public class AutoPilotService : IAutoPilotService
 	{
 		loop.CurrentJobId = jobId;
 		loop.CurrentIdeaId = ideaId;
+		loop.CurrentJobResumeCount = 0;
 		loop.StatusMessage = null;
 		if (ideaId.HasValue)
 			loop.ConsecutiveIdeaMisses = 0;
@@ -721,8 +844,9 @@ public class AutoPilotService : IAutoPilotService
 
 	/// <summary>
 	/// Asks for one new idea, telling the source what auto-pilot already did and which area to
-	/// look at this round. When the inference provider can't answer, the coding provider is
-	/// asked instead so the run keeps moving.
+	/// look at this round. Inference uses the chosen provider, or the first enabled one that
+	/// answers. When inference can't answer, the coding provider is asked instead so the run keeps
+	/// moving.
 	/// </summary>
 	private async Task<IdeaResult> GenerateIdeaAsync(IterationLoop loop, (Guid Id, string Name) codingProvider, CancellationToken cancellationToken)
 	{
@@ -739,13 +863,14 @@ public class AutoPilotService : IAutoPilotService
 		};
 
 		SuggestIdeasResult result;
-		if (loop.InferenceProviderId.HasValue)
+		if (loop.IdeasFromInference)
 		{
 			result = await _ideaService.SuggestIdeasFromCodebaseAsync(loop.ProjectId, new SuggestIdeasRequest
 			{
 				UseInference = true,
 				ProviderId = loop.InferenceProviderId,
-				ModelId = loop.InferenceModelId,
+				// A model belongs to one provider; with any provider, each uses its own.
+				ModelId = loop.InferenceProviderId.HasValue ? loop.InferenceModelId : null,
 				IdeaCount = 1,
 				AdditionalContext = context
 			}, cancellationToken);
@@ -811,11 +936,14 @@ public class AutoPilotService : IAutoPilotService
 				&& (j.Tags == null || !j.Tags.Contains(AutoPilotPrompts.PolishJobTag)))
 			.OrderByDescending(j => j.CreatedAt)
 			.Take(RecentWorkCount)
-			.Select(j => new { j.Title, j.Status })
+			.Select(j => new { j.Title, j.Status, j.ErrorMessage })
 			.ToListAsync(cancellationToken);
 
 		return jobs
-			.Select(j => new AutoPilotWorkItem(j.Title!, j.Status == JobStatus.Completed))
+			.Select(j => new AutoPilotWorkItem(
+				j.Title!,
+				j.Status == JobStatus.Completed,
+				j.Status == JobStatus.Failed && ProviderFailureClassifier.IsNoChangeRun(j.ErrorMessage)))
 			.ToList();
 	}
 

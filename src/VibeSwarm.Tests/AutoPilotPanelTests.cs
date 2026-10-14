@@ -12,30 +12,77 @@ public sealed class AutoPilotPanelTests
 	private static readonly Guid ProjectId = Guid.NewGuid();
 
 	[Fact]
-	public void Idle_OffersThePolishCadenceAndAlwaysCommits()
-	{
-		using var context = CreateContext(null);
-
-		var cut = context.Render<AutoPilotPanel>(parameters => parameters.Add(p => p.ProjectId, ProjectId));
-
-		cut.WaitForAssertion(() => Assert.NotNull(cut.Find("#ap-polish-every")));
-		Assert.Equal("5", cut.Find("#ap-polish-every").GetAttribute("value"));
-		Assert.Empty(cut.FindAll("#ap-autocommit"));
-		Assert.Contains("Every change is committed", cut.Markup);
-	}
-
-	[Fact]
-	public void Idle_StartsTheLoopWithThePolishCadence()
+	public void Idle_FoldsTheTuningAwayAndStartsWithThePolishCadence()
 	{
 		var service = new FakeAutoPilotService(null);
 		using var context = CreateContext(service);
 		var cut = context.Render<AutoPilotPanel>(parameters => parameters.Add(p => p.ProjectId, ProjectId));
 
-		cut.WaitForAssertion(() => Assert.NotNull(cut.Find("#ap-polish-every")));
+		cut.WaitForAssertion(() => Assert.Contains("Start Auto-Pilot", cut.Markup));
+		Assert.Empty(cut.FindAll("#ap-polish-every"));
+
+		cut.FindAll("button").Single(b => b.TextContent.Contains("More options")).Click();
+		Assert.Equal("5", cut.Find("#ap-polish-every").GetAttribute("value"));
 		cut.Find("#ap-polish-every").Change("3");
 		cut.FindAll("button").Single(b => b.TextContent.Contains("Start Auto-Pilot")).Click();
 
 		Assert.Equal(3, service.StartedWith?.PolishEveryIterations);
+	}
+
+	[Fact]
+	public void Idle_TakesIdeasFromAnyInferenceProviderWhenOneIsEnabled()
+	{
+		var service = new FakeAutoPilotService(null);
+		using var context = CreateContext(service);
+		var cut = context.Render<AutoPilotPanel>(parameters => parameters
+			.Add(p => p.ProjectId, ProjectId)
+			.Add(p => p.AvailableInferenceProviders, [new InferenceProvider { Id = Guid.NewGuid(), Name = "Grok", IsEnabled = true }]));
+
+		cut.WaitForAssertion(() => Assert.Contains("Start Auto-Pilot", cut.Markup));
+		cut.FindAll("button").Single(b => b.TextContent.Contains("Start Auto-Pilot")).Click();
+
+		Assert.True(service.StartedWith?.UseInferenceForIdeas);
+		Assert.Null(service.StartedWith?.InferenceProviderId);
+	}
+
+	[Fact]
+	public void Idle_AsksTheCodingAgentForIdeasWithoutInference()
+	{
+		var service = new FakeAutoPilotService(null);
+		using var context = CreateContext(service);
+		var cut = context.Render<AutoPilotPanel>(parameters => parameters.Add(p => p.ProjectId, ProjectId));
+
+		cut.WaitForAssertion(() => Assert.Contains("Start Auto-Pilot", cut.Markup));
+		cut.FindAll("button").Single(b => b.TextContent.Contains("Start Auto-Pilot")).Click();
+
+		Assert.False(service.StartedWith?.UseInferenceForIdeas);
+	}
+
+	[Fact]
+	public void Idle_PickingAnInferenceProviderSendsIt()
+	{
+		var service = new FakeAutoPilotService(null);
+		using var context = CreateContext(service);
+		var grok = new InferenceProvider { Id = Guid.NewGuid(), Name = "Grok", IsEnabled = true };
+		var cut = context.Render<AutoPilotPanel>(parameters => parameters
+			.Add(p => p.ProjectId, ProjectId)
+			.Add(p => p.AvailableInferenceProviders, [grok]));
+
+		cut.WaitForAssertion(() => Assert.NotNull(cut.Find("#ap-idea-source")));
+		cut.Find("#ap-idea-source").Change(grok.Id.ToString());
+		cut.FindAll("button").Single(b => b.TextContent.Contains("Start Auto-Pilot")).Click();
+
+		Assert.Equal(grok.Id, service.StartedWith?.InferenceProviderId);
+		Assert.True(service.StartedWith?.UseInferenceForIdeas);
+	}
+
+	[Fact]
+	public void Idle_SaysWhenAnAgentsQuestionWouldWaitForTheUser()
+	{
+		using var context = CreateContext(null, inferenceAnswersQuestions: false);
+		var cut = context.Render<AutoPilotPanel>(parameters => parameters.Add(p => p.ProjectId, ProjectId));
+
+		cut.WaitForAssertion(() => Assert.Contains("the job waits for you", cut.Markup));
 	}
 
 	[Fact]
@@ -55,7 +102,36 @@ public sealed class AutoPilotPanelTests
 
 		cut.WaitForAssertion(() => Assert.Contains("Claude reached its usage limit", cut.Markup));
 		Assert.Contains("Resumes", cut.Markup);
-		Assert.Contains("Polish pass after 1 more change", cut.Markup);
+	}
+
+	[Fact]
+	public void Running_ShowsWhenThePolishPassComes()
+	{
+		using var context = CreateContext(new FakeAutoPilotService(new IterationLoop
+		{
+			ProjectId = ProjectId,
+			Status = IterationLoopStatus.Running,
+			PolishEveryIterations = 5,
+			IterationsSinceLastPolish = 4
+		}));
+
+		var cut = context.Render<AutoPilotPanel>(parameters => parameters.Add(p => p.ProjectId, ProjectId));
+
+		cut.WaitForAssertion(() => Assert.Contains("Polish pass after 1 more change", cut.Markup));
+	}
+
+	[Fact]
+	public void Running_StopAsksFirst()
+	{
+		var service = new FakeAutoPilotService(new IterationLoop { ProjectId = ProjectId, Status = IterationLoopStatus.Running });
+		using var context = CreateContext(service);
+		var cut = context.Render<AutoPilotPanel>(parameters => parameters.Add(p => p.ProjectId, ProjectId));
+
+		cut.WaitForAssertion(() => Assert.Contains("Stop Auto-Pilot", cut.Markup));
+		cut.FindAll("button").Single(b => b.TextContent.Trim() == "Stop Auto-Pilot").Click();
+
+		Assert.False(service.Stopped);
+		Assert.Contains("Nothing new will start", cut.Markup);
 	}
 
 	[Fact]
@@ -76,13 +152,23 @@ public sealed class AutoPilotPanelTests
 		Assert.Contains("Waiting for your answer", cut.Markup);
 	}
 
-	private static BunitContext CreateContext(FakeAutoPilotService? service)
+	private static BunitContext CreateContext(FakeAutoPilotService? service, bool inferenceAnswersQuestions = true)
 	{
 		var context = new BunitContext();
 		context.JSInterop.Mode = JSRuntimeMode.Loose;
 		context.Services.AddSingleton<IAutoPilotService>(service ?? new FakeAutoPilotService(null));
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService(inferenceAnswersQuestions));
 		context.Services.AddSingleton<NotificationService>();
 		return context;
+	}
+
+	private sealed class FakeSettingsService(bool inferenceAnswersQuestions) : ISettingsService
+	{
+		public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) =>
+			Task.FromResult(new AppSettings { InferenceAnswersAgentQuestions = inferenceAnswersQuestions });
+
+		public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
 	private sealed class FakeAutoPilotService(IterationLoop? loop) : IAutoPilotService
@@ -95,7 +181,14 @@ public sealed class AutoPilotPanelTests
 			return Task.FromResult(new IterationLoop { ProjectId = projectId, Status = IterationLoopStatus.Running });
 		}
 
-		public Task StopAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public bool Stopped { get; private set; }
+
+		public Task StopAsync(Guid projectId, CancellationToken cancellationToken = default)
+		{
+			Stopped = true;
+			return Task.CompletedTask;
+		}
+
 		public Task PauseAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 		public Task ResumeAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 		public Task<IterationLoop?> GetStatusAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(loop);

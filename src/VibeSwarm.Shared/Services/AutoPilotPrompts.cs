@@ -3,8 +3,12 @@ using VibeSwarm.Shared.Data;
 
 namespace VibeSwarm.Shared.Services;
 
-/// <summary>A job an auto-pilot loop ran, as the idea source and polish passes see it.</summary>
-public sealed record AutoPilotWorkItem(string Title, bool Succeeded);
+/// <summary>
+/// A job an auto-pilot loop ran, as the idea source and polish passes see it.
+/// <paramref name="ChangedNothing"/> marks a run that found nothing to change, usually because
+/// the idea was already built.
+/// </summary>
+public sealed record AutoPilotWorkItem(string Title, bool Succeeded, bool ChangedNothing = false);
 
 /// <summary>
 /// What auto-pilot tells its idea source each round, and the goal of a polish pass.
@@ -51,7 +55,8 @@ public static class AutoPilotPrompts
 			sb.AppendLine("Auto-pilot already worked on these, newest first. Don't suggest them again or reword them:");
 			foreach (var item in recentWork.Take(MaxRecentWorkItems))
 			{
-				sb.AppendLine($"- {(item.Succeeded ? "done" : "failed")}: {Shorten(item.Title)}");
+				var outcome = item.Succeeded ? "done" : item.ChangedNothing ? "already there, nothing to change" : "failed";
+				sb.AppendLine($"- {outcome}: {Shorten(item.Title)}");
 			}
 		}
 
@@ -94,7 +99,8 @@ public static class AutoPilotPrompts
 		job.Tags.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
 			.Contains(PolishJobTag, StringComparer.OrdinalIgnoreCase);
 
-	private static string Shorten(string? text)
+	/// <summary>A job title on one line, cut to a length that fits a prompt or a status line.</summary>
+	public static string Shorten(string? text)
 	{
 		var singleLine = string.Join(' ', (text ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 		return singleLine.Length <= MaxTitleLength ? singleLine : singleLine[..(MaxTitleLength - 1)] + "…";
