@@ -344,7 +344,22 @@ app.UseSecurityHeaders();
 
 // Serve Blazor WebAssembly static files
 app.UseBlazorFrameworkFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    // site.css and the app's scripts keep their names across releases. Without a header,
+    // browsers cache them by heuristic for hours, so a phone showed the new app with the old
+    // styles after a redeploy. no-cache makes them revalidate: a 304 when nothing changed.
+    OnPrepareResponse = context =>
+    {
+        var path = context.Context.Request.Path;
+        if (!path.StartsWithSegments("/_framework")
+            && (path.Value?.EndsWith(".css", StringComparison.OrdinalIgnoreCase) == true
+                || path.Value?.EndsWith(".js", StringComparison.OrdinalIgnoreCase) == true))
+        {
+            context.Context.Response.Headers.CacheControl = "no-cache";
+        }
+    }
+});
 app.UseRouting();
 
 // Add setup required middleware before authentication
