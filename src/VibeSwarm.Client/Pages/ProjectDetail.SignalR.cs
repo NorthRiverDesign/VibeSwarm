@@ -195,6 +195,8 @@ public partial class ProjectDetail
 					ProcessingIdeaIds.Clear();
 					if (IsAutoPilotRunning)
 						await RefreshAutoPilotAsync();
+					if (_releaseTab != null)
+						await _releaseTab.RefreshAsync();
 
 					if (success && (_activeTab == "changes" || _hasUncommittedChangesHeader))
 					{

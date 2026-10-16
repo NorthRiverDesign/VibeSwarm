@@ -49,6 +49,7 @@ public sealed class ProjectReleaseTests : IDisposable
 		Assert.Equal(DeployOutcome.Deployed, result.Outcome);
 		await GitAsync(_other, "fetch -q origin");
 		Assert.True(await IsAncestorAsync(_other, "origin/develop", "origin/main"));
+		Assert.Equal("Merge branch 'develop' into main", await GitAsync(_other, "log -1 --format=%s origin/main"));
 		var status = await service.GetStatusAsync(project.Id);
 		Assert.Equal(0, status.PendingCount);
 	}

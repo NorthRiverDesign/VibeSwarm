@@ -137,7 +137,7 @@ public sealed class ProjectReleaseService : IProjectReleaseService
 			return new DeployResult
 			{
 				Outcome = DeployOutcome.ResolvingConflicts,
-				Message = $"'{release}' has changes that conflict with '{development}' in {conflictedFiles.Count} file(s). " +
+				Message = $"'{release}' has changes that conflict with '{development}' in {(conflictedFiles.Count == 1 ? "1 file" : $"{conflictedFiles.Count} files")}. " +
 					"Nothing was deployed; a provider is resolving them on the development branch. Deploy again once its job finishes.",
 				JobId = job.Id
 			};

@@ -137,7 +137,12 @@
 		StateHasChanged();
 		try
 		{
+			var wasResolving = _status?.ResolvingJobId != null;
 			_status = await ReleaseService.GetStatusAsync(ProjectId);
+			if (wasResolving && _status.ResolvingJobId == null && _result?.Outcome == DeployOutcome.ResolvingConflicts)
+			{
+				_result = null;
+			}
 		}
 		catch (Exception ex)
 		{

@@ -228,9 +228,13 @@ public sealed partial class VersionControlService
 				? $"Checking whether {sourceBranch} can merge into {targetBranch}..."
 				: $"Merging {sourceBranch} into {targetBranch}...");
 
+			// git names a remote source "remote-tracking branch 'origin/x'"; say which branch went where instead.
+			var messageArgument = string.Equals(sourceRef, sourceBranch, StringComparison.Ordinal)
+				? "--no-edit"
+				: $"-m \"{EscapeCommandArgument($"Merge branch '{sourceBranch}' into {targetBranch}")}\"";
 			var mergeArguments = previewOnly
 				? $"merge --no-commit --no-ff \"{EscapeCommandArgument(sourceRef)}\""
-				: $"merge --no-ff --no-edit \"{EscapeCommandArgument(sourceRef)}\"";
+				: $"merge --no-ff {messageArgument} \"{EscapeCommandArgument(sourceRef)}\"";
 			var mergeResult = await _commandExecutor.ExecuteAsync(
 				mergeArguments,
 				tempWorktreePath,
