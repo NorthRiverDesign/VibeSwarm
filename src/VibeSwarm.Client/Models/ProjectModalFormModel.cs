@@ -31,6 +31,12 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(ValidationLimits.ProjectDefaultTargetBranchMaxLength)]
 	public string? DefaultTargetBranch { get; set; }
 
+	[StringLength(ValidationLimits.ProjectBranchMaxLength)]
+	public string? DevelopmentBranch { get; set; }
+
+	[StringLength(ValidationLimits.ProjectBranchMaxLength)]
+	public string? ReleaseBranch { get; set; }
+
 	public bool PlanningEnabled { get; set; }
 
 	public Guid? PlanningProviderId { get; set; }
@@ -115,6 +121,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			AutoCommitMode = source.AutoCommitMode,
 			GitChangeDeliveryMode = source.GitChangeDeliveryMode,
 			DefaultTargetBranch = source.DefaultTargetBranch,
+			DevelopmentBranch = source.DevelopmentBranch,
+			ReleaseBranch = source.ReleaseBranch,
 			PlanningEnabled = source.PlanningEnabled,
 			PlanningProviderId = source.PlanningProviderId,
 			PlanningModelId = source.PlanningModelId,
@@ -153,6 +161,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			AutoCommitMode = AutoCommitMode,
 			GitChangeDeliveryMode = GitChangeDeliveryMode,
 			DefaultTargetBranch = string.IsNullOrWhiteSpace(DefaultTargetBranch) ? null : DefaultTargetBranch.Trim(),
+			DevelopmentBranch = string.IsNullOrWhiteSpace(DevelopmentBranch) ? null : DevelopmentBranch.Trim(),
+			ReleaseBranch = string.IsNullOrWhiteSpace(ReleaseBranch) ? null : ReleaseBranch.Trim(),
 			PlanningEnabled = PlanningEnabled,
 			PlanningProviderId = PlanningProviderId,
 			PlanningModelId = string.IsNullOrWhiteSpace(PlanningModelId) ? null : PlanningModelId.Trim(),
@@ -213,6 +223,14 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			yield return new ValidationResult(
 				"Build command is required when build verification is enabled.",
 				[nameof(BuildCommand)]);
+		}
+
+		if (!string.IsNullOrWhiteSpace(DevelopmentBranch) &&
+			string.Equals(DevelopmentBranch.Trim(), ReleaseBranch?.Trim(), StringComparison.Ordinal))
+		{
+			yield return new ValidationResult(
+				"The development and release branches must be different.",
+				[nameof(ReleaseBranch)]);
 		}
 
 		var duplicateAgentIds = AgentAssignments

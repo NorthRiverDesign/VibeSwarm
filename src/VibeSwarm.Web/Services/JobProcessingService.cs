@@ -48,6 +48,7 @@ public partial class JobProcessingService : BackgroundService
     private readonly IInteractionResponseService? _interactionResponseService;
     private readonly IProjectEnvironmentCredentialService _projectEnvironmentCredentialService;
     private readonly JobWorkSnapshotService? _workSnapshots;
+    private readonly ReleaseBranchGit? _releaseGit;
     private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(3); // Poll less frequently, SignalR handles real-time updates
     private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
@@ -88,7 +89,8 @@ public partial class JobProcessingService : BackgroundService
         IProviderHealthTracker? healthTracker = null,
         IInteractionResponseService? interactionResponseService = null,
         IProjectEnvironmentCredentialService? projectEnvironmentCredentialService = null,
-        JobWorkSnapshotService? workSnapshots = null)
+        JobWorkSnapshotService? workSnapshots = null,
+        ReleaseBranchGit? releaseGit = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -99,6 +101,7 @@ public partial class JobProcessingService : BackgroundService
         _interactionResponseService = interactionResponseService;
         _projectEnvironmentCredentialService = projectEnvironmentCredentialService ?? throw new ArgumentNullException(nameof(projectEnvironmentCredentialService));
         _workSnapshots = workSnapshots;
+        _releaseGit = releaseGit;
     }
 
     /// <summary>
@@ -163,6 +166,7 @@ public partial class JobProcessingService : BackgroundService
         /// How a follow-up re-applied its job's earlier work, or null when it had none to restore.
         /// </summary>
         public JobWorkRestoreResult? PriorWorkRestore { get; set; }
+        public BranchMergeStart? BranchMerge { get; set; }
 
         /// <summary>
         /// Linked worktrees that existed before the agent started, so the ones it adds can be found.

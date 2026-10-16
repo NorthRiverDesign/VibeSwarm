@@ -37,6 +37,8 @@ public class ProjectExportDto
 	public AutoCommitMode AutoCommitMode { get; set; }
 	public GitChangeDeliveryMode GitChangeDeliveryMode { get; set; }
 	public string? DefaultTargetBranch { get; set; }
+	public string? DevelopmentBranch { get; set; }
+	public string? ReleaseBranch { get; set; }
 	public bool PlanningEnabled { get; set; }
 	public string? PromptContext { get; set; }
 	public bool IdeasAutoCommit { get; set; }

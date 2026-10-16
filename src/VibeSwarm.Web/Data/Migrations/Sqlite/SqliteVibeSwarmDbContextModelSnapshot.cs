@@ -1014,6 +1014,10 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<int?>("MaxTokens")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("MergeFromBranch")
+                        .HasMaxLength(250)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("MergedAt")
                         .HasColumnType("TEXT");
 
@@ -1580,6 +1584,10 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DevelopmentBranch")
+                        .HasMaxLength(250)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("EnableTeamSwarm")
                         .HasColumnType("INTEGER");
 
@@ -1641,6 +1649,10 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<string>("PromptContext")
                         .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReleaseBranch")
+                        .HasMaxLength(250)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("RepoMap")

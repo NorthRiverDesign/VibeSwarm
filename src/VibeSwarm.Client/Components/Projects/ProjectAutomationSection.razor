@@ -1,6 +1,22 @@
 @using VibeSwarm.Shared.Validation
 
 <div class="mb-5">
+	<label for="modal-developmentBranch" class="form-label">Development branch <span class="fg-1 fw-normal">(optional)</span></label>
+	<InputText id="modal-developmentBranch" @bind-Value="Project.DevelopmentBranch" class="form-control"
+			   placeholder="develop" maxlength="@ValidationLimits.ProjectBranchMaxLength" />
+	<ValidationMessage For="@(() => Project.DevelopmentBranch)" class="fg-danger small" />
+	<div class="form-text">Jobs work on this branch. Leave empty to use whichever branch is checked out.</div>
+</div>
+
+<div class="mb-5">
+	<label for="modal-releaseBranch" class="form-label">Release branch <span class="fg-1 fw-normal">(optional)</span></label>
+	<InputText id="modal-releaseBranch" @bind-Value="Project.ReleaseBranch" class="form-control"
+			   placeholder="main" maxlength="@ValidationLimits.ProjectBranchMaxLength" />
+	<ValidationMessage For="@(() => Project.ReleaseBranch)" class="fg-danger small" />
+	<div class="form-text">The branch your CI/CD ships from. With both branches set, the project's Release tab deploys development into it when you're ready.</div>
+</div>
+
+<div class="mb-5">
 	<label for="modal-autoCommitMode" class="form-label">Auto-commit</label>
 	<InputSelect id="modal-autoCommitMode" @bind-Value="Project.AutoCommitMode" class="form-control">
 		<option value="@AutoCommitMode.Off">Off — commit manually</option>

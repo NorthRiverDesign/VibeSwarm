@@ -60,6 +60,18 @@ public class Project
 	public string? DefaultTargetBranch { get; set; }
 
 	/// <summary>
+	/// Branch jobs work on and push to. When empty, jobs use whatever branch the checkout is on.
+	/// </summary>
+	[StringLength(ValidationLimits.ProjectBranchMaxLength)]
+	public string? DevelopmentBranch { get; set; }
+
+	/// <summary>
+	/// Branch CI/CD releases from. Deploying merges the development branch into it.
+	/// </summary>
+	[StringLength(ValidationLimits.ProjectBranchMaxLength)]
+	public string? ReleaseBranch { get; set; }
+
+	/// <summary>
 	/// Whether idea expansion should use provider-native planning mode.
 	/// When enabled, idea expansion uses the configured planning provider/model to generate
 	/// a reviewed implementation plan before the idea is converted into a job.

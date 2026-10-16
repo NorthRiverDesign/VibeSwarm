@@ -84,6 +84,8 @@ public class ProjectService : IProjectService
 		// Links go both ways, so they are saved through SetLinkedProjectsAsync, never with the project.
 		project.Links = [];
 		project.DefaultTargetBranch = string.IsNullOrWhiteSpace(project.DefaultTargetBranch) ? null : project.DefaultTargetBranch.Trim();
+		project.DevelopmentBranch = string.IsNullOrWhiteSpace(project.DevelopmentBranch) ? null : project.DevelopmentBranch.Trim();
+		project.ReleaseBranch = string.IsNullOrWhiteSpace(project.ReleaseBranch) ? null : project.ReleaseBranch.Trim();
 		project.BuildCommand = string.IsNullOrWhiteSpace(project.BuildCommand) ? null : project.BuildCommand.Trim();
 		project.TestCommand = string.IsNullOrWhiteSpace(project.TestCommand) ? null : project.TestCommand.Trim();
 		project.IdeaInferenceModelId = string.IsNullOrWhiteSpace(project.IdeaInferenceModelId) ? null : project.IdeaInferenceModelId.Trim();
@@ -153,6 +155,8 @@ public class ProjectService : IProjectService
 		existing.AutoCommitMode = project.AutoCommitMode;
 		existing.GitChangeDeliveryMode = project.GitChangeDeliveryMode;
 		existing.DefaultTargetBranch = string.IsNullOrWhiteSpace(project.DefaultTargetBranch) ? null : project.DefaultTargetBranch.Trim();
+		existing.DevelopmentBranch = string.IsNullOrWhiteSpace(project.DevelopmentBranch) ? null : project.DevelopmentBranch.Trim();
+		existing.ReleaseBranch = string.IsNullOrWhiteSpace(project.ReleaseBranch) ? null : project.ReleaseBranch.Trim();
 		existing.PlanningEnabled = project.PlanningEnabled;
 		existing.PlanningProviderId = project.PlanningProviderId;
 		existing.PlanningModelId = project.PlanningModelId;
@@ -636,6 +640,11 @@ public class ProjectService : IProjectService
 	private static void ValidateProject(Project project)
 	{
 		ValidationHelper.ValidateObject(project);
+		if (!string.IsNullOrWhiteSpace(project.DevelopmentBranch) &&
+			string.Equals(project.DevelopmentBranch.Trim(), project.ReleaseBranch?.Trim(), StringComparison.Ordinal))
+		{
+			throw new System.ComponentModel.DataAnnotations.ValidationException("The development and release branches must be different.");
+		}
 	}
 
 	/// <summary>

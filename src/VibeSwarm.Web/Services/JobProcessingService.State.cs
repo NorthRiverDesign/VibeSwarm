@@ -300,6 +300,7 @@ public partial class JobProcessingService
                     // Never deliver a restore conflict the agent left unresolved, then run
                     // build/test verification before committing if enabled
                     var buildPassed = await VerifyRestoreConflictsResolvedAsync(job, workingDirectory, executionContext.PriorWorkRestore, cancellationToken)
+                        && await VerifyBranchMergeResolvedAsync(job, workingDirectory, executionContext.BranchMerge, cancellationToken)
                         && await VerifyBuildAsync(job, workingDirectory, cancellationToken);
                     if (buildPassed)
                     {

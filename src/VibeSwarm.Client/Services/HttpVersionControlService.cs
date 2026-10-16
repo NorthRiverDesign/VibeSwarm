@@ -197,7 +197,8 @@ public class HttpVersionControlService : IVersionControlService
         Action<string>? progressCallback = null,
         CancellationToken ct = default,
         bool pushAfterMerge = true,
-        IReadOnlyList<MergeConflictResolution>? conflictResolutions = null)
+        IReadOnlyList<MergeConflictResolution>? conflictResolutions = null,
+        bool preferRemoteSource = false)
     {
         var response = await _http.PostAsJsonAsync("/api/git/merge-branch", new
         {
@@ -206,7 +207,8 @@ public class HttpVersionControlService : IVersionControlService
             TargetBranch = targetBranch,
             Remote = remoteName,
             PushAfterMerge = pushAfterMerge,
-            ConflictResolutions = conflictResolutions
+            ConflictResolutions = conflictResolutions,
+            PreferRemoteSource = preferRemoteSource
         }, ct);
         return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }

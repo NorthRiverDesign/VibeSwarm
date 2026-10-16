@@ -70,7 +70,7 @@ public partial class ProjectDetail
 
         // Reset the form for a new job
         NewJob = new Job();
-        NewJob.Branch = CurrentBranch;
+        NewJob.Branch = string.IsNullOrWhiteSpace(Project?.DevelopmentBranch) ? CurrentBranch : Project.DevelopmentBranch;
         NewJob.GitChangeDeliveryMode = Project?.GitChangeDeliveryMode ?? GitChangeDeliveryMode.CommitToBranch;
         NewJob.TargetBranch = Project?.DefaultTargetBranch ?? CurrentBranch;
         SelectedModelId = string.Empty;

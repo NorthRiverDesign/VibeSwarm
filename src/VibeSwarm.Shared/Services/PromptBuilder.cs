@@ -510,6 +510,53 @@ public static class PromptBuilder
 		return sb.ToString().TrimEnd();
 	}
 
+	/// <summary>
+	/// Rules for a job that finishes merging <paramref name="mergeFromBranch"/> into the checkout,
+	/// which VibeSwarm started before the agent ran.
+	/// </summary>
+	public static string? BuildBranchMergeRules(string? mergeFromBranch, BranchMergeOutcome? outcome, IReadOnlyList<string>? conflictedFiles)
+	{
+		if (string.IsNullOrWhiteSpace(mergeFromBranch) || outcome == null)
+		{
+			return null;
+		}
+
+		const int maxListedFiles = 30;
+		var sb = new StringBuilder();
+		sb.AppendLine("MERGE IN PROGRESS:");
+		if (outcome == BranchMergeOutcome.AlreadyMerged)
+		{
+			sb.AppendLine($"- '{mergeFromBranch}' is already merged into this branch, so there are no conflicts left to resolve.");
+			sb.AppendLine("- Check that the project still builds and its tests pass, and fix anything that doesn't.");
+			return sb.ToString().TrimEnd();
+		}
+
+		sb.AppendLine($"- VibeSwarm has merged '{mergeFromBranch}' into this branch without committing, so the deploy can go through cleanly afterwards.");
+		var files = conflictedFiles ?? [];
+		if (files.Count > 0)
+		{
+			sb.AppendLine("- Resolve the git conflict markers (<<<<<<< / ======= / >>>>>>>) in these files:");
+			foreach (var file in files.Take(maxListedFiles))
+			{
+				sb.AppendLine($"  - {file}");
+			}
+			if (files.Count > maxListedFiles)
+			{
+				sb.AppendLine($"  - ...and {files.Count - maxListedFiles} more (search for <<<<<<<)");
+			}
+			sb.AppendLine($"- Keep the intent of both sides: '{mergeFromBranch}' holds what is already released, and this branch holds the work waiting to deploy. Never drop a change from either side just to make the conflict go away.");
+			sb.AppendLine("- VibeSwarm will not deliver a file that still contains conflict markers.");
+		}
+		else
+		{
+			sb.AppendLine("- Nothing conflicted. Review the merged result for anything that no longer fits together.");
+		}
+
+		sb.AppendLine("- Then make sure the project builds and its tests pass, fixing whatever the merge broke.");
+		sb.AppendLine("- Do not run git commit, git merge --abort, git reset, git stash or git checkout. VibeSwarm commits the result as the merge commit.");
+		return sb.ToString().TrimEnd();
+	}
+
 	public static string? BuildProjectMemoryRules(Project? project, string? memoryFilePath)
 	{
 		if (project == null || string.IsNullOrWhiteSpace(memoryFilePath))

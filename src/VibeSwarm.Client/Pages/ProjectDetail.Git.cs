@@ -56,7 +56,7 @@ public partial class ProjectDetail
 
                 CurrentBranch = branchTask.Result;
                 CurrentCommitHash = commitHashTask.Result;
-                NewJob.Branch = CurrentBranch;
+                NewJob.Branch = string.IsNullOrWhiteSpace(Project?.DevelopmentBranch) ? CurrentBranch : Project.DevelopmentBranch;
             }
             else
             {

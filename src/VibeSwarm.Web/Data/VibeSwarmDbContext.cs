@@ -138,6 +138,8 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.WorkingPath).IsRequired().HasMaxLength(ValidationLimits.ProjectWorkingPathMaxLength);
 			entity.Property(e => e.GitHubRepository).HasMaxLength(ValidationLimits.ProjectGitHubRepositoryMaxLength);
 			entity.Property(e => e.DefaultTargetBranch).HasMaxLength(ValidationLimits.ProjectDefaultTargetBranchMaxLength);
+			entity.Property(e => e.DevelopmentBranch).HasMaxLength(ValidationLimits.ProjectBranchMaxLength);
+			entity.Property(e => e.ReleaseBranch).HasMaxLength(ValidationLimits.ProjectBranchMaxLength);
 			entity.Property(e => e.PlanningModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
 			entity.Property(e => e.PlanningReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.IdeaInferenceModelId).HasMaxLength(200);
@@ -309,6 +311,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.LastSwitchReason).HasMaxLength(200);
 			entity.Property(e => e.Branch).HasMaxLength(250);
 			entity.Property(e => e.TargetBranch).HasMaxLength(250);
+			entity.Property(e => e.MergeFromBranch).HasMaxLength(250);
 			entity.Property(e => e.GitCheckpointBranch).HasMaxLength(250);
 			entity.Property(e => e.GitCheckpointBaseBranch).HasMaxLength(250);
 			entity.Property(e => e.GitCheckpointCommitHash).HasMaxLength(100);

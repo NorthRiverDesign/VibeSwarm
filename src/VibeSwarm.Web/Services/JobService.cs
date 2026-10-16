@@ -437,8 +437,9 @@ public partial class JobService : IJobService
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        // Fan out to team swarm jobs if the project has team swarm enabled
-		var swarmJobs = job.AgentId.HasValue || LocalEnvironmentSetup.IsSetupJob(job)
+        // Fan out to team swarm jobs if the project has team swarm enabled. A merge has one
+        // resolution, so a deploy's conflict job is never split across agents.
+		var swarmJobs = job.AgentId.HasValue || LocalEnvironmentSetup.IsSetupJob(job) || !string.IsNullOrWhiteSpace(job.MergeFromBranch)
 			? []
 			: await TryCreateTeamSwarmJobsAsync(job, cancellationToken);
 

@@ -87,9 +87,9 @@ public partial class JobProcessingService
     /// </summary>
     private async Task PrepareWorkingBranchAsync(Job job, string workingDirectory, string? checkpointBaseBranch, CancellationToken cancellationToken)
     {
-        var sourceBranch = string.IsNullOrWhiteSpace(job.Branch)
-            ? (string.IsNullOrWhiteSpace(checkpointBaseBranch) ? null : checkpointBaseBranch.Trim())
-            : job.Branch.Trim();
+        // A job without its own branch works on the project's development branch when one is set.
+        var sourceBranch = new[] { job.Branch, job.Project?.DevelopmentBranch, checkpointBaseBranch }
+            .FirstOrDefault(branch => !string.IsNullOrWhiteSpace(branch))?.Trim();
         var targetBranch = GetEffectiveTargetBranch(job);
 
         if (sourceBranch == null)
@@ -165,6 +165,33 @@ public partial class JobProcessingService
         }
 
         LogKeptLocalCommits(job, syncResult);
+    }
+
+    /// <summary>
+    /// For a job that merges another branch in (a deploy's conflict resolution), starts that merge
+    /// in the checkout and leaves the conflicts for the agent. A merge that can't start fails the job.
+    /// </summary>
+    private async Task<BranchMergeStart?> StartBranchMergeAsync(Job job, string workingDirectory, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(job.MergeFromBranch) || _releaseGit == null)
+        {
+            return null;
+        }
+
+        var branch = job.MergeFromBranch.Trim();
+        var activity = $"Merging '{branch}' in...";
+        await UpdateHeartbeatAsync(job.Id, activity, dbContext, cancellationToken);
+        await NotifyJobActivityAsync(job.Id, activity, DateTime.UtcNow);
+
+        var merge = await _releaseGit.StartMergeAsync(workingDirectory, branch, cancellationToken);
+        if (merge.Outcome == BranchMergeOutcome.Failed)
+        {
+            throw new GitPreparationException($"Couldn't merge '{branch}' into the checkout: {merge.Error}");
+        }
+
+        _logger.LogInformation("Started merging {Branch} for job {JobId}: {Outcome}, {Count} conflicted file(s)",
+            merge.SourceRef, job.Id, merge.Outcome, merge.ConflictedFiles.Count);
+        return merge;
     }
 
     private async Task<GitOperationResult> CheckOutLatestAsync(string workingDirectory, string branch, bool hasRemote, CancellationToken cancellationToken)

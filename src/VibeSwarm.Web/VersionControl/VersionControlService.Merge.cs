@@ -131,7 +131,8 @@ public sealed partial class VersionControlService
 		Action<string>? progressCallback = null,
 		CancellationToken cancellationToken = default,
 		bool pushAfterMerge = true,
-		IReadOnlyList<MergeConflictResolution>? conflictResolutions = null)
+		IReadOnlyList<MergeConflictResolution>? conflictResolutions = null,
+		bool preferRemoteSource = false)
 		=> ExecuteMergeBranchAsync(
 			workingDirectory,
 			sourceBranch,
@@ -141,7 +142,8 @@ public sealed partial class VersionControlService
 			cancellationToken,
 			previewOnly: false,
 			pushAfterMerge: pushAfterMerge,
-			conflictResolutions: conflictResolutions);
+			conflictResolutions: conflictResolutions,
+			preferRemoteSource: preferRemoteSource);
 
 	private async Task<GitOperationResult> ExecuteMergeBranchAsync(
 		string workingDirectory,
@@ -152,7 +154,8 @@ public sealed partial class VersionControlService
 		CancellationToken cancellationToken,
 		bool previewOnly,
 		bool pushAfterMerge,
-		IReadOnlyList<MergeConflictResolution>? conflictResolutions = null)
+		IReadOnlyList<MergeConflictResolution>? conflictResolutions = null,
+		bool preferRemoteSource = false)
 	{
 		var tempWorktreePath = Path.Combine(Path.GetTempPath(), $"vibeswarm-merge-{Guid.NewGuid():N}");
 		var worktreeAdded = false;
@@ -180,7 +183,7 @@ public sealed partial class VersionControlService
 				return GitOperationResult.Failed(fetchResult.Error ?? "Failed to fetch remote branches.");
 			}
 
-			var sourceRef = await ResolveMergeSourceRefAsync(workingDirectory, sourceBranch, remoteName, cancellationToken);
+			var sourceRef = await ResolveMergeSourceRefAsync(workingDirectory, sourceBranch, remoteName, preferRemoteSource, cancellationToken);
 			if (sourceRef == null)
 			{
 				return GitOperationResult.Failed($"Source branch '{sourceBranch}' was not found locally or on remote '{remoteName}'.");
@@ -326,8 +329,22 @@ public sealed partial class VersionControlService
 		string workingDirectory,
 		string sourceBranch,
 		string remoteName,
+		bool preferRemote,
 		CancellationToken cancellationToken)
 	{
+		if (preferRemote)
+		{
+			var preferredRemoteRef = await _commandExecutor.ExecuteAsync(
+				$"rev-parse --verify refs/remotes/{remoteName}/{sourceBranch}",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 10);
+			if (preferredRemoteRef.Success)
+			{
+				return $"{remoteName}/{sourceBranch}";
+			}
+		}
+
 		var localRef = await _commandExecutor.ExecuteAsync(
 			$"rev-parse --verify refs/heads/{sourceBranch}",
 			workingDirectory,

@@ -1,0 +1,199 @@
+@* A project's Release tab: the changes collected on the development branch, and one Deploy
+   button that merges them into the release branch CI/CD ships from. *@
+@inject IProjectReleaseService ReleaseService
+
+<div class="d-flex flex-column gap-7">
+	<p class="small fg-1 mb-0 px-1">
+		Changes collect on <span class="fw-medium">@DevelopmentBranch</span> until you deploy them to
+		<span class="fw-medium">@ReleaseBranch</span>, which your CI/CD ships. Conflicts go to a provider to resolve.
+	</p>
+
+	@if (_status == null)
+	{
+		<div class="d-flex align-items-center gap-3 fg-1">
+			<span class="spinner-border spinner-sm" role="status" aria-hidden="true"></span>
+			<span>Checking what's waiting to deploy...</span>
+		</div>
+	}
+	else
+	{
+		@if (_result != null)
+		{
+			<Alert Type="@GetResultAlertType(_result.Outcome)" Class="mb-0" Dismissible="true" OnDismiss="() => _result = null">
+				<span>@_result.Message</span>
+			</Alert>
+		}
+
+		@if (!string.IsNullOrEmpty(_status.Error))
+		{
+			<Alert Type="Alert.AlertType.Warning" Class="mb-0" Message="@_status.Error" />
+		}
+
+		@if (_status.ResolvingJobId is Guid resolvingJobId)
+		{
+			<section class="d-flex flex-column gap-3" aria-label="Conflicts">
+				<SectionHeader Title="Conflicts" />
+				<div class="list-group rounded-9">
+					<ListRow Icon="tools" IconClass="fg-warning" Title="A provider is resolving conflicts"
+							 AttentionLine="@($"Merging {ReleaseBranch} into {DevelopmentBranch}. Deploy once it finishes.")"
+							 Href="@($"/jobs/view/{resolvingJobId}")" />
+				</div>
+			</section>
+		}
+
+		<section class="d-flex flex-column gap-3" aria-label="Waiting to deploy">
+			<SectionHeader Title="@GetPendingTitle()">
+				<Actions>
+					<button type="button" class="btn-link small" @onclick="RefreshAsync" disabled="@_isRefreshing">
+						@(_isRefreshing ? "Checking..." : "Refresh")
+					</button>
+				</Actions>
+			</SectionHeader>
+			<div class="list-group rounded-9">
+				@if (_status.PendingCount == 0)
+				{
+					<ListRow Icon="check2-circle" IconClass="fg-success" Title="Nothing waiting"
+							 Subtitle="@($"{ReleaseBranch} has everything on {DevelopmentBranch}")" />
+				}
+				else
+				{
+					@foreach (var change in _status.PendingChanges)
+					{
+						<ListRow @key="change.Hash" Icon="git" IconClass="fg-2" Title="@change.Subject"
+								 TitleClass="text-truncate" Subtitle="@FormatChange(change)" />
+					}
+					@if (_status.PendingCount > _status.PendingChanges.Count)
+					{
+						<ListRow Icon="three-dots" IconClass="fg-2"
+								 Title="@($"{_status.PendingCount - _status.PendingChanges.Count} earlier changes")" />
+					}
+				}
+			</div>
+		</section>
+
+		<button type="button" class="btn-solid theme-primary" @onclick="() => _showConfirm = true"
+				disabled="@(!CanDeploy)">
+			@if (_isDeploying)
+			{
+				<span class="spinner-border spinner-sm" role="status" aria-hidden="true"></span>
+				<span>Deploying...</span>
+			}
+			else
+			{
+				<i class="bi bi-rocket-takeoff" aria-hidden="true"></i>
+				<span>@GetDeployLabel()</span>
+			}
+		</button>
+
+		@if (_status.ReleaseHead is ReleaseChange head)
+		{
+			<section class="d-flex flex-column gap-3" aria-label="Last deployed">
+				<SectionHeader Title="@($"On {ReleaseBranch}")" />
+				<div class="list-group rounded-9">
+					<ListRow Icon="box-seam" Title="@head.Subject" TitleClass="text-truncate" Subtitle="@FormatChange(head)" />
+				</div>
+			</section>
+		}
+	}
+</div>
+
+<ConfirmationModal @bind-IsVisible="_showConfirm" Title="Deploy"
+				   Message="@($"Merge {GetChangeCountText()} from {DevelopmentBranch} into {ReleaseBranch} and push it?")"
+				   SubMessage="Your CI/CD ships it from there. If the branches conflict, nothing is pushed and a provider resolves the conflicts first."
+				   ConfirmText="Deploy" ButtonClass="btn-solid theme-primary" IsProcessing="@_isDeploying"
+				   OnConfirm="DeployAsync" />
+
+@code {
+	[Parameter, EditorRequired]
+	public Guid ProjectId { get; set; }
+
+	[Parameter, EditorRequired]
+	public string DevelopmentBranch { get; set; } = string.Empty;
+
+	[Parameter, EditorRequired]
+	public string ReleaseBranch { get; set; } = string.Empty;
+
+	private ProjectReleaseStatus? _status;
+	private DeployResult? _result;
+	private bool _isRefreshing;
+	private bool _isDeploying;
+	private bool _showConfirm;
+
+	private bool CanDeploy => _status != null && !_isDeploying && _status.ResolvingJobId == null
+		&& _status.PendingCount > 0 && string.IsNullOrEmpty(_status.Error);
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (_status == null)
+		{
+			await RefreshAsync();
+		}
+	}
+
+	/// <summary>Reloads after a job on this project starts or finishes, such as a conflict fix.</summary>
+	public async Task RefreshAsync()
+	{
+		_isRefreshing = true;
+		StateHasChanged();
+		try
+		{
+			_status = await ReleaseService.GetStatusAsync(ProjectId);
+		}
+		catch (Exception ex)
+		{
+			_status = new ProjectReleaseStatus { Error = $"Couldn't check what's waiting to deploy: {ex.Message}" };
+		}
+		finally
+		{
+			_isRefreshing = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task DeployAsync()
+	{
+		_isDeploying = true;
+		_result = null;
+		try
+		{
+			_result = await ReleaseService.DeployAsync(ProjectId);
+		}
+		catch (Exception ex)
+		{
+			_result = new DeployResult { Outcome = DeployOutcome.Failed, Message = ex.Message };
+		}
+		finally
+		{
+			_isDeploying = false;
+			_showConfirm = false;
+		}
+
+		await RefreshAsync();
+	}
+
+	private string GetPendingTitle() => _status?.PendingCount switch
+	{
+		null or 0 => "Waiting to deploy",
+		var count => $"Waiting to deploy · {count}"
+	};
+
+	private string GetChangeCountText() => _status?.PendingCount == 1 ? "1 change" : $"{_status?.PendingCount ?? 0} changes";
+
+	private string GetDeployLabel() => _status?.PendingCount > 0
+		? $"Deploy {GetChangeCountText()} to {ReleaseBranch}"
+		: $"Deploy to {ReleaseBranch}";
+
+	private static string FormatChange(ReleaseChange change)
+	{
+		var hash = change.Hash.Length > 7 ? change.Hash[..7] : change.Hash;
+		return change.CommittedAt == default ? hash : $"{hash} · {change.CommittedAt.FormatRelativeToNow()}";
+	}
+
+	private static Alert.AlertType GetResultAlertType(DeployOutcome outcome) => outcome switch
+	{
+		DeployOutcome.Deployed => Alert.AlertType.Success,
+		DeployOutcome.Failed => Alert.AlertType.Danger,
+		DeployOutcome.ResolvingConflicts => Alert.AlertType.Warning,
+		_ => Alert.AlertType.Info
+	};
+}

@@ -192,6 +192,13 @@ public class Job
     [StringLength(250)]
     public string? TargetBranch { get; set; }
 
+    /// <summary>
+    /// Branch merged into the checkout before the agent starts, leaving any conflicts for it to
+    /// resolve. Set on the job a deploy queues when the release branch conflicts.
+    /// </summary>
+    [StringLength(250)]
+    public string? MergeFromBranch { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }

@@ -1023,6 +1023,10 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<int?>("MaxTokens")
                         .HasColumnType("int");
 
+                    b.Property<string>("MergeFromBranch")
+                        .HasMaxLength(250)
+                        .HasColumnType("varchar(250)");
+
                     b.Property<DateTime?>("MergedAt")
                         .HasColumnType("datetime(6)");
 
@@ -1589,6 +1593,10 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(2000)
                         .HasColumnType("longtext");
 
+                    b.Property<string>("DevelopmentBranch")
+                        .HasMaxLength(250)
+                        .HasColumnType("varchar(250)");
+
                     b.Property<bool>("EnableTeamSwarm")
                         .HasColumnType("tinyint(1)");
 
@@ -1651,6 +1659,10 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<string>("PromptContext")
                         .HasMaxLength(4000)
                         .HasColumnType("longtext");
+
+                    b.Property<string>("ReleaseBranch")
+                        .HasMaxLength(250)
+                        .HasColumnType("varchar(250)");
 
                     b.Property<string>("RepoMap")
                         .HasColumnType("longtext");

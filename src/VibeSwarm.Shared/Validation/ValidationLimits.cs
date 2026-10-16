@@ -8,6 +8,7 @@ public static class ValidationLimits
 	public const int ProjectGitHubRepositoryMaxLength = 200;
 	public const int ProjectGitHubDescriptionMaxLength = 1000;
 	public const int ProjectDefaultTargetBranchMaxLength = 250;
+	public const int ProjectBranchMaxLength = 250;
 	public const int ProjectPlanningModelIdMaxLength = 200;
 	public const int ReasoningEffortMaxLength = 32;
 	public const int ProjectPromptContextMaxLength = 4000;

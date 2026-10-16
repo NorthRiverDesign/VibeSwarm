@@ -16,6 +16,7 @@ public static class VersionControlServiceExtensions
 		services.AddSingleton<IGitCommandExecutor, GitCommandExecutor>();
 		services.AddSingleton<IVersionControlService, VersionControlService>();
 		services.AddSingleton<JobWorkSnapshotService>();
+		services.AddSingleton<ReleaseBranchGit>();
 		return services;
 	}
 }

@@ -204,6 +204,7 @@ public partial class JobProcessingService
 
                         await PrepareWorkingBranchAsync(job, workingDirectory, checkpointBaseBranch, cancellationToken);
                         executionContext.PriorWorkRestore = await RestorePriorRunWorkAsync(job, workingDirectory, dbContext, cancellationToken);
+                        executionContext.BranchMerge = await StartBranchMergeAsync(job, workingDirectory, dbContext, cancellationToken);
                         if (_workSnapshots != null)
                         {
                             executionContext.WorktreesBefore = await _workSnapshots.ListWorktreesAsync(workingDirectory, cancellationToken);
@@ -799,6 +800,14 @@ public partial class JobProcessingService
                 systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
                     ? priorWorkRules
                     : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{priorWorkRules}";
+            }
+
+            var branchMergeRules = PromptBuilder.BuildBranchMergeRules(job.MergeFromBranch, executionContext.BranchMerge?.Outcome, executionContext.BranchMerge?.ConflictedFiles);
+            if (!string.IsNullOrWhiteSpace(branchMergeRules))
+            {
+                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
+                    ? branchMergeRules
+                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{branchMergeRules}";
             }
 
             // Inject role-specific system prompt context for team swarm jobs

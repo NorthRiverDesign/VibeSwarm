@@ -50,6 +50,13 @@ else
             <button type="button" class="nav-link rounded-pill px-5 @(IsActiveTab("changes") ? "active" : "")"
                     @onclick="OpenChangesTabAsync" role="tab" disabled="@(!IsGitRepository)">Changes</button>
         </li>
+        @if (HasReleaseBranches)
+        {
+            <li class="nav-item">
+                <button type="button" class="nav-link rounded-pill px-5 @(IsActiveTab("release") ? "active" : "")"
+                        @onclick='@(() => SetActiveTab("release"))' role="tab" disabled="@(!IsGitRepository)">Release</button>
+            </li>
+        }
         <li class="nav-item">
             <button type="button" class="nav-link rounded-pill px-5 @(IsActiveTab("environments") ? "active" : "")"
                     @onclick='@(() => SetActiveTab("environments"))' role="tab">Environments</button>
@@ -219,6 +226,13 @@ else
                                    WorkingTreeStatus="@_workingTreeStatus"
                                    OnGitOperationCompleted="HandleChangesTabGitOperation"
                                    OnChangesCommitted="HandleChangesTabCommitted" />
+            </div>
+        }
+        @if (_activeTab == "release" && HasReleaseBranches)
+        {
+            <div class="tab-pane fade show active">
+                <ProjectReleaseTab @ref="_releaseTab" ProjectId="@ProjectId"
+                                   DevelopmentBranch="@(Project!.DevelopmentBranch!)" ReleaseBranch="@(Project.ReleaseBranch!)" />
             </div>
         }
         @if (_activeTab == "autopilot")
@@ -394,6 +408,10 @@ else
 
     // Auto-pilot state
     private AutoPilotPanel? _autoPilotPanel;
+    private ProjectReleaseTab? _releaseTab;
+
+    private bool HasReleaseBranches =>
+        !string.IsNullOrWhiteSpace(Project?.DevelopmentBranch) && !string.IsNullOrWhiteSpace(Project?.ReleaseBranch);
     private IterationLoop? _autoPilotStatus;
 
     // Environment editing state

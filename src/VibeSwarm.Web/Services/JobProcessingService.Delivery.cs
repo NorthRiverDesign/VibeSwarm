@@ -176,6 +176,35 @@ public partial class JobProcessingService
     }
 
     /// <summary>
+    /// A job that merged another branch in must not commit while any file the merge conflicted
+    /// on still holds conflict markers. Returns false (and records why) if one does.
+    /// </summary>
+    private async Task<bool> VerifyBranchMergeResolvedAsync(
+        Job job,
+        string workingDirectory,
+        BranchMergeStart? branchMerge,
+        CancellationToken cancellationToken)
+    {
+        if (_workSnapshots == null || branchMerge is not { ConflictedFiles.Count: > 0 })
+        {
+            return true;
+        }
+
+        var unresolved = await _workSnapshots.FindUnresolvedConflictsAsync(workingDirectory, branchMerge.ConflictedFiles, cancellationToken);
+        if (unresolved.Count == 0)
+        {
+            return true;
+        }
+
+        _logger.LogWarning("Job {JobId} left merge conflict markers in {Files}", job.Id, string.Join(", ", unresolved));
+        job.BuildVerified = false;
+        job.BuildOutput = $"Merging '{job.MergeFromBranch}' conflicted, and these files still contain conflict markers (<<<<<<< / >>>>>>>):" + Environment.NewLine +
+            string.Join(Environment.NewLine, unresolved.Select(file => $"- {file}")) + Environment.NewLine +
+            "The merge was not committed. Deploy again to have a provider retry it.";
+        return false;
+    }
+
+    /// <summary>
     /// Runs the project's configured build and test commands to verify the agent's changes compile and pass tests.
     /// Returns true if verification passed (or was not enabled), false if the build/tests failed.
     /// </summary>
