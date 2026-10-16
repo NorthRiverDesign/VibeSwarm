@@ -81,6 +81,20 @@ when VibeSwarm can use `sudo` without a password. A system Chromium (such as Deb
 `chromium` package on a Raspberry Pi) works too. Turn off **Give every job a browser** to keep
 it to projects with a web environment.
 
+### Development and release branches
+
+To batch changes and ship them when you choose, set a **Development branch** and a
+**Release branch** under **When a job finishes** in a project's settings. Jobs then work on the
+development branch, and the project gets a **Release** tab listing the changes that are
+waiting. **Deploy** merges the development branch, as it is on origin, into the release
+branch and pushes it, so your CI/CD can ship it from there.
+
+If the release branch has changes of its own that conflict, such as a hotfix, nothing is
+pushed. VibeSwarm queues a job instead: it merges the release branch into the development
+branch and leaves the conflicts for a provider to resolve, and the result is committed as a
+merge only once no conflict markers remain. When that job finishes, press **Deploy** again.
+Deploys are always manual.
+
 ---
 
 ## Quick Start

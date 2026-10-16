@@ -110,8 +110,6 @@ public partial class ProjectDetail
 					await LoadIdeas();
 					if (IsAutoPilotRunning)
 						await RefreshAutoPilotAsync();
-					if (_releaseTab != null)
-						await _releaseTab.RefreshAsync();
 					StateHasChanged();
 				});
 			}
