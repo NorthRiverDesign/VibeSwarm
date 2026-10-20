@@ -1028,6 +1028,17 @@ details[open] > summary .details-chevron {
 		/* Prevent overscroll bounce and back-swipe navigation */
 		overscroll-behavior: none;
 	}
+	/* A Home Screen app has no toolbar for dvh to track, and there iOS sometimes works out
+	   dvh without the status bar (WebKit bug 254868), lifting the tab bar off the bottom of
+	   the screen. 100vh is the whole screen there. */
+	html {
+		height: 100vh;
+	}
+	body:has(.app-layout),
+	.app-layout {
+		min-height: 100vh;
+		height: 100vh;
+	}
 	.app-header,
 	.app-sidebar,
 	.app-tab-bar,

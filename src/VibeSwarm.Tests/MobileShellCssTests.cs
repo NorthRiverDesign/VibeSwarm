@@ -16,6 +16,35 @@ public sealed class MobileShellCssTests
 	}
 
 	[Fact]
+	public void SiteCss_SizesTheHomeScreenAppShellToTheWholeScreen()
+	{
+		var standalone = Regex.Match(ReadSiteCss(), @"@media all and \(display-mode: standalone\)\s*\{(?<body>(?:[^{}]|\{[^{}]*\})*)\}");
+		Assert.True(standalone.Success);
+
+		// A Home Screen app sometimes works out dvh without the status bar, which lifted the
+		// tab bar off the bottom of the screen; there 100vh is always the whole screen.
+		var rules = standalone.Groups["body"].Value;
+		Assert.Matches(new Regex(@"(?<![-\w])html\s*\{[^}]*height:\s*100vh;"), rules);
+		Assert.Matches(new Regex(@"body:has\(\.app-layout\),\s*\.app-layout\s*\{[^}]*min-height:\s*100vh;[^}]*height:\s*100vh;"), rules);
+	}
+
+	[Fact]
+	public void LiveTranscript_FollowsToTheRealEndOfItsScroller()
+	{
+		var index = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "wwwroot", "index.html"));
+		var sync = Regex.Match(index, @"sync: function \(element\) \{[\s\S]*?live\.showJumpButton\(element, state\);\s*\}\s*\};");
+		Assert.True(sync.Success);
+
+		// When the transcript shrinks under it, iOS can leave the page scrolled past the last
+		// message; following puts it back and never aims past the end.
+		Assert.Contains("var end = Math.max(0, scroller.scrollHeight - scroller.clientHeight);", sync.Value);
+		Assert.Matches(new Regex(@"if \(scroller\.scrollTop > end\) \{\s*scroller\.scrollTop = end;"), sync.Value);
+		Assert.Matches(new Regex(@"scroller\.scrollTo\(\{\s*top: end,"), sync.Value);
+		Assert.DoesNotContain("top: scroller.scrollHeight,", index);
+		Assert.DoesNotContain("top: state.scroller.scrollHeight,", index);
+	}
+
+	[Fact]
 	public void SiteCss_ClearsTheHomeIndicatorOnlyAtTheBottomEdgeOfTheScreen()
 	{
 		var css = ReadSiteCss();

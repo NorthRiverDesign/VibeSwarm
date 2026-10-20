@@ -388,7 +388,7 @@
                     state.stick = true;
                     button.hidden = true;
                     state.scroller.scrollTo({
-                        top: state.scroller.scrollHeight,
+                        top: state.scroller.scrollHeight - state.scroller.clientHeight,
                         behavior: 'smooth'
                     });
                 },
@@ -432,9 +432,17 @@
                         element._vsFollow = state;
                     }
 
+                    // iOS can leave the scroller past its end when the transcript shrinks under it
+                    // (tool calls folding into one row), showing blank space below the last
+                    // message, so it goes back to the end at once before following.
+                    var end = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+                    if (scroller.scrollTop > end) {
+                        scroller.scrollTop = end;
+                    }
+
                     if (state.stick) {
                         scroller.scrollTo({
-                            top: scroller.scrollHeight,
+                            top: end,
                             behavior: 'smooth'
                         });
                     }
