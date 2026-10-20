@@ -191,6 +191,7 @@ private bool _previousIsVisible;
 private string? _cloneProgressMessage;
 private bool _showDirectoryBrowser;
 private bool _showGitHubRepositoryBrowser;
+private bool _gitHubAccountsRequested;
 private DirectoryBrowser? _directoryBrowser;
 private string? _defaultProjectsDirectory;
 private List<Provider> _availableProviders = [];
@@ -275,10 +276,39 @@ private void OnGitHubRepositoryChanged(string? repositoryInput)
 _formState.UpdateGitHubRepositoryInput(FormModel, repositoryInput);
 }
 
-private void SelectSourceMode(ProjectCreationMode mode)
+private async Task SelectSourceMode(ProjectCreationMode mode)
 {
 ErrorMessage = null;
 _formState.SelectSourceMode(FormModel, mode);
+
+// Loaded once per opening, and only for a new repository; the form stays usable meanwhile.
+if (mode == ProjectCreationMode.CreateGitHubRepository && !_gitHubAccountsRequested)
+{
+_gitHubAccountsRequested = true;
+await LoadGitHubAccountsAsync();
+}
+}
+
+private async Task LoadGitHubAccountsAsync()
+{
+var formModel = FormModel;
+_formState.IsLoadingGitHubAccounts = true;
+GitHubAccountsResult accounts;
+try
+{
+accounts = await ProjectService.GetGitHubAccountsAsync();
+}
+catch (Exception ex)
+{
+// Without accounts the owner picker stays hidden and owner/repo can still be typed.
+accounts = new GitHubAccountsResult { ErrorMessage = ex.Message };
+}
+
+// The modal may have been closed or reopened while the GitHub CLI answered.
+if (ReferenceEquals(formModel, FormModel))
+{
+_formState.SetGitHubAccounts(FormModel, accounts);
+}
 }
 
 private async Task HandleValidSubmit()
@@ -368,6 +398,8 @@ ResetState();
 	private void ResetState()
 	{
 		FormModel = new ProjectModalFormModel();
+		_formState.Reset();
+		_gitHubAccountsRequested = false;
 		ErrorMessage = null;
 		IsSaving = false;
 		_detectedStack = null;
@@ -1076,16 +1108,13 @@ UpdatedAt = environment.UpdatedAt
 
 	/// <summary>
 	/// Applies everything VibeSwarm worked out about the chosen folder so the user does not
-	/// have to retype it. Only blank fields are filled, so nothing typed is ever overwritten.
+	/// have to retype it. Only blank or auto-filled fields are filled, so nothing typed is ever overwritten.
 	/// </summary>
 	private void HandleWorkspaceInspected(WorkspaceInspection inspection)
 	{
 		_detectedStack = inspection.DetectedStack;
 
-		if (string.IsNullOrWhiteSpace(FormModel.Name) && !string.IsNullOrWhiteSpace(inspection.SuggestedName))
-		{
-			FormModel.Name = inspection.SuggestedName;
-		}
+		_formState.SuggestName(FormModel, inspection.SuggestedName);
 
 		if (!string.IsNullOrWhiteSpace(inspection.GitHubRepository))
 		{

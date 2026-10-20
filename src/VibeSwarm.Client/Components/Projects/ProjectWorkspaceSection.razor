@@ -33,6 +33,29 @@
 @if (!IsEdit && FormModel.CreationMode != ProjectCreationMode.ExistingDirectory)
 {
 	<div class="mb-7">
+		@if (ShowOwnerPicker)
+		{
+			<div class="mb-5">
+				<label for="modal-githubOwner" class="form-label fw-semibold">Owner</label>
+				@if (FormState.IsLoadingGitHubAccounts)
+				{
+					<select id="modal-githubOwner" class="form-control" disabled>
+						<option>Loading accounts…</option>
+					</select>
+				}
+				else
+				{
+					<select id="modal-githubOwner" class="form-control"
+							value="@FormModel.NewGitHubRepositoryOwner" @onchange="HandleOwnerChanged">
+						@foreach (var owner in FormState.GetGitHubOwnerOptions(FormModel))
+						{
+							<option value="@owner">@(string.Equals(owner, FormState.GitHubUser, StringComparison.OrdinalIgnoreCase) ? $"{owner} (me)" : owner)</option>
+						}
+					</select>
+				}
+				<div class="form-text">Your own account or an organization you belong to.</div>
+			</div>
+		}
 		<label for="modal-githubRepo" class="form-label fw-semibold">
 			@(FormModel.CreationMode == ProjectCreationMode.CloneGitHubRepository ? "Repository to clone" : "New repository name")
 		</label>
@@ -58,6 +81,10 @@
 			@if (FormModel.CreationMode == ProjectCreationMode.CloneGitHubRepository)
 			{
 				<span>The name and working folder are filled in from the repository.</span>
+			}
+			else if (ShowOwnerPicker)
+			{
+				<span>The name and working folder are filled in from the repository name.</span>
 			}
 			else
 			{
@@ -283,6 +310,12 @@
 	private SourceOption CurrentSourceOption =>
 		SourceOptions.FirstOrDefault(option => option.Mode == FormModel.CreationMode) ?? SourceOptions[0];
 
+	/// <summary>Only a new repository needs an owner; hidden when the GitHub CLI can't list accounts.</summary>
+	private bool ShowOwnerPicker =>
+		!IsEdit &&
+		FormModel.CreationMode == ProjectCreationMode.CreateGitHubRepository &&
+		(FormState.IsLoadingGitHubAccounts || FormState.GitHubOwners.Count > 0);
+
 	private bool ShowSuggestions =>
 		!IsEdit &&
 		FormModel.CreationMode == ProjectCreationMode.ExistingDirectory &&
@@ -417,6 +450,9 @@
 		FormModel.GitHubRepositoryInput = repositoryInput ?? string.Empty;
 		await OnGitHubRepositoryChanged.InvokeAsync(repositoryInput);
 	}
+
+	private void HandleOwnerChanged(ChangeEventArgs e) =>
+		FormState.SelectGitHubOwner(FormModel, e.Value?.ToString());
 
 	public void Dispose()
 	{

@@ -311,6 +311,16 @@ public interface IVersionControlService
 		});
 
 	/// <summary>
+	/// Lists the accounts a new repository can be created under: the authenticated GitHub CLI
+	/// user and the organizations it belongs to.
+	/// </summary>
+	Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken cancellationToken = default)
+		=> Task.FromResult(new GitHubAccountsResult
+		{
+			ErrorMessage = "GitHub accounts are not available."
+		});
+
+	/// <summary>
 	/// Creates a new GitHub repository and links it to the local repository.
 	/// Uses the GitHub CLI (gh) to create the repository.
 	/// </summary>

@@ -58,6 +58,44 @@ public sealed class VersionControlServiceGitHubBrowserTests
 		Assert.Empty(result.Repositories);
 	}
 
+	[Fact]
+	public async Task GetGitHubAccountsAsync_ListsTheUserAndTheirOrganizations()
+	{
+		var executor = new RecordingGitCommandExecutor();
+		executor.AddRawResult("gh", "--version", new GitCommandResult { ExitCode = 0, Output = "gh version 2.70.0" });
+		executor.AddRawResult("gh", "auth status", new GitCommandResult { ExitCode = 0, Output = "Logged in to github.com" });
+		executor.AddRawResult("gh", "api user", new GitCommandResult { ExitCode = 0, Output = "{\"login\":\"octocat\"}" });
+		executor.AddRawResult("gh", "api user/orgs --jq \".[].login\"", new GitCommandResult
+		{
+			ExitCode = 0,
+			Output = "zeta\nacme\noctocat\n"
+		});
+
+		var service = new VersionControlService(executor, NullLogger<VersionControlService>.Instance);
+
+		var result = await service.GetGitHubAccountsAsync();
+
+		Assert.Null(result.ErrorMessage);
+		Assert.Equal("octocat", result.AuthenticatedUser);
+		Assert.Equal(new[] { "acme", "zeta" }, result.Organizations.ToArray());
+	}
+
+	[Fact]
+	public async Task GetGitHubAccountsAsync_ReportsAMissingSignIn()
+	{
+		var executor = new RecordingGitCommandExecutor();
+		executor.AddRawResult("gh", "--version", new GitCommandResult { ExitCode = 0, Output = "gh version 2.70.0" });
+		executor.AddRawResult("gh", "auth status", new GitCommandResult { ExitCode = 1, Error = "You are not logged into any GitHub hosts." });
+
+		var service = new VersionControlService(executor, NullLogger<VersionControlService>.Instance);
+
+		var result = await service.GetGitHubAccountsAsync();
+
+		Assert.False(result.IsAuthenticated);
+		Assert.Null(result.AuthenticatedUser);
+		Assert.Equal("Sign in with 'gh auth login' on the host to browse repositories.", result.ErrorMessage);
+	}
+
 	private sealed class RecordingGitCommandExecutor : IGitCommandExecutor
 	{
 		private readonly Dictionary<string, Queue<GitCommandResult>> _rawResults = new(StringComparer.Ordinal);

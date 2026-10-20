@@ -54,6 +54,12 @@ internal abstract class FakeProjectServiceBase : IProjectService
 			ErrorMessage = "GitHub repository browsing is not available."
 		});
 
+	public virtual Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken cancellationToken = default)
+		=> Task.FromResult(new GitHubAccountsResult
+		{
+			ErrorMessage = "GitHub accounts are not available."
+		});
+
 	public virtual Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -139,6 +145,12 @@ internal abstract class FakeVersionControlServiceBase : IVersionControlService
 		=> Task.FromResult(new GitHubRepositoryBrowserResult
 		{
 			ErrorMessage = "GitHub repository browsing is not available."
+		});
+
+	public virtual Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken cancellationToken = default)
+		=> Task.FromResult(new GitHubAccountsResult
+		{
+			ErrorMessage = "GitHub accounts are not available."
 		});
 }
 internal abstract class FakeJobServiceBase : IJobService

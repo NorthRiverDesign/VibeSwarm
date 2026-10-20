@@ -40,6 +40,10 @@ public class ProjectsController : ControllerBase
     public async Task<IActionResult> BrowseGitHubRepositories(CancellationToken ct)
         => Ok(await _projectService.BrowseGitHubRepositoriesAsync(ct));
 
+    [HttpGet("github-accounts")]
+    public async Task<IActionResult> GetGitHubAccounts(CancellationToken ct)
+        => Ok(await _projectService.GetGitHubAccountsAsync(ct));
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] Project project, CancellationToken ct)
     {

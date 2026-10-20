@@ -98,6 +98,11 @@ public interface IProjectService
 		{
 			ErrorMessage = "GitHub repository browsing is not available."
 		});
+	Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken cancellationToken = default)
+		=> Task.FromResult(new GitHubAccountsResult
+		{
+			ErrorMessage = "GitHub accounts are not available."
+		});
 
     /// <summary>
     /// Get all projects with their aggregated job statistics

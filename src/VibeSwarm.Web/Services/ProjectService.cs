@@ -67,6 +67,11 @@ public class ProjectService : IProjectService
 		return _versionControlService.BrowseGitHubRepositoriesAsync(cancellationToken);
 	}
 
+	public Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken cancellationToken = default)
+	{
+		return _versionControlService.GetGitHubAccountsAsync(cancellationToken);
+	}
+
 	public async Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default)
 	{
 		project.Id = Guid.NewGuid();

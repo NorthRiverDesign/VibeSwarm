@@ -98,6 +98,13 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(ValidationLimits.ProjectGitHubRepositoryMaxLength)]
 	public string GitHubRepositoryInput { get; set; } = string.Empty;
 
+	/// <summary>
+	/// Account or organization a new repository is created under. Applies only when
+	/// <see cref="GitHubRepositoryInput"/> is a bare name; empty leaves it to the GitHub CLI's signed-in user.
+	/// </summary>
+	[StringLength(ValidationLimits.ProjectGitHubRepositoryMaxLength)]
+	public string NewGitHubRepositoryOwner { get; set; } = string.Empty;
+
 	[StringLength(ValidationLimits.ProjectGitHubDescriptionMaxLength)]
 	public string NewGitHubRepositoryDescription { get; set; } = string.Empty;
 
@@ -211,9 +218,16 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	public string? GetNormalizedGitHubRepository()
 	{
-		return TryNormalizeGitHubRepository(GitHubRepositoryInput, CreationMode == ProjectCreationMode.CreateGitHubRepository, out var normalizedRepository)
-			? normalizedRepository
-			: null;
+		var isCreate = CreationMode == ProjectCreationMode.CreateGitHubRepository;
+		if (!TryNormalizeGitHubRepository(GitHubRepositoryInput, isCreate, out var normalizedRepository))
+		{
+			return null;
+		}
+
+		// An owner typed into the repository field wins over the picked one.
+		return isCreate && !normalizedRepository.Contains('/') && !string.IsNullOrWhiteSpace(NewGitHubRepositoryOwner)
+			? $"{NewGitHubRepositoryOwner.Trim()}/{normalizedRepository}"
+			: normalizedRepository;
 	}
 
 	public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)

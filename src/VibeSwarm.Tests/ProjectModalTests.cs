@@ -311,6 +311,74 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 
 
 	[Fact]
+	public void TypingARepositoryToClone_FillsInTheWholeRepositoryNameAsTheProjectName()
+	{
+		using var context = CreateBunitContext();
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true));
+
+		cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
+		const string repository = "octocat/hello-world";
+		for (var length = 1; length <= repository.Length; length++)
+		{
+			cut.Find("#modal-githubRepo").Input(repository[..length]);
+		}
+
+		Assert.Equal("hello-world", cut.Find("#modal-name").GetAttribute("value"));
+		Assert.Equal("/tmp/projects/hello-world", cut.Find("#modal-workingPath").GetAttribute("value"));
+	}
+
+	[Fact]
+	public void CreateRepository_PickingAnOrganizationCreatesTheRepositoryUnderIt()
+	{
+		var projectService = new FakeProjectService
+		{
+			AccountsResult = new GitHubAccountsResult
+			{
+				IsGitHubCliAvailable = true,
+				IsAuthenticated = true,
+				AuthenticatedUser = "octocat",
+				Organizations = ["acme"]
+			}
+		};
+		using var context = CreateBunitContext(projectService);
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true));
+
+		cut.Find($"#project-source-{ProjectCreationMode.CreateGitHubRepository}").Change(true);
+
+		var owners = cut.FindAll("#modal-githubOwner option");
+		Assert.Equal(["octocat (me)", "acme"], owners.Select(option => option.TextContent.Trim()));
+		Assert.Equal("octocat", cut.Find("#modal-githubOwner").GetAttribute("value"));
+
+		cut.Find("#modal-githubOwner").Change("acme");
+		cut.Find("#modal-githubRepo").Input("tool");
+		cut.Find("form").Submit();
+
+		cut.WaitForAssertion(() => Assert.NotNull(projectService.LastCreationRequest), WaitTimeout);
+		var request = projectService.LastCreationRequest!;
+		Assert.Equal(ProjectCreationMode.CreateGitHubRepository, request.Mode);
+		Assert.Equal("acme/tool", request.GitHub!.Repository);
+		Assert.Equal("tool", request.Project.Name);
+	}
+
+	[Fact]
+	public void CreateRepository_WithoutGitHubAccounts_HidesTheOwnerPicker()
+	{
+		using var context = CreateBunitContext();
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true));
+
+		cut.Find($"#project-source-{ProjectCreationMode.CreateGitHubRepository}").Change(true);
+
+		Assert.Empty(cut.FindAll("#modal-githubOwner"));
+		Assert.Contains("for an organization", cut.Markup);
+	}
+
+	[Fact]
 	public void InspectingAGitWorkingFolder_FillsInNameRepositoryAndBuildCommands()
 	{
 		var fileSystem = new FakeWorkspaceFileSystemService
@@ -466,7 +534,7 @@ private static BunitContext CreateBunitContext(
 {
 	var context = new BunitContext();
 	context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
-	context.JSInterop.SetupVoid("vibeSwarmInitTouchDrag", _ => true);
+	context.JSInterop.SetupVoid("vibeSwarmInitTouchDrag", _ => true).SetVoidResult();
 	context.Services.AddLogging();
 	var resolvedProvider = provider ?? new Provider
 	{
@@ -488,6 +556,8 @@ private static BunitContext CreateBunitContext(
 private sealed class FakeProjectService : FakeProjectServiceBase
 {
 public GitHubRepositoryBrowserResult RepositoryBrowserResult { get; set; } = new();
+public GitHubAccountsResult? AccountsResult { get; set; }
+public ProjectCreationRequest? LastCreationRequest { get; private set; }
 public Project? CreateProjectResult { get; set; }
 public Project? UpdateResult { get; set; }
 public List<Project> AllProjects { get; set; } = [];
@@ -505,12 +575,17 @@ public override Task<IEnumerable<Project>> GetRecentAsync(int count, Cancellatio
 public override Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
 public override Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
 public override Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default)
-	=> Task.FromResult(CreateProjectResult ?? new Project
+{
+	LastCreationRequest = request;
+	return Task.FromResult(CreateProjectResult ?? new Project
 	{
 		Id = Guid.NewGuid(),
 		Name = request.Project.Name,
 		WorkingPath = request.Project.WorkingPath
 	});
+}
+public override Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken cancellationToken = default)
+	=> AccountsResult is null ? base.GetGitHubAccountsAsync(cancellationToken) : Task.FromResult(AccountsResult);
 public override Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default) => Task.FromResult(RepositoryBrowserResult);
 public override Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default)
 {

@@ -40,6 +40,9 @@ public class HttpProjectService : IProjectService
     public async Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken ct = default)
         => await _http.GetJsonAsync("/api/projects/github-repositories", new GitHubRepositoryBrowserResult(), ct);
 
+    public async Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken ct = default)
+        => await _http.GetJsonAsync("/api/projects/github-accounts", new GitHubAccountsResult(), ct);
+
     public async Task<Project> UpdateAsync(Project project, CancellationToken ct = default)
     {
         var response = await _http.PutAsJsonAsync($"/api/projects/{project.Id}", project, ct);

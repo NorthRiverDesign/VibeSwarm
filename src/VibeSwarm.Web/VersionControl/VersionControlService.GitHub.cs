@@ -47,24 +47,24 @@ public sealed partial class VersionControlService
 	}
 
 	/// <inheritdoc />
-	public async Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default)
+	public async Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken cancellationToken = default)
 	{
-		var browserResult = new GitHubRepositoryBrowserResult();
+		var accountsResult = new GitHubAccountsResult();
 
 		try
 		{
-			browserResult.IsGitHubCliAvailable = await IsGitHubCliAvailableAsync(cancellationToken);
-			if (!browserResult.IsGitHubCliAvailable)
+			accountsResult.IsGitHubCliAvailable = await IsGitHubCliAvailableAsync(cancellationToken);
+			if (!accountsResult.IsGitHubCliAvailable)
 			{
-				browserResult.ErrorMessage = "GitHub CLI (gh) is not installed. Install it on the host to browse repositories.";
-				return browserResult;
+				accountsResult.ErrorMessage = "GitHub CLI (gh) is not installed. Install it on the host to browse repositories.";
+				return accountsResult;
 			}
 
-			browserResult.IsAuthenticated = await IsGitHubCliAuthenticatedAsync(cancellationToken);
-			if (!browserResult.IsAuthenticated)
+			accountsResult.IsAuthenticated = await IsGitHubCliAuthenticatedAsync(cancellationToken);
+			if (!accountsResult.IsAuthenticated)
 			{
-				browserResult.ErrorMessage = "Sign in with 'gh auth login' on the host to browse repositories.";
-				return browserResult;
+				accountsResult.ErrorMessage = "Sign in with 'gh auth login' on the host to browse repositories.";
+				return accountsResult;
 			}
 
 			var userResult = await _commandExecutor.ExecuteRawAsync(
@@ -76,21 +76,18 @@ public sealed partial class VersionControlService
 
 			if (!userResult.Success)
 			{
-				browserResult.ErrorMessage = BuildCommandError(userResult, "Unable to determine the authenticated GitHub account.");
-				return browserResult;
+				accountsResult.ErrorMessage = BuildCommandError(userResult, "Unable to determine the authenticated GitHub account.");
+				return accountsResult;
 			}
 
 			var user = DeserializeCommandJson<GitHubViewerResponse>(userResult.Output, '{', '}');
 			if (string.IsNullOrWhiteSpace(user?.Login))
 			{
-				browserResult.ErrorMessage = "Unable to determine the authenticated GitHub account.";
-				return browserResult;
+				accountsResult.ErrorMessage = "Unable to determine the authenticated GitHub account.";
+				return accountsResult;
 			}
 
-			browserResult.AuthenticatedUser = user.Login;
-
-			// Build the list of owners: authenticated user + any accessible organizations
-			var owners = new List<string> { user.Login };
+			accountsResult.AuthenticatedUser = user.Login;
 
 			try
 			{
@@ -103,19 +100,49 @@ public sealed partial class VersionControlService
 
 				if (orgsResult.Success && !string.IsNullOrWhiteSpace(orgsResult.Output))
 				{
-					var orgLogins = orgsResult.Output
+					accountsResult.Organizations = orgsResult.Output
 						.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
 						.Where(login => !string.IsNullOrWhiteSpace(login) &&
 							!string.Equals(login, user.Login, StringComparison.OrdinalIgnoreCase))
 						.OrderBy(login => login, StringComparer.OrdinalIgnoreCase)
 						.ToList();
-					owners.AddRange(orgLogins);
 				}
 			}
 			catch (Exception ex)
 			{
-				_logger.LogWarning(ex, "Failed to fetch GitHub organizations, continuing with user repos only");
+				_logger.LogWarning(ex, "Failed to fetch GitHub organizations, continuing with the user account only");
 			}
+
+			return accountsResult;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to load GitHub accounts");
+			accountsResult.ErrorMessage = $"Unable to load GitHub accounts: {ex.Message}";
+			return accountsResult;
+		}
+	}
+
+	/// <inheritdoc />
+	public async Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default)
+	{
+		var browserResult = new GitHubRepositoryBrowserResult();
+
+		try
+		{
+			var accounts = await GetGitHubAccountsAsync(cancellationToken);
+			browserResult.IsGitHubCliAvailable = accounts.IsGitHubCliAvailable;
+			browserResult.IsAuthenticated = accounts.IsAuthenticated;
+			browserResult.AuthenticatedUser = accounts.AuthenticatedUser;
+			if (accounts.ErrorMessage is not null || string.IsNullOrWhiteSpace(accounts.AuthenticatedUser))
+			{
+				browserResult.ErrorMessage = accounts.ErrorMessage ?? "Unable to determine the authenticated GitHub account.";
+				return browserResult;
+			}
+
+			// Owners: the authenticated user, then any accessible organizations
+			var owners = new List<string> { accounts.AuthenticatedUser };
+			owners.AddRange(accounts.Organizations);
 
 			// Fetch repos for all owners in parallel
 			var repoJsonFields = "--json nameWithOwner,description,isPrivate,updatedAt,url";
