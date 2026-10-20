@@ -76,6 +76,9 @@ public static class DataServiceExtensions
         services.AddScoped<AgentQuestionAnswerer>();
         services.AddScoped<IFolderManagerService, FolderManagerService>();
         services.AddScoped<AgentDetectionService>();
+		services.AddScoped<PushNotificationService>();
+		services.AddScoped<IPushNotificationService>(sp => sp.GetRequiredService<PushNotificationService>());
+		services.AddHttpClient(PushNotificationService.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(15));
 
 		return services;
 	}

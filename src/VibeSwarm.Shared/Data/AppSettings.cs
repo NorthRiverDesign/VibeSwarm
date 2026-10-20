@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Data;
@@ -113,4 +114,16 @@ public class AppSettings
 	/// </summary>
 	[StringLength(200)]
 	public string? GitHubToken { get; set; }
+
+	/// <summary>
+	/// The VAPID key pair push notifications are signed with, base64url, made the first time a
+	/// device turns notifications on. Replacing it silently breaks every device's subscription.
+	/// </summary>
+	[StringLength(200)]
+	public string? WebPushPublicKey { get; set; }
+
+	/// <summary>Never leaves the server: the settings API would otherwise hand it to the browser.</summary>
+	[JsonIgnore]
+	[StringLength(200)]
+	public string? WebPushPrivateKey { get; set; }
 }

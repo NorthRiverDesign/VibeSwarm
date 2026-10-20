@@ -158,3 +158,69 @@ function isStaticAsset(url) {
 	];
 	return staticExtensions.some((ext) => url.toLowerCase().includes(ext));
 }
+
+// Push notifications about jobs (Settings > Notifications). Every push shows a notification:
+// Safari drops subscriptions that receive pushes without one.
+self.addEventListener("push", (event) => {
+	let message = {};
+	try {
+		message = event.data ? event.data.json() : {};
+	} catch {
+		message = { body: event.data ? event.data.text() : "" };
+	}
+
+	const tag = message.tag || undefined;
+	event.waitUntil(
+		self.registration.showNotification(message.title || "VibeSwarm", {
+			body: message.body || "",
+			tag,
+			renotify: !!tag,
+			icon: `/web-app-manifest-192x192.png?v=${CACHE_VERSION}`,
+			data: { url: message.url || "/" },
+		}),
+	);
+});
+
+// Opens the job: an open window navigates in place (index.html handles OPEN_URL), otherwise the
+// app opens at that page.
+self.addEventListener("notificationclick", (event) => {
+	event.notification.close();
+	const url = new URL(event.notification.data?.url || "/", self.location.origin).href;
+
+	event.waitUntil(
+		self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+			const client = windows.find((w) => new URL(w.url).origin === self.location.origin);
+			if (!client) {
+				return self.clients.openWindow(url);
+			}
+			client.postMessage({ type: "OPEN_URL", url });
+			return client.focus();
+		}),
+	);
+});
+
+// The browser renewed the subscription: register the new one, keeping the old one's choices.
+self.addEventListener("pushsubscriptionchange", (event) => {
+	const previousEndpoint = event.oldSubscription ? event.oldSubscription.endpoint : null;
+	event.waitUntil(
+		(async () => {
+			const subscription = event.newSubscription
+				|| (event.oldSubscription ? await self.registration.pushManager.subscribe(event.oldSubscription.options) : null);
+			if (!subscription) {
+				return;
+			}
+			const json = subscription.toJSON();
+			await fetch("/api/push/devices", {
+				method: "POST",
+				credentials: "same-origin",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					endpoint: json.endpoint,
+					p256dh: json.keys.p256dh,
+					auth: json.keys.auth,
+					previousEndpoint,
+				}),
+			});
+		})(),
+	);
+});

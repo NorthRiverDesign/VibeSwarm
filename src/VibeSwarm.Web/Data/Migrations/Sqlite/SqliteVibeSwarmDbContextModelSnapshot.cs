@@ -313,6 +313,14 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("WebPushPrivateKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WebPushPublicKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("AppSettings");
@@ -2091,6 +2099,56 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.ToTable("ProviderUsageSummaries");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.PushSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Auth")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeviceName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("NotifyOnCompleted")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyOnFailed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyOnInputRequired")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("P256dh")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Endpoint")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PushSubscriptions");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.Skill", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2657,6 +2715,14 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .IsRequired();
 
                     b.Navigation("Provider");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.PushSubscription", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.Agent", b =>

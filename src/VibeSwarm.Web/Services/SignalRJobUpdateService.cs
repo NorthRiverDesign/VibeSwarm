@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Web.Hubs;
@@ -12,17 +13,26 @@ public class SignalRJobUpdateService : IJobUpdateService
 {
     private readonly IHubContext<JobHub> _hubContext;
     private readonly ILogger<SignalRJobUpdateService> _logger;
+    private readonly JobPushNotifier? _pushNotifier;
 
     public SignalRJobUpdateService(
         IHubContext<JobHub> hubContext,
-        ILogger<SignalRJobUpdateService> logger)
+        ILogger<SignalRJobUpdateService> logger,
+        JobPushNotifier? pushNotifier = null)
     {
         _hubContext = hubContext;
         _logger = logger;
+        _pushNotifier = pushNotifier;
     }
 
     public async Task NotifyJobStatusChanged(Guid jobId, string status)
     {
+        // A stalled job waits for the user to resume it, and no completion event follows.
+        if (string.Equals(status, nameof(JobStatus.Stalled), StringComparison.OrdinalIgnoreCase))
+        {
+            _pushNotifier?.JobCompleted(jobId);
+        }
+
         try
         {
             // Notify job-specific subscribers
@@ -88,6 +98,9 @@ public class SignalRJobUpdateService : IJobUpdateService
 
     public async Task NotifyJobCompleted(Guid jobId, bool success, string? errorMessage = null)
     {
+        // Every path that ends a job reports here, so this is where devices hear about it too.
+        _pushNotifier?.JobCompleted(jobId);
+
         try
         {
             // Notify job-specific subscribers
@@ -264,6 +277,8 @@ public class SignalRJobUpdateService : IJobUpdateService
     public async Task NotifyJobInteractionRequired(Guid jobId, string prompt, string interactionType,
         List<string>? choices = null, string? defaultResponse = null)
     {
+        _pushNotifier?.JobInteractionRequired(jobId);
+
         try
         {
             // Notify job-specific subscribers

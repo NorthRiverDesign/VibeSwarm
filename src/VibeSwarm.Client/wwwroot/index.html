@@ -883,6 +883,14 @@
                         if (event.data && event.data.type === 'SW_UPDATE_WAITING') {
                             window.vibeSwarmUpdateAvailable = true;
                         }
+                        // A tapped push notification opens its job in this window.
+                        if (event.data && event.data.type === 'OPEN_URL' && event.data.url) {
+                            if (window.Blazor && typeof window.Blazor.navigateTo === 'function') {
+                                window.Blazor.navigateTo(event.data.url);
+                            } else {
+                                window.location.assign(event.data.url);
+                            }
+                        }
                     });
                 });
             }

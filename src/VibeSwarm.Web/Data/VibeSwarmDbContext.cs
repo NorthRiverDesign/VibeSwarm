@@ -55,6 +55,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<InferenceProvider> InferenceProviders { get; set; }
 	public DbSet<InferenceModel> InferenceModels { get; set; }
 	public DbSet<IterationLoop> IterationLoops { get; set; }
+	public DbSet<PushSubscription> PushSubscriptions { get; set; }
 
 	protected override void OnModelCreating(ModelBuilder modelBuilder)
 	{
@@ -586,6 +587,20 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	.OnDelete(DeleteBehavior.SetNull);
 			entity.HasIndex(e => e.ProjectId);
 			entity.HasIndex(e => e.Status);
+		});
+
+		modelBuilder.Entity<PushSubscription>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Endpoint).IsRequired().HasMaxLength(PushSubscription.EndpointMaxLength);
+			entity.Property(e => e.P256dh).IsRequired().HasMaxLength(200);
+			entity.Property(e => e.Auth).IsRequired().HasMaxLength(100);
+			entity.Property(e => e.DeviceName).HasMaxLength(100);
+			entity.HasOne<ApplicationUser>()
+	.WithMany()
+	.HasForeignKey(e => e.UserId)
+	.OnDelete(DeleteBehavior.Cascade);
+			entity.HasIndex(e => e.Endpoint).IsUnique();
 		});
 
 		ApplyMySqlLongTextMapping(modelBuilder);

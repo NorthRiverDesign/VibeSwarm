@@ -236,7 +236,8 @@ builder.Services.ConfigureApplicationCookie(options =>
     };
 });
 
-// Register SignalR job update service
+// Register SignalR job update service, which also sends job push notifications
+builder.Services.AddSingleton<JobPushNotifier>();
 builder.Services.AddSingleton<IJobUpdateService, SignalRJobUpdateService>();
 
 // Register interaction response service (singleton for cross-service communication)
