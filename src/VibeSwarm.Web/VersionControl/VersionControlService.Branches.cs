@@ -348,6 +348,11 @@ public sealed partial class VersionControlService
 
 			if (!remoteRefCheck.Success)
 			{
+				if (string.IsNullOrEmpty(await GetCurrentCommitHashAsync(workingDirectory, cancellationToken)))
+				{
+					return GitOperationResult.Failed($"'{currentBranch}' has no commits yet, and {remoteName} has no '{currentBranch}' branch to sync from. Push a first commit to {remoteName}, then sync again.");
+				}
+
 				return GitOperationResult.Failed($"Remote tracking branch '{remoteName}/{currentBranch}' not found. The branch may not exist on the remote.");
 			}
 

@@ -599,6 +599,8 @@ public partial class ProjectDetail
             if (result.Success)
             {
                 CurrentCommitHash = result.CommitHash;
+                // The sync fetched, and on a branch that had no commits it created the local branch.
+                await LoadBranches();
                 await RefreshUncommittedChangesStatus();
                 RefreshRemoteSyncStatus();
                 await PopulateGitHubRepositoryIfMissing();
