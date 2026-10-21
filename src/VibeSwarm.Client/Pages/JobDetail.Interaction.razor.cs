@@ -72,6 +72,53 @@ public partial class JobDetail : ComponentBase
         }
     }
 
+    /// <summary>
+    /// Steers the running agent: it stops its current step and carries on with the message.
+    /// Returns false, leaving the message in the box, when the agent wasn't taking messages.
+    /// </summary>
+    private async Task<bool> SendMessageToAgent(string message)
+    {
+        var trimmedMessage = message.Trim();
+        if (Job == null || trimmedMessage.Length == 0)
+        {
+            return false;
+        }
+
+        var sentAt = DateTime.UtcNow;
+        var optimisticMessage = new JobMessage
+        {
+            Id = Guid.NewGuid(),
+            JobId = Job.Id,
+            Role = MessageRole.User,
+            Content = trimmedMessage,
+            CreatedAt = sentAt,
+            Source = MessageSource.User,
+            Level = MessageLevel.Normal
+        };
+        _pendingSessionMessages.Add(optimisticMessage);
+
+        try
+        {
+            if (await JobService.SendMessageToAgentAsync(Job.Id, trimmedMessage))
+            {
+                Job.CurrentActivity = "Passing your message to the agent...";
+                Job.LastActivityAt = sentAt;
+                return true;
+            }
+
+            _pendingSessionMessages.Remove(optimisticMessage);
+            NotificationService.ShowProjectError(Job.Project?.Name,
+                "The agent isn't taking messages right now. If the job is wrapping up, send this as a follow-up once it finishes.");
+        }
+        catch (Exception ex)
+        {
+            _pendingSessionMessages.Remove(optimisticMessage);
+            NotificationService.ShowProjectError(Job.Project?.Name, $"Failed to send the message: {ex.Message}");
+        }
+
+        return false;
+    }
+
     private void ReconcilePendingSessionMessages()
     {
         if (Job == null || _pendingSessionMessages.Count == 0)

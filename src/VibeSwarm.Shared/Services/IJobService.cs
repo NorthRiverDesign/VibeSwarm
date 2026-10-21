@@ -66,6 +66,12 @@ public interface IJobService
 	Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Sends a message to the agent of a running job to steer it: the agent's current step stops
+	/// and its session carries on with the message. False when the job's agent isn't working.
+	/// </summary>
+	Task<bool> SendMessageToAgentAsync(Guid id, string message, CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Has inference write a follow-up message for a job whose run has ended, for the user to
 	/// confirm before it is sent with <see cref="ContinueJobAsync"/>.
 	/// </summary>

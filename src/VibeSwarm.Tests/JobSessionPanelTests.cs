@@ -1878,6 +1878,53 @@ public sealed class JobSessionPanelTests
 		Assert.Equal("Fix the null reference on line 42.", followUpPrompt);
 	}
 
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public void JobSessionPanel_Bunit_MessagesTheWorkingAgent_AndKeepsAMessageItDidNotTake(bool delivered)
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+		string? sentMessage = null;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Processing)
+			.Add(panel => panel.IsJobActive, true)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.DraftFollowUp, _ => Task.FromResult(new FollowUpDraft()))
+			.Add(panel => panel.OnSendFollowUp, (string _) => throw new InvalidOperationException("A running job takes messages, not follow-ups."))
+			.Add(panel => panel.SendMessageToAgent, message =>
+			{
+				sentMessage = message;
+				return Task.FromResult(delivered);
+			}));
+
+		Assert.StartsWith("Message the agent", cut.Find("textarea").GetAttribute("placeholder"));
+		Assert.Empty(cut.FindAll("button[title='Write a reply with inference']"));
+
+		cut.Find("textarea").Input("Use tabs, not spaces.");
+		cut.Find("button[title='Send to the agent']").Click();
+
+		Assert.Equal("Use tabs, not spaces.", sentMessage);
+		Assert.Equal(!delivered, !cut.Find("button[title='Send to the agent']").HasAttribute("disabled"));
+		Assert.Equal(delivered ? string.Empty : "Use tabs, not spaces.", cut.Find("textarea").GetAttribute("value"));
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_HidesTheMessageBoxWhileTheJobIsNotWorking()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Started)
+			.Add(panel => panel.IsJobActive, true)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.SendMessageToAgent, _ => Task.FromResult(true)));
+
+		Assert.Empty(cut.FindAll("textarea"));
+	}
+
 	[Fact]
 	public void JobSessionPanel_Bunit_AsksBeforeDraftingAFollowUp_ShowsItsUsage_AndSendsItOnlyOnceConfirmed()
 	{

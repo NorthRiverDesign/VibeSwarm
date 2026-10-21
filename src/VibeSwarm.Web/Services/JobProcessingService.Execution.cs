@@ -1007,6 +1007,12 @@ public partial class JobProcessingService
             executionContext.ActivePrompt = currentPrompt;
             var attachedFiles = DeserializeAttachedFiles(job.AttachedFilesJson);
             var cycleComplete = false;
+            // From here until the agent is done, the user can steer it with messages.
+            var executionPrompt = currentPrompt;
+            IReadOnlyList<string>? nextTurnUserMessages = null;
+            var turnInterruptedByUserMessage = false;
+            executionContext.UserMessages.Open();
+            _messageInboxes[job.Id] = executionContext.UserMessages;
             await UpdateJobStatusAsync(job.Id, JobStatus.Processing, dbContext, cancellationToken);
             await NotifyStatusChangedAsync(job.Id, JobStatus.Processing);
 
@@ -1052,10 +1058,25 @@ public partial class JobProcessingService
                 var preassignedSessionId = await TryPreassignSessionIdAsync(requestedSessionId);
                 using var executionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 executionContext.ActiveExecutionCancellationTokenSource = executionCts;
+                turnInterruptedByUserMessage = false;
+
+                // Messages sent since the last turn ended go with this one; any sent from now on stop it.
+                var lateUserMessages = executionContext.UserMessages.BeginTurn(executionCts);
+                var savingLateUserMessages = Task.CompletedTask;
+                if (lateUserMessages.Count > 0)
+                {
+                    promptToExecute = $"{promptToExecute.TrimEnd()}\n\n{PromptBuilder.BuildUserMessagesPrompt(lateUserMessages, interruptedTurn: false)}";
+                    savingLateUserMessages = SaveUserMessagesAsync(lateUserMessages);
+                }
+
+                bool StoppedByUserMessage() => executionCts.IsCancellationRequested
+                    && !cancellationToken.IsCancellationRequested
+                    && !executionContext.IsPausedForInteraction
+                    && executionContext.UserMessages.HasPending;
 
                 try
                 {
-                    return await provider.ExecuteWithOptionsAsync(
+                    var turnResult = await provider.ExecuteWithOptionsAsync(
                         promptToExecute,
                         new ExecutionOptions
                         {
@@ -1086,6 +1107,10 @@ public partial class JobProcessingService
                         },
                         progress,
                         executionCts.Token);
+
+                    // Some providers report a stopped run as a failed result rather than throwing.
+                    turnInterruptedByUserMessage = !turnResult.Success && StoppedByUserMessage();
+                    return turnResult;
                 }
                 catch (OperationCanceledException) when (executionContext.IsPausedForInteraction && !cancellationToken.IsCancellationRequested)
                 {
@@ -1106,16 +1131,100 @@ public partial class JobProcessingService
                             }
                     };
                 }
+                catch (OperationCanceledException) when (StoppedByUserMessage())
+                {
+                    turnInterruptedByUserMessage = true;
+                    return new ExecutionResult
+                    {
+                        Success = false,
+                        SessionId = executionContext.SessionId,
+                        ErrorMessage = "Stopped to deliver a message from the user."
+                    };
+                }
                 finally
                 {
+                    executionContext.UserMessages.EndTurn(executionCts);
                     if (ReferenceEquals(executionContext.ActiveExecutionCancellationTokenSource, executionCts))
                     {
                         executionContext.ActiveExecutionCancellationTokenSource = null;
                     }
 
                     CleanupMcpExecutionResources(mcpOptions.Resources);
+                    await savingLateUserMessages;
                 }
             }
+
+            // Records messages the user sent the agent in the job's conversation, as they were typed.
+            async Task SaveUserMessagesAsync(IReadOnlyList<string> userMessages)
+            {
+                try
+                {
+                    using var messageScope = _scopeFactory.CreateScope();
+                    var messageJobService = messageScope.ServiceProvider.GetRequiredService<IJobService>();
+                    var savedAt = DateTime.UtcNow;
+                    await messageJobService.AddMessagesAsync(
+                        job.Id,
+                        userMessages.Select((message, index) => new JobMessage
+                        {
+                            Role = MessageRole.User,
+                            Content = message,
+                            CreatedAt = savedAt.AddMilliseconds(index)
+                        }).ToList(),
+                        CancellationToken.None);
+                    await NotifyJobMessageAddedAsync(job.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to save the user's messages to job {JobId}", job.Id);
+                }
+            }
+
+            // The run carries on in the same session with the user's messages as its next prompt.
+            async Task ContinueWithUserMessagesAsync(ExecutionResult turnResult, IReadOnlyList<string> userMessages)
+            {
+                _logger.LogInformation("Job {JobId} continues with {Count} message(s) from the user", job.Id, userMessages.Count);
+                if (turnResult.Messages.Count > 0)
+                {
+                    using var turnScope = _scopeFactory.CreateScope();
+                    await SaveRunMessagesAsync(turnScope.ServiceProvider.GetRequiredService<IJobService>(), job.Id, turnResult);
+                }
+
+                await SaveUserMessagesAsync(userMessages);
+
+                // The recovery prompt has been delivered; the messages now say what comes next.
+                if (shouldRunRecoveryFlow)
+                {
+                    JobRecoveryHelper.ClearRecoveryState(job);
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    shouldRunRecoveryFlow = false;
+                }
+
+                nextTurnUserMessages = userMessages;
+                currentPrompt = PromptBuilder.BuildUserMessagesPrompt(userMessages, turnInterruptedByUserMessage);
+                executionContext.ActivePrompt = currentPrompt;
+                executionContext.LatestActivity = "Continuing with the user's message...";
+                await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
+            }
+
+            // Called as the agent finishes: messages sent since its last turn ended keep it going,
+            // and with none waiting the inbox closes, so later ones are refused rather than lost.
+            async Task<bool> ContinueWithLateUserMessagesAsync(ExecutionResult turnResult)
+            {
+                var userMessages = executionContext.UserMessages.TakeOrClose();
+                if (userMessages.Count == 0)
+                {
+                    return false;
+                }
+
+                await ContinueWithUserMessagesAsync(turnResult, userMessages);
+                return true;
+            }
+
+            string BuildUserMessagesFreshSessionPrompt(IReadOnlyList<string> userMessages)
+                => PromptBuilder.BuildUserMessagesFreshSessionPrompt(
+                    executionPrompt,
+                    userMessages,
+                    JobRecoveryHelper.TrimTail(executionContext.GetConsoleOutput(), JobRecoveryHelper.MaxRecoveryConsoleOutputLength));
 
             while (currentCycle <= effectiveMaxCycles && !cycleComplete && !cancellationToken.IsCancellationRequested)
             {
@@ -1141,13 +1250,17 @@ public partial class JobProcessingService
                     }
                 }
 
+                // A turn carrying the user's messages continues the session they interrupted.
+                var turnUserMessages = nextTurnUserMessages;
+                nextTurnUserMessages = null;
+
                 // Determine session ID for this cycle. Recovery runs always attempt the persisted
                 // provider session first, regardless of normal cycle session policy.
-                var cycleSessionId = shouldRunRecoveryFlow
+                var cycleSessionId = shouldRunRecoveryFlow || turnUserMessages != null
                     ? sessionId
                     : job.CycleSessionMode == CycleSessionMode.ContinueSession ? sessionId : null;
 
-                if (currentCycle == job.CurrentCycle)
+                if (currentCycle == job.CurrentCycle && turnUserMessages == null)
                 {
                     await RecordProviderAttemptAsync(
                         job.Id,
@@ -1176,6 +1289,11 @@ public partial class JobProcessingService
                     {
                         cycleSessionId = null;
                     }
+                }
+
+                if (turnUserMessages != null && string.IsNullOrWhiteSpace(cycleSessionId))
+                {
+                    promptToExecute = BuildUserMessagesFreshSessionPrompt(turnUserMessages);
                 }
 
                 executionContext.ActivePrompt = promptToExecute;
@@ -1217,6 +1335,27 @@ public partial class JobProcessingService
 
                     result = await ExecuteCurrentCycleAsync(freshRecoveryPrompt, null);
                 }
+                else if (turnUserMessages != null && !string.IsNullOrWhiteSpace(cycleSessionId) && IsSessionResumeFailure(result))
+                {
+                    _logger.LogWarning(
+                        "Job {JobId} could not resume its session for the user's message. Continuing in a fresh session. Error: {Error}",
+                        job.Id,
+                        result.ErrorMessage);
+                    if (result.InputTokens.HasValue)
+                        executionInputTokens = (executionInputTokens ?? 0) + result.InputTokens.Value;
+                    if (result.OutputTokens.HasValue)
+                        executionOutputTokens = (executionOutputTokens ?? 0) + result.OutputTokens.Value;
+                    if (result.CostUsd.HasValue)
+                        executionCostUsd = (executionCostUsd ?? 0) + result.CostUsd.Value;
+
+                    sessionId = null;
+                    executionContext.SessionId = null;
+                    var freshPrompt = BuildUserMessagesFreshSessionPrompt(turnUserMessages);
+                    executionContext.ActivePrompt = freshPrompt;
+                    await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
+
+                    result = await ExecuteCurrentCycleAsync(freshPrompt, null);
+                }
 
                 // Store last result and accumulate tokens/cost
                 lastResult = result;
@@ -1236,7 +1375,9 @@ public partial class JobProcessingService
 
                 if (result.IsPaused && executionContext.IsPausedForInteraction && executionContext.CurrentInteractionRequest != null)
                 {
-                    var interactionResume = await WaitForInteractionResponseAndBuildPromptAsync(promptToExecute);
+                    // The answer starts a fresh session, which needs the task, not just the user's messages.
+                    var interactionResume = await WaitForInteractionResponseAndBuildPromptAsync(
+                        turnUserMessages != null ? BuildUserMessagesFreshSessionPrompt(turnUserMessages) : promptToExecute);
                     if (!interactionResume.Success || string.IsNullOrWhiteSpace(interactionResume.ResumePrompt))
                     {
                         lastResult = new ExecutionResult
@@ -1256,6 +1397,18 @@ public partial class JobProcessingService
                     executionContext.LatestActivity = "Resuming after user input...";
                     await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
                     continue;
+                }
+
+                // The user's messages come before whatever the run would do next. A turn they
+                // stopped ended early, not in failure.
+                if (result.Success || turnInterruptedByUserMessage)
+                {
+                    var userMessages = executionContext.UserMessages.Take();
+                    if (userMessages.Count > 0)
+                    {
+                        await ContinueWithUserMessagesAsync(result, userMessages);
+                        continue;
+                    }
                 }
 
                 // Check for cycle completion conditions
@@ -1302,6 +1455,11 @@ public partial class JobProcessingService
                         continue;
                     }
 
+                    if (await ContinueWithLateUserMessagesAsync(result))
+                    {
+                        continue;
+                    }
+
                     cycleComplete = true;
                 }
                 else if (job.CycleMode == CycleMode.Autonomous)
@@ -1311,6 +1469,11 @@ public partial class JobProcessingService
                     {
                         _logger.LogInformation("Job {JobId} completed autonomously at cycle {Current}",
                             job.Id, currentCycle);
+                        if (await ContinueWithLateUserMessagesAsync(result))
+                        {
+                            continue;
+                        }
+
                         cycleComplete = true;
                     }
                     else
@@ -1331,6 +1494,9 @@ public partial class JobProcessingService
                     currentCycle++;
                 }
             }
+
+            // No agent is left to read messages sent from here on.
+            CloseUserMessages(job.Id, executionContext);
 
             // The agent is done, or was stopped: the checks and delivery that follow must not trip
             // the time limit.
@@ -1642,6 +1808,7 @@ public partial class JobProcessingService
         }
         finally
         {
+            CloseUserMessages(job.Id, executionContext);
             executionContext.TimeLimit?.Dispose();
 
             if (!string.IsNullOrWhiteSpace(projectMemoryFilePath))

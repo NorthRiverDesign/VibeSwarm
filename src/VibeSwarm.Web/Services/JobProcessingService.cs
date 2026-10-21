@@ -56,6 +56,8 @@ public partial class JobProcessingService : BackgroundService
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
     // Read by job pages without _jobsLock, which is held while jobs are being started.
     private readonly ConcurrentDictionary<Guid, JobLiveOutputTail> _liveOutputs = new();
+    // Open while a job's agent is working, so job pages can steer it.
+    private readonly ConcurrentDictionary<Guid, JobMessageInbox> _messageInboxes = new();
     private readonly SemaphoreSlim _jobsLock = new(1, 1);
     // Coalescing wake-up channel: bounded to 1 and drops newest writes so repeated triggers
     // collapse into a single pending signal. The polling tick serves as a safety fallback for
@@ -228,6 +230,11 @@ public partial class JobProcessingService : BackgroundService
         /// Cancellation token source for the currently running provider execution.
         /// </summary>
         public CancellationTokenSource? ActiveExecutionCancellationTokenSource { get; set; }
+
+        /// <summary>
+        /// Messages the user sends while the agent works.
+        /// </summary>
+        public JobMessageInbox UserMessages { get; } = new();
 
         /// <summary>
         /// Maximum console output size (5 MB)
@@ -430,6 +437,19 @@ public partial class JobProcessingService : BackgroundService
     /// </summary>
     public JobLiveOutput? GetLiveOutput(Guid jobId, long afterSequence)
         => _liveOutputs.TryGetValue(jobId, out var liveOutput) ? liveOutput.GetSince(afterSequence) : null;
+
+    /// <summary>
+    /// Hands a message to the job's working agent: its current turn stops and the session carries
+    /// on with the message. False when the job isn't running here or its agent has finished.
+    /// </summary>
+    public bool TrySendUserMessage(Guid jobId, string message)
+        => _messageInboxes.TryGetValue(jobId, out var inbox) && inbox.TryPost(message);
+
+    private void CloseUserMessages(Guid jobId, JobExecutionContext executionContext)
+    {
+        executionContext.UserMessages.Close();
+        _messageInboxes.TryRemove(new KeyValuePair<Guid, JobMessageInbox>(jobId, executionContext.UserMessages));
+    }
 
     /// <summary>
     /// Triggers immediate job processing. Safe to call from any thread.

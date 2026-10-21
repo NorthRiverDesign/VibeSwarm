@@ -294,6 +294,54 @@ public static class PromptBuilder
 		return sb.ToString().TrimEnd();
 	}
 
+	/// <summary>
+	/// Messages the user sent while watching the agent work. <paramref name="interruptedTurn"/> says
+	/// the agent's turn was stopped to deliver them, possibly mid-step.
+	/// </summary>
+	public static string BuildUserMessagesPrompt(IReadOnlyList<string> messages, bool interruptedTurn)
+	{
+		var (noun, pronoun) = messages.Count == 1 ? ("message", "it") : ("messages", "them");
+		var sb = new StringBuilder();
+		sb.AppendLine("<user_messages>");
+		sb.AppendLine(interruptedTurn
+			? $"The user is watching this job and sent the {noun} below while you were working. Your last step was stopped so you could read {pronoun}, possibly partway through: check the state of the working tree before continuing."
+			: $"The user is watching this job and sent the {noun} below while you were working.");
+		sb.AppendLine($"Follow {pronoun}, overriding earlier instructions where they conflict, then carry on and finish the task.");
+		foreach (var message in messages)
+		{
+			sb.AppendLine();
+			sb.AppendLine(message.Trim());
+		}
+
+		sb.AppendLine("</user_messages>");
+		return sb.ToString().TrimEnd();
+	}
+
+	/// <summary>
+	/// Starts a new session for messages the user sent mid-run when the agent's session can't be
+	/// resumed: the task, the messages, and the end of the run's output so far.
+	/// </summary>
+	public static string BuildUserMessagesFreshSessionPrompt(
+		string basePrompt,
+		IReadOnlyList<string> messages,
+		string? recentConsoleOutput)
+	{
+		var sb = new StringBuilder();
+		sb.AppendLine(basePrompt.Trim());
+		sb.AppendLine();
+		sb.AppendLine("An earlier session already worked on this task and was stopped to deliver the user's message. Continue from the current state of the working tree without redoing finished work.");
+		if (!string.IsNullOrWhiteSpace(recentConsoleOutput))
+		{
+			sb.AppendLine("<recent_console_output>");
+			sb.AppendLine(recentConsoleOutput.Trim());
+			sb.AppendLine("</recent_console_output>");
+		}
+
+		sb.AppendLine();
+		sb.AppendLine(BuildUserMessagesPrompt(messages, interruptedTurn: true));
+		return sb.ToString().TrimEnd();
+	}
+
 	public static string BuildIdeaExpansionPrompt(string ideaDescription, string? template = null)
 	{
 		return ApplyIdeaPromptTemplate(

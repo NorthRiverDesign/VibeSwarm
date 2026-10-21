@@ -166,6 +166,10 @@ public class JobsController : ControllerBase
     public async Task<IActionResult> ContinueJob(Guid id, [FromBody] ContinueJobRequest req, CancellationToken ct)
         => await _jobService.ContinueJobAsync(id, req.FollowUpPrompt, ct) ? Ok() : BadRequest();
 
+    [HttpPost("{id:guid}/agent-message")]
+    public async Task<IActionResult> SendMessageToAgent(Guid id, [FromBody] AgentMessageRequest req, CancellationToken ct)
+        => await _jobService.SendMessageToAgentAsync(id, req.Message, ct) ? Ok() : BadRequest();
+
     [HttpPost("{id:guid}/follow-up-draft")]
     public async Task<IActionResult> DraftFollowUp(Guid id, [FromBody] FollowUpDraftRequest req, CancellationToken ct)
         => Ok(await _jobService.DraftFollowUpAsync(id, req, ct));
@@ -240,6 +244,7 @@ public class JobsController : ControllerBase
     public record UpdateGitDeliveryRequest(string? CommitHash, int? PullRequestNumber, string? PullRequestUrl, DateTime? PullRequestCreatedAt, DateTime? MergedAt);
     public record PauseInteractionRequest(string InteractionPrompt, string InteractionType, string? Choices);
     public record ContinueJobRequest(string FollowUpPrompt);
+    public record AgentMessageRequest(string Message);
     public record RetryRequest(Guid? ProviderId, string? ModelId, string? ReasoningEffort);
     public record UpdatePromptRequest(string Prompt);
     public record SelectedJobsRequest(List<Guid> JobIds);

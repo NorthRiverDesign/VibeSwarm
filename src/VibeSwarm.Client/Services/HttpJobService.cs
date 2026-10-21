@@ -160,6 +160,12 @@ public class HttpJobService : IJobService
 		return response.IsSuccessStatusCode;
 	}
 
+	public async Task<bool> SendMessageToAgentAsync(Guid id, string message, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/agent-message", new { Message = message }, ct);
+		return response.IsSuccessStatusCode;
+	}
+
 	public async Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken ct = default)
 	{
 		var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/continue", new { FollowUpPrompt = followUpPrompt }, ct);

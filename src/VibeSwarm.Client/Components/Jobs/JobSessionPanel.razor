@@ -1,6 +1,7 @@
 @* Unified job session panel - combines session log, error, console output, command, and live output *@
 @inject IJSRuntime JSRuntime
 @using System.Threading
+@using VibeSwarm.Shared.Validation
 @implements IDisposable
 
 <div class="card d-flex flex-column">
@@ -416,8 +417,8 @@
         }
     </div>
 
-    @* Follow-up input section - for completed, stalled, and failed jobs *@
-    @if (CanSendFollowUp)
+    @* Follow-up input section - for completed, stalled, and failed jobs; while the agent works, a message steers it *@
+    @if (CanSendFollowUp || CanMessageAgent)
     {
         <div class="card-footer bg-2 border-top">
             @if (Status is JobStatus.Stalled or JobStatus.Failed)
@@ -431,10 +432,11 @@
             }
             <div class="d-flex gap-3">
                 <textarea class="form-control textarea-autogrow" rows="3"
-                          placeholder="@(Status is JobStatus.Stalled or JobStatus.Failed ? "Describe what to try next..." : "Add follow-up instructions...")"
+                          placeholder="@ComposerPlaceholder" aria-label="@(CanMessageAgent ? "Message the agent" : "Follow-up instructions")"
+                          maxlength="@(CanMessageAgent ? ValidationLimits.JobAgentMessageMaxLength : null)"
                           @bind="_followUpPrompt" @bind:event="oninput" disabled="@(_isSendingFollowUp || _isDraftingFollowUp)"></textarea>
                 <div class="d-flex flex-column gap-3 align-self-end flex-shrink-0">
-                    @if (DraftFollowUp != null)
+                    @if (DraftFollowUp != null && CanSendFollowUp)
                     {
                         @* Asks before inference writes a reply (building on anything typed), then the user
                            reviews the reply and what it used before it is sent *@
@@ -445,7 +447,8 @@
                         </button>
                     }
                     <button class="btn-solid theme-primary" @onclick="SendFollowUp"
-                            disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp || _isDraftingFollowUp)" title="Send follow-up">
+                            disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp || _isDraftingFollowUp)"
+                            title="@(CanMessageAgent ? "Send to the agent" : "Send follow-up")" aria-label="@(CanMessageAgent ? "Send to the agent" : "Send follow-up")">
                         @if (_isSendingFollowUp)
                         {
                             <span class="spinner-border spinner-sm" role="status"></span>
@@ -535,6 +538,13 @@
     public EventCallback<string> OnSendFollowUp { get; set; }
 
     /// <summary>
+    /// Sends a message to the agent while it works, returning whether it was delivered; a message
+    /// that wasn't stays in the box. Null hides the box while the job runs.
+    /// </summary>
+    [Parameter]
+    public Func<string, Task<bool>>? SendMessageToAgent { get; set; }
+
+    /// <summary>
     /// Has inference write a follow-up from what the user typed, if anything, and the actions they
     /// picked for the agent. Null hides the button, as when no inference model is set up.
     /// </summary>
@@ -584,6 +594,12 @@
     private string? _displayStateKey;
 
     private bool CanSendFollowUp => (Status is JobStatus.Completed or JobStatus.Stalled or JobStatus.Failed) && OnSendFollowUp.HasDelegate;
+
+    private bool CanMessageAgent => Status == JobStatus.Processing && SendMessageToAgent != null;
+
+    private string ComposerPlaceholder => CanMessageAgent
+        ? "Message the agent: it stops to read it, then carries on..."
+        : Status is JobStatus.Stalled or JobStatus.Failed ? "Describe what to try next..." : "Add follow-up instructions...";
 
     private bool HasCommandTab => _commandSteps.Count > 0 || !string.IsNullOrWhiteSpace(CommandUsed);
 
@@ -790,6 +806,16 @@
         _isSendingFollowUp = true;
         try
         {
+            if (CanMessageAgent)
+            {
+                if (!await SendMessageToAgent!(prompt))
+                {
+                    _followUpPrompt = prompt;
+                }
+
+                return;
+            }
+
             await OnSendFollowUp.InvokeAsync(prompt);
         }
         catch

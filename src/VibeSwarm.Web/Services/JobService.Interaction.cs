@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Validation;
 using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Web.Services;
 
@@ -247,6 +248,26 @@ public partial class JobService
         _jobProcessingService?.TriggerProcessing();
 
         return true;
+    }
+
+    public async Task<bool> SendMessageToAgentAsync(Guid id, string message, CancellationToken cancellationToken = default)
+    {
+        var trimmedMessage = message?.Trim();
+        if (string.IsNullOrEmpty(trimmedMessage)
+            || trimmedMessage.Length > ValidationLimits.JobAgentMessageMaxLength
+            || _jobProcessingService == null)
+        {
+            return false;
+        }
+
+        // Only a working agent takes messages; a job paused on a question gets its answer instead.
+        var status = await _dbContext.Jobs
+            .Where(j => j.Id == id)
+            .Select(j => (JobStatus?)j.Status)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return status == JobStatus.Processing
+            && _jobProcessingService.TrySendUserMessage(id, trimmedMessage);
     }
 
     public async Task<FollowUpDraft> DraftFollowUpAsync(Guid id, FollowUpDraftRequest request, CancellationToken cancellationToken = default)
