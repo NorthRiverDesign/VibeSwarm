@@ -4602,7 +4602,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task NotifyJobCreated(Guid jobId, Guid projectId) => Task.CompletedTask;
 		public Task NotifyJobDeleted(Guid jobId, Guid projectId) => Task.CompletedTask;
 		public Task NotifyJobHeartbeat(Guid jobId, DateTime timestamp) => Task.CompletedTask;
-		public Task NotifyJobOutput(Guid jobId, string line, bool isError, DateTime timestamp) => Task.CompletedTask;
+		public Task NotifyJobOutput(Guid jobId, string line, bool isError, DateTime timestamp, long sequence) => Task.CompletedTask;
 		public Task NotifyProcessStarted(Guid jobId, int processId, string command) => Task.CompletedTask;
 		public Task NotifyProcessExited(Guid jobId, int processId, int exitCode, TimeSpan duration) => Task.CompletedTask;
 		public Task NotifyJobGitDiffUpdated(Guid jobId, bool hasChanges) => Task.CompletedTask;

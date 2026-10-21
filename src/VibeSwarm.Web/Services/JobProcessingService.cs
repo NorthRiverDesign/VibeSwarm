@@ -2,10 +2,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
@@ -52,6 +54,8 @@ public partial class JobProcessingService : BackgroundService
     private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(3); // Poll less frequently, SignalR handles real-time updates
     private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
+    // Read by job pages without _jobsLock, which is held while jobs are being started.
+    private readonly ConcurrentDictionary<Guid, JobLiveOutputTail> _liveOutputs = new();
     private readonly SemaphoreSlim _jobsLock = new(1, 1);
     // Coalescing wake-up channel: bounded to 1 and drops newest writes so repeated triggers
     // collapse into a single pending signal. The polling tick serves as a safety fallback for
@@ -158,6 +162,11 @@ public partial class JobProcessingService : BackgroundService
         public object OutputLock { get; } = new object();
 
         /// <summary>
+        /// The run's newest output lines, numbered, for job pages to load and catch up from.
+        /// </summary>
+        public JobLiveOutputTail LiveOutput { get; } = new JobLiveOutputTail();
+
+        /// <summary>
         /// Git commit hash at the start of job execution
         /// </summary>
         public string? GitCommitBefore { get; set; }
@@ -230,10 +239,13 @@ public partial class JobProcessingService : BackgroundService
         /// </summary>
         private const int MaxRecentLines = 20;
 
-        public void AppendOutput(string line, bool isError)
+        /// <param name="broadcast">Sends the numbered line to live pages, in the order lines were appended.</param>
+        public void AppendOutput(string line, bool isError, Func<JobOutputLine, Task>? broadcast = null)
         {
             lock (OutputLock)
             {
+                LiveOutput.Append(line, isError, broadcast);
+
                 if (ConsoleOutputBuffer.Length < MaxOutputSize)
                 {
                     var prefix = isError ? "[ERR] " : "";
@@ -268,6 +280,14 @@ public partial class JobProcessingService : BackgroundService
                 return RecentOutputLines.ToArray();
             }
         }
+    }
+
+    /// <summary>
+    /// Runs the handler on the reporting thread, so reports are handled in the order they were made.
+    /// </summary>
+    private sealed class InlineProgress<T>(Action<T> handler) : IProgress<T>
+    {
+        public void Report(T value) => handler(value);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -405,6 +425,13 @@ public partial class JobProcessingService : BackgroundService
     }
 
     /// <summary>
+    /// The current run's kept output lines after <paramref name="afterSequence"/>, or null when the
+    /// job isn't running in this process.
+    /// </summary>
+    public JobLiveOutput? GetLiveOutput(Guid jobId, long afterSequence)
+        => _liveOutputs.TryGetValue(jobId, out var liveOutput) ? liveOutput.GetSince(afterSequence) : null;
+
+    /// <summary>
     /// Triggers immediate job processing. Safe to call from any thread.
     /// Repeated calls between ticks coalesce into a single pending wake (bounded channel, DropWrite).
     /// </summary>
@@ -487,6 +514,7 @@ public partial class JobProcessingService : BackgroundService
 
                 var jobCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 var context = new JobExecutionContext { CancellationTokenSource = jobCts, ProjectId = job.ProjectId };
+                _liveOutputs[job.Id] = context.LiveOutput;
 
                 // Start job processing in background
                 context.Task = Task.Run(async () =>
@@ -535,6 +563,7 @@ public partial class JobProcessingService : BackgroundService
             foreach (var kvp in completedJobs)
             {
                 _runningJobs.Remove(kvp.Key);
+                _liveOutputs.TryRemove(new KeyValuePair<Guid, JobLiveOutputTail>(kvp.Key, kvp.Value.LiveOutput));
                 kvp.Value.CancellationTokenSource?.Dispose();
                 _logger.LogDebug("Removed completed job {JobId} from running jobs tracking", kvp.Key);
 

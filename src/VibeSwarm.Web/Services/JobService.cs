@@ -385,6 +385,9 @@ public partial class JobService : IJobService
 		return job;
     }
 
+	public Task<JobLiveOutput?> GetLiveOutputAsync(Guid id, long afterSequence = 0, CancellationToken cancellationToken = default)
+		=> Task.FromResult(_jobProcessingService?.GetLiveOutput(id, afterSequence));
+
     public async Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)
     {
         NormalizeJobForPersistence(job);

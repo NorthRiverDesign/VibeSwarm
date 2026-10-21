@@ -549,9 +549,10 @@ public partial class JobProcessingService
                 return (true, resumePrompt, null);
             }
 
-            // Progress<T> doesn't properly handle async callbacks, so we use a synchronous handler
-            // that fires updates in the background with proper scoping to avoid DbContext disposal issues
-            var progress = new Progress<ExecutionProgress>(p =>
+            // A synchronous handler that fires updates in the background with proper scoping to avoid
+            // DbContext disposal issues. It runs inline: Progress<T> would post each report to the thread
+            // pool, where output lines get appended and broadcast out of order.
+            var progress = new InlineProgress<ExecutionProgress>(p =>
             {
                 // Capture and store process ID and command as soon as they're reported
                 if (p.ProcessId.HasValue && executionContext.ProcessId != p.ProcessId.Value)
@@ -623,20 +624,11 @@ public partial class JobProcessingService
                 // Stream output lines to UI in real-time AND accumulate in buffer for storage
                 if (!string.IsNullOrEmpty(p.OutputLine))
                 {
-                    // Accumulate output for database storage
-                    executionContext.AppendOutput(p.OutputLine, p.IsErrorOutput);
-
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            if (_jobUpdateService != null)
-                            {
-                                await _jobUpdateService.NotifyJobOutput(job.Id, p.OutputLine, p.IsErrorOutput, DateTime.UtcNow);
-                            }
-                        }
-                        catch { }
-                    });
+                    // Accumulate output for database storage, and send it to live pages in order
+                    var jobUpdateService = _jobUpdateService;
+                    executionContext.AppendOutput(p.OutputLine, p.IsErrorOutput, jobUpdateService == null
+                        ? null
+                        : line => jobUpdateService.NotifyJobOutput(job.Id, line.Content, line.IsError, line.Timestamp, line.Sequence));
 
                     // Detect if the CLI is requesting user interaction
                     if (!executionContext.IsPausedForInteraction)

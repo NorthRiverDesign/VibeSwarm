@@ -13,6 +13,12 @@ public interface IJobService
     Task<IEnumerable<JobSummary>> GetActiveJobsAsync(CancellationToken cancellationToken = default);
     Task<Job?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The running job's newest output lines after <paramref name="afterSequence"/> (0 for all kept
+    /// lines), or null when the job isn't running.
+    /// </summary>
+    Task<JobLiveOutput?> GetLiveOutputAsync(Guid id, long afterSequence = 0, CancellationToken cancellationToken = default);
     Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default);
     Task<Job> UpdateStatusAsync(Guid id, JobStatus status, string? output = null, string? errorMessage = null, CancellationToken cancellationToken = default);
     Task<Job> UpdateJobResultAsync(Guid id, JobStatus status, string? sessionId, string? output, string? errorMessage, int? inputTokens, int? outputTokens, decimal? costUsd, CancellationToken cancellationToken = default);

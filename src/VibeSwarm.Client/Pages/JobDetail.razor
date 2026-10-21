@@ -235,8 +235,8 @@ else
     private List<DiffFile> _parsedDiffFiles = new();
 
     // Live output buffer
-    private const int MaxOutputLines = 500;
-    private readonly List<OutputLine> _liveOutput = new();
+    private const int MaxOutputLines = JobLiveOutput.MaxLines;
+    private readonly JobLiveOutputBuffer _liveOutput = new(MaxOutputLines);
     private readonly List<JobMessage> _pendingSessionMessages = new();
 
     // Back goes where the job was opened from (the Jobs list passes returnUrl), else to its project.
@@ -460,7 +460,7 @@ else
 
     #region UI Actions
 
-    private void ClearLiveOutput() { lock (_liveOutput) { _liveOutput.Clear(); } }
+    private void ClearLiveOutput() => _liveOutput.Clear();
 
     private async Task CopyCommandToClipboard(string command)
     {

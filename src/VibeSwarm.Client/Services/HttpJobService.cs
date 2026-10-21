@@ -42,6 +42,9 @@ public class HttpJobService : IJobService
     public async Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken ct = default)
         => await _http.GetJsonOrNullAsync<Job>($"/api/jobs/{id}/with-messages", ct);
 
+    public async Task<JobLiveOutput?> GetLiveOutputAsync(Guid id, long afterSequence = 0, CancellationToken ct = default)
+        => await _http.GetJsonOrNullAsync<JobLiveOutput>($"/api/jobs/{id}/live-output?after={afterSequence}", ct);
+
     public async Task<Job> CreateAsync(Job job, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/jobs", job, ct);

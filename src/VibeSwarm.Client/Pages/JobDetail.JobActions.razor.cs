@@ -38,10 +38,7 @@ public partial class JobDetail : ComponentBase
 		IsRetrying = false;
 		IsForceResetting = false;
 
-		lock (_liveOutput)
-		{
-			_liveOutput.Clear();
-		}
+		_liveOutput.Reset();
 
 		_pendingSessionMessages.Clear();
 		_pendingOutputUpdate = false;
@@ -120,21 +117,18 @@ public partial class JobDetail : ComponentBase
                     || Job.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest;
             }
 
-            // Populate live output buffer from persisted console output so refreshes can still
-            // reconstruct the chat-style transcript even after the job has completed.
-            if (Job != null && !string.IsNullOrEmpty(Job.ConsoleOutput))
+            // A running job's output comes from the server's live copy, so every device shows the
+            // same lines however late it opened the page, and a refresh fills in any it missed.
+            if (Job != null && IsJobActive)
             {
-                lock (_liveOutput)
-                {
-                    if (!_liveOutput.Any())
-                    {
-                        var lines = Job.ConsoleOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                        foreach (var line in lines.TakeLast(MaxOutputLines))
-                        {
-                            _liveOutput.Add(JobSessionDisplayBuilder.CreateOutputLine(line, DateTime.UtcNow));
-                        }
-                    }
-                }
+                await CatchUpLiveOutputAsync();
+            }
+
+            // Otherwise persisted console output rebuilds the chat-style transcript, as after the
+            // job has completed. (While running, it holds only the newest part of the output.)
+            if (Job != null && !string.IsNullOrEmpty(Job.ConsoleOutput) && !_liveOutput.IsSynced && _liveOutput.IsEmpty)
+            {
+                _liveOutput.LoadSavedOutput(Job.ConsoleOutput);
             }
 
             if (Job != null && Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.InteractionChoices))
@@ -419,7 +413,7 @@ public partial class JobDetail : ComponentBase
     {
         if (IsFinishedStatus(previousStatus) && !IsFinishedStatus(newStatus))
         {
-            ClearLiveOutput();
+            _liveOutput.Reset();
         }
     }
 

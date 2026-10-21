@@ -203,14 +203,14 @@ public class SignalRJobUpdateService : IJobUpdateService
         }
     }
 
-    public async Task NotifyJobOutput(Guid jobId, string line, bool isError, DateTime timestamp)
+    public async Task NotifyJobOutput(Guid jobId, string line, bool isError, DateTime timestamp, long sequence)
     {
         try
         {
             // Notify job-specific subscribers with real-time output
             await _hubContext.Clients
                 .Group($"job-{jobId}")
-                .SendAsync("JobOutput", jobId.ToString(), line, isError, timestamp);
+                .SendAsync("JobOutput", jobId.ToString(), line, isError, timestamp, sequence);
 
             // Don't log every line to avoid log spam
         }

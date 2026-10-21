@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 
 namespace VibeSwarm.Client.Pages;
 
@@ -11,6 +12,8 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
     private HubConnection? _hubConnection;
     private CancellationTokenSource? _signalRCts;
     private bool _signalRConnected = false;
+    private bool _isCatchingUpLiveOutput;
+    private bool _liveOutputCatchUpRequested;
 
     // Batches output-line re-renders to avoid calling StateHasChanged on every line,
     // which causes severe lag (100+ re-renders/sec) during verbose job output.
@@ -65,10 +68,10 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
                 catch { }
             });
 
-            _hubConnection.On<string, string, bool, DateTime>("JobOutput", async (jobId, line, isError, timestamp) =>
+            _hubConnection.On<string, string, bool, DateTime, long>("JobOutput", async (jobId, line, isError, timestamp, sequence) =>
             {
                 if (_disposed) return;
-                try { await OnJobOutputReceived(jobId, line, isError, timestamp); }
+                try { await OnJobOutputReceived(jobId, line, isError, timestamp, sequence); }
                 catch (ObjectDisposedException) { }
                 catch { }
             });
@@ -194,8 +197,54 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
         {
             await _hubConnection.InvokeAsync("SubscribeToJob", JobId.ToString());
             await _hubConnection.InvokeAsync("SubscribeToJobList");
+
+			// Lines sent before this subscription (page load, or a dropped connection) never arrive
+			if (IsJobActive && !_disposed)
+			{
+				_ = InvokeAsync(CatchUpLiveOutputAsync);
+			}
 		}
 		catch { }
+	}
+
+	/// <summary>
+	/// Fetches the output lines this page missed, while loading or disconnected, from the server's
+	/// copy of the run. One fetch runs at a time; asking during one queues another round.
+	/// </summary>
+	private async Task CatchUpLiveOutputAsync()
+	{
+		if (_isCatchingUpLiveOutput)
+		{
+			_liveOutputCatchUpRequested = true;
+			return;
+		}
+
+		_isCatchingUpLiveOutput = true;
+		try
+		{
+			// A few rounds at most: a gap seen while a fetch is out asks for another
+			for (var round = 0; round < 3 && !_disposed; round++)
+			{
+				_liveOutputCatchUpRequested = false;
+				var (afterSequence, generation) = _liveOutput.BeginCatchUp();
+				var output = await JobService.GetLiveOutputAsync(JobId, afterSequence);
+				var isComplete = _liveOutput.ApplyCatchUp(output, afterSequence, generation);
+				_pendingOutputUpdate = true;
+
+				if (isComplete && !_liveOutputCatchUpRequested)
+				{
+					break;
+				}
+			}
+		}
+		catch
+		{
+			// The next refresh, reconnect or gap tries again.
+		}
+		finally
+		{
+			_isCatchingUpLiveOutput = false;
+		}
 	}
 
 	private async Task UnsubscribeFromJobAsync(Guid jobId)
@@ -290,29 +339,32 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
         }
     }
 
-	private Task OnJobOutputReceived(string jobId, string line, bool isError, DateTime timestamp)
+	private Task OnJobOutputReceived(string jobId, string line, bool isError, DateTime timestamp, long sequence)
 	{
 		if (!IsCurrentRouteJob(jobId))
 		{
 			return Task.CompletedTask;
 		}
 
-		lock (_liveOutput)
+		var isContiguous = _liveOutput.Add(new JobOutputLine
 		{
-			_liveOutput.Add(JobSessionDisplayBuilder.CreateOutputLine(
-                isError ? $"[ERR] {line}" : line,
-                timestamp));
-            // Trim from the front in one pass to avoid repeated O(n) RemoveAt(0) calls.
-            if (_liveOutput.Count > MaxOutputLines)
-            {
-                var excess = _liveOutput.Count - MaxOutputLines;
-                _liveOutput.RemoveRange(0, excess);
-            }
-        }
-        // Signal the batch timer rather than calling StateHasChanged on every line.
-        _pendingOutputUpdate = true;
-        return Task.CompletedTask;
-    }
+			Sequence = sequence,
+			Content = line,
+			IsError = isError,
+			Timestamp = timestamp
+		});
+
+		// Signal the batch timer rather than calling StateHasChanged on every line.
+		_pendingOutputUpdate = true;
+
+		// Not awaited: hub messages are handled one at a time, and a slow fetch would hold up the rest
+		if (!isContiguous)
+		{
+			_ = InvokeAsync(CatchUpLiveOutputAsync);
+		}
+
+		return Task.CompletedTask;
+	}
 
 	private async Task OnProcessStarted(string jobId, int processId, string command)
 	{

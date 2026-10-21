@@ -26,7 +26,8 @@ public interface IJobUpdateService
     /// <param name="line">The output line</param>
     /// <param name="isError">True if this is stderr output</param>
     /// <param name="timestamp">When the output was received</param>
-    Task NotifyJobOutput(Guid jobId, string line, bool isError, DateTime timestamp);
+    /// <param name="sequence">The line's number in the current run, from 1, so pages can spot missed lines</param>
+    Task NotifyJobOutput(Guid jobId, string line, bool isError, DateTime timestamp, long sequence);
 
     /// <param name="command">The command being executed</param>
     Task NotifyProcessStarted(Guid jobId, int processId, string command);

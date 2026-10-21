@@ -57,6 +57,14 @@ public class JobsController : ControllerBase
         return job == null ? NotFound() : Ok(job);
     }
 
+    /// <summary>The running job's newest output lines after <paramref name="after"/>; no content when it isn't running.</summary>
+    [HttpGet("{id:guid}/live-output")]
+    public async Task<IActionResult> GetLiveOutput(Guid id, [FromQuery] long after = 0, CancellationToken ct = default)
+    {
+        var output = await _jobService.GetLiveOutputAsync(id, after, ct);
+        return output == null ? NoContent() : Ok(output);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] Job job, CancellationToken ct)
     {
