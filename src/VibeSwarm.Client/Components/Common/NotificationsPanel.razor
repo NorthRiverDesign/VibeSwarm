@@ -18,7 +18,7 @@
             </span>
         }
     </button>
-    <div class="menu p-0 overflow-hidden" style="width: min(22rem, 92vw); --bs-menu-max-height: min(60vh, 32rem);">
+    <div class="menu menu-panel @(OpenUpward ? "menu-panel-up" : null) shadow-xl shadow-opacity-100 p-0 overflow-hidden" style="width: min(22rem, 92vw); --bs-menu-max-height: min(60vh, 32rem);">
         <div class="d-flex align-items-center justify-content-between gap-3 px-5 py-3 border-bottom bg-1">
             <span class="fw-semibold"><i class="bi bi-bell fg-secondary me-3"></i>Notifications</span>
             @if (_history.Count > 0)

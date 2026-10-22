@@ -839,6 +839,32 @@ details[open] > summary .details-chevron {
 	box-shadow: 0 0 0 2px var(--bs-bg-body);
 }
 
+/* Header panels (notifications, queue) slide a short way into place instead of
+   Bootstrap's zoom. The slide is the standalone `translate` property: on phones the
+   panels are centred with `transform: translateX(-50%) !important`, which a transform
+   slide would lose to. Only the transition variables change, so Bootstrap's
+   prefers-reduced-motion guard still applies. */
+.menu.menu-panel {
+	--bs-menu-transition-property: opacity, translate, display;
+	--bs-menu-transition-duration: 0.2s;
+	transform: none;
+	translate: 0 -0.5rem;
+}
+.menu.menu-panel-up {
+	translate: 0 0.5rem;
+}
+.menu.menu-panel.show {
+	translate: 0 0;
+}
+@starting-style {
+	.menu.menu-panel.show {
+		translate: 0 -0.5rem;
+	}
+	.menu.menu-panel-up.show {
+		translate: 0 0.5rem;
+	}
+}
+
 /* ============================================
    11. RESPONSIVE OVERRIDES
 ============================================ */

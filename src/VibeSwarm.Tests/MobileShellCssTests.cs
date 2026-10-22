@@ -129,6 +129,22 @@ public sealed class MobileShellCssTests
 		Assert.Matches(new Regex(@"<div class=""[^""]*\bd-none lg:d-flex\b[^""]*"">\s*<span[^>]*>\s*<kbd[^>]*>↑↓</kbd> navigate"), markup);
 	}
 
+	[Fact]
+	public void SiteCss_SlidesHeaderPanelsWithTranslateSoPhoneCentringSurvives()
+	{
+		var css = ReadSiteCss();
+
+		// On phones the header panels are centred with `transform: translateX(-50%) !important`,
+		// so a transform slide never moves there. The standalone translate property composes
+		// with it, and display stays in the list so the panel fades out before it is hidden.
+		var panel = Regex.Match(css, @"\.menu\.menu-panel\s*\{(?<body>[^}]*)\}");
+		Assert.True(panel.Success);
+		Assert.Matches(new Regex(@"--bs-menu-transition-property:[^;]*\btranslate\b[^;]*\bdisplay\b"), panel.Groups["body"].Value);
+		Assert.Matches(new Regex(@"(?<![-\w])translate:\s*0 -0\.5rem;"), panel.Groups["body"].Value);
+		Assert.Matches(new Regex(@"@starting-style\s*\{\s*\.menu\.menu-panel\.show\s*\{\s*translate:"), css);
+		Assert.DoesNotMatch(new Regex(@"\.menu-panel[^{]*\{[^}]*transform:\s*translate"), css);
+	}
+
 	private static string ReadSiteCss()
 		=> File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "wwwroot", "css", "site.css"));
 

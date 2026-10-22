@@ -123,6 +123,25 @@ public sealed class NotificationFeatureTests
 		Assert.Equal($"http://localhost/jobs/view/{jobId}", navigationManager.Uri);
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void NotificationsPanel_Menu_SlidesInFromItsToggleWithAShadow(bool openUpward)
+	{
+		using var context = new BunitContext();
+		context.Services.AddSingleton(new NotificationService());
+		context.Services.AddSingleton<NavigationManager>(new TestNavigationManager());
+
+		var cut = context.Render<NotificationsPanel>(parameters => parameters
+			.Add(component => component.OpenUpward, openUpward));
+
+		var menu = cut.Find("div.menu");
+
+		Assert.Contains("menu-panel", menu.ClassList);
+		Assert.Equal(openUpward, menu.ClassList.Contains("menu-panel-up"));
+		Assert.Contains("shadow-xl", menu.ClassList);
+	}
+
 	[Fact]
 	public void AddHistory_AddsPanelEntryWithoutActiveToast()
 	{

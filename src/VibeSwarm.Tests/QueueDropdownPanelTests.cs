@@ -469,6 +469,22 @@ public sealed class QueueDropdownPanelTests
 		Assert.NotNull(wrapper);
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void QueueDropdownPanel_Menu_SlidesInFromItsToggleWithAShadow(bool openUpward)
+	{
+		using var context = CreateContext(new FakeIdeaService());
+		var cut = context.Render<QueueDropdownPanel>(parameters => parameters
+			.Add(component => component.OpenUpward, openUpward));
+
+		var menu = cut.Find("div.menu");
+
+		Assert.Contains("menu-panel", menu.ClassList);
+		Assert.Equal(openUpward, menu.ClassList.Contains("menu-panel-up"));
+		Assert.Contains("shadow-xl", menu.ClassList);
+	}
+
 	[Fact]
 	public async Task QueueDropdownPanel_RefreshRequest_UpdatesBadgeWithoutToggle()
 	{
