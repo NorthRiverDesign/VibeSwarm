@@ -76,6 +76,33 @@ public sealed class BuildVerificationCommandTests
 	}
 
 	[Fact]
+	public void FindVerificationFailureLines_KeepsWhatFailedFromBothRuns()
+	{
+		var run = string.Join('\n',
+			"  Determining projects to restore...",
+			"/src/Tests/GitTests.cs(288,66): warning CS8604: Possible null reference argument [/src/Tests/Tests.csproj]",
+			"[xUnit.net 00:00:05.12]     VibeSwarm.Tests.GitTests.Push_Works [FAIL]",
+			"  Failed VibeSwarm.Tests.GitTests.Push_Works [212 ms]",
+			"  Error Message:",
+			"   Assert.Equal() Failure: Values differ",
+			"The active test run was aborted. Reason: Test host process crashed",
+			"Failed!  - Failed:     1, Passed:  1346, Skipped:     0, Total:  1347, Duration: 58 s - VibeSwarm.Tests.dll (net10.0)");
+		var output = $"=== Build Command: dotnet build ===\n/src/Web/App.cs(10,5): error CS1002: ; expected [/src/Web/Web.csproj]\n{run}\n{run}";
+
+		var lines = JobProcessingService.FindVerificationFailureLines(output);
+
+		Assert.Equal(
+			[
+				"/src/Web/App.cs(10,5): error CS1002: ; expected [/src/Web/Web.csproj]",
+				"Failed VibeSwarm.Tests.GitTests.Push_Works [212 ms]",
+				"The active test run was aborted. Reason: Test host process crashed",
+				"Failed!  - Failed:     1, Passed:  1346, Skipped:     0, Total:  1347, Duration: 58 s - VibeSwarm.Tests.dll (net10.0)"
+			],
+			lines);
+		Assert.Single(JobProcessingService.FindVerificationFailureLines(output, maxLines: 1));
+	}
+
+	[Fact]
 	public void RemoveVibeSwarmDatabaseSettings_KeepsEverythingButTheServiceDatabaseConfiguration()
 	{
 		var environment = new Dictionary<string, string?>

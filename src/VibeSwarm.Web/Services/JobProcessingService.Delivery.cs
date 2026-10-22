@@ -238,6 +238,7 @@ public partial class JobProcessingService
             {
                 _logger.LogWarning("Build verification FAILED for job {JobId}. Build command exited with code {ExitCode}",
                     job.Id, buildResult.ExitCode);
+                LogVerificationFailures(job.Id, outputBuilder.ToString());
                 job.BuildVerified = false;
                 job.BuildOutput = TruncateBuildOutput(outputBuilder.ToString());
                 return false;
@@ -254,6 +255,7 @@ public partial class JobProcessingService
                 {
                     _logger.LogWarning("Test verification FAILED for job {JobId}. Test command exited with code {ExitCode} on both runs",
                         job.Id, testResult.ExitCode);
+                    LogVerificationFailures(job.Id, outputBuilder.ToString());
                     job.BuildVerified = false;
                     job.BuildOutput = TruncateBuildOutput(outputBuilder.ToString());
                     return false;
@@ -423,6 +425,35 @@ public partial class JobProcessingService
         }
 
         return (process.ExitCode, await outputTask, await errorTask);
+    }
+
+    /// <summary>
+    /// A follow-up clears the job's saved verification output, so the log is the only lasting
+    /// record of a failed check. Logging just the exit code left nothing to diagnose.
+    /// </summary>
+    private void LogVerificationFailures(Guid jobId, string output)
+    {
+        var failures = FindVerificationFailureLines(output);
+        if (failures.Count > 0)
+        {
+            _logger.LogWarning("Verification failures for job {JobId}: {Failures}", jobId, string.Join(" ; ", failures));
+        }
+    }
+
+    /// <summary>
+    /// Picks the lines that say what failed out of build and test output: failing tests, the
+    /// failed run summary, compiler and MSBuild errors, and aborted test runs.
+    /// </summary>
+    internal static IReadOnlyList<string> FindVerificationFailureLines(string output, int maxLines = 20)
+    {
+        return output.Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.StartsWith("Failed", StringComparison.Ordinal)
+                || line.Contains(": error ", StringComparison.Ordinal)
+                || line.Contains("aborted", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.Ordinal)
+            .Take(maxLines)
+            .ToList();
     }
 
     /// <summary>

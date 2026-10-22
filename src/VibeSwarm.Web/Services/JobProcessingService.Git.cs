@@ -112,10 +112,17 @@ public partial class JobProcessingService
             await FetchWithRetryAsync(job, workingDirectory, cancellationToken);
         }
 
+        var syncWithOrigin = hasRemote;
+        if (hasRemote && await IsAwaitingFirstCommitAsync(workingDirectory, cancellationToken))
+        {
+            _logger.LogInformation("Repository has no commits yet; job {JobId} makes the first one", job.Id);
+            syncWithOrigin = false;
+        }
+
         GitOperationResult? syncResult = null;
         if (sourceBranch == null)
         {
-            if (hasRemote)
+            if (syncWithOrigin)
             {
                 _logger.LogInformation("Syncing current branch before job {JobId} execution", job.Id);
                 syncResult = await _versionControlService.SyncWithOriginAsync(workingDirectory, cancellationToken: cancellationToken);
@@ -141,7 +148,7 @@ public partial class JobProcessingService
                 _logger.LogInformation("Using target branch '{TargetBranch}' as the base for new branch '{SourceBranch}' on job {JobId}", targetBranch, sourceBranch, job.Id);
                 syncResult = await CheckOutLatestAsync(workingDirectory, targetBranch, hasRemote, cancellationToken);
             }
-            else if (hasRemote)
+            else if (syncWithOrigin)
             {
                 syncResult = await _versionControlService.SyncWithOriginAsync(workingDirectory, cancellationToken: cancellationToken);
                 EnsureSynced(syncResult, "the current branch");
@@ -192,6 +199,30 @@ public partial class JobProcessingService
         _logger.LogInformation("Started merging {Branch} for job {JobId}: {Outcome}, {Count} conflicted file(s)",
             merge.SourceRef, job.Id, merge.Outcome, merge.ConflictedFiles.Count);
         return merge;
+    }
+
+    /// <summary>
+    /// True for a repository nobody has committed to yet, such as one cloned while it was empty:
+    /// the checkout's branch has no commits and origin has no copy of it to pull. There is nothing
+    /// to sync, so the job's commit becomes the first one and its push creates the branch on origin.
+    /// </summary>
+    private async Task<bool> IsAwaitingFirstCommitAsync(string workingDirectory, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrEmpty(await _versionControlService.GetCurrentCommitHashAsync(workingDirectory, cancellationToken)))
+        {
+            return false;
+        }
+
+        var currentBranch = await _versionControlService.GetCurrentBranchAsync(workingDirectory, cancellationToken);
+        if (string.IsNullOrEmpty(currentBranch))
+        {
+            return false;
+        }
+
+        var branches = await _versionControlService.GetBranchesAsync(workingDirectory, includeRemote: true, cancellationToken);
+        return !branches.Any(branch =>
+            branch.IsRemote &&
+            string.Equals(branch.Name, $"origin/{currentBranch}", StringComparison.Ordinal));
     }
 
     private async Task<GitOperationResult> CheckOutLatestAsync(string workingDirectory, string branch, bool hasRemote, CancellationToken cancellationToken)
@@ -297,8 +328,6 @@ public partial class JobProcessingService
             return null;
         }
 
-        JobCheckpointStateMachine.TryTransition(job, GitCheckpointStatus.Protecting);
-
         var originalBranch = await _versionControlService.GetCurrentBranchAsync(workingDirectory, cancellationToken);
         var originalCommit = await _versionControlService.GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
         if (captureJobDiff)
@@ -307,6 +336,16 @@ public partial class JobProcessingService
             var changedFiles = await _versionControlService.GetChangedFilesAsync(workingDirectory, null, cancellationToken);
             job.ChangedFilesCount = changedFiles.Count;
         }
+
+        if (string.IsNullOrEmpty(originalCommit))
+        {
+            // Nothing is committed yet, so there is no commit to come back to after moving the files
+            // aside. They stay where they are and go into the repository's first commit.
+            _logger.LogInformation("Left the files in place for job {JobId}: the repository has no commits yet", job.Id);
+            return null;
+        }
+
+        JobCheckpointStateMachine.TryTransition(job, GitCheckpointStatus.Protecting);
 
         var recoveryBranch = BuildRecoveryBranchName(job.Id, originalBranch);
         var createBranchResult = await _versionControlService.CreateBranchAsync(

@@ -114,6 +114,61 @@ public sealed class JobGitSyncTests : IDisposable
 		Assert.Equal(await GitAsync(_repo, "rev-parse origin/main"), await GitAsync(_repo, "rev-parse HEAD"));
 	}
 
+	[Theory]
+	[InlineData("main")]
+	[InlineData(null)]
+	public async Task Prepare_StartsTheFirstJobOnARepositoryWithNoCommits(string? branch)
+	{
+		await InitEmptyCloneAsync();
+
+		await PrepareAsync(CreateProcessor(), new Job { Id = Guid.NewGuid(), GoalPrompt = "x", Branch = branch });
+
+		Assert.Equal("main", await GitAsync(_repo, "symbolic-ref --short HEAD"));
+		Assert.Null(await _versionControl.GetCurrentCommitHashAsync(_repo));
+	}
+
+	[Fact]
+	public async Task FirstJob_MakesTheFirstCommitAndTheNextJobStartsFromIt()
+	{
+		await InitEmptyCloneAsync();
+		var processor = CreateProcessor();
+		var job = new Job { Id = Guid.NewGuid(), GoalPrompt = "x", Branch = "main" };
+
+		await PrepareAsync(processor, job);
+		await WriteAsync(_repo, "README.md", "# New project\n");
+		var commit = await _versionControl.CommitAllChangesAsync(_repo, "Start the project");
+		Assert.True(commit.Success, commit.Error);
+		job.GitCommitHash = commit.CommitHash;
+		await PushAsync(processor, job);
+
+		Assert.Null(job.ErrorMessage);
+		Assert.Equal(commit.CommitHash, await GitAsync(_repo, "rev-parse origin/main"));
+
+		await PrepareAsync(processor, new Job { Id = Guid.NewGuid(), GoalPrompt = "x", Branch = "main" });
+
+		Assert.Equal(commit.CommitHash, await GitAsync(_repo, "rev-parse HEAD"));
+	}
+
+	[Fact]
+	public async Task Checkpoint_LeavesFilesInPlaceWhenNothingIsCommittedYet()
+	{
+		await InitEmptyCloneAsync();
+		await WriteAsync(_repo, "app.txt", "written before the first commit\n");
+
+		var processor = CreateProcessor();
+		await using var dbContext = await CreateDbContextAsync();
+		var job = await AddJobAsync(dbContext);
+		var preserve = GetMethod("PreserveWorkingTreeBeforeBranchPreparationAsync");
+		var baseBranch = await (Task<string?>)preserve.Invoke(processor, [job, _repo, dbContext, false, "test", CancellationToken.None])!;
+		await PrepareAsync(processor, job);
+
+		Assert.Null(baseBranch);
+		Assert.Null(job.GitCheckpointBranch);
+		Assert.Equal("main", await GitAsync(_repo, "symbolic-ref --short HEAD"));
+		Assert.Equal("?? app.txt", await GitAsync(_repo, "status --porcelain"));
+		Assert.Equal("", await GitAsync(_repo, "branch --list"));
+	}
+
 	[Fact]
 	public async Task Checkpoint_LeavesTheCheckoutOnTheProjectBranch()
 	{
