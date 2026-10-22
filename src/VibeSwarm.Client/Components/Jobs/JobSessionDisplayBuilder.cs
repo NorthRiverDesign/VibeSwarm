@@ -1,4 +1,5 @@
 using System.Text.Json;
+using VibeSwarm.Client.Components.Chat;
 using VibeSwarm.Client.Models;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Services;
@@ -1094,10 +1095,30 @@ internal static class JobSessionDisplayBuilder
 			JsonValueKind.Array => string.Join(Environment.NewLine, element.EnumerateArray()
 				.Select(ExtractJsonContent)
 				.Where(content => !string.IsNullOrWhiteSpace(content))),
-			JsonValueKind.Object => element.GetRawText(),
+			JsonValueKind.Object => ReadContentBlock(element),
 			JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
 			_ => element.GetRawText()
 		};
+	}
+
+	/// <summary>
+	/// Reads one block of a tool result: a text block as its text, and a base64 image block, such
+	/// as a screenshot, as a data URL that <see cref="ToolOutputContent"/> shows as the picture.
+	/// </summary>
+	private static string ReadContentBlock(JsonElement block)
+	{
+		switch (ReadJsonString(block, "type"))
+		{
+			case "text" when ReadJsonString(block, "text") is { } text:
+				return text;
+			case "image" when block.TryGetProperty("source", out var source)
+				&& source.ValueKind == JsonValueKind.Object
+				&& ReadJsonString(source, "type") == "base64"
+				&& ToolOutputContent.ToImageDataUrl(ReadJsonString(source, "media_type"), ReadJsonString(source, "data")) is { } dataUrl:
+				return dataUrl;
+			default:
+				return block.GetRawText();
+		}
 	}
 
 	private static bool IsCliWaitStatus(string content)

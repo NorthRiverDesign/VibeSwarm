@@ -1032,6 +1032,57 @@ public sealed class JobSessionPanelTests
 		Assert.DoesNotContain("toolu_live_123", html);
 	}
 
+	[Theory]
+	[InlineData("""[{"type":"image","source":{"type":"base64","data":"iVBORw0KGgoAAAANSUhEUgAAAAE=","media_type":"image/png"}}]""", null)]
+	[InlineData("""[{"type":"text","text":"Took the screenshot of viewport"},{"type":"image","source":{"type":"base64","data":"iVBORw0KGgoAAAANSUhEUgAAAAE=","media_type":"image/png"}}]""", "Took the screenshot of viewport")]
+	public async Task RenderedJobSessionPanel_ShowsAnImageToolResultAsThePicture(string resultContent, string? expectedText)
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var timestamp = DateTime.UtcNow;
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+				[nameof(JobSessionPanel.IsJobActive)] = true,
+				[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+				{
+					new()
+					{
+						Content =
+							"""{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_shot","name":"Read","input":{"file_path":"/tmp/desktop.png"}}]}}""",
+						Timestamp = timestamp.AddSeconds(-2)
+					},
+					new()
+					{
+						Content =
+							$$$"""{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_shot","type":"tool_result","content":{{{resultContent}}}}]}}""",
+						Timestamp = timestamp.AddSeconds(-1)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("Tool Activity", html);
+		Assert.Contains("src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAE=\"", html);
+		// The base64 appears once, as the image source, never as text or JSON.
+		Assert.Single(Regex.Matches(html, "iVBORw0KGgo"));
+		Assert.DoesNotContain("&quot;source&quot;", html);
+		if (expectedText is not null)
+		{
+			Assert.Contains(expectedText, html);
+			Assert.DoesNotContain("&quot;text&quot;", html);
+		}
+	}
+
 	[Fact]
 	public async Task RenderedJobSessionPanel_GroupsThreeConsecutiveToolActivitiesIntoCollapsibleSection()
 	{
