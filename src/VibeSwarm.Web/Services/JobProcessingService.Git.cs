@@ -553,6 +553,7 @@ public partial class JobProcessingService
             var leftovers = (await _workSnapshots.ListWorktreesAsync(workingDirectory, CancellationToken.None))
                 .Where(path => !executionContext.WorktreesBefore.Contains(path, StringComparer.Ordinal))
                 .Where(path => !string.Equals(Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar), checkout, StringComparison.Ordinal))
+                .Where(path => _swarmWorktrees?.IsSwarmWorktree(path) != true)
                 .ToList();
 
             // Remove them all first: a worktree inside the repository would make the checkout

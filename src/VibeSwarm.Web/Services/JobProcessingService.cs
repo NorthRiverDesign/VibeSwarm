@@ -51,6 +51,7 @@ public partial class JobProcessingService : BackgroundService
     private readonly IProjectEnvironmentCredentialService _projectEnvironmentCredentialService;
     private readonly JobWorkSnapshotService? _workSnapshots;
     private readonly ReleaseBranchGit? _releaseGit;
+    private readonly SwarmWorktrees? _swarmWorktrees;
     private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(3); // Poll less frequently, SignalR handles real-time updates
     private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
@@ -96,7 +97,8 @@ public partial class JobProcessingService : BackgroundService
         IInteractionResponseService? interactionResponseService = null,
         IProjectEnvironmentCredentialService? projectEnvironmentCredentialService = null,
         JobWorkSnapshotService? workSnapshots = null,
-        ReleaseBranchGit? releaseGit = null)
+        ReleaseBranchGit? releaseGit = null,
+        SwarmWorktrees? swarmWorktrees = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -108,6 +110,7 @@ public partial class JobProcessingService : BackgroundService
         _projectEnvironmentCredentialService = projectEnvironmentCredentialService ?? throw new ArgumentNullException(nameof(projectEnvironmentCredentialService));
         _workSnapshots = workSnapshots;
         _releaseGit = releaseGit;
+        _swarmWorktrees = swarmWorktrees;
     }
 
     /// <summary>
@@ -120,6 +123,12 @@ public partial class JobProcessingService : BackgroundService
         public int? ProcessId { get; set; }
         public Guid ProviderId { get; set; }
         public Guid ProjectId { get; set; }
+        public Guid? SwarmId { get; set; }
+
+        /// <summary>
+        /// The project checkout, when this run works in a swarm worktree of its own instead.
+        /// </summary>
+        public string? SwarmCheckout { get; set; }
 
         /// <summary>
         /// The provider instance used for this job execution.
@@ -416,7 +425,7 @@ public partial class JobProcessingService : BackgroundService
             {
                 _logger.LogWarning("Found job {JobId} interrupted on worker {WorkerId}; pausing it to be resumed",
                     job.Id, job.WorkerInstanceId ?? "unknown");
-                await PauseInterruptedJobAsync(job, job.Project?.WorkingPath, dbContext, InterruptedUnexpectedly, null, null, cancellationToken);
+                await PauseInterruptedJobAsync(job, GetRunDirectory(job), dbContext, InterruptedUnexpectedly, null, null, cancellationToken);
             }
 
             if (orphanedJobs.Any())
@@ -523,17 +532,17 @@ public partial class JobProcessingService : BackgroundService
             _logger.LogInformation("Found {PendingCount} pending jobs, {AvailableSlots} slots available, {RunningCount} jobs running",
                 pendingJobs.Count, availableSlots, _runningJobs.Count);
 
-            var busyProjectIds = _runningJobs.Values
+            var runningJobs = _runningJobs.Values
                 .Where(running => !running.Task.IsCompleted)
-                .Select(running => running.ProjectId);
-            var jobsToStart = SelectJobsToStart(pendingJobs, busyProjectIds, availableSlots);
+                .Select(running => (running.ProjectId, running.SwarmId));
+            var jobsToStart = SelectJobsToStart(pendingJobs, runningJobs, availableSlots);
             foreach (var job in jobsToStart)
             {
                 if (stoppingToken.IsCancellationRequested)
                     break;
 
                 var jobCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                var context = new JobExecutionContext { CancellationTokenSource = jobCts, ProjectId = job.ProjectId };
+                var context = new JobExecutionContext { CancellationTokenSource = jobCts, ProjectId = job.ProjectId, SwarmId = job.SwarmId };
                 _liveOutputs[job.Id] = context.LiveOutput;
 
                 // Start job processing in background
@@ -560,18 +569,30 @@ public partial class JobProcessingService : BackgroundService
     }
 
     /// <summary>
-    /// Picks which pending jobs to launch, at most one per project, skipping projects this
-    /// worker still has a job task running for. The database lags the task at both ends: a
-    /// dispatched job only shows as running once its task claims it, and a cancel can mark it
-    /// finished while the task is still in the checkout. The live tasks are the authority.
+    /// Picks which pending jobs to launch, at most one per project (members of one swarm excepted),
+    /// skipping projects this worker still has a job task running for. The database lags the task
+    /// at both ends: a dispatched job only shows as running once its task claims it, and a cancel
+    /// can mark it finished while the task is still in the checkout. The live tasks are the authority.
     /// </summary>
-    internal static List<Job> SelectJobsToStart(IEnumerable<Job> pendingJobs, IEnumerable<Guid> busyProjectIds, int availableSlots)
+    internal static List<Job> SelectJobsToStart(IEnumerable<Job> pendingJobs, IEnumerable<(Guid ProjectId, Guid? SwarmId)> runningJobs, int availableSlots)
     {
-        var claimedProjectIds = busyProjectIds.ToHashSet();
-        return pendingJobs
-            .Where(job => claimedProjectIds.Add(job.ProjectId))
-            .Take(availableSlots)
-            .ToList();
+        var projectSlots = new ProjectJobSlots(runningJobs);
+        var jobsToStart = new List<Job>();
+        foreach (var job in pendingJobs)
+        {
+            if (jobsToStart.Count >= availableSlots)
+            {
+                break;
+            }
+
+            if (projectSlots.CanStart(job.ProjectId, job.SwarmId))
+            {
+                projectSlots.Take(job.ProjectId, job.SwarmId);
+                jobsToStart.Add(job);
+            }
+        }
+
+        return jobsToStart;
     }
 
     private async Task CleanupCompletedJobsAsync()

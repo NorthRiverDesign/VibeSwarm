@@ -287,9 +287,17 @@ public partial class JobProcessingService
                     _logger.LogWarning(ex, "Failed to capture git diff for job {JobId}", jobId);
                 }
 
+                if (executionContext.SwarmCheckout is { } swarmCheckout)
+                {
+                    await FinishSwarmRunAsync(job, status, swarmCheckout, workingDirectory, executionContext, dbContext, cancellationToken);
+
+                    // Its progress went straight to the database; the finished job shows none.
+                    dbContext.Entry(job).Property(j => j.CurrentActivity).IsModified = true;
+                    dbContext.Entry(job).Property(j => j.LastHeartbeatAt).IsModified = true;
+                }
                 // Perform auto-commit if configured and job completed successfully
                 // Also auto-commit when IdeasAutoCommit is true (even if project-level AutoCommitMode is Off)
-                if (status == JobStatus.Completed && ShouldProcessGitDelivery(job))
+                else if (status == JobStatus.Completed && ShouldProcessGitDelivery(job))
                 {
                     var enableCommitAttribution = await dbContext.AppSettings
                         .OrderBy(settings => settings.Id)
@@ -306,6 +314,12 @@ public partial class JobProcessingService
                     {
                         await PerformAutoCommitAsync(job, workingDirectory, enableCommitAttribution, cancellationToken);
                         await CreatePullRequestIfConfiguredAsync(job, workingDirectory, cancellationToken);
+
+                        // A swarm member's overlapping work, merged in by this job, needs its branch no more.
+                        if (_swarmWorktrees != null && !string.IsNullOrWhiteSpace(job.MergeFromBranch))
+                        {
+                            await _swarmWorktrees.DeleteBranchIfMergedAsync(workingDirectory, job.MergeFromBranch.Trim(), cancellationToken);
+                        }
                     }
                     else
                     {
@@ -316,7 +330,10 @@ public partial class JobProcessingService
                     }
                 }
 
-                job.WorkSnapshotCommit = await SaveRunWorkSnapshotAsync(job, workingDirectory, executionContext.GitCommitBefore, cancellationToken);
+                if (executionContext.SwarmCheckout == null)
+                {
+                    job.WorkSnapshotCommit = await SaveRunWorkSnapshotAsync(job, workingDirectory, executionContext.GitCommitBefore, cancellationToken);
+                }
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);

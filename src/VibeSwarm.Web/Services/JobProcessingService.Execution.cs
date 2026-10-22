@@ -188,21 +188,33 @@ public partial class JobProcessingService
                     var isGitRepo = await _versionControlService.IsGitRepositoryAsync(workingDirectory, cancellationToken);
                     if (isGitRepo)
                     {
-                        var checkpointBaseBranch = await PreserveWorkingTreeBeforeBranchPreparationAsync(
-                            job,
-                            workingDirectory,
-                            dbContext,
-                            captureJobDiff: false,
-                            reason: "Protected local changes before preparing the job branch.",
-                            cancellationToken: cancellationToken);
+                        // Members of a swarm start side by side; one at a time gets the checkout ready.
+                        using (KeepJobAlive(job.Id))
+                        using (await LockCheckoutAsync(job.ProjectId, cancellationToken))
+                        {
+                            await SweepSwarmWorktreesAsync(job, workingDirectory, dbContext, cancellationToken);
 
-                        var branchActivity = string.IsNullOrWhiteSpace(job.Branch)
-                            ? "Syncing working branch..."
-                            : $"Preparing branch '{job.Branch}'...";
-                        await UpdateHeartbeatAsync(job.Id, branchActivity, dbContext, cancellationToken);
-                        await NotifyJobActivityAsync(job.Id, branchActivity, DateTime.UtcNow);
+                            var checkpointBaseBranch = await PreserveWorkingTreeBeforeBranchPreparationAsync(
+                                job,
+                                workingDirectory,
+                                dbContext,
+                                captureJobDiff: false,
+                                reason: "Protected local changes before preparing the job branch.",
+                                cancellationToken: cancellationToken);
 
-                        await PrepareWorkingBranchAsync(job, workingDirectory, checkpointBaseBranch, cancellationToken);
+                            var branchActivity = string.IsNullOrWhiteSpace(job.Branch)
+                                ? "Syncing working branch..."
+                                : $"Preparing branch '{job.Branch}'...";
+                            await UpdateHeartbeatAsync(job.Id, branchActivity, dbContext, cancellationToken);
+                            await NotifyJobActivityAsync(job.Id, branchActivity, DateTime.UtcNow);
+
+                            await PrepareWorkingBranchAsync(job, workingDirectory, checkpointBaseBranch, cancellationToken);
+                            if (RunsInSwarmWorktree(job))
+                            {
+                                workingDirectory = await OpenSwarmWorktreeAsync(job, workingDirectory, executionContext, dbContext, cancellationToken);
+                            }
+                        }
+
                         executionContext.PriorWorkRestore = await RestorePriorRunWorkAsync(job, workingDirectory, dbContext, cancellationToken);
                         executionContext.BranchMerge = await StartBranchMergeAsync(job, workingDirectory, dbContext, cancellationToken);
                         if (_workSnapshots != null)
@@ -818,7 +830,16 @@ public partial class JobProcessingService
                         var swarmSize = job.SwarmId.HasValue
                             ? await dbContext.Jobs.CountAsync(j => j.SwarmId == job.SwarmId, cancellationToken)
                             : 1;
-                        var roleContext = PromptBuilder.BuildRoleSystemPromptContext(agent, swarmSize);
+                        var teammates = job.SwarmId.HasValue
+                            ? (await dbContext.Jobs
+                                .AsNoTracking()
+                                .Where(j => j.SwarmId == job.SwarmId && j.Id != job.Id && j.Agent != null)
+                                .Select(j => new { j.Agent!.Name, j.Agent.Description })
+                                .ToListAsync(cancellationToken))
+                                .Select(teammate => new Agent { Name = teammate.Name, Description = teammate.Description })
+                                .ToList()
+                            : [];
+                        var roleContext = PromptBuilder.BuildRoleSystemPromptContext(agent, swarmSize, teammates);
                         if (!string.IsNullOrWhiteSpace(roleContext))
                         {
                             systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
@@ -1810,6 +1831,7 @@ public partial class JobProcessingService
         {
             CloseUserMessages(job.Id, executionContext);
             executionContext.TimeLimit?.Dispose();
+            await ReleaseSwarmWorktreeAfterRunAsync(job.Id, executionContext);
 
             if (!string.IsNullOrWhiteSpace(projectMemoryFilePath))
             {

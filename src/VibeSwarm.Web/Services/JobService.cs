@@ -267,8 +267,9 @@ public partial class JobService : IJobService
 	{
 		var now = DateTime.UtcNow;
 
-        // A project runs one job at a time, swarm members included: every job resets and
-        // cleans the shared checkout before it starts, so a second agent would wipe the first's work.
+        // A project runs one job at a time: every job resets and cleans the shared checkout
+        // before it starts. Members of one team swarm are the exception, each running in a
+        // worktree of its own (see ProjectJobSlots).
         var runningJobInfo = await _dbContext.Jobs
             .Where(j => j.Status == JobStatus.Pending
                 || j.Status == JobStatus.Started
@@ -276,10 +277,11 @@ public partial class JobService : IJobService
                 || j.Status == JobStatus.Processing
                 || j.Status == JobStatus.Paused
                 || j.Status == JobStatus.Stalled)
-            .Select(j => new { j.ProjectId, j.ProviderId })
+            .Select(j => new { j.ProjectId, j.ProviderId, j.SwarmId })
             .ToListAsync(cancellationToken);
 
-        var projectsWithRunningJobs = runningJobInfo.Select(j => j.ProjectId).Distinct().ToList();
+        var projectSlots = new ProjectJobSlots(runningJobInfo.Select(j => (j.ProjectId, j.SwarmId)));
+        var closedProjects = projectSlots.ClosedProjectIds;
         var providersWithRunningJobs = runningJobInfo
             .Select(j => j.ProviderId)
             .Where(id => id != Guid.Empty)
@@ -297,16 +299,16 @@ public partial class JobService : IJobService
 			.Where(j => j.NotBeforeUtc == null || j.NotBeforeUtc <= now)
 			.Where(j => !j.DependsOnJobId.HasValue
 				|| _dbContext.Jobs.Any(dependency => dependency.Id == j.DependsOnJobId && dependency.Status == JobStatus.Completed))
-            .Where(j => !projectsWithRunningJobs.Contains(j.ProjectId))
+            .Where(j => !closedProjects.Contains(j.ProjectId))
             .Where(j => j.ProviderId == Guid.Empty || !providersWithRunningJobs.Contains(j.ProviderId))
             .OrderByDescending(j => j.Priority)
             .ThenBy(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
 
-        // Return at most one job per provider and one job per project so the worker never
-        // launches two concurrent runs against the same provider or the same checkout.
+        // Return at most one job per provider, and one job per project unless they belong to
+        // one swarm, so the worker never launches two concurrent runs against the same provider
+        // or the same checkout.
         var projectHolds = _serviceProvider.GetService<ProjectQueueHolds>();
-        var seen = new HashSet<Guid>();
         var seenProviders = new HashSet<Guid>();
         var result = new List<Job>();
         foreach (var job in pendingJobs)
@@ -317,19 +319,18 @@ public partial class JobService : IJobService
                 continue;
             }
 
+            if (!projectSlots.CanStart(job.ProjectId, job.SwarmId))
+            {
+                continue;
+            }
+
             if (job.ProviderId != Guid.Empty && !seenProviders.Add(job.ProviderId))
             {
                 continue;
             }
 
-            if (seen.Add(job.ProjectId))
-            {
-                result.Add(job);
-            }
-            else if (job.ProviderId != Guid.Empty)
-            {
-                seenProviders.Remove(job.ProviderId);
-            }
+            projectSlots.Take(job.ProjectId, job.SwarmId);
+            result.Add(job);
         }
 
         return result;

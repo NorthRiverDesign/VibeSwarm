@@ -13,10 +13,20 @@ public partial class JobProcessingService
     /// <summary>
     /// Performs auto-commit (and optionally push) based on project settings.
     /// </summary>
-    private async Task PerformAutoCommitAsync(
+    private Task PerformAutoCommitAsync(
         Job job,
         string workingDirectory,
         bool enableCommitAttribution,
+        CancellationToken cancellationToken) =>
+        CommitJobWorkAsync(job, workingDirectory, enableCommitAttribution, push: true, cancellationToken);
+
+    /// <param name="push">False leaves the push to the caller, as for a swarm member whose commit
+    /// is pushed once it has been replayed onto the project's branch.</param>
+    private async Task CommitJobWorkAsync(
+        Job job,
+        string workingDirectory,
+        bool enableCommitAttribution,
+        bool push,
         CancellationToken cancellationToken)
     {
         try
@@ -42,7 +52,7 @@ public partial class JobProcessingService
                         var effectiveMode = GetEffectiveCommitMode(job);
 
                         // Push if configured
-                        if (effectiveMode == AutoCommitMode.CommitAndPush)
+                        if (push && effectiveMode == AutoCommitMode.CommitAndPush)
                         {
                             await PushJobCommitAsync(job, workingDirectory, cancellationToken);
                         }
@@ -80,7 +90,7 @@ public partial class JobProcessingService
                     job.Id, commitResult.CommitHash?[..Math.Min(8, commitResult.CommitHash?.Length ?? 0)]);
 
                 // Push if configured
-                if (effectiveCommitMode == AutoCommitMode.CommitAndPush)
+                if (push && effectiveCommitMode == AutoCommitMode.CommitAndPush)
                 {
                     await PushJobCommitAsync(job, workingDirectory, cancellationToken);
                 }

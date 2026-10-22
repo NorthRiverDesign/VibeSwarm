@@ -168,7 +168,7 @@ else
 Run every assigned agent on each job
 </label>
 </div>
-<div class="form-text">Creating a job fans out into one job per assigned agent, each with its own system prompt. They take turns, one at a time.</div>
+<div class="form-text">Creating a job fans out into one job per assigned agent, each with its own system prompt. Agents on different providers work at the same time, each in its own copy of the repository, and each one's work is added to the branch as it finishes. Overlapping changes go to a merge job.</div>
 </div>
 }
 

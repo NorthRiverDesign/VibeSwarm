@@ -931,9 +931,11 @@ public static class PromptBuilder
 	/// <summary>
 	/// Builds a role-specific system prompt context block that is prepended to the agent's
 	/// append-system-prompt when the job is part of a team swarm. This establishes the agent's
-	/// persona, responsibilities, and coordination guidelines for taking turns on one checkout.
+	/// persona, responsibilities, and how to work beside teammates running at the same time,
+	/// each in its own worktree, so their work merges cleanly.
 	/// </summary>
-	public static string BuildRoleSystemPromptContext(Agent role, int totalSwarmSize)
+	/// <param name="teammates">The swarm's other agents, so this one knows what they own.</param>
+	public static string BuildRoleSystemPromptContext(Agent role, int totalSwarmSize, IReadOnlyList<Agent>? teammates = null)
 	{
 		var sb = new StringBuilder();
 
@@ -965,14 +967,30 @@ public static class PromptBuilder
 		if (totalSwarmSize > 1)
 		{
 			sb.AppendLine();
-			sb.AppendLine($"You are one of {totalSwarmSize} specialized agents taking turns on the same repository; the others run before or after you, never at the same time.");
-			sb.AppendLine("Each agent focuses exclusively on their designated area of responsibility.");
-			sb.AppendLine("Limit your changes to your area of expertise and avoid modifying files clearly owned by other roles.");
-			sb.AppendLine("Keep your changes small and focused, and build on what earlier agents left in the repository rather than redoing or reverting it.");
+			sb.AppendLine($"You are one of {totalSwarmSize} specialized agents working on this goal at the same time, each in its own copy of the repository, so you won't see the others' changes while you work.");
+			var others = (teammates ?? [])
+				.Where(teammate => !string.IsNullOrWhiteSpace(teammate.Name))
+				.Select(teammate => string.IsNullOrWhiteSpace(teammate.Description)
+					? teammate.Name.Trim()
+					: $"{teammate.Name.Trim()} ({Truncate(teammate.Description.Trim(), 120)})")
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+			if (others.Count > 0)
+			{
+				sb.AppendLine($"Your teammates: {string.Join("; ", others)}.");
+			}
+
+			sb.AppendLine("When you finish, VibeSwarm commits your work and replays it onto the branch with theirs. To keep that merge clean:");
+			sb.AppendLine("- Do only your part of the goal, and leave files and areas a teammate owns to them.");
+			sb.AppendLine("- Don't reformat, rename or move code your change doesn't need.");
+			sb.AppendLine("- Work in this directory on its current branch; don't switch branches or rewrite history.");
 		}
 
 		return sb.ToString().TrimEnd();
 	}
+
+	private static string Truncate(string text, int maxLength) =>
+		text.Length <= maxLength ? text : text[..(maxLength - 1)].TrimEnd() + "…";
 
 	private static string FormatSkillReference(Skill skill)
 	{

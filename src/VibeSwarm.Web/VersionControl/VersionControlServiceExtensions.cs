@@ -17,6 +17,7 @@ public static class VersionControlServiceExtensions
 		services.AddSingleton<IVersionControlService, VersionControlService>();
 		services.AddSingleton<JobWorkSnapshotService>();
 		services.AddSingleton<ReleaseBranchGit>();
+		services.AddSingleton<SwarmWorktrees>();
 		return services;
 	}
 }

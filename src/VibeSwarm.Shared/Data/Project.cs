@@ -195,8 +195,9 @@ public class Project
 	/// <summary>
 	/// When enabled and at least two team roles are configured, creating a job automatically
 	/// fans out into role-based jobs — one per enabled team role assignment.
-	/// Each role job runs its assigned provider with a role-specific system prompt, one at a
-	/// time, because they share the project's checkout.
+	/// Each role job runs its assigned provider with a role-specific system prompt in a git
+	/// worktree of its own, so they run at the same time (one job per provider); each one's
+	/// commits are replayed onto the project's branch as it finishes.
 	/// </summary>
 	public bool EnableTeamSwarm { get; set; }
 
