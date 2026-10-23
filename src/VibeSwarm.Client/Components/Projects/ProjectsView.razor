@@ -1,6 +1,7 @@
 @inject IProjectService ProjectService
 @inject IJobService JobService
 @inject NotificationService NotificationService
+@inject IServiceProvider Services
 @implements IDisposable
 
 @* Projects list: a large title, one search field, and one row per project. Everything a project
@@ -9,6 +10,20 @@
 <div class="d-flex flex-column gap-5">
 	<div class="d-flex align-items-center gap-3">
 		<h1 class="mb-0 me-auto">Projects</h1>
+		@if (ProjectsWithInfo.Any())
+		{
+			<div>
+				<button type="button" class="btn-solid theme-secondary rounded-circle p-0 icon-button-round"
+						data-bs-toggle="menu" data-bs-placement="bottom-end" aria-expanded="false" title="More" aria-label="More project actions">
+					<i class="bi bi-three-dots"></i>
+				</button>
+				<div class="menu">
+					<button type="button" class="menu-item" @onclick="ShowSyncAllModal" disabled="@(_isSyncingAll || !GetSyncableProjects().Any())">
+						<i class="bi bi-arrow-repeat @(_isSyncingAll ? "spinner-rotate" : "")"></i>Sync all projects with origin
+					</button>
+				</div>
+			</div>
+		}
 		@* Every way to add a project or a folder sits behind the one + button. *@
 		<div>
 			<button type="button" class="btn-solid theme-primary rounded-circle p-0 icon-button-round"
@@ -98,7 +113,9 @@
 					{
 						var project = projectInfo.Project;
 						<ProjectListItem @key="project.Id" Project="@project" Stats="@projectInfo.Stats" LatestJob="@projectInfo.LatestJob"
-										 ActiveJobs="@ActiveJobs.Where(job => job.ProjectId == project.Id).ToList()" />
+										 ActiveJobs="@ActiveJobs.Where(job => job.ProjectId == project.Id).ToList()"
+										 CurrentBranch="@projectInfo.CurrentBranch" OnSync="() => SyncProjectAsync(projectInfo)"
+										 IsSyncing="@_syncingProjectIds.Contains(project.Id)" SyncBlocked="@IsCheckoutInUse(projectInfo, ActiveJobs)" />
 					}
 					@if (group.Projects.Count == 0)
 					{
@@ -121,6 +138,12 @@
 				   SubMessage="Its projects stay, outside any folder. Links between projects don't change."
 				   ConfirmText="Delete" IsProcessing="_isDeletingFolder" ErrorMessage="@_deleteFolderError"
 				   OnConfirm="DeleteFolderAsync" OnCancel="() => _showDeleteFolderModal = false" />
+
+<ConfirmationModal @bind-IsVisible="_showSyncAllModal" Title="Sync all projects with origin"
+				   Message="@(_syncAllProgress ?? $"Sync {GetSyncableProjects().Count()} git {Plural(GetSyncableProjects().Count(), "project")} with origin?")"
+				   SubMessage="Each checkout is reset to its branch on origin. Uncommitted changes are saved first and unpushed commits are kept on top. Projects with a queued, running or paused job are skipped."
+				   ConfirmText="Sync all" ButtonClass="btn-solid theme-primary" IsProcessing="_isSyncingAll" ErrorMessage="@_syncAllError"
+				   OnConfirm="SyncAllProjectsAsync" OnCancel="() => _showSyncAllModal = false" />
 
 <ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="HandleProjectsImported" />
 
@@ -149,6 +172,11 @@
 	private bool ShowInitialLoadingSpinner => IsLoading && !HasLoadedProjectsInitially;
 
 	private ScanProjectsModal? _scanProjectsModal;
+	private readonly HashSet<Guid> _syncingProjectIds = [];
+	private bool _showSyncAllModal;
+	private bool _isSyncingAll;
+	private string? _syncAllProgress;
+	private string? _syncAllError;
 	private bool ShowProjectModal { get; set; }
 
 	protected override async Task OnInitializedAsync()
@@ -366,6 +394,191 @@
 		finally
 		{
 			IsLoading = false;
+		}
+	}
+
+	/// <summary>Git checkouts, which can sync with origin. Folders and filters don't narrow it.</summary>
+	private IEnumerable<ProjectInfoWithStats> GetSyncableProjects()
+		=> ProjectsWithInfo.Where(info => !string.IsNullOrEmpty(info.CurrentBranch) && !string.IsNullOrEmpty(info.Project.WorkingPath));
+
+	/// <summary>
+	/// A queued, running or paused job owns the checkout. Syncing would reset it under the job, so
+	/// sync stays off for that project.
+	/// </summary>
+	private static bool IsCheckoutInUse(ProjectInfoWithStats info, IEnumerable<JobSummary> activeJobs)
+		=> activeJobs.Any(job => job.ProjectId == info.Project.Id) || info.LatestJob?.Status == JobStatus.Paused;
+
+	private static string Plural(int count, string noun) => count == 1 ? noun : $"{noun}s";
+
+	private async Task SyncProjectAsync(ProjectInfoWithStats info)
+	{
+		await LoadActiveJobs();
+		if (IsCheckoutInUse(info, ActiveJobs))
+		{
+			NotificationService.ShowProjectWarning(info.Project.Name, "Not synced: a job is using this checkout.");
+			return;
+		}
+
+		var result = await RunSyncAsync(info.Project);
+		if (result == null)
+		{
+			return;
+		}
+
+		if (!result.Success)
+		{
+			NotificationService.ShowProjectError(info.Project.Name, result.Error ?? "Failed to sync with origin.");
+		}
+		else if (!string.IsNullOrEmpty(result.RecoveryBranch))
+		{
+			NotificationService.ShowProjectWarning(info.Project.Name, DescribeSync(result));
+		}
+		else
+		{
+			NotificationService.ShowProjectSuccess(info.Project.Name, DescribeSync(result));
+		}
+	}
+
+	/// <summary>Syncs one checkout, or returns null when a sync of it is already running.</summary>
+	private async Task<GitOperationResult?> RunSyncAsync(Project project)
+	{
+		if (!_syncingProjectIds.Add(project.Id))
+		{
+			return null;
+		}
+
+		StateHasChanged();
+		try
+		{
+			return await Services.GetRequiredService<IVersionControlService>().SyncWithOriginAsync(project.WorkingPath);
+		}
+		catch (Exception ex)
+		{
+			return GitOperationResult.Failed($"Error syncing with origin: {ex.Message}");
+		}
+		finally
+		{
+			_syncingProjectIds.Remove(project.Id);
+		}
+	}
+
+	private static string DescribeSync(GitOperationResult result)
+	{
+		var message = string.IsNullOrEmpty(result.BranchName)
+			? "Synced with origin."
+			: $"Synced with {result.RemoteName ?? "origin"}/{result.BranchName}.";
+		if (result.ChangedFilesCount is > 0 and var changed)
+		{
+			message += $" Saved {changed} uncommitted {Plural(changed, "file")} to {result.SavedReference} first.";
+		}
+
+		if (!string.IsNullOrEmpty(result.RecoveryBranch))
+		{
+			message += $" Unpushed commits conflicted and were kept on {result.RecoveryBranch}.";
+		}
+		else if (result.KeptLocalCommits is > 0 and var kept)
+		{
+			message += $" Kept {kept} unpushed {Plural(kept, "commit")} on top.";
+		}
+
+		return message;
+	}
+
+	private void ShowSyncAllModal()
+	{
+		_syncAllError = null;
+		_syncAllProgress = null;
+		_showSyncAllModal = true;
+	}
+
+	/// <summary>
+	/// Syncs every git checkout with origin, one at a time. Active jobs are re-read first so a job
+	/// that started since the last refresh is skipped too; if they can't be read, nothing syncs.
+	/// </summary>
+	private async Task SyncAllProjectsAsync()
+	{
+		if (_isSyncingAll)
+		{
+			return;
+		}
+
+		_isSyncingAll = true;
+		_syncAllError = null;
+		try
+		{
+			List<JobSummary> activeJobs;
+			try
+			{
+				activeJobs = (await JobService.GetActiveJobsAsync()).ToList();
+			}
+			catch (Exception ex)
+			{
+				_syncAllError = $"Couldn't check for running jobs, so nothing was synced: {ex.Message}";
+				return;
+			}
+
+			ActiveJobs = activeJobs;
+			var targets = GetSyncableProjects().ToList();
+			var skipped = targets.Where(info => IsCheckoutInUse(info, activeJobs)).Select(info => info.Project.Name).ToList();
+			var toSync = targets.Where(info => !IsCheckoutInUse(info, activeJobs)).ToList();
+			var synced = 0;
+			var failed = 0;
+
+			for (var i = 0; i < toSync.Count; i++)
+			{
+				var project = toSync[i].Project;
+				_syncAllProgress = $"Syncing {project.Name} ({i + 1} of {toSync.Count})...";
+				var result = await RunSyncAsync(project);
+				if (result == null)
+				{
+					// Its row's sync is already running and reports its own outcome.
+					continue;
+				}
+
+				if (!result.Success)
+				{
+					failed++;
+					NotificationService.ShowProjectError(project.Name, result.Error ?? "Failed to sync with origin.");
+				}
+				else
+				{
+					synced++;
+					if (!string.IsNullOrEmpty(result.RecoveryBranch))
+					{
+						NotificationService.ShowProjectWarning(project.Name, DescribeSync(result));
+					}
+				}
+			}
+
+			_showSyncAllModal = false;
+			var summary = $"Synced {synced} of {toSync.Count} {Plural(toSync.Count, "project")} with origin.";
+			if (failed > 0)
+			{
+				summary += $" {failed} failed.";
+			}
+
+			if (skipped.Count > 0)
+			{
+				summary += $" Skipped {string.Join(", ", skipped)}: a job is using the checkout.";
+			}
+
+			if (failed > 0 && synced == 0)
+			{
+				NotificationService.ShowError(summary, "Sync all projects");
+			}
+			else if (failed > 0 || synced == 0)
+			{
+				NotificationService.ShowWarning(summary, "Sync all projects");
+			}
+			else
+			{
+				NotificationService.ShowSuccess(summary, "Sync all projects");
+			}
+		}
+		finally
+		{
+			_isSyncingAll = false;
+			_syncAllProgress = null;
 		}
 	}
 
