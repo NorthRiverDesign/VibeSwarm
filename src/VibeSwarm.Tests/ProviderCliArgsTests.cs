@@ -1075,6 +1075,19 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void OpenCode_FoldsJobRulesIntoPrompt()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.ApplyOptions(new ExecutionOptions { AppendSystemPrompt = "extra rules" });
+
+        var args = provider.BuildRunCommandArgs("my prompt", null);
+
+        // `opencode run` has no system prompt flag, so the rules lead the prompt argument.
+        Assert.Equal("<system-instructions>\nextra rules\n</system-instructions>\n\nmy prompt", args[^1]);
+        Assert.DoesNotContain("--append-system-prompt", args);
+    }
+
+    [Fact]
     public void OpenCode_WithModel_AddsModelFlag()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));

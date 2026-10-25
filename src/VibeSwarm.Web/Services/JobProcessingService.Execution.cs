@@ -782,39 +782,19 @@ public partial class JobProcessingService
                 requireCodeChange: !isLocalEnvironmentSetup);
             projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
             var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
-            if (!string.IsNullOrWhiteSpace(projectMemoryRules))
-            {
-                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
-                    ? projectMemoryRules
-                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
-            }
 
+            string? localSetupRules = null;
             if (isLocalEnvironmentSetup && !string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
             {
-                var localSetupRules = PromptBuilder.BuildLocalEnvironmentSetupRules(
+                localSetupRules = PromptBuilder.BuildLocalEnvironmentSetupRules(
                     LocalEnvironmentSetupService.PrepareResultFile(workingDirectory));
-                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
-                    ? localSetupRules
-                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{localSetupRules}";
             }
 
             var priorWorkRules = PromptBuilder.BuildPriorWorkRules(executionContext.PriorWorkRestore);
-            if (!string.IsNullOrWhiteSpace(priorWorkRules))
-            {
-                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
-                    ? priorWorkRules
-                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{priorWorkRules}";
-            }
-
             var branchMergeRules = PromptBuilder.BuildBranchMergeRules(job.MergeFromBranch, executionContext.BranchMerge?.Outcome, executionContext.BranchMerge?.ConflictedFiles);
-            if (!string.IsNullOrWhiteSpace(branchMergeRules))
-            {
-                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
-                    ? branchMergeRules
-                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{branchMergeRules}";
-            }
 
             // Inject role-specific system prompt context for team swarm jobs
+            string? roleContext = null;
             if (job.AgentId.HasValue)
             {
                 try
@@ -839,13 +819,7 @@ public partial class JobProcessingService
                                 .Select(teammate => new Agent { Name = teammate.Name, Description = teammate.Description })
                                 .ToList()
                             : [];
-                        var roleContext = PromptBuilder.BuildRoleSystemPromptContext(agent, swarmSize, teammates);
-                        if (!string.IsNullOrWhiteSpace(roleContext))
-                        {
-                            systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
-                                ? roleContext
-                                : $"{roleContext}{Environment.NewLine}{Environment.NewLine}{systemPromptRules}";
-                        }
+                        roleContext = PromptBuilder.BuildRoleSystemPromptContext(agent, swarmSize, teammates);
                     }
                 }
                 catch (Exception ex)
@@ -853,6 +827,12 @@ public partial class JobProcessingService
                     _logger.LogWarning(ex, "Failed to load team role context for job {JobId}, continuing without it", job.Id);
                 }
             }
+
+            systemPromptRules = PromptBuilder.JoinRuleSections(
+                roleContext, systemPromptRules, projectMemoryRules, localSetupRules, priorWorkRules, branchMergeRules);
+            // The read-only planner can't build, edit or commit, so it skips those rules.
+            var planningSystemPromptRules = PromptBuilder.JoinRuleSections(
+                roleContext, PromptBuilder.BuildPlanningSystemPromptRules(job.Project, projectMemoryFilePath, injectRepoMap), priorWorkRules);
 
             var planningOutput = job.PlanningOutput;
             if (ShouldUsePlanningStage(job.Project) && string.IsNullOrWhiteSpace(planningOutput))
@@ -923,7 +903,7 @@ public partial class JobProcessingService
                                 Model = job.Project.PlanningModelId,
                                 ReasoningEffort = job.Project.PlanningReasoningEffort,
                                 Title = job.Title,
-                                AppendSystemPrompt = systemPromptRules,
+                                AppendSystemPrompt = planningSystemPromptRules,
                                 EnvironmentVariables = jobEnvironmentVariables,
                                 DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools,
                                 StrictMcpConfig = true,

@@ -226,10 +226,10 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		var prompt = PromptBuilder.BuildStructuredPrompt(job, true);
 
 		Assert.Contains("<environments>", prompt);
-		Assert.Contains("Prefer these URLs instead of assuming localhost.", prompt);
-		Assert.Contains("Production environments are live/stable targets.", prompt);
-		Assert.Contains("Development environments allow normal testing, iterative changes, and redeploys", prompt);
-		Assert.Contains("Local environments assume immediate feedback.", prompt);
+		Assert.Contains("Use these URLs instead of assuming localhost", prompt);
+		Assert.Contains("Production is live: change or redeploy it only when the task explicitly asks.", prompt);
+		Assert.Contains("Development allows normal testing, changes and redeploys.", prompt);
+		Assert.Contains("Local gives immediate feedback", prompt);
 		Assert.Contains("Primary Web [Development]: Staging", prompt);
 		Assert.Contains("https://staging.example.com", prompt);
 		Assert.Contains("Login: Username=admin@example.com, Password=StagingPassword!", prompt);
@@ -312,9 +312,9 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	}
 
 	[Fact]
-	public void BuildSystemPromptRules_IncludesEnvironmentStageGuidance()
+	public void BuildStructuredPrompt_IncludesEnvironmentStageGuidanceOnce()
 	{
-		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		var project = new Project
 		{
 			Name = "Web App",
 			WorkingPath = "/tmp/web-app",
@@ -337,18 +337,21 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 					IsEnabled = true
 				}
 			]
-		});
+		};
+		var prompt = PromptBuilder.BuildStructuredPrompt(new Job { GoalPrompt = "Check the app", Project = project });
+		var rules = PromptBuilder.BuildSystemPromptRules(project);
 
 		Assert.NotNull(rules);
-		Assert.Contains("ENVIRONMENT SAFETY:", rules);
-		Assert.Contains("Only make direct environment changes or redeploy them when the task explicitly asks for it", rules);
-		Assert.Contains("rebuild, restart services, redeploy, reseed data, or wipe the local database", rules);
+		Assert.Contains("change or redeploy it only when the task explicitly asks", prompt);
+		Assert.Contains("rebuild, restart services, redeploy, reseed data or wipe the local database", prompt);
+		// Stated beside the URLs in the task prompt, not repeated in the system prompt rules.
+		Assert.DoesNotContain("redeploy", rules);
 	}
 
 	[Fact]
-	public void BuildSystemPromptRules_IncludesCredentialUsageGuidance()
+	public void BuildStructuredPrompt_IncludesCredentialUsageGuidance()
 	{
-		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		var project = new Project
 		{
 			Name = "Web App",
 			WorkingPath = "/tmp/web-app",
@@ -365,12 +368,14 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 					Password = "StagingPassword!"
 				}
 			]
-		});
+		};
+		var prompt = PromptBuilder.BuildStructuredPrompt(new Job { GoalPrompt = "Check the app", Project = project });
+		var rules = PromptBuilder.BuildSystemPromptRules(project);
 
 		Assert.NotNull(rules);
-		Assert.Contains("ENVIRONMENT AUTHENTICATION:", rules);
-		Assert.Contains("use those exact values for browser automation", rules);
-		Assert.Contains("test@test.com", rules);
+		Assert.Contains("Sign in with a listed login, never a guessed account such as test@test.com.", prompt);
+		Assert.Contains("Login: Username=admin@example.com, Password=StagingPassword!", prompt);
+		Assert.DoesNotContain("test@test.com", rules);
 	}
 
 	[Fact]
@@ -1389,9 +1394,9 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	}
 
 	[Fact]
-	public void BuildSystemPromptRules_IncludesPlaywrightGuidance_WhenWebEnvironmentsExist()
+	public void BuildStructuredPrompt_IncludesPlaywrightGuidance_WhenWebEnvironmentsExist()
 	{
-		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		var project = new Project
 		{
 			Name = "Web App",
 			WorkingPath = "/tmp/web-app",
@@ -1406,18 +1411,21 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 					IsEnabled = true
 				}
 			]
-		});
+		};
+		var prompt = PromptBuilder.BuildStructuredPrompt(new Job { GoalPrompt = "Check the app", Project = project });
+		var rules = PromptBuilder.BuildSystemPromptRules(project);
 
 		Assert.NotNull(rules);
-		Assert.Contains("DEPLOYED ENVIRONMENTS:", rules);
-		Assert.Contains("Playwright MCP", rules);
-		Assert.Contains("Do not assume localhost", rules);
+		Assert.Contains("Use Playwright MCP for web environments.", prompt);
+		Assert.Contains("instead of assuming localhost", prompt);
+		Assert.DoesNotContain("guessed account", prompt);
+		Assert.DoesNotContain("Playwright MCP", rules);
 	}
 
 	[Fact]
-	public void BuildSystemPromptRules_OmitsPlaywright_WhenNoWebEnvironments()
+	public void BuildStructuredPrompt_OmitsPlaywright_WhenNoWebEnvironments()
 	{
-		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		var project = new Project
 		{
 			Name = "CLI App",
 			WorkingPath = "/tmp/cli-app",
@@ -1432,10 +1440,13 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 					IsEnabled = true
 				}
 			]
-		});
+		};
+		var prompt = PromptBuilder.BuildStructuredPrompt(new Job { GoalPrompt = "Check the app", Project = project });
+		var rules = PromptBuilder.BuildSystemPromptRules(project);
 
 		Assert.NotNull(rules);
-		Assert.DoesNotContain("DEPLOYED ENVIRONMENTS:", rules);
+		Assert.Contains("<environments>", prompt);
+		Assert.DoesNotContain("Playwright MCP", prompt);
 		Assert.DoesNotContain("Playwright MCP", rules);
 	}
 

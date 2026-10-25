@@ -412,7 +412,7 @@ public class CopilotProvider : CliProviderBase
         // Copilot CLI does not support --system-prompt or --append-system-prompt flags.
         // Prepend any system prompt content into the main prompt using XML tags so the
         // agent still receives efficiency rules, build verification, and project memory.
-        var effectivePrompt = BuildEffectivePrompt(prompt, CurrentSystemPrompt, CurrentAppendSystemPrompt);
+        var effectivePrompt = FoldSystemPromptIntoPrompt(prompt, CurrentSystemPrompt, CurrentAppendSystemPrompt);
 
         // Build arguments for non-interactive execution
         // Reference: https://github.com/github/copilot-cli/blob/main/changelog.md
@@ -767,46 +767,6 @@ public class CopilotProvider : CliProviderBase
         }
 
         return names;
-    }
-
-    /// <summary>
-    /// Builds the effective prompt by prepending system prompt content into the main prompt.
-    /// Copilot CLI does not support --system-prompt or --append-system-prompt flags, so
-    /// these instructions are folded into the prompt text using XML tags.
-    /// </summary>
-    private static string BuildEffectivePrompt(string prompt, string? systemPrompt, string? appendSystemPrompt)
-    {
-        var hasSystemPrompt = !string.IsNullOrEmpty(systemPrompt);
-        var hasAppendSystemPrompt = !string.IsNullOrEmpty(appendSystemPrompt);
-
-        if (!hasSystemPrompt && !hasAppendSystemPrompt)
-        {
-            return prompt;
-        }
-
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("<system-instructions>");
-
-        if (hasSystemPrompt)
-        {
-            sb.AppendLine(systemPrompt);
-        }
-
-        if (hasSystemPrompt && hasAppendSystemPrompt)
-        {
-            sb.AppendLine();
-        }
-
-        if (hasAppendSystemPrompt)
-        {
-            sb.AppendLine(appendSystemPrompt);
-        }
-
-        sb.AppendLine("</system-instructions>");
-        sb.AppendLine();
-        sb.Append(prompt);
-
-        return sb.ToString();
     }
 
     private void EnsureBashEnvEnvironmentVariable()

@@ -21,7 +21,7 @@ public sealed class ProjectMemoryPromptTests
 		Assert.Contains("/tmp/docs-app/.vibeswarm/project-memory.md", rules);
 		Assert.Contains("update this file", rules, StringComparison.OrdinalIgnoreCase);
 		Assert.Contains(ValidationLimits.ProjectMemoryMaxLength.ToString(), rules, StringComparison.Ordinal);
-		Assert.Contains("sync changes", rules, StringComparison.OrdinalIgnoreCase);
+		Assert.Contains("syncs it back to the project after the job", rules, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -37,7 +37,7 @@ public sealed class ProjectMemoryPromptTests
 		Assert.NotNull(rules);
 		Assert.Contains("shared by every agent that works on this project", rules);
 		Assert.Contains("rather than files in the repository", rules);
-		Assert.Contains("Leave out session notes: task progress, plans, todo lists", rules);
+		Assert.Contains("Leave out session notes (task progress, plans, todo lists", rules);
 	}
 
 	[Fact]

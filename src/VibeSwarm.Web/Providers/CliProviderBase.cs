@@ -35,6 +35,18 @@ public abstract class CliProviderBase : ProviderBase
 	}
 
 	/// <summary>
+	/// Folds system prompt content into the prompt text, for CLIs that take no system prompt
+	/// flag (Copilot, OpenCode), so their jobs still get the build, git and summary rules.
+	/// </summary>
+	protected static string FoldSystemPromptIntoPrompt(string prompt, string? systemPrompt, string? appendSystemPrompt)
+	{
+		var instructions = PromptBuilder.JoinRuleSections(systemPrompt, appendSystemPrompt);
+		return instructions == null
+			? prompt
+			: $"<system-instructions>\n{instructions}\n</system-instructions>\n\n{prompt}";
+	}
+
+	/// <summary>
 	/// Gets the full path to the CLI executable, using platform-specific resolution.
 	/// </summary>
 	/// <param name="defaultExecutable">The default executable name if no path is configured</param>

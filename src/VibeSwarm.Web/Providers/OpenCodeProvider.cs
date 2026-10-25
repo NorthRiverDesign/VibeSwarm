@@ -172,7 +172,9 @@ public class OpenCodeProvider : CliProviderBase
         }
         else
         {
-            return await ExecuteRestWithSessionAsync(prompt, sessionId, progress, cancellationToken);
+            return await ExecuteRestWithSessionAsync(
+                FoldSystemPromptIntoPrompt(prompt, CurrentSystemPrompt, CurrentAppendSystemPrompt),
+                sessionId, progress, cancellationToken);
         }
     }
 
@@ -326,8 +328,9 @@ public class OpenCodeProvider : CliProviderBase
             args.AddRange(CurrentAdditionalArgs);
         }
 
-        // The prompt message must be the final argument
-        args.Add(prompt);
+        // The prompt message must be the final argument. `opencode run` has no system prompt
+        // flag, so the job rules travel in it.
+        args.Add(FoldSystemPromptIntoPrompt(prompt, CurrentSystemPrompt, CurrentAppendSystemPrompt));
 
         return args;
     }

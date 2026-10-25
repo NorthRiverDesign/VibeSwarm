@@ -16,9 +16,11 @@ public sealed class BuildVerificationPromptTests
 		});
 
 		Assert.NotNull(rules);
-		Assert.Contains("BUILD VERIFICATION (CRITICAL):", rules);
-		Assert.Contains("Verify the project builds before finishing.", rules);
-		Assert.Contains("Do not leave the repository in a broken state.", rules);
+		Assert.Contains("BUILD VERIFICATION:", rules);
+		Assert.Contains("Before finishing, run", rules);
+		Assert.Contains("The next queued job starts from this checkout.", rules);
+		Assert.DoesNotContain("CRITICAL", rules);
+		Assert.DoesNotContain("IMPORTANT", rules);
 	}
 
 	[Fact]
@@ -77,10 +79,10 @@ public sealed class BuildVerificationPromptTests
 
 		Assert.NotNull(rules);
 		Assert.Contains("SESSION ARTIFACTS:", rules);
-		Assert.Contains("screenshots, browser traces, test logs and reports", rules);
+		Assert.Contains("screenshots, browser traces, logs and scratch files", rules);
 		Assert.Contains(".git/info/exclude, not .gitignore", rules);
 		Assert.Contains("Keep plans, todo lists and session notes out of the repository", rules);
-		Assert.Contains("Do not add or append to agent instruction, plan or memory files", rules);
+		Assert.Contains("do not add to agent instruction or memory files", rules);
 	}
 
 	[Fact]
@@ -130,9 +132,9 @@ public sealed class BuildVerificationPromptTests
 
 		Assert.NotNull(rules);
 		Assert.Contains("COMPLETING THE JOB:", rules);
-		Assert.Contains("Do not stop to ask questions", rules);
+		Assert.Contains("never stop to ask a question or wait for confirmation", rules);
 		Assert.Contains("do not commit, push, stash, reset, rebase, or switch branches", rules);
-		Assert.Contains("The next queued job starts from it.", rules);
+		Assert.Contains("The next queued job starts from this checkout.", rules);
 		Assert.Contains("End with a short summary", rules);
 		Assert.Contains("<commit-summary>", rules);
 	}
@@ -166,9 +168,9 @@ public sealed class BuildVerificationPromptTests
 		});
 
 		Assert.NotNull(rules);
-		Assert.Contains("Run `dotnet build`, then `dotnet test`, and fix any failures.", rules);
+		Assert.Contains("Before finishing, run `dotnet build`, then `dotnet test`, and fix any failures.", rules);
 		Assert.Null(JobSummaryGenerator.ExtractCommitSummary(rules));
-		Assert.True(rules.Length <= 2000, $"System prompt rules grew to {rules.Length} characters.");
+		Assert.True(rules.Length <= 1700, $"System prompt rules grew to {rules.Length} characters.");
 	}
 
 	[Fact]
@@ -303,9 +305,11 @@ public sealed class BuildVerificationPromptTests
 		var prompt = PromptBuilder.BuildIdeaImplementationPrompt("Add bulk archive controls");
 
 		Assert.Contains("staff-level software engineer", prompt);
-		Assert.Contains("Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.", prompt);
+		Assert.Contains("Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents only for broad, parallel research.", prompt);
 		Assert.Contains("Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.", prompt);
-		Assert.Contains("leave the repository in a working state", prompt);
+		// The job's system prompt rules carry the build check and the commit summary.
+		Assert.DoesNotContain("leave the repository in a working state", prompt);
+		Assert.DoesNotContain("<commit-summary>", prompt);
 		Assert.DoesNotContain("inspect -> plan -> implement -> verify loop", prompt);
 		Assert.DoesNotContain("autonomous CI coding job", prompt);
 		Assert.Contains("Do not mention or attribute the work to any provider, model, or CLI tool.", prompt);
@@ -335,10 +339,63 @@ public sealed class BuildVerificationPromptTests
 
 		Assert.Contains("staff-level software engineer", prompt);
 		Assert.Contains("Use the approved specification as the source of truth", prompt);
-		Assert.Contains("Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.", prompt);
-		Assert.Contains("leave the repository in a working state", prompt);
+		Assert.Contains("Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents only for broad, parallel research.", prompt);
+		Assert.DoesNotContain("leave the repository in a working state", prompt);
+		Assert.DoesNotContain("<commit-summary>", prompt);
 		Assert.DoesNotContain("inspect -> plan -> implement -> verify loop", prompt);
 		Assert.DoesNotContain("autonomous CI coding job", prompt);
 		Assert.Contains("Do not mention or attribute the work to any provider, model, or CLI tool.", prompt);
+	}
+
+	[Fact]
+	public void BuildPlanningSystemPromptRules_KeepsOnlyWhatHelpsAReadOnlyPlanner()
+	{
+		var rules = PromptBuilder.BuildPlanningSystemPromptRules(new Project
+		{
+			Name = "Test Project",
+			WorkingPath = "/tmp/test",
+			BuildCommand = "dotnet build",
+			RepoMap = "src/App.cs",
+			Environments = []
+		}, "/tmp/test/.vibeswarm/project-memory.md");
+
+		Assert.NotNull(rules);
+		Assert.Contains("read-only planning step", rules);
+		Assert.Contains("state assumptions in the plan instead of asking", rules);
+		Assert.Contains("Read /tmp/test/.vibeswarm/project-memory.md first.", rules);
+		Assert.Contains("PROJECT STRUCTURE:", rules);
+		Assert.Contains("src/App.cs", rules);
+		Assert.DoesNotContain("BUILD VERIFICATION", rules);
+		Assert.DoesNotContain("dotnet build", rules);
+		Assert.DoesNotContain("The deliverable is a code change.", rules);
+		Assert.DoesNotContain("<commit-summary>", rules);
+	}
+
+	[Fact]
+	public void JoinRuleSections_SkipsEmptySections()
+	{
+		Assert.Null(PromptBuilder.JoinRuleSections(null, " ", ""));
+		Assert.Equal(
+			$"ROLE{Environment.NewLine}{Environment.NewLine}RULES",
+			PromptBuilder.JoinRuleSections("ROLE\n", null, "RULES"));
+	}
+
+	[Fact]
+	public void BuildStructuredPrompt_LeavesScopeRulesToTheSystemPrompt()
+	{
+		var project = new Project
+		{
+			Name = "Prompt Project",
+			WorkingPath = "/tmp/test",
+			Environments = []
+		};
+
+		var withBranch = PromptBuilder.BuildStructuredPrompt(new Job { GoalPrompt = "Fix it", Branch = "develop", Project = project });
+		var withoutConstraints = PromptBuilder.BuildStructuredPrompt(new Job { GoalPrompt = "Fix it", Project = project });
+
+		Assert.Contains("Working branch: develop", withBranch);
+		Assert.DoesNotContain("Only modify files directly related to the task.", withBranch);
+		Assert.DoesNotContain("Do not refactor unrelated code.", withBranch);
+		Assert.DoesNotContain("<constraints>", withoutConstraints);
 	}
 }
