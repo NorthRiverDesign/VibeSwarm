@@ -112,6 +112,7 @@ public void BrowseGitHubRepositories_SelectingRepositoryPopulatesCloneInput()
 
 	cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
 	cut.Find("#modal-githubRepoBrowse").Click();
+	Assert.Empty(cut.FindAll("#githubRepositoryBrowserHideExisting"));
 	cut.FindAll("button")
 		.Single(button => button.TextContent.Contains("octocat/hello-world", StringComparison.Ordinal))
 		.Click();
@@ -142,6 +143,76 @@ public void BrowseGitHubRepositories_NullRepositoryListShowsEmptyState()
 	cut.Find("#modal-githubRepoBrowse").Click();
 
 	Assert.Contains("No repositories matched the current filter.", cut.Markup);
+}
+
+[Fact]
+public void BrowseGitHubRepositories_HidesRepositoriesAlreadyAddedUntilSwitchedOff()
+{
+	using var context = CreateBunitContext(new FakeProjectService
+	{
+		AllProjects =
+		[
+			new Project { Id = Guid.NewGuid(), Name = "Hello", WorkingPath = "/repos/hello", GitHubRepository = "Octocat/Hello-World.git" }
+		],
+		RepositoryBrowserResult = new GitHubRepositoryBrowserResult
+		{
+			IsGitHubCliAvailable = true,
+			IsAuthenticated = true,
+			Repositories =
+			[
+				new GitHubRepositoryBrowserItem { NameWithOwner = "octocat/hello-world" },
+				new GitHubRepositoryBrowserItem { NameWithOwner = "octocat/spoon-knife" }
+			]
+		}
+	});
+
+	var cut = context.Render<ProjectModal>(parameters => parameters
+		.Add(component => component.IsVisible, true));
+
+	cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
+	cut.Find("#modal-githubRepoBrowse").Click();
+
+	Assert.True(cut.Find("#githubRepositoryBrowserHideExisting").HasAttribute("checked"));
+	Assert.Contains("Hide the 1 already in VibeSwarm", cut.Markup);
+	Assert.Contains("spoon-knife", cut.Markup);
+	Assert.DoesNotContain("hello-world", cut.Markup);
+
+	cut.Find("#githubRepositoryBrowserHideExisting").Change(false);
+
+	Assert.Contains("hello-world", cut.Markup);
+	Assert.Contains("Added as Hello", cut.Markup);
+}
+
+[Fact]
+public void BrowseGitHubRepositories_AllAlreadyAddedOffersToShowThem()
+{
+	using var context = CreateBunitContext(new FakeProjectService
+	{
+		AllProjects =
+		[
+			new Project { Id = Guid.NewGuid(), Name = "Hello", WorkingPath = "/repos/hello", GitHubRepository = "octocat/hello-world" }
+		],
+		RepositoryBrowserResult = new GitHubRepositoryBrowserResult
+		{
+			IsGitHubCliAvailable = true,
+			IsAuthenticated = true,
+			Repositories = [new GitHubRepositoryBrowserItem { NameWithOwner = "octocat/hello-world" }]
+		}
+	});
+
+	var cut = context.Render<ProjectModal>(parameters => parameters
+		.Add(component => component.IsVisible, true));
+
+	cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
+	cut.Find("#modal-githubRepoBrowse").Click();
+
+	Assert.Contains("Every repository here is already in VibeSwarm.", cut.Markup);
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Show them", StringComparison.Ordinal))
+		.Click();
+
+	Assert.Contains("hello-world", cut.Markup);
+	Assert.False(cut.Find("#githubRepositoryBrowserHideExisting").HasAttribute("checked"));
 }
 
 [Fact]

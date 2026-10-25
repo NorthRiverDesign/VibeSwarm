@@ -16,7 +16,7 @@
 				{
 					<select id="githubRepositoryBrowserOwner" class="form-control flex-shrink-0" @bind="_selectedOwner"
 							aria-label="Filter by organization">
-						<option value="">All organizations (@_repositories.Count)</option>
+						<option value="">All organizations (@AvailableRepositories.Count)</option>
 						@foreach (var owner in OwnerCounts)
 						{
 							<option value="@owner.Name">
@@ -39,6 +39,16 @@
 				</div>
 			</div>
 
+			@if (!_isLoading && ExistingCount > 0)
+			{
+				<div class="form-field mb-0">
+					<div class="switch">
+						<input type="checkbox" role="switch" switch id="githubRepositoryBrowserHideExisting" @bind="_hideExisting" />
+					</div>
+					<label for="githubRepositoryBrowserHideExisting">Hide the @ExistingCount already in VibeSwarm</label>
+				</div>
+			}
+
 			@if (_isLoading)
 			{
 				<div class="py-7">
@@ -55,12 +65,22 @@
 			{
 				<Alert Type="Alert.AlertType.Info" Class="mb-0">
 					<div class="d-flex flex-column align-items-start gap-3">
-						<span>No repositories matched the current filter.</span>
-						@if (HasActiveFilter)
+						@if (_repositories.Count > 0 && AvailableRepositories.Count == 0)
 						{
-							<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="ClearFilters">
-								<i class="bi bi-x-circle"></i>Clear filters
+							<span>Every repository here is already in VibeSwarm.</span>
+							<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="ShowExisting">
+								<i class="bi bi-eye"></i>Show them
 							</button>
+						}
+						else
+						{
+							<span>No repositories matched the current filter.</span>
+							@if (HasActiveFilter)
+							{
+								<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="ClearFilters">
+									<i class="bi bi-x-circle"></i>Clear filters
+								</button>
+							}
 						}
 					</div>
 				</Alert>
@@ -77,6 +97,7 @@
 					@foreach (var repository in FilteredRepositories)
 					{
 						var isSelected = string.Equals(_selectedRepository, repository.NameWithOwner, StringComparison.OrdinalIgnoreCase);
+						var existingProjectName = ExistingProjectNameOf(repository);
 
 						<button type="button"
 								class="list-group-item list-group-item-action flex-shrink-0 text-start d-flex align-items-center gap-3 @(isSelected ? "active" : string.Empty)"
@@ -84,6 +105,10 @@
 							<span class="d-flex flex-column min-w-0 flex-grow-1">
 								<span class="text-truncate"><span class="@(isSelected ? "opacity-75" : "fg-1")">@OwnerOf(repository)/</span><span class="fw-semibold">@NameOf(repository)</span></span>
 								<span class="small text-truncate @(isSelected ? "opacity-75" : "fg-1")">
+									@if (existingProjectName is not null)
+									{
+										<i class="bi bi-check2-circle me-1"></i><span class="me-3">Added as @existingProjectName</span>
+									}
 									@if (repository.IsPrivate)
 									{
 										<i class="bi bi-lock-fill me-1"></i><span class="me-3">Private</span>
@@ -126,6 +151,11 @@
 	[Parameter]
 	public string? SelectedRepository { get; set; }
 
+	/// <summary>Repositories (<c>owner/repo</c>) already added to VibeSwarm, mapped to their project's name.</summary>
+	[Parameter]
+	public IReadOnlyDictionary<string, string> ExistingRepositories { get; set; } =
+		new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
 	[Parameter]
 	public EventCallback<string> OnRepositorySelected { get; set; }
 
@@ -136,10 +166,19 @@
 	private string _selectedOwner = string.Empty;
 	private string? _authenticatedUser;
 	private string? _selectedRepository;
+	private bool _hideExisting = true;
 	private List<GitHubRepositoryBrowserItem> _repositories = [];
 
+	/// <summary>The loaded repositories, less those already in VibeSwarm while they are hidden.</summary>
+	private List<GitHubRepositoryBrowserItem> AvailableRepositories =>
+		_hideExisting
+			? _repositories.Where(repository => ExistingProjectNameOf(repository) is null).ToList()
+			: _repositories;
+
+	private int ExistingCount => _repositories.Count(repository => ExistingProjectNameOf(repository) is not null);
+
 	private List<GitHubRepositoryBrowserItem> FilteredRepositories =>
-		_repositories
+		AvailableRepositories
 			.Where(repository =>
 				string.IsNullOrWhiteSpace(_selectedOwner) ||
 				string.Equals(OwnerOf(repository), _selectedOwner, StringComparison.OrdinalIgnoreCase))
@@ -151,7 +190,7 @@
 
 	/// <summary>Owners that actually have repositories, own account first, with their counts.</summary>
 	private List<OwnerFilter> OwnerCounts =>
-		_repositories
+		AvailableRepositories
 			.GroupBy(repository => OwnerOf(repository), StringComparer.OrdinalIgnoreCase)
 			.Where(group => !string.IsNullOrWhiteSpace(group.Key))
 			.Select(group => new OwnerFilter(group.Key, group.Count()))
@@ -161,6 +200,9 @@
 
 	private bool HasActiveFilter =>
 		!string.IsNullOrWhiteSpace(_selectedOwner) || !string.IsNullOrWhiteSpace(_searchText);
+
+	private string? ExistingProjectNameOf(GitHubRepositoryBrowserItem repository) =>
+		ExistingRepositories.TryGetValue(repository.NameWithOwner ?? string.Empty, out var projectName) ? projectName : null;
 
 	private static string OwnerOf(GitHubRepositoryBrowserItem repository)
 	{
@@ -185,6 +227,7 @@
 			_wasVisible = true;
 			_searchText = string.Empty;
 			_selectedOwner = string.Empty;
+			_hideExisting = true;
 			_selectedRepository = SelectedRepository;
 			await LoadRepositoriesAsync();
 		}
@@ -240,6 +283,11 @@
 	{
 		_searchText = string.Empty;
 		_selectedOwner = string.Empty;
+	}
+
+	private void ShowExisting()
+	{
+		_hideExisting = false;
 	}
 
 	private void SelectRepository(GitHubRepositoryBrowserItem repository)

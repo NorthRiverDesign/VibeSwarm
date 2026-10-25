@@ -162,6 +162,7 @@ OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
 <GitHubRepositoryBrowserModal IsVisible="@_showGitHubRepositoryBrowser"
 IsVisibleChanged="HandleGitHubRepositoryBrowserVisibilityChanged"
 SelectedRepository="@FormModel.GetNormalizedGitHubRepository()"
+ExistingRepositories="@_existingGitHubRepositories"
 OnRepositorySelected="HandleGitHubRepositorySelected" />
 }
 
@@ -203,6 +204,7 @@ private List<InferenceModel> _commitSummaryInferenceModels = [];
 private readonly Dictionary<Guid, List<ProviderModel>> _providerModelsByProviderId = [];
 private readonly ProjectModalState _formState = new();
 private Dictionary<string, string> _existingProjectPaths = new(StringComparer.OrdinalIgnoreCase);
+private Dictionary<string, string> _existingGitHubRepositories = new(StringComparer.OrdinalIgnoreCase);
 private string? _detectedStack;
 private bool _openRepositoryOptions;
 private bool _openAutomation;
@@ -1072,12 +1074,24 @@ UpdatedAt = environment.UpdatedAt
 				.Where(project => !string.IsNullOrWhiteSpace(project.WorkingPath) && project.Id != FormModel.Id)
 				.GroupBy(project => project.WorkingPath.TrimEnd('/', '\\'), StringComparer.OrdinalIgnoreCase)
 				.ToDictionary(group => group.Key, group => group.First().Name, StringComparer.OrdinalIgnoreCase);
+			_existingGitHubRepositories = projects
+				.Where(project => !string.IsNullOrWhiteSpace(project.GitHubRepository) && project.Id != FormModel.Id)
+				.GroupBy(project => NormalizeExistingGitHubRepository(project.GitHubRepository!), StringComparer.OrdinalIgnoreCase)
+				.ToDictionary(group => group.Key, group => group.First().Name, StringComparer.OrdinalIgnoreCase);
 		}
 		catch
 		{
 			_allProjects = [];
 			_existingProjectPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+			_existingGitHubRepositories = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 		}
+	}
+
+	/// <summary>Saved repositories are <c>owner/repo</c>; tolerate a stray <c>.git</c> or slash.</summary>
+	private static string NormalizeExistingGitHubRepository(string repository)
+	{
+		var normalized = repository.Trim().Trim('/');
+		return normalized.EndsWith(".git", StringComparison.OrdinalIgnoreCase) ? normalized[..^4] : normalized;
 	}
 
 	private async Task LoadFoldersAsync()
