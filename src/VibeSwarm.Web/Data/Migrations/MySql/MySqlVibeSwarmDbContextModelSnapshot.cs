@@ -971,7 +971,7 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
                     b.Property<string>("GoalPrompt")
                         .IsRequired()
-                        .HasMaxLength(2000)
+                        .HasMaxLength(20000)
                         .HasColumnType("longtext");
 
                     b.Property<string>("InteractionChoices")
@@ -1523,7 +1523,7 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
                     b.Property<string>("GoalPrompt")
                         .IsRequired()
-                        .HasMaxLength(2000)
+                        .HasMaxLength(20000)
                         .HasColumnType("longtext");
 
                     b.Property<int>("MaxCycles")

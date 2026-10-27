@@ -962,7 +962,7 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<string>("GoalPrompt")
                         .IsRequired()
-                        .HasMaxLength(2000)
+                        .HasMaxLength(20000)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("InteractionChoices")
@@ -1514,7 +1514,7 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<string>("GoalPrompt")
                         .IsRequired()
-                        .HasMaxLength(2000)
+                        .HasMaxLength(20000)
                         .HasColumnType("TEXT");
 
                     b.Property<int>("MaxCycles")

@@ -66,7 +66,7 @@ public class Job
     public string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? GoalPrompt : Title;
 
     [Required]
-    [StringLength(2000, MinimumLength = 1)]
+    [StringLength(Validation.ValidationLimits.JobGoalPromptMaxLength, MinimumLength = 1)]
     public string GoalPrompt { get; set; } = string.Empty;
 
     /// <summary>

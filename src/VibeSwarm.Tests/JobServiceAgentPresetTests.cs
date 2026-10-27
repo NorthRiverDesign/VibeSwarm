@@ -6,6 +6,7 @@ using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Validation;
 using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Tests;
@@ -314,7 +315,7 @@ public sealed class JobServiceAgentPresetTests : IDisposable
 		{
 			Id = Guid.NewGuid(),
 			Name = "Implementation Agent",
-			Responsibilities = new string('a', 2001),
+			Responsibilities = new string('a', ValidationLimits.JobGoalPromptMaxLength + 1),
 			IsEnabled = true,
 			DefaultProviderId = provider.Id,
 			DefaultProvider = provider
@@ -348,7 +349,7 @@ public sealed class JobServiceAgentPresetTests : IDisposable
 			AgentId = agent.Id
 		}));
 
-		Assert.Contains("selected agent instructions exceed 2000 characters", exception.Message);
+		Assert.Contains($"selected agent instructions exceed {ValidationLimits.JobGoalPromptMaxLength} characters", exception.Message);
 	}
 
 	private VibeSwarmDbContext CreateDbContext()

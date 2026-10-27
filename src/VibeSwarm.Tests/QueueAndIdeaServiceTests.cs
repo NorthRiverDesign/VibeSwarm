@@ -1062,6 +1062,37 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ContinueJobAsync_KeepsAPreviousGoalLongerThanTwoThousandCharacters()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Long Goal Project", WorkingPath = "/tmp/long-goal-project" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true, IsDefault = true };
+		var previousGoal = "Build the feature. " + new string('a', 4980);
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = previousGoal,
+			Status = JobStatus.Completed,
+			CompletedAt = DateTime.UtcNow
+		};
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+
+		Assert.True(await jobService.ContinueJobAsync(job.Id, "Address the review comments."));
+
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Contains($"Previous goal: {previousGoal}\n", savedJob.GoalPrompt);
+		Assert.EndsWith("Follow-up instructions:\nAddress the review comments.", savedJob.GoalPrompt);
+		Assert.InRange(savedJob.GoalPrompt.Length, 1, ValidationLimits.JobGoalPromptMaxLength);
+	}
+
+	[Fact]
 	public async Task ContinueJobAsync_SavesChangeSetSnapshotBeforeReset()
 	{
 		await using var dbContext = CreateDbContext();

@@ -6,7 +6,7 @@ namespace VibeSwarm.Client.Models;
 
 public sealed class CreateJobFormModel : IValidatableObject
 {
-	[StringLength(ValidationLimits.JobTemplatePromptMaxLength, ErrorMessage = "Goal prompt must be 2000 characters or fewer.")]
+	[StringLength(ValidationLimits.JobGoalPromptMaxLength, ErrorMessage = "Goal prompt must be {1:N0} characters or fewer.")]
 	public string GoalPrompt { get; set; } = string.Empty;
 
 	[Required(ErrorMessage = "Please select a provider.")]

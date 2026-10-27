@@ -285,7 +285,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasKey(e => e.Id);
 			entity.Property(e => e.Name).IsRequired().HasMaxLength(ValidationLimits.JobTemplateNameMaxLength);
 			entity.Property(e => e.Description).HasMaxLength(ValidationLimits.JobTemplateDescriptionMaxLength);
-			entity.Property(e => e.GoalPrompt).IsRequired().HasMaxLength(ValidationLimits.JobTemplatePromptMaxLength);
+			entity.Property(e => e.GoalPrompt).IsRequired().HasMaxLength(ValidationLimits.JobGoalPromptMaxLength);
 			entity.Property(e => e.ModelId).HasMaxLength(ValidationLimits.JobTemplateModelIdMaxLength);
 			entity.Property(e => e.ReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.Branch).HasMaxLength(ValidationLimits.JobTemplateBranchMaxLength);
@@ -303,7 +303,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 		{
 			entity.HasKey(e => e.Id);
 			entity.Property(e => e.Title).HasMaxLength(200);
-			entity.Property(e => e.GoalPrompt).IsRequired().HasMaxLength(2000);
+			entity.Property(e => e.GoalPrompt).IsRequired().HasMaxLength(ValidationLimits.JobGoalPromptMaxLength);
 			entity.Property(e => e.AttachedFilesJson).HasMaxLength(4000);
 			entity.Property(e => e.ModelUsed).HasMaxLength(200);
 			entity.Property(e => e.ReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);

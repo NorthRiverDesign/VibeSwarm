@@ -46,12 +46,12 @@ else
 
 <div class="mb-5">
 <label for="goalPrompt" class="form-label">@GetGoalPromptLabel()</label>
-<InputTextArea id="goalPrompt" @bind-Value="FormModel.GoalPrompt" class="form-control textarea-autogrow" rows="3"
-placeholder="@GetGoalPromptPlaceholder()" />
-@if (!string.IsNullOrWhiteSpace(GetGoalPromptHelpText()))
-{
-<div class="form-text">@GetGoalPromptHelpText()</div>
-}
+<InputTextArea id="goalPrompt" @bind-Value="FormModel.GoalPrompt" @oninput="e => HandleGoalPromptInput(e, context)" class="form-control textarea-autogrow" rows="3"
+placeholder="@GetGoalPromptPlaceholder()" maxlength="@ValidationLimits.JobGoalPromptMaxLength" />
+<div class="form-text d-flex flex-wrap justify-content-between gap-3">
+<span>@GetGoalPromptHelpText()</span>
+<span id="goalPromptLength" class="@(IsGoalPromptOverLength ? "fg-danger" : null)">@GetGoalPromptLengthSummary()</span>
+</div>
 <ValidationMessage For="@(() => FormModel.GoalPrompt)" class="fg-danger small" />
 </div>
 
@@ -805,7 +805,22 @@ private string? GetGoalPromptHelpText()
 	var instructions = SelectedAgent.Agent?.Responsibilities?.Trim();
 	return string.IsNullOrWhiteSpace(instructions)
 		? "This agent does not have saved instructions, so enter a goal prompt for this job."
-		: $"This agent's instructions are longer than the {ValidationLimits.JobTemplatePromptMaxLength}-character goal prompt limit, so enter a shorter job prompt here.";
+		: $"This agent's instructions are longer than the {ValidationLimits.JobGoalPromptMaxLength:N0}-character goal prompt limit, so enter a shorter job prompt here.";
+}
+
+private bool IsGoalPromptOverLength => (FormModel.GoalPrompt?.Length ?? 0) > ValidationLimits.JobGoalPromptMaxLength;
+
+// InputTextArea commits on change; keep the model current while typing so the count follows,
+// and revalidate here because the change event then sees no new value.
+private void HandleGoalPromptInput(ChangeEventArgs e, EditContext editContext)
+{
+	FormModel.GoalPrompt = e.Value?.ToString() ?? string.Empty;
+	editContext.NotifyFieldChanged(FieldIdentifier.Create(() => FormModel.GoalPrompt));
+}
+
+private string GetGoalPromptLengthSummary()
+{
+	return $"{FormModel.GoalPrompt?.Length ?? 0:N0}/{ValidationLimits.JobGoalPromptMaxLength:N0} characters";
 }
 
 private bool CanUseAgentInstructionsAsGoalPrompt()
@@ -828,7 +843,7 @@ private string? GetSelectedAgentGoalPromptFallback()
 		return null;
 	}
 
-	return instructions.Length <= ValidationLimits.JobTemplatePromptMaxLength
+	return instructions.Length <= ValidationLimits.JobGoalPromptMaxLength
 		? instructions
 		: null;
 }
