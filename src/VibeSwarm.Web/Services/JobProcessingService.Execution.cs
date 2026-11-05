@@ -1225,6 +1225,12 @@ public partial class JobProcessingService
             // goes back to the agent in the same session, a bounded number of times.
             async Task<bool> ContinueWithReviewFeedbackAsync(ExecutionResult runResult, IJobService jobService)
             {
+                // Past the time limit there is no turn left for fixes.
+                if (executionContext.TimeLimit?.Reached == true)
+                {
+                    return false;
+                }
+
                 var feedback = await TryGetReviewFeedbackAsync(
                     job,
                     workingDirectory,

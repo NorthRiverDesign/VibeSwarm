@@ -105,7 +105,8 @@ public static partial class ReviewPrompts
 		}
 
 		var text = ThinkBlockRegex().Replace(reply, string.Empty);
-		var approvedAt = text.LastIndexOf(ApprovedMarker, StringComparison.OrdinalIgnoreCase);
+		var approvedMatches = ApprovedLineRegex().Matches(text);
+		var approvedAt = approvedMatches.Count == 0 ? -1 : approvedMatches[^1].Index;
 		var issuesAt = LastMarkerLine(text);
 		if (approvedAt < 0 && issuesAt < 0)
 		{
@@ -137,6 +138,10 @@ public static partial class ReviewPrompts
 
 	[GeneratedRegex(@"<think>.*?(</think>|$)", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
 	private static partial Regex ThinkBlockRegex();
+
+	// The marker on a line of its own, so "this would be REVIEW_APPROVED once fixed" doesn't count.
+	[GeneratedRegex(@"^[ \t>*#_`]*REVIEW_APPROVED[ \t*_`.]*$", RegexOptions.Multiline | RegexOptions.IgnoreCase)]
+	private static partial Regex ApprovedLineRegex();
 
 	[GeneratedRegex(@"^[ \t>*#_]*ISSUES:", RegexOptions.Multiline | RegexOptions.IgnoreCase)]
 	private static partial Regex IssuesLineRegex();

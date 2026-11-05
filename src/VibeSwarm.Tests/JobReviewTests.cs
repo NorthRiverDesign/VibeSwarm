@@ -150,6 +150,8 @@ public sealed class JobReviewTests : IDisposable
 	[InlineData("ISSUES:\n1. Missing test\n\nOn second look this is fine.\nREVIEW_APPROVED", true)]
 	[InlineData("REVIEW_APPROVED would be wrong here.\nISSUES:\n1. Broken parser", false)]
 	[InlineData("<think>REVIEW_APPROVED?</think>\nISSUES:\n1. Broken parser", false)]
+	[InlineData("ISSUES:\n1. Missing null check\n\nOnce fixed this would be REVIEW_APPROVED.", false)]
+	[InlineData("All good.\n**REVIEW_APPROVED**", true)]
 	public void ParseVerdict_ReadsTheLastMarker(string reply, bool approved)
 	{
 		var verdict = ReviewPrompts.ParseVerdict(reply);
