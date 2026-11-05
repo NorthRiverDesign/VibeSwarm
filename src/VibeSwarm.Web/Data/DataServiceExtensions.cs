@@ -75,6 +75,7 @@ public static class DataServiceExtensions
         services.AddScoped<IInferenceService, InferenceServiceDispatcher>();
         services.AddScoped<AgentQuestionAnswerer>();
         services.AddScoped<IFolderManagerService, FolderManagerService>();
+        services.AddScoped<IReadOnlyConsultService, ReadOnlyConsultService>();
         services.AddScoped<AgentDetectionService>();
 		services.AddScoped<PushNotificationService>();
 		services.AddScoped<IPushNotificationService>(sp => sp.GetRequiredService<PushNotificationService>());
