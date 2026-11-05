@@ -15,6 +15,9 @@ public sealed record ProjectContextOptions
 	public int MaxRecentJobs { get; init; } = 10;
 
 	public int MaxSectionLength { get; init; } = 6000;
+
+	/// <summary>Adds what each job's reviewer left unresolved or couldn't check.</summary>
+	public bool IncludeReviewNotes { get; init; }
 }
 
 /// <summary>
@@ -30,6 +33,7 @@ public sealed partial class ProjectContextBuilder
 	internal const int MaxTodoFileLength = 3000;
 	private const int MaxIdeaLength = 300;
 	private const int MaxJobLineLength = 400;
+	private const int MaxReviewNotesLength = 800;
 
 	internal static readonly string[] TodoFileNames = ["TODO.md", "todo.md", "TODO", "TODO.txt", "todo.txt"];
 
@@ -137,7 +141,7 @@ public sealed partial class ProjectContextBuilder
 			.Where(j => j.ProjectId == project.Id && FinishedStatuses.Contains(j.Status))
 			.OrderByDescending(j => j.CompletedAt ?? j.CreatedAt)
 			.Take(options.MaxRecentJobs)
-			.Select(j => new { j.Title, j.GoalPrompt, j.Status, j.CompletedAt, j.CreatedAt, j.SessionSummary, j.ErrorMessage, j.GitCommitHash })
+			.Select(j => new { j.Title, j.GoalPrompt, j.Status, j.CompletedAt, j.CreatedAt, j.SessionSummary, j.ErrorMessage, j.GitCommitHash, j.ReviewStatus, j.ReviewNotes })
 			.ToListAsync(cancellationToken);
 		builder.AppendLine();
 		if (recentJobs.Count == 0)
@@ -163,6 +167,10 @@ public sealed partial class ProjectContextBuilder
 					line += " | not committed";
 				}
 				builder.Append("- ").AppendLine(Truncate(line, MaxJobLineLength));
+				if (options.IncludeReviewNotes && job.ReviewStatus == JobReviewStatus.Unresolved && !string.IsNullOrWhiteSpace(job.ReviewNotes))
+				{
+					builder.Append("  Review findings left unresolved: ").AppendLine(Truncate(OneLine(job.ReviewNotes), MaxReviewNotesLength));
+				}
 			}
 		}
 

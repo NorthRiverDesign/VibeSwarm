@@ -96,3 +96,35 @@ internal sealed class ScriptedConsultService(Func<ConsultRequest, ConsultResult>
 		return Task.FromResult(respond(request));
 	}
 }
+
+/// <summary>A Lead service holding a fixed status, recording what the page asks of it.</summary>
+internal sealed class FakeLeadService(LeadStatus? status = null) : ILeadService
+{
+	public LeadStatus Status { get; } = status ?? new LeadStatus();
+	public List<Guid> Approved { get; } = [];
+	public List<Guid> Dismissed { get; } = [];
+	public int ReviewsStarted { get; private set; }
+
+	public Task<LeadStatus> GetStatusAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(Status);
+	public Task<IReadOnlyList<LeadReview>> GetReviewsAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<LeadReview>>([]);
+
+	public Task<LeadReview> StartReviewAsync(Guid projectId, CancellationToken cancellationToken = default)
+	{
+		ReviewsStarted++;
+		return Task.FromResult(new LeadReview { ProjectId = projectId });
+	}
+
+	public Task CancelReviewAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+	public Task<Idea?> ApproveSuggestionAsync(Guid ideaId, CancellationToken cancellationToken = default)
+	{
+		Approved.Add(ideaId);
+		return Task.FromResult<Idea?>(new Idea { Id = ideaId });
+	}
+
+	public Task DismissSuggestionAsync(Guid ideaId, CancellationToken cancellationToken = default)
+	{
+		Dismissed.Add(ideaId);
+		return Task.CompletedTask;
+	}
+}

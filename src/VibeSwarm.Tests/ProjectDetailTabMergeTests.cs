@@ -195,6 +195,7 @@ public sealed class ProjectDetailTabMergeTests
 		context.Services.AddSingleton<IInferenceService>(new FakeInferenceService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<IAutoPilotService>(new FakeAutoPilotService());
+		context.Services.AddSingleton<ILeadService>(new FakeLeadService());
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<NotificationService>();
 		context.Services.AddSingleton<QueuePanelStateService>();

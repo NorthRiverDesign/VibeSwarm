@@ -31,6 +31,7 @@
 					<i class="bi bi-lightbulb fg-primary flex-shrink-0"></i>
 					<label for="ap-idea-source" class="flex-grow-1 min-w-0 fw-medium">Ideas</label>
 					<select id="ap-idea-source" class="form-control w-auto min-w-0" value="@IdeaSource" @onchange="OnIdeaSourceChanged">
+						<option value="@ApprovedSource">Only ones I approve</option>
 						@if (AvailableInferenceProviders.Count > 0)
 						{
 							<option value="@AnyInferenceSource">Any inference provider</option>
@@ -256,6 +257,7 @@
 @code {
 	private const string AnyInferenceSource = "any";
 	private const string CodingAgentSource = "coding";
+	private const string ApprovedSource = "approved";
 
 	[Parameter, EditorRequired]
 	public Guid ProjectId { get; set; }
@@ -343,7 +345,8 @@
 	private void ApplyIdeaSource()
 	{
 		var source = IdeaSource;
-		_config.UseInferenceForIdeas = source != CodingAgentSource;
+		_config.IdeaSource = source == ApprovedSource ? AutoPilotIdeaSource.ApprovedBacklog : AutoPilotIdeaSource.OwnIdeas;
+		_config.UseInferenceForIdeas = source is not (CodingAgentSource or ApprovedSource);
 		_config.InferenceProviderId = Guid.TryParse(source, out var providerId) ? providerId : null;
 		if (!_config.InferenceProviderId.HasValue)
 			_config.InferenceModelId = null;

@@ -108,6 +108,13 @@ Badge="@LinksSummary" @bind-IsOpen="_openLinks">
 <ProjectLinksSection Project="@FormModel" Folders="@_folders" AllProjects="@_allProjects" />
 </AccordionSection>
 
+<AccordionSection Title="Lead" Icon="compass"
+Summary="Looks over the project and suggests what to build next"
+Badge="@(FormModel.LeadProviderId.HasValue ? "On" : null)"
+BadgeClass="theme-primary" @bind-IsOpen="_openLead">
+<ProjectLeadSection Project="@FormModel" AvailableProviders="@GetPlanningProviders().ToList()" />
+</AccordionSection>
+
 <AccordionSection Title="Review" Icon="eye"
 Summary="A second model checks each job before it is delivered"
 Badge="@(FormModel.ReviewEnabled ? "On" : null)"
@@ -221,6 +228,7 @@ private bool _openIdeas;
 private bool _openInstructions;
 private bool _openBuildVerification;
 private bool _openReview;
+private bool _openLead;
 private bool _openLinks;
 private List<ProjectFolder> _folders = [];
 private List<Project> _allProjects = [];
@@ -421,6 +429,7 @@ ResetState();
 		_openInstructions = false;
 		_openBuildVerification = false;
 		_openReview = false;
+		_openLead = false;
 		_openLinks = false;
 		_initialLinkedProjectIds = [];
 		_cloneProgressMessage = null;
@@ -963,6 +972,10 @@ ReviewProviderId = source.ReviewProviderId,
 ReviewInferenceProviderId = source.ReviewInferenceProviderId,
 ReviewModelId = source.ReviewModelId,
 ReviewReasoningEffort = source.ReviewReasoningEffort,
+LeadProviderId = source.LeadProviderId,
+LeadModelId = source.LeadModelId,
+LeadReasoningEffort = source.LeadReasoningEffort,
+LeadDirection = source.LeadDirection,
 PromptContext = source.PromptContext,
 Memory = source.Memory,
 BuildVerificationEnabled = source.BuildVerificationEnabled,

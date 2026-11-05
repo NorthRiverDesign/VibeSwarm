@@ -47,6 +47,15 @@ public enum IterationLoopStatus
 /// When running, the loop autonomously scans the codebase, generates improvement ideas,
 /// executes them as jobs, evaluates results, and repeats until a guardrail triggers.
 /// </summary>
+public enum AutoPilotIdeaSource
+{
+	/// <summary>Auto-pilot comes up with one idea of its own each iteration.</summary>
+	OwnIdeas = 0,
+
+	/// <summary>Auto-pilot runs only ideas the owner approved, and asks the Lead for more when they run out.</summary>
+	ApprovedBacklog = 1
+}
+
 public class IterationLoop
 {
 	public Guid Id { get; set; }
@@ -67,6 +76,18 @@ public class IterationLoop
 	/// When inference can't answer, the coding provider is asked instead.
 	/// </summary>
 	public bool UseInferenceForIdeas { get; set; }
+
+	/// <summary>
+	/// Where the loop's ideas come from: its own, one per iteration, or the project's approved
+	/// backlog (ideas the owner typed and Lead suggestions the owner approved).
+	/// </summary>
+	public AutoPilotIdeaSource IdeaSource { get; set; } = AutoPilotIdeaSource.OwnIdeas;
+
+	/// <summary>
+	/// When the loop last told the owner it was waiting for approved ideas; cleared once one arrives,
+	/// so the owner is told once rather than on every tick.
+	/// </summary>
+	public DateTime? ApprovalNudgeSentAt { get; set; }
 
 	/// <summary>
 	/// Inference provider (e.g., Grok, Ollama) used for idea generation. Setting it also means

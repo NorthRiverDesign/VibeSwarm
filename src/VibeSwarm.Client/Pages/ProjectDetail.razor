@@ -85,6 +85,7 @@ else
                 }
                 else
                 {
+                    <LeadSuggestions ProjectId="@ProjectId" OnIdeaApproved="RefreshIdeasPage" />
                     <IdeasPanel Ideas="@Ideas" TotalIdeasCount="@IdeasTotalCount" CurrentPage="@_ideasPageNumber"
                                 PageSize="@IdeasPageSize" IsPageLoading="@_isLoadingIdeasPage" UnprocessedIdeasCount="@IdeasUnprocessedCount"
                                 CurrentProjectId="@ProjectId" ProjectName="@Project?.Name" IsProcessingActive="@IsIdeasProcessingActive"

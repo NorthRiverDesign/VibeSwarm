@@ -14,6 +14,9 @@ public class AutoPilotConfig
 	/// </summary>
 	public bool UseInferenceForIdeas { get; set; }
 
+	/// <summary>Whether the loop comes up with its own ideas or runs only the ones the owner approved.</summary>
+	public AutoPilotIdeaSource IdeaSource { get; set; }
+
 	/// <summary>
 	/// Inference provider for idea generation (e.g., Grok, Ollama). Setting it also means ideas
 	/// come from inference. Null = any inference provider, or the coding provider when

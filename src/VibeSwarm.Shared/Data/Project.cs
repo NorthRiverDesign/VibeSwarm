@@ -117,6 +117,22 @@ public class Project
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? ReviewReasoningEffort { get; set; }
 
+	/// <summary>The coding provider (Claude or Copilot, run read-only) that acts as the project's Lead.</summary>
+	public Guid? LeadProviderId { get; set; }
+
+	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
+	public string? LeadModelId { get; set; }
+
+	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
+	public string? LeadReasoningEffort { get; set; }
+
+	/// <summary>
+	/// Where the owner wants the project to go: priorities, what matters most, what is off limits.
+	/// The Lead steers its suggestions by it.
+	/// </summary>
+	[StringLength(LeadReviewLimits.DirectionMaxLength)]
+	public string? LeadDirection { get; set; }
+
 	/// <summary>
 	/// Default inference provider for idea generation (e.g., Grok, Ollama).
 	/// Used as the default in Auto-Pilot and suggestion workflows.

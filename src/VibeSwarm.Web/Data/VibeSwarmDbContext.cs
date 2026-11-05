@@ -36,6 +36,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<ProjectFolder> ProjectFolders { get; set; }
 	public DbSet<ProjectLink> ProjectLinks { get; set; }
 	public DbSet<FolderManagerReport> FolderManagerReports { get; set; }
+	public DbSet<LeadReview> LeadReviews { get; set; }
 	public DbSet<JobSchedule> JobSchedules { get; set; }
 	public DbSet<JobTemplate> JobTemplates { get; set; }
 	public DbSet<Job> Jobs { get; set; }
@@ -145,6 +146,9 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.PlanningReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.ReviewModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
 			entity.Property(e => e.ReviewReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
+			entity.Property(e => e.LeadModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
+			entity.Property(e => e.LeadReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
+			entity.Property(e => e.LeadDirection).HasMaxLength(LeadReviewLimits.DirectionMaxLength);
 			entity.Property(e => e.IdeaInferenceModelId).HasMaxLength(200);
 			entity.Property(e => e.CommitSummaryInferenceModelId).HasMaxLength(200);
 			entity.Property(e => e.PromptContext).HasMaxLength(ValidationLimits.ProjectPromptContextMaxLength);
@@ -163,6 +167,22 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasKey(e => e.Id);
 			entity.Property(e => e.Name).IsRequired().HasMaxLength(ValidationLimits.ProjectFolderNameMaxLength);
 			entity.HasIndex(e => e.Name).IsUnique();
+		});
+
+		modelBuilder.Entity<LeadReview>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+			entity.Property(e => e.Trigger).HasMaxLength(50);
+			entity.Property(e => e.ProviderName).HasMaxLength(200);
+			entity.Property(e => e.ModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
+			entity.Property(e => e.Content).HasMaxLength(LeadReviewLimits.ContentMaxLength);
+			entity.Property(e => e.Error).HasMaxLength(2000);
+			entity.HasIndex(e => new { e.ProjectId, e.CreatedAt });
+			entity.HasOne(e => e.Project)
+				.WithMany()
+				.HasForeignKey(e => e.ProjectId)
+				.OnDelete(DeleteBehavior.Cascade);
 		});
 
 		modelBuilder.Entity<FolderManagerReport>(entity =>
@@ -483,6 +503,10 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.ExpandedDescription).HasMaxLength(ValidationLimits.IdeaExpandedDescriptionMaxLength);
 			entity.Property(e => e.ExpansionStatus).HasConversion<string>();
 			entity.Property(e => e.ExpansionError).HasMaxLength(ValidationLimits.IdeaExpansionErrorMaxLength);
+			// Suggestions waiting for approval, and dismissed ones, stay out of every ordinary idea
+			// query: the list, the queue, auto-pilot and counts. The Lead reads them with IgnoreQueryFilters.
+			entity.HasQueryFilter(e => !e.NeedsApproval && e.DismissedAt == null);
+			entity.HasIndex(e => new { e.ProjectId, e.NeedsApproval });
 			entity.HasOne(e => e.Project)
 	.WithMany(p => p.Ideas)
 	.HasForeignKey(e => e.ProjectId)

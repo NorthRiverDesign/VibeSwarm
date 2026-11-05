@@ -59,6 +59,17 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? ReviewReasoningEffort { get; set; }
 
+	public Guid? LeadProviderId { get; set; }
+
+	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
+	public string? LeadModelId { get; set; }
+
+	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
+	public string? LeadReasoningEffort { get; set; }
+
+	[StringLength(LeadReviewLimits.DirectionMaxLength)]
+	public string? LeadDirection { get; set; }
+
 	public Guid? IdeaInferenceProviderId { get; set; }
 
 	[StringLength(200)]
@@ -151,6 +162,10 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			ReviewInferenceProviderId = source.ReviewInferenceProviderId,
 			ReviewModelId = source.ReviewModelId,
 			ReviewReasoningEffort = source.ReviewReasoningEffort,
+			LeadProviderId = source.LeadProviderId,
+			LeadModelId = source.LeadModelId,
+			LeadReasoningEffort = source.LeadReasoningEffort,
+			LeadDirection = source.LeadDirection,
 			IdeaInferenceProviderId = source.IdeaInferenceProviderId,
 			IdeaInferenceModelId = source.IdeaInferenceModelId,
 			CommitSummaryInferenceProviderId = source.CommitSummaryInferenceProviderId,
@@ -196,6 +211,10 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			ReviewInferenceProviderId = ReviewProviderId.HasValue ? null : ReviewInferenceProviderId,
 			ReviewModelId = string.IsNullOrWhiteSpace(ReviewModelId) ? null : ReviewModelId.Trim(),
 			ReviewReasoningEffort = ReviewProviderId.HasValue ? ProviderCapabilities.NormalizeReasoningEffort(ReviewReasoningEffort) : null,
+			LeadProviderId = LeadProviderId,
+			LeadModelId = string.IsNullOrWhiteSpace(LeadModelId) ? null : LeadModelId.Trim(),
+			LeadReasoningEffort = LeadProviderId.HasValue ? ProviderCapabilities.NormalizeReasoningEffort(LeadReasoningEffort) : null,
+			LeadDirection = string.IsNullOrWhiteSpace(LeadDirection) ? null : LeadDirection.Trim(),
 			IdeaInferenceProviderId = IdeaInferenceProviderId,
 			IdeaInferenceModelId = string.IsNullOrWhiteSpace(IdeaInferenceModelId) ? null : IdeaInferenceModelId.Trim(),
 			CommitSummaryInferenceProviderId = CommitSummaryInferenceProviderId,

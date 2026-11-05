@@ -43,6 +43,7 @@ public class AutoPilotService : IAutoPilotService
 	private readonly IProviderUsageService _usageService;
 	private readonly IJobUpdateService _jobUpdateService;
 	private readonly ILogger<AutoPilotService> _logger;
+	private readonly ILeadAutomation? _lead;
 
 	/// <summary>
 	/// Per-loop lock to prevent overlapping tick processing when ticks take longer than the poll interval.
@@ -77,7 +78,8 @@ public class AutoPilotService : IAutoPilotService
 		IJobService jobService,
 		IProviderUsageService usageService,
 		IJobUpdateService jobUpdateService,
-		ILogger<AutoPilotService> logger)
+		ILogger<AutoPilotService> logger,
+		ILeadAutomation? lead = null)
 	{
 		_dbContext = dbContext;
 		_ideaService = ideaService;
@@ -85,6 +87,7 @@ public class AutoPilotService : IAutoPilotService
 		_usageService = usageService;
 		_jobUpdateService = jobUpdateService;
 		_logger = logger;
+		_lead = lead;
 	}
 
 	#region Public API (called by controller)
@@ -353,15 +356,31 @@ public class AutoPilotService : IAutoPilotService
 				return;
 			}
 
-			// 9. GENERATE IDEA
-			var ideaResult = await GenerateIdeaAsync(loop, codingProvider.Value, cancellationToken);
+			// 9. GENERATE IDEA, or take the next one the owner approved
+			var fromBacklog = loop.IdeaSource == AutoPilotIdeaSource.ApprovedBacklog;
+			IdeaResult ideaResult;
+			if (fromBacklog)
+			{
+				var approved = await TakeApprovedIdeaAsync(loop, cancellationToken);
+				if (approved == null)
+				{
+					await WaitForApprovedIdeasAsync(loop, cancellationToken);
+					return;
+				}
+
+				ideaResult = new IdeaResult(approved, string.Empty);
+			}
+			else
+			{
+				ideaResult = await GenerateIdeaAsync(loop, codingProvider.Value, cancellationToken);
+			}
 
 			// Asking for an idea can take minutes. A loop paused or stopped meanwhile must not
 			// start a job: the stop would otherwise leave that job running on its own.
 			if (await GetStoredStatusAsync(loop.Id, cancellationToken) != IterationLoopStatus.Running)
 			{
 				if (ideaResult.Idea != null)
-					await RemoveLeftoverIdeaAsync(ideaResult.Idea.Id, null, cancellationToken);
+					await ReleaseIdeaAsync(ideaResult.Idea.Id, fromBacklog, cancellationToken);
 				return;
 			}
 
@@ -385,7 +404,7 @@ public class AutoPilotService : IAutoPilotService
 			if (job == null)
 			{
 				_logger.LogWarning("Auto-pilot could not convert idea {IdeaId} to job", ideaResult.Idea.Id);
-				await RemoveLeftoverIdeaAsync(ideaResult.Idea.Id, null, cancellationToken);
+				await ReleaseIdeaAsync(ideaResult.Idea.Id, fromBacklog, cancellationToken);
 				loop.ConsecutiveFailures++;
 				loop.NextIterationAt = DateTime.UtcNow.AddSeconds(loop.CooldownSeconds);
 				await _dbContext.SaveChangesAsync(cancellationToken);
@@ -424,6 +443,8 @@ public class AutoPilotService : IAutoPilotService
 		loop.CooldownSeconds = Math.Clamp(config.CooldownSeconds, AutoPilotConfig.MinCooldownSeconds, AutoPilotConfig.MaxCooldownSeconds);
 		loop.PolishEveryIterations = Math.Clamp(config.PolishEveryIterations, 0, AutoPilotConfig.MaxPolishEveryIterations);
 		loop.AutoPush = config.AutoPush;
+		loop.IdeaSource = config.IdeaSource;
+		loop.ApprovalNudgeSentAt = null;
 	}
 
 	/// <summary>
@@ -599,9 +620,15 @@ public class AutoPilotService : IAutoPilotService
 			}
 
 			// The failed idea went back to the project's backlog. Auto-pilot already knows
-			// it tried it, and leaving it there would let the ideas queue run it again.
+			// it tried it, and leaving it there would let the ideas queue run it again. An
+			// idea the owner approved stays, after the others, unless it turned out to be done.
 			if (ideaId.HasValue)
-				await RemoveLeftoverIdeaAsync(ideaId.Value, jobId, cancellationToken);
+			{
+				if (loop.IdeaSource == AutoPilotIdeaSource.ApprovedBacklog && !changedNothing)
+					await MoveIdeaToEndAsync(ideaId.Value, cancellationToken);
+				else
+					await RemoveLeftoverIdeaAsync(ideaId.Value, jobId, cancellationToken);
+			}
 
 			// A CLI that can't start, or has no credentials, fails every later job the same way
 			// within seconds. Stop now and say why, rather than spend the failure limit on it.
@@ -948,6 +975,137 @@ public class AutoPilotService : IAutoPilotService
 	}
 
 	/// <summary>Deletes an auto-pilot idea that is still in the backlog after its job failed.</summary>
+	/// <summary>How often a loop waiting for approved ideas looks again.</summary>
+	internal static readonly TimeSpan ApprovedIdeasRecheckDelay = TimeSpan.FromMinutes(5);
+
+	/// <summary>
+	/// The next idea the owner approved (typed, or a Lead suggestion they approved), first in
+	/// queue order. Suggestions still waiting for approval never come out of this query.
+	/// </summary>
+	private async Task<Idea?> TakeApprovedIdeaAsync(IterationLoop loop, CancellationToken cancellationToken)
+	{
+		// The ideas queue runs the same ideas; with both on, they would race for them.
+		var queueRunning = await _dbContext.Projects.AsNoTracking()
+			.AnyAsync(p => p.Id == loop.ProjectId && p.IdeasProcessingActive, cancellationToken);
+		if (queueRunning)
+			return null;
+
+		var idea = await _dbContext.Ideas
+			.AsNoTracking()
+			.Where(i => i.ProjectId == loop.ProjectId && !i.IsProcessing && i.JobId == null)
+			.OrderBy(i => i.SortOrder)
+			.ThenBy(i => i.CreatedAt)
+			.FirstOrDefaultAsync(cancellationToken);
+		if (idea != null && loop.ApprovalNudgeSentAt != null)
+		{
+			loop.ApprovalNudgeSentAt = null;
+			await _dbContext.SaveChangesAsync(cancellationToken);
+		}
+
+		return idea;
+	}
+
+	/// <summary>
+	/// Nothing approved is left. Asks the Lead for more when nobody has since the last
+	/// iteration, tells the owner once, and looks again in a few minutes. This is waiting,
+	/// not failing: no miss or failure is counted.
+	/// </summary>
+	private async Task WaitForApprovedIdeasAsync(IterationLoop loop, CancellationToken cancellationToken)
+	{
+		var project = await _dbContext.Projects.AsNoTracking().FirstAsync(p => p.Id == loop.ProjectId, cancellationToken);
+		var waiting = await _dbContext.Ideas.IgnoreQueryFilters()
+			.CountAsync(i => i.ProjectId == loop.ProjectId && i.NeedsApproval && i.DismissedAt == null, cancellationToken);
+
+		string message;
+		var leadStarted = false;
+		if (project.IdeasProcessingActive)
+		{
+			message = "The ideas queue is running the approved ideas; auto-pilot waits for it";
+		}
+		else if (waiting > 0)
+		{
+			message = $"Waiting for you to approve {waiting} suggested idea{(waiting == 1 ? "" : "s")}";
+		}
+		else if (project.LeadProviderId.HasValue && _lead != null)
+		{
+			var since = loop.LastIterationAt ?? loop.StartedAt ?? DateTime.MinValue;
+			var lastReview = await _dbContext.LeadReviews.AsNoTracking()
+				.Where(r => r.ProjectId == loop.ProjectId)
+				.OrderByDescending(r => r.CreatedAt)
+				.FirstOrDefaultAsync(cancellationToken);
+			if (lastReview?.Status == LeadReviewStatus.Running)
+			{
+				message = "The Lead is looking for what to build next";
+				leadStarted = true;
+			}
+			else if (lastReview == null || lastReview.CreatedAt < since)
+			{
+				leadStarted = await _lead.TryStartReviewForAutoPilotAsync(loop.ProjectId, cancellationToken);
+				message = leadStarted
+					? "Out of approved ideas; the Lead is looking for what to build next"
+					: "Out of approved ideas, and the Lead couldn't start";
+			}
+			else
+			{
+				message = "The Lead found nothing new to build. Add ideas, or give it a direction";
+			}
+		}
+		else
+		{
+			message = "Out of approved ideas. Add some, or choose a Lead in the project's settings";
+		}
+
+		loop.StatusMessage = Truncate(message, StatusMessageMaxLength);
+		loop.NextIterationAt = DateTime.UtcNow.Add(ApprovedIdeasRecheckDelay);
+
+		// The Lead sends its own notice when it has suggestions; otherwise tell the owner once.
+		var nudge = !leadStarted && !project.IdeasProcessingActive && loop.ApprovalNudgeSentAt == null;
+		if (nudge)
+			loop.ApprovalNudgeSentAt = DateTime.UtcNow;
+
+		await _dbContext.SaveChangesAsync(cancellationToken);
+		await NotifyStateChanged(loop);
+
+		if (nudge && _lead != null)
+			await _lead.NudgeOwnerAsync(project, "Auto-pilot is waiting for you", message + ".", cancellationToken);
+	}
+
+	/// <summary>Puts an idea back for later: an approved one stays the owner's, auto-pilot's own goes.</summary>
+	private async Task ReleaseIdeaAsync(Guid ideaId, bool approved, CancellationToken cancellationToken)
+	{
+		if (!approved)
+		{
+			await RemoveLeftoverIdeaAsync(ideaId, null, cancellationToken);
+			return;
+		}
+
+		await _dbContext.Ideas
+			.Where(i => i.Id == ideaId && i.JobId == null)
+			.ExecuteUpdateAsync(setters => setters.SetProperty(i => i.IsProcessing, false), cancellationToken);
+	}
+
+	/// <summary>An approved idea whose job failed goes after the others, so one bad idea can't block the rest.</summary>
+	private async Task MoveIdeaToEndAsync(Guid ideaId, CancellationToken cancellationToken)
+	{
+		try
+		{
+			var idea = await _dbContext.Ideas.FirstOrDefaultAsync(i => i.Id == ideaId, cancellationToken);
+			if (idea == null)
+				return;
+
+			var last = await _dbContext.Ideas
+				.Where(i => i.ProjectId == idea.ProjectId && i.Id != ideaId)
+				.Select(i => (int?)i.SortOrder)
+				.MaxAsync(cancellationToken);
+			idea.SortOrder = (last ?? idea.SortOrder) + 1;
+			await _dbContext.SaveChangesAsync(cancellationToken);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Auto-pilot could not move idea {IdeaId} to the end of the queue", ideaId);
+		}
+	}
+
 	private async Task RemoveLeftoverIdeaAsync(Guid ideaId, Guid? failedJobId, CancellationToken cancellationToken)
 	{
 		try

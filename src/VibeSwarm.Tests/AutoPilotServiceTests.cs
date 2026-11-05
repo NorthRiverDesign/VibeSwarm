@@ -30,6 +30,93 @@ public sealed class AutoPilotServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task Backlog_TakesTheFirstApprovedIdea_AndNeverASuggestionWaitingForApproval()
+	{
+		using var harness = await CreateHarnessAsync();
+		var suggestion = new Idea { ProjectId = harness.Project.Id, Description = "Suggested", NeedsApproval = true, Source = IdeaSource.Lead, SortOrder = 0 };
+		var approved = new Idea { ProjectId = harness.Project.Id, Description = "Approved", SortOrder = 1 };
+		harness.Db.Ideas.AddRange(suggestion, approved);
+		await harness.Db.SaveChangesAsync();
+		var loop = await harness.AddLoopAsync(l => l.IdeaSource = AutoPilotIdeaSource.ApprovedBacklog);
+
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		Assert.Equal([approved.Id], harness.Ideas.ConvertedIdeaIds);
+		Assert.Empty(harness.Ideas.SuggestRequests);
+	}
+
+	[Fact]
+	public async Task Backlog_WithOnlySuggestionsWaiting_WaitsForApproval_AndTellsTheOwnerOnce()
+	{
+		var lead = new FakeLeadAutomation();
+		using var harness = await CreateHarnessAsync(lead);
+		harness.Db.Ideas.Add(new Idea { ProjectId = harness.Project.Id, Description = "Suggested", NeedsApproval = true, Source = IdeaSource.Lead });
+		await harness.Db.SaveChangesAsync();
+		var loop = await harness.AddLoopAsync(l => l.IdeaSource = AutoPilotIdeaSource.ApprovedBacklog);
+
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+		await harness.Db.Entry(loop).ReloadAsync();
+		loop.NextIterationAt = null;
+		await harness.Db.SaveChangesAsync();
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		await harness.Db.Entry(loop).ReloadAsync();
+		Assert.Equal(IterationLoopStatus.Running, loop.Status);
+		Assert.Contains("approve 1 suggested idea", loop.StatusMessage);
+		Assert.Equal(0, loop.ConsecutiveFailures);
+		Assert.Equal(0, loop.ConsecutiveIdeaMisses);
+		Assert.Empty(harness.Ideas.ConvertedIdeaIds);
+		Assert.Equal(1, lead.Nudges);
+		Assert.Equal(0, lead.ReviewsStarted);
+	}
+
+	[Fact]
+	public async Task Backlog_WhenNothingIsLeft_AsksTheLeadForMore_OnlyOncePerIteration()
+	{
+		var lead = new FakeLeadAutomation();
+		using var harness = await CreateHarnessAsync(lead);
+		harness.Project.LeadProviderId = harness.Provider.Id;
+		await harness.Db.SaveChangesAsync();
+		var loop = await harness.AddLoopAsync(l => l.IdeaSource = AutoPilotIdeaSource.ApprovedBacklog);
+
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		await harness.Db.Entry(loop).ReloadAsync();
+		Assert.Equal(1, lead.ReviewsStarted);
+		Assert.Contains("Lead", loop.StatusMessage);
+		Assert.Equal(0, lead.Nudges);
+
+		// The review ran and found nothing: the loop doesn't ask again before another iteration.
+		harness.Db.LeadReviews.Add(new LeadReview { ProjectId = harness.Project.Id, Status = LeadReviewStatus.Completed, CreatedAt = DateTime.UtcNow });
+		loop.NextIterationAt = null;
+		await harness.Db.SaveChangesAsync();
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		await harness.Db.Entry(loop).ReloadAsync();
+		Assert.Equal(1, lead.ReviewsStarted);
+		Assert.Contains("found nothing new", loop.StatusMessage);
+		Assert.Equal(1, lead.Nudges);
+	}
+
+	private sealed class FakeLeadAutomation : ILeadAutomation
+	{
+		public int ReviewsStarted { get; private set; }
+		public int Nudges { get; private set; }
+
+		public Task<bool> TryStartReviewForAutoPilotAsync(Guid projectId, CancellationToken cancellationToken)
+		{
+			ReviewsStarted++;
+			return Task.FromResult(true);
+		}
+
+		public Task NudgeOwnerAsync(Project project, string title, string body, CancellationToken cancellationToken)
+		{
+			Nudges++;
+			return Task.CompletedTask;
+		}
+	}
+
+	[Fact]
 	public async Task Tick_WhenCodingProviderIsOutOfUsage_WaitsForTheResetInsteadOfStopping()
 	{
 		using var harness = await CreateHarnessAsync();
@@ -448,7 +535,7 @@ public sealed class AutoPilotServiceTests : IDisposable
 		Assert.Equal(expected, JobProcessingService.GetEffectiveCommitMode(job));
 	}
 
-	private async Task<Harness> CreateHarnessAsync()
+	private async Task<Harness> CreateHarnessAsync(ILeadAutomation? lead = null)
 	{
 		var scope = _rootProvider.CreateScope();
 		var db = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
@@ -482,7 +569,8 @@ public sealed class AutoPilotServiceTests : IDisposable
 			jobs,
 			usage,
 			DispatchProxy.Create<IJobUpdateService, NoOpProxy>(),
-			NullLogger<AutoPilotService>.Instance);
+			NullLogger<AutoPilotService>.Instance,
+			lead);
 
 		return new Harness(scope, db, service, ideas, jobs, usage, provider, project);
 	}
@@ -578,9 +666,12 @@ public sealed class AutoPilotServiceTests : IDisposable
 			return Task.FromResult(SuggestResults.Dequeue()(request!));
 		}
 
+		public List<Guid> ConvertedIdeaIds { get; } = [];
+
 		public override async Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default)
 		{
 			ConvertOptions.Add(options!);
+			ConvertedIdeaIds.Add(ideaId);
 			var job = new Job
 			{
 				Id = Guid.NewGuid(),

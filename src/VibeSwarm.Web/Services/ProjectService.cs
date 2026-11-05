@@ -103,6 +103,7 @@ public class ProjectService : IProjectService
 		await ValidateAgentAssignmentsAsync(project.AgentAssignments, cancellationToken);
 		await ValidatePlanningAsync(project, cancellationToken);
 		await ValidateReviewAsync(project, cancellationToken);
+		await ValidateLeadAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
 		_credentialService.PrepareForStorage(project);
 
@@ -172,6 +173,10 @@ public class ProjectService : IProjectService
 		existing.ReviewInferenceProviderId = project.ReviewInferenceProviderId;
 		existing.ReviewModelId = project.ReviewModelId;
 		existing.ReviewReasoningEffort = project.ReviewReasoningEffort;
+		existing.LeadProviderId = project.LeadProviderId;
+		existing.LeadModelId = project.LeadModelId;
+		existing.LeadReasoningEffort = project.LeadReasoningEffort;
+		existing.LeadDirection = project.LeadDirection;
 		existing.IdeaInferenceProviderId = project.IdeaInferenceProviderId;
 		existing.IdeaInferenceModelId = string.IsNullOrWhiteSpace(project.IdeaInferenceModelId) ? null : project.IdeaInferenceModelId.Trim();
 		existing.CommitSummaryInferenceProviderId = project.CommitSummaryInferenceProviderId;
@@ -202,6 +207,7 @@ public class ProjectService : IProjectService
 		await ValidateAgentAssignmentsAsync(project.AgentAssignments, cancellationToken);
 		await ValidatePlanningAsync(project, cancellationToken);
 		await ValidateReviewAsync(project, cancellationToken);
+		await ValidateLeadAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
 		_credentialService.PrepareForStorage(project, existing.Environments.ToList());
 
@@ -883,6 +889,11 @@ public class ProjectService : IProjectService
 		project.ReviewReasoningEffort = project.ReviewProviderId.HasValue
 			? ProviderCapabilities.NormalizeReasoningEffort(project.ReviewReasoningEffort)
 			: null;
+		project.LeadModelId = string.IsNullOrWhiteSpace(project.LeadModelId) ? null : project.LeadModelId.Trim();
+		project.LeadReasoningEffort = project.LeadProviderId.HasValue
+			? ProviderCapabilities.NormalizeReasoningEffort(project.LeadReasoningEffort)
+			: null;
+		project.LeadDirection = string.IsNullOrWhiteSpace(project.LeadDirection) ? null : project.LeadDirection.Trim();
 	}
 
 	private static string? NormalizeProjectMemory(string? memory)
@@ -1300,6 +1311,26 @@ public class ProjectService : IProjectService
 		}
 
 		throw new InvalidOperationException("Reviewing jobs needs a reviewer.");
+	}
+
+	private async Task ValidateLeadAsync(Project project, CancellationToken cancellationToken)
+	{
+		if (project.LeadProviderId is not Guid providerId)
+		{
+			return;
+		}
+
+		var provider = await _dbContext.Providers.AsNoTracking().FirstOrDefaultAsync(p => p.Id == providerId, cancellationToken)
+			?? throw new InvalidOperationException("The selected Lead does not exist.");
+		if (provider.Type is not (ProviderType.Claude or ProviderType.Copilot))
+		{
+			throw new InvalidOperationException("The Lead must be Claude or GitHub Copilot.");
+		}
+
+		if (!ProviderCapabilities.SupportsReasoningEffort(provider, project.LeadReasoningEffort))
+		{
+			throw new InvalidOperationException("The Lead's reasoning level is not supported by the chosen provider.");
+		}
 	}
 
 	private async Task ValidatePlanningAsync(Project project, CancellationToken cancellationToken)
