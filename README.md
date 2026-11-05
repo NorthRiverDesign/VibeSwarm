@@ -95,6 +95,27 @@ branch and leaves the conflicts for a provider to resolve, and the result is com
 merge only once no conflict markers remain. When that job finishes, press **Deploy** again.
 Deploys are always manual.
 
+### Review and Lead
+
+Two optional helpers sit above single jobs. Both are set per project in its settings, and both
+run read-only: Claude Code or Copilot with their write tools blocked.
+
+- **Review** (off by default) checks each job before its work is delivered. When the agent
+  finishes, the project's build and tests run. Then a second model reads the change against the
+  goal and the plan's acceptance criteria. The reviewer is a Claude or Copilot CLI that can open
+  files, or an inference provider that sees only the diff. Problems go back to the agent in the
+  same session, at most twice. Review never holds work back: if the reviewer is off, near its
+  usage limit, fails or gives no verdict, the work is delivered and the job says why it wasn't
+  reviewed.
+- **Lead** suggests what to build next. A Lead review copies the branch jobs deliver to, as it is
+  on origin, and reads it alongside the project memory, recent job outcomes, unresolved review
+  findings and an optional **Direction** you write. It returns a short report and up to eight
+  ideas, each with a goal and acceptance criteria. They wait under **Suggested by Lead** on the
+  project page until you approve them. Dismissed ones are never suggested again.
+
+On the Auto-Pilot tab, **Ideas → Only ones I approve** makes auto-pilot run only ideas you typed
+or approved. When none are left, it asks the Lead for more, tells you once, and waits.
+
 ---
 
 ## Quick Start
