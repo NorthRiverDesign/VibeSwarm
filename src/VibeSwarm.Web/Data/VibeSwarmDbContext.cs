@@ -526,6 +526,8 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.FileName).IsRequired().HasMaxLength(ValidationLimits.IdeaAttachmentFileNameMaxLength);
 			entity.Property(e => e.ContentType).HasMaxLength(ValidationLimits.IdeaAttachmentContentTypeMaxLength);
 			entity.Property(e => e.RelativePath).IsRequired().HasMaxLength(ValidationLimits.IdeaAttachmentRelativePathMaxLength);
+			// Matches the filter on Idea: an attachment is visible exactly when its idea is.
+			entity.HasQueryFilter(e => !e.Idea!.NeedsApproval && e.Idea.DismissedAt == null);
 			entity.HasOne(e => e.Idea)
 				.WithMany(idea => idea.Attachments)
 				.HasForeignKey(e => e.IdeaId)
