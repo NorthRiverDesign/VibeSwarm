@@ -102,6 +102,7 @@ public class ProjectService : IProjectService
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
 		await ValidateAgentAssignmentsAsync(project.AgentAssignments, cancellationToken);
 		await ValidatePlanningAsync(project, cancellationToken);
+		await ValidateReviewAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
 		_credentialService.PrepareForStorage(project);
 
@@ -166,6 +167,11 @@ public class ProjectService : IProjectService
 		existing.PlanningProviderId = project.PlanningProviderId;
 		existing.PlanningModelId = project.PlanningModelId;
 		existing.PlanningReasoningEffort = project.PlanningReasoningEffort;
+		existing.ReviewEnabled = project.ReviewEnabled;
+		existing.ReviewProviderId = project.ReviewProviderId;
+		existing.ReviewInferenceProviderId = project.ReviewInferenceProviderId;
+		existing.ReviewModelId = project.ReviewModelId;
+		existing.ReviewReasoningEffort = project.ReviewReasoningEffort;
 		existing.IdeaInferenceProviderId = project.IdeaInferenceProviderId;
 		existing.IdeaInferenceModelId = string.IsNullOrWhiteSpace(project.IdeaInferenceModelId) ? null : project.IdeaInferenceModelId.Trim();
 		existing.CommitSummaryInferenceProviderId = project.CommitSummaryInferenceProviderId;
@@ -195,6 +201,7 @@ public class ProjectService : IProjectService
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
 		await ValidateAgentAssignmentsAsync(project.AgentAssignments, cancellationToken);
 		await ValidatePlanningAsync(project, cancellationToken);
+		await ValidateReviewAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
 		_credentialService.PrepareForStorage(project, existing.Environments.ToList());
 
@@ -866,6 +873,16 @@ public class ProjectService : IProjectService
 			? null
 			: project.PlanningModelId.Trim();
 		project.PlanningReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(project.PlanningReasoningEffort);
+
+		// A review runs on one reviewer: a coding provider wins over an inference provider.
+		if (project.ReviewProviderId.HasValue)
+		{
+			project.ReviewInferenceProviderId = null;
+		}
+		project.ReviewModelId = string.IsNullOrWhiteSpace(project.ReviewModelId) ? null : project.ReviewModelId.Trim();
+		project.ReviewReasoningEffort = project.ReviewProviderId.HasValue
+			? ProviderCapabilities.NormalizeReasoningEffort(project.ReviewReasoningEffort)
+			: null;
 	}
 
 	private static string? NormalizeProjectMemory(string? memory)
@@ -1246,6 +1263,43 @@ public class ProjectService : IProjectService
 		{
 			throw new InvalidOperationException($"One or more agent reasoning levels are not supported by their provider: {string.Join(", ", invalidReasoningSelections)}");
 		}
+	}
+
+	private async Task ValidateReviewAsync(Project project, CancellationToken cancellationToken)
+	{
+		if (!project.ReviewEnabled)
+		{
+			return;
+		}
+
+		if (project.ReviewProviderId is Guid providerId)
+		{
+			var provider = await _dbContext.Providers.AsNoTracking().FirstOrDefaultAsync(p => p.Id == providerId, cancellationToken)
+				?? throw new InvalidOperationException("The selected reviewer does not exist.");
+			if (provider.Type is not (ProviderType.Claude or ProviderType.Copilot))
+			{
+				throw new InvalidOperationException("A reviewer must be Claude, GitHub Copilot or an inference provider.");
+			}
+
+			if (!ProviderCapabilities.SupportsReasoningEffort(provider, project.ReviewReasoningEffort))
+			{
+				throw new InvalidOperationException("The reviewer's reasoning level is not supported by the chosen provider.");
+			}
+
+			return;
+		}
+
+		if (project.ReviewInferenceProviderId is Guid inferenceProviderId)
+		{
+			if (!await _dbContext.InferenceProviders.AsNoTracking().AnyAsync(p => p.Id == inferenceProviderId, cancellationToken))
+			{
+				throw new InvalidOperationException("The selected reviewer does not exist.");
+			}
+
+			return;
+		}
+
+		throw new InvalidOperationException("Reviewing jobs needs a reviewer.");
 	}
 
 	private async Task ValidatePlanningAsync(Project project, CancellationToken cancellationToken)

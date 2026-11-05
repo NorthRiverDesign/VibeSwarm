@@ -47,6 +47,18 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? PlanningReasoningEffort { get; set; }
 
+	public bool ReviewEnabled { get; set; }
+
+	public Guid? ReviewProviderId { get; set; }
+
+	public Guid? ReviewInferenceProviderId { get; set; }
+
+	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
+	public string? ReviewModelId { get; set; }
+
+	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
+	public string? ReviewReasoningEffort { get; set; }
+
 	public Guid? IdeaInferenceProviderId { get; set; }
 
 	[StringLength(200)]
@@ -134,6 +146,11 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			PlanningProviderId = source.PlanningProviderId,
 			PlanningModelId = source.PlanningModelId,
 			PlanningReasoningEffort = source.PlanningReasoningEffort,
+			ReviewEnabled = source.ReviewEnabled,
+			ReviewProviderId = source.ReviewProviderId,
+			ReviewInferenceProviderId = source.ReviewInferenceProviderId,
+			ReviewModelId = source.ReviewModelId,
+			ReviewReasoningEffort = source.ReviewReasoningEffort,
 			IdeaInferenceProviderId = source.IdeaInferenceProviderId,
 			IdeaInferenceModelId = source.IdeaInferenceModelId,
 			CommitSummaryInferenceProviderId = source.CommitSummaryInferenceProviderId,
@@ -174,6 +191,11 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			PlanningProviderId = PlanningProviderId,
 			PlanningModelId = string.IsNullOrWhiteSpace(PlanningModelId) ? null : PlanningModelId.Trim(),
 			PlanningReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(PlanningReasoningEffort),
+			ReviewEnabled = ReviewEnabled,
+			ReviewProviderId = ReviewProviderId,
+			ReviewInferenceProviderId = ReviewProviderId.HasValue ? null : ReviewInferenceProviderId,
+			ReviewModelId = string.IsNullOrWhiteSpace(ReviewModelId) ? null : ReviewModelId.Trim(),
+			ReviewReasoningEffort = ReviewProviderId.HasValue ? ProviderCapabilities.NormalizeReasoningEffort(ReviewReasoningEffort) : null,
 			IdeaInferenceProviderId = IdeaInferenceProviderId,
 			IdeaInferenceModelId = string.IsNullOrWhiteSpace(IdeaInferenceModelId) ? null : IdeaInferenceModelId.Trim(),
 			CommitSummaryInferenceProviderId = CommitSummaryInferenceProviderId,

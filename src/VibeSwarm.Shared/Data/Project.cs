@@ -99,6 +99,25 @@ public class Project
 	public string? PlanningReasoningEffort { get; set; }
 
 	/// <summary>
+	/// Whether a second model reviews each job's work before it is delivered. Problems it finds
+	/// go back to the job's agent, in the same session, for up to <see cref="JobReview.MaxRounds"/> fixes.
+	/// Review never holds back delivery: when the reviewer can't run, the work is delivered as it is.
+	/// </summary>
+	public bool ReviewEnabled { get; set; }
+
+	/// <summary>The coding provider (Claude or Copilot, run read-only) that reviews jobs.</summary>
+	public Guid? ReviewProviderId { get; set; }
+
+	/// <summary>The inference provider that reviews jobs from the diff alone, when no coding provider is set.</summary>
+	public Guid? ReviewInferenceProviderId { get; set; }
+
+	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
+	public string? ReviewModelId { get; set; }
+
+	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
+	public string? ReviewReasoningEffort { get; set; }
+
+	/// <summary>
 	/// Default inference provider for idea generation (e.g., Grok, Ollama).
 	/// Used as the default in Auto-Pilot and suggestion workflows.
 	/// </summary>

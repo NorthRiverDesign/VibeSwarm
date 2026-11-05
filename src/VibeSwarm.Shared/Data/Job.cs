@@ -579,6 +579,26 @@ public class Job
     /// </summary>
     public string? BuildOutput { get; set; }
 
+    /// <summary>What the project's reviewer made of this job's work.</summary>
+    public JobReviewStatus ReviewStatus { get; set; }
+
+    /// <summary>How many times review findings (or a failed build) were sent back to the agent.</summary>
+    public int ReviewRounds { get; set; }
+
+    /// <summary>The reviewer's last findings, or why the review was skipped.</summary>
+    public string? ReviewNotes { get; set; }
+
+    /// <summary>The provider that reviewed the job, for display.</summary>
+    public string? ReviewProviderName { get; set; }
+
+    public decimal? ReviewCostUsd { get; set; }
+
+    /// <summary>
+    /// The working tree (tracked and untracked files) when the review's build check last passed.
+    /// Delivery skips building again while the tree still matches.
+    /// </summary>
+    public string? BuildCheckedTreeHash { get; set; }
+
     /// <summary>
     /// Accumulated console output from the CLI process during execution.
     /// This is the full output log, separate from Output which contains the result summary.
@@ -777,6 +797,38 @@ public class Job
             ExecutionStatistics.JobId = Id;
             ExecutionStatistics.Job = this;
         }
+    }
+}
+
+public enum JobReviewStatus
+{
+    /// <summary>Not reviewed: review is off, or the job isn't one that gets reviewed.</summary>
+    None = 0,
+
+    /// <summary>The reviewer found nothing that must change, possibly after fixes.</summary>
+    Approved = 1,
+
+    /// <summary>Findings went back to the agent until the rounds ran out; the last ones weren't re-checked.</summary>
+    Unresolved = 2,
+
+    /// <summary>The reviewer couldn't run; the work was delivered without it.</summary>
+    Skipped = 3
+}
+
+public static class JobReview
+{
+    /// <summary>How many times findings go back to the agent before the work is delivered anyway.</summary>
+    public const int MaxRounds = 2;
+
+    /// <summary>Clears the review of an earlier run, for a job that is about to run again.</summary>
+    public static void Reset(Job job)
+    {
+        job.ReviewStatus = JobReviewStatus.None;
+        job.ReviewRounds = 0;
+        job.ReviewNotes = null;
+        job.ReviewProviderName = null;
+        job.ReviewCostUsd = null;
+        job.BuildCheckedTreeHash = null;
     }
 }
 

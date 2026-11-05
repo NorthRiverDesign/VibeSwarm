@@ -865,6 +865,10 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(250)
                         .HasColumnType("varchar(250)");
 
+                    b.Property<string>("BuildCheckedTreeHash")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
                     b.Property<string>("BuildOutput")
                         .HasColumnType("longtext");
 
@@ -1116,6 +1120,23 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasColumnType("int");
 
                     b.Property<int>("RetryCount")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("ReviewCostUsd")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<string>("ReviewNotes")
+                        .HasMaxLength(8000)
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ReviewProviderName")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<int>("ReviewRounds")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReviewStatus")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("ScheduledForUtc")
@@ -1677,6 +1698,23 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
                     b.Property<DateTime?>("RepoMapGeneratedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("ReviewEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<Guid?>("ReviewInferenceProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ReviewModelId")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<Guid?>("ReviewProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ReviewReasoningEffort")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
 
                     b.Property<string>("TestCommand")
                         .HasMaxLength(500)

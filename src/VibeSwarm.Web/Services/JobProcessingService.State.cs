@@ -137,7 +137,7 @@ public partial class JobProcessingService
 
         job.InputTokens = SumUsage(job.PlanningInputTokens, job.ExecutionInputTokens);
         job.OutputTokens = SumUsage(job.PlanningOutputTokens, job.ExecutionOutputTokens);
-        job.TotalCostUsd = SumCost(job.PlanningCostUsd, job.ExecutionCostUsd);
+        job.TotalCostUsd = SumCost(SumCost(job.PlanningCostUsd, job.ExecutionCostUsd), job.ReviewCostUsd);
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -215,7 +215,7 @@ public partial class JobProcessingService
             job.ExecutionCostUsd = costUsd ?? job.ExecutionCostUsd;
             job.InputTokens = SumUsage(job.PlanningInputTokens, job.ExecutionInputTokens);
             job.OutputTokens = SumUsage(job.PlanningOutputTokens, job.ExecutionOutputTokens);
-            job.TotalCostUsd = SumCost(job.PlanningCostUsd, job.ExecutionCostUsd);
+            job.TotalCostUsd = SumCost(SumCost(job.PlanningCostUsd, job.ExecutionCostUsd), job.ReviewCostUsd);
             job.IsTokenEstimate = isTokenEstimate;
             job.ModelUsed = modelUsed ?? job.ModelUsed;
             JobRecoveryHelper.ClearRecoveryState(job);
@@ -309,7 +309,7 @@ public partial class JobProcessingService
                     // build/test verification before committing if enabled
                     var buildPassed = await VerifyRestoreConflictsResolvedAsync(job, workingDirectory, executionContext.PriorWorkRestore, cancellationToken)
                         && await VerifyBranchMergeResolvedAsync(job, workingDirectory, executionContext.BranchMerge, cancellationToken)
-                        && await VerifyBuildAsync(job, workingDirectory, cancellationToken);
+                        && await VerifyBuildUnlessAlreadyCheckedAsync(job, workingDirectory, cancellationToken);
                     if (buildPassed)
                     {
                         await PerformAutoCommitAsync(job, workingDirectory, enableCommitAttribution, cancellationToken);

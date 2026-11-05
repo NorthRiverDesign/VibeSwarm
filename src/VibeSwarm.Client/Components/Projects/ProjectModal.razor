@@ -108,6 +108,14 @@ Badge="@LinksSummary" @bind-IsOpen="_openLinks">
 <ProjectLinksSection Project="@FormModel" Folders="@_folders" AllProjects="@_allProjects" />
 </AccordionSection>
 
+<AccordionSection Title="Review" Icon="eye"
+Summary="A second model checks each job before it is delivered"
+Badge="@(FormModel.ReviewEnabled ? "On" : null)"
+BadgeClass="theme-success" @bind-IsOpen="_openReview">
+<ProjectReviewSection Project="@FormModel" AvailableProviders="@GetPlanningProviders().ToList()"
+AvailableInferenceProviders="@_availableInferenceProviders" />
+</AccordionSection>
+
 <AccordionSection Title="Build verification" Icon="shield-check"
 Summary="Run build and tests before committing"
 Badge="@(FormModel.BuildVerificationEnabled ? "On" : null)"
@@ -212,6 +220,7 @@ private bool _openExecution;
 private bool _openIdeas;
 private bool _openInstructions;
 private bool _openBuildVerification;
+private bool _openReview;
 private bool _openLinks;
 private List<ProjectFolder> _folders = [];
 private List<Project> _allProjects = [];
@@ -411,6 +420,7 @@ ResetState();
 		_openIdeas = false;
 		_openInstructions = false;
 		_openBuildVerification = false;
+		_openReview = false;
 		_openLinks = false;
 		_initialLinkedProjectIds = [];
 		_cloneProgressMessage = null;
@@ -948,6 +958,11 @@ PlanningEnabled = source.PlanningEnabled,
 PlanningProviderId = source.PlanningProviderId,
 PlanningModelId = source.PlanningModelId,
 PlanningReasoningEffort = source.PlanningReasoningEffort,
+ReviewEnabled = source.ReviewEnabled,
+ReviewProviderId = source.ReviewProviderId,
+ReviewInferenceProviderId = source.ReviewInferenceProviderId,
+ReviewModelId = source.ReviewModelId,
+ReviewReasoningEffort = source.ReviewReasoningEffort,
 PromptContext = source.PromptContext,
 Memory = source.Memory,
 BuildVerificationEnabled = source.BuildVerificationEnabled,

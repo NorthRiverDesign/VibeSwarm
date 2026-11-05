@@ -107,6 +107,7 @@
 			JobStatus.Failed => ("Failed", "fg-danger"),
 			JobStatus.Stalled => ("Stalled", "fg-warning"),
 			JobStatus.Completed when job.BuildVerified == false => ("Checks failed", "fg-danger"),
+			JobStatus.Completed when job.ReviewStatus == JobReviewStatus.Unresolved => ("Review findings not re-checked", "fg-warning"),
 			JobStatus.Completed when hasDetectedChanges && !hasDeliveredChanges => ("Changes not committed yet", "fg-warning"),
 			JobStatus.Completed when job.ChangedFilesCount == 0 => ("No changes", "fg-1"),
 			_ => null

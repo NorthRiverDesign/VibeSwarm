@@ -1221,6 +1221,33 @@ public partial class JobProcessingService
                 return true;
             }
 
+            // Called as the agent finishes: a second model checks the work and anything it finds
+            // goes back to the agent in the same session, a bounded number of times.
+            async Task<bool> ContinueWithReviewFeedbackAsync(ExecutionResult runResult, IJobService jobService)
+            {
+                var feedback = await TryGetReviewFeedbackAsync(
+                    job,
+                    workingDirectory,
+                    executionContext.GitCommitBefore,
+                    sessionId,
+                    canSkipFinalBuild: executionContext.PriorWorkRestore is not { ConflictedFiles.Count: > 0 }
+                        && executionContext.BranchMerge is not { ConflictedFiles.Count: > 0 },
+                    cancellationToken);
+                if (feedback == null)
+                {
+                    return false;
+                }
+
+                await SaveRunMessagesAsync(jobService, job.Id, runResult);
+                await jobService.AddMessageAsync(job.Id, new JobMessage { Role = MessageRole.User, Content = feedback }, CancellationToken.None);
+                await NotifyJobMessageAddedAsync(job.Id);
+                currentPrompt = feedback;
+                executionContext.ActivePrompt = currentPrompt;
+                executionContext.LatestActivity = "Fixing what the review found...";
+                await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
+                return true;
+            }
+
             string BuildUserMessagesFreshSessionPrompt(IReadOnlyList<string> userMessages)
                 => PromptBuilder.BuildUserMessagesFreshSessionPrompt(
                     executionPrompt,
@@ -1461,6 +1488,11 @@ public partial class JobProcessingService
                         continue;
                     }
 
+                    if (await ContinueWithReviewFeedbackAsync(result, cancelCheckService))
+                    {
+                        continue;
+                    }
+
                     cycleComplete = true;
                 }
                 else if (job.CycleMode == CycleMode.Autonomous)
@@ -1471,6 +1503,11 @@ public partial class JobProcessingService
                         _logger.LogInformation("Job {JobId} completed autonomously at cycle {Current}",
                             job.Id, currentCycle);
                         if (await ContinueWithLateUserMessagesAsync(result))
+                        {
+                            continue;
+                        }
+
+                        if (await ContinueWithReviewFeedbackAsync(result, cancelCheckService))
                         {
                             continue;
                         }

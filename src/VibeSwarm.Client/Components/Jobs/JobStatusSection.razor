@@ -68,7 +68,22 @@
                 {
                     <span class="badge theme-success"><i class="bi bi-shield-check"></i> Verified</span>
                 }
+                @if (Job.ReviewStatus == JobReviewStatus.Approved)
+                {
+                    <span class="badge theme-success"><i class="bi bi-eye"></i> Reviewed</span>
+                }
             </div>
+            @if (ReviewLine is { } review)
+            {
+                <div class="small @review.CssClass mt-3">@review.Text</div>
+                @if (Job.ReviewStatus == JobReviewStatus.Unresolved && !string.IsNullOrWhiteSpace(Job.ReviewNotes))
+                {
+                    <details class="mt-1">
+                        <summary class="small fg-1 cursor-pointer">Last findings</summary>
+                        <div class="small white-space-pre-wrap text-break mt-1">@Job.ReviewNotes</div>
+                    </details>
+                }
+            }
         </div>
     </div>
 }
@@ -82,6 +97,29 @@
     // left the changes uncommitted instead of committing broken code.
     private bool ChecksFailed => Job is { Status: JobStatus.Completed, BuildVerified: false }
         && string.IsNullOrEmpty(Job.GitCommitHash);
+
+    // One quiet line saying what the project's reviewer made of the work.
+    private (string Text, string CssClass)? ReviewLine
+    {
+        get
+        {
+            if (Job == null)
+            {
+                return null;
+            }
+
+            var reviewer = string.IsNullOrWhiteSpace(Job.ReviewProviderName) ? "the reviewer" : Job.ReviewProviderName;
+            var fixes = Job.ReviewRounds == 1 ? "1 fix" : $"{Job.ReviewRounds} fixes";
+            return Job.ReviewStatus switch
+            {
+                JobReviewStatus.Approved when Job.ReviewRounds == 0 => ($"Reviewed by {reviewer}: nothing to fix", "fg-1"),
+                JobReviewStatus.Approved => ($"Reviewed by {reviewer}: approved after {fixes}", "fg-1"),
+                JobReviewStatus.Unresolved => ($"Reviewed by {reviewer}: {fixes}, the last findings weren't re-checked", "fg-warning"),
+                JobReviewStatus.Skipped => ($"Review skipped: {Job.ReviewNotes ?? "the reviewer couldn't run"}", "fg-1"),
+                _ => null
+            };
+        }
+    }
 
     private const int CheckOutputTailLines = 80;
 

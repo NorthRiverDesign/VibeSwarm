@@ -856,6 +856,10 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(250)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("BuildCheckedTreeHash")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("BuildOutput")
                         .HasColumnType("TEXT");
 
@@ -1107,6 +1111,23 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("RetryCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("ReviewCostUsd")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReviewNotes")
+                        .HasMaxLength(8000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReviewProviderName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ReviewRounds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ReviewStatus")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime?>("ScheduledForUtc")
@@ -1667,6 +1688,23 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("RepoMapGeneratedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("ReviewEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("ReviewInferenceProviderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReviewModelId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReviewProviderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReviewReasoningEffort")
+                        .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("TestCommand")

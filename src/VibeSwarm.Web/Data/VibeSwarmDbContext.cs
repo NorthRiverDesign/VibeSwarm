@@ -143,6 +143,8 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.ReleaseBranch).HasMaxLength(ValidationLimits.ProjectBranchMaxLength);
 			entity.Property(e => e.PlanningModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
 			entity.Property(e => e.PlanningReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
+			entity.Property(e => e.ReviewModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
+			entity.Property(e => e.ReviewReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.IdeaInferenceModelId).HasMaxLength(200);
 			entity.Property(e => e.CommitSummaryInferenceModelId).HasMaxLength(200);
 			entity.Property(e => e.PromptContext).HasMaxLength(ValidationLimits.ProjectPromptContextMaxLength);
@@ -309,6 +311,9 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.ReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.PlanningModelUsed).HasMaxLength(200);
 			entity.Property(e => e.PlanningReasoningEffortUsed).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
+			entity.Property(e => e.BuildCheckedTreeHash).HasMaxLength(100);
+			entity.Property(e => e.ReviewProviderName).HasMaxLength(200);
+			entity.Property(e => e.ReviewNotes).HasMaxLength(8000);
 			entity.Property(e => e.LastSwitchReason).HasMaxLength(200);
 			entity.Property(e => e.Branch).HasMaxLength(250);
 			entity.Property(e => e.TargetBranch).HasMaxLength(250);

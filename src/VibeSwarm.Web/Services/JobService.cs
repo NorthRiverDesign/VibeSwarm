@@ -80,6 +80,7 @@ public partial class JobService : IJobService
              Branch = j.Branch,
              ChangedFilesCount = j.ChangedFilesCount,
              BuildVerified = j.BuildVerified,
+             ReviewStatus = j.ReviewStatus,
              BuildVerificationEnabled = j.Project != null && j.Project.BuildVerificationEnabled,
              GitCommitHash = j.GitCommitHash,
              PullRequestNumber = j.PullRequestNumber,
