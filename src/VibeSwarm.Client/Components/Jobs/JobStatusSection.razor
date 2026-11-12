@@ -44,6 +44,12 @@
         <div class="flex-grow-1 min-w-0">
             <div class="fw-semibold">@BannerHeadline</div>
             <div class="small">@BannerBody</div>
+            @if (SignInHref is { } signInHref)
+            {
+                <div class="pt-3">
+                    <a class="btn-solid theme-danger btn-sm" href="@signInHref"><i class="bi bi-box-arrow-in-right"></i>Sign in again</a>
+                </div>
+            }
             @if (ChecksFailed && !string.IsNullOrWhiteSpace(Job.BuildOutput))
             {
                 <details class="pt-3">
@@ -165,6 +171,16 @@
         JobStatus.Paused => "Waiting for input",
         _ => "Running"
     };
+
+    /// <summary>
+    /// The run failed because the provider's login expired or was rejected: link to its host row on
+    /// the Providers page, opened on signing in again.
+    /// </summary>
+    private string? SignInHref => Job is { Status: JobStatus.Failed } && ProviderFailureClassifier.IsSignInFailure(Job.ErrorMessage)
+        ? Job.Provider is { } provider && ProviderCapabilities.SupportsHostSignIn(provider.Type)
+            ? $"/providers?signin={provider.Type}"
+            : "/providers"
+        : null;
 
     private string BannerBody => Job?.Status switch
     {

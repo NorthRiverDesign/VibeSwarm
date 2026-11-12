@@ -1,6 +1,6 @@
 @* The provider's CLI on this host as one row: ready, needs sign-in, or not installed. It opens in
-   place for the details and the install, update and API key actions, and opens by itself while
-   something still needs doing. *@
+   place for the details and the sign-in, install, update and API key actions, and opens by itself
+   while something still needs doing or a sign-in is waiting. *@
 
 <button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-5"
 		@onclick="ToggleExpanded" aria-expanded="@(IsExpanded ? "true" : "false")">
@@ -57,7 +57,13 @@
 			</div>
 		}
 
-		@if (_showKeyForm)
+		@if (IsSigningIn)
+		{
+			<ProviderSignInPanel ProviderType="Status.ProviderType" DisplayName="@Status.DisplayName"
+								 InitialSession="@(_signInOverride is null ? Status.ActiveSignIn : null)"
+								 OnSignedIn="HandleSignedIn" OnClosed="CloseSignIn" />
+		}
+		else if (_showKeyForm)
 		{
 			<EditForm Model="@_request" OnValidSubmit="HandleSaveAuthentication" class="d-flex flex-column gap-3">
 				<label class="form-label small fg-1 mb-0" for="@($"host-key-{Status.ProviderType}")">@Status.ApiKeyLabel</label>
@@ -86,6 +92,13 @@
 		else
 		{
 			<div class="d-flex flex-wrap align-items-center gap-3">
+				@if (CanSignIn)
+				{
+					<button type="button" class="btn btn-sm @(SignInIsPrimary ? "btn-solid theme-primary" : "btn-solid theme-secondary")"
+							@onclick="StartSignIn">
+						@(Status.IsAuthenticated ? "Sign in again" : "Sign in")
+					</button>
+				}
 				<button type="button" class="btn btn-sm @(Status.IsInstalled ? "btn-solid theme-secondary" : "btn-solid theme-primary")"
 						@onclick="InstallProvider" disabled="@IsInstalling">
 					@if (IsInstalling)
@@ -94,7 +107,7 @@
 					}
 					@(Status.IsInstalled ? "Update" : "Install")
 				</button>
-				<button type="button" class="btn btn-sm @(Status.IsInstalled && !Status.IsAuthenticated ? "btn-solid theme-primary" : "btn-solid theme-secondary")"
+				<button type="button" class="btn btn-sm @(Status.IsInstalled && !Status.IsAuthenticated && !CanSignIn ? "btn-solid theme-primary" : "btn-solid theme-secondary")"
 						@onclick="ShowKeyForm" disabled="@IsSavingAuthentication">
 					Use an API key
 				</button>
@@ -122,15 +135,34 @@
 	[Parameter]
 	public EventCallback<CommonProviderSetupRequest> OnSaveAuthentication { get; set; }
 
+	/// <summary>Raised when the CLI signs in from this row.</summary>
+	[Parameter]
+	public EventCallback<ProviderSignInSession> OnSignedIn { get; set; }
+
+	/// <summary>
+	/// Opens the row with signing in as its main action, for a job that stopped on an expired login
+	/// the host check can't see (a revoked token still looks signed in on disk).
+	/// </summary>
+	[Parameter]
+	public bool SuggestSignIn { get; set; }
+
 	/// <summary>Set once the user opens or closes the row, overriding the automatic open state.</summary>
 	private bool? _expandedOverride;
+	/// <summary>Set once the user starts or closes a sign-in, overriding one found waiting on the server.</summary>
+	private bool? _signInOverride;
 	private bool _showKeyForm;
 	private string? _errorMessage;
 	private CommonProviderSetupRequest _request = new();
 
 	private bool IsReady => Status.IsInstalled && Status.IsAuthenticated;
 
-	private bool IsExpanded => _expandedOverride ?? !IsReady;
+	private bool CanSignIn => Status.IsInstalled && ProviderCapabilities.SupportsHostSignIn(Status.ProviderType);
+
+	private bool SignInIsPrimary => !Status.IsAuthenticated || SuggestSignIn;
+
+	private bool IsSigningIn => CanSignIn && (_signInOverride ?? Status.ActiveSignIn is { IsActive: true });
+
+	private bool IsExpanded => _expandedOverride ?? (!IsReady || SuggestSignIn || IsSigningIn);
 
 	protected override void OnParametersSet()
 	{
@@ -172,6 +204,20 @@
 	}
 
 	private Task InstallProvider() => OnInstall.InvokeAsync(Status.ProviderType);
+
+	private void StartSignIn()
+	{
+		_showKeyForm = false;
+		_signInOverride = true;
+	}
+
+	private void CloseSignIn() => _signInOverride = false;
+
+	private async Task HandleSignedIn(ProviderSignInSession session)
+	{
+		_signInOverride = false;
+		await OnSignedIn.InvokeAsync(session);
+	}
 
 	private void ShowKeyForm()
 	{

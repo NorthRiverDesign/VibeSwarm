@@ -1,6 +1,7 @@
 using Bunit;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Tests;
 
@@ -56,5 +57,39 @@ public sealed class JobStatusSectionTests
 		Assert.Contains("theme-success", banner.ClassName);
 		Assert.Contains("Job completed", banner.TextContent);
 		Assert.Empty(cut.FindAll("details"));
+	}
+
+	[Fact]
+	public void JobThatFailedOnAnExpiredLogin_LinksToSigningTheProviderInAgain()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobStatusSection>(parameters => parameters
+			.Add(section => section.Job, new Job
+			{
+				Status = JobStatus.Failed,
+				ErrorMessage = "API Error: 401 {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"OAuth token has expired.\"}}",
+				Provider = new Provider { Name = "Claude Code", Type = ProviderType.Claude }
+			}));
+
+		var link = cut.Find(".alert a");
+		Assert.Equal("/providers?signin=Claude", link.GetAttribute("href"));
+		Assert.Contains("Sign in again", link.TextContent);
+	}
+
+	[Fact]
+	public void JobThatFailedForAnotherReason_OffersNoSignIn()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobStatusSection>(parameters => parameters
+			.Add(section => section.Job, new Job
+			{
+				Status = JobStatus.Failed,
+				ErrorMessage = "Build failed: 3 errors",
+				Provider = new Provider { Name = "Claude Code", Type = ProviderType.Claude }
+			}));
+
+		Assert.DoesNotContain("Sign in again", cut.Markup);
 	}
 }

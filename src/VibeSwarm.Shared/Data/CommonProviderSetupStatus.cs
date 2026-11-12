@@ -26,6 +26,10 @@ public class CommonProviderSetupStatus
 	public string? AuthenticationTypeLabel { get; set; }
 	public bool IsAuthenticated { get; set; }
 	public string? AuthenticationStatus { get; set; }
+
+	/// <summary>A sign-in started from the web UI that is still waiting, so a reloaded page can pick it up.</summary>
+	public ProviderSignInSession? ActiveSignIn { get; set; }
+
 	public List<CommonProviderSetupConfiguredProvider> ConfiguredProviders { get; set; } = [];
 	public List<CommonProviderHostToolStatus> HostTools { get; set; } = [];
 }

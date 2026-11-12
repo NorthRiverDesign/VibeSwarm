@@ -65,6 +65,22 @@ public static class ProviderFailureClassifier
 	/// </summary>
 	private const string NoChangesMarker = "finished without changing any code";
 
+	/// <summary>
+	/// What the CLIs print when their login is missing, expired or rejected. Only used to offer
+	/// signing in again; it doesn't change how a failure is retried.
+	/// </summary>
+	private static readonly string[] SignInMarkers =
+	[
+		"invalid api key",
+		"please run /login",
+		"/login to sign in again",
+		"not authenticated",
+		"authentication_error",
+		"oauth token has expired",
+		"no authentication information found",
+		"your github sign-in was rejected"
+	];
+
 	/// <summary>Lines from a bundled-JavaScript stack trace, which say nothing useful.</summary>
 	private static readonly Regex NoiseLine = new(
 		@"^\s*(\d+\s*\|| *at\s|\^|Bun v|node:internal)",
@@ -97,6 +113,14 @@ public static class ProviderFailureClassifier
 	public static bool IsHostFault(string? errorText) =>
 		!string.IsNullOrWhiteSpace(errorText)
 		&& UnrecoverableMarkers.Any(marker => errorText.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>
+	/// Whether the run failed because the CLI's login is missing, expired or was rejected, so
+	/// signing the CLI in again (or saving a key) is what fixes it.
+	/// </summary>
+	public static bool IsSignInFailure(string? errorText) =>
+		!string.IsNullOrWhiteSpace(errorText)
+		&& SignInMarkers.Any(marker => errorText.Contains(marker, StringComparison.OrdinalIgnoreCase));
 
 	/// <summary>
 	/// Reduces raw CLI output to the line worth showing: the reported error if there is

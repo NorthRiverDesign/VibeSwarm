@@ -148,6 +148,13 @@ public static class ProviderCapabilities
 	public static bool SupportsCliUpdate(ProviderConnectionMode mode) => mode == ProviderConnectionMode.CLI;
 
 	/// <summary>
+	/// Whether the provider's CLI on the host can be signed in from the web UI. Claude Code prints a
+	/// sign-in link and takes the code the page shows; Copilot uses GitHub's device code flow.
+	/// </summary>
+	public static bool SupportsHostSignIn(ProviderType providerType)
+		=> providerType is ProviderType.Claude or ProviderType.Copilot;
+
+	/// <summary>
 	/// Whether the provider can be asked for its current usage on demand. Only CLI connections
 	/// can be probed; SDK connections go through the API, which does not report subscription windows.
 	/// </summary>

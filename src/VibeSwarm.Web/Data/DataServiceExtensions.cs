@@ -67,6 +67,7 @@ public static class DataServiceExtensions
 		services.AddScoped<IDatabaseService, DatabaseService>();
 		services.AddScoped<ICommonProviderSetupService, CommonProviderSetupService>();
 		services.AddScoped<ProviderCliDetectionService>();
+		services.AddSingleton<IProviderSignInService, ProviderSignInService>();
 		services.AddSingleton<IFileSystemService, FileSystemService>();
         services.AddHttpClient("Inference");
         services.AddScoped<IInferenceProviderService, InferenceProviderService>();

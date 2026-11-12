@@ -1,0 +1,339 @@
+@* Signs the provider's CLI on this host in again: shows the link the CLI printed, with GitHub's
+   one-time code or a box for the code Claude's sign-in page shows, and follows the CLI until it
+   finishes. The service is resolved lazily so rows that never sign in need no registration. *@
+@implements IDisposable
+@inject IServiceProvider Services
+
+<div class="d-flex flex-column gap-3" aria-live="polite">
+	@if (_session is null || _session.State == ProviderSignInState.Starting)
+	{
+		<div class="d-flex align-items-center gap-3 small fg-1">
+			<span class="spinner-border spinner-sm" role="status"></span>
+			Starting sign-in…
+		</div>
+		<div>
+			<button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="CancelAsync" disabled="@_isBusy">Cancel</button>
+		</div>
+	}
+	else if (_session.IsActive)
+	{
+		@if (!string.IsNullOrWhiteSpace(_session.UserCode))
+		{
+			<p class="small mb-0">Open GitHub, enter this code and approve the sign-in. This updates by itself when you're done.</p>
+			<div class="d-flex align-items-center gap-3">
+				<span class="text-title font-monospace fw-semibold user-select-all text-break">@_session.UserCode</span>
+				<button type="button" class="btn-solid theme-secondary btn-sm" @onclick="CopyCodeAsync">
+					<i class="bi bi-copy"></i>Copy
+				</button>
+			</div>
+		}
+		else if (_session.NeedsCode)
+		{
+			<ol class="small mb-0 ps-7 d-flex flex-column gap-1">
+				<li>Open the sign-in page and sign in to @DisplayName.</li>
+				<li>Copy the code it shows and paste it here.</li>
+			</ol>
+		}
+		else
+		{
+			<p class="small mb-0">Open the sign-in page and finish signing in there. This updates by itself when you're done.</p>
+		}
+
+		@if (!string.IsNullOrWhiteSpace(_session.SignInUrl))
+		{
+			<div>
+				<a class="btn-solid theme-primary btn-sm" href="@_session.SignInUrl" target="_blank" rel="noopener noreferrer">
+					@(string.IsNullOrWhiteSpace(_session.UserCode) ? "Open sign-in page" : "Open GitHub")<i class="bi bi-box-arrow-up-right"></i>
+				</a>
+			</div>
+		}
+
+		@if (_session.NeedsCode)
+		{
+			<form class="d-flex flex-column gap-3" @onsubmit="SubmitCodeAsync" @onsubmit:preventDefault>
+				<label class="form-label small fg-1 mb-0" for="@CodeInputId">Code from the sign-in page</label>
+				<div class="input-group">
+					<input id="@CodeInputId" class="form-control font-monospace" type="text" autocomplete="off" autocapitalize="off"
+						   spellcheck="false" placeholder="Paste the code" value="@_code" @oninput="OnCodeInput"
+						   disabled="@(_session.State == ProviderSignInState.Verifying)" />
+					<button type="submit" class="btn-solid theme-primary"
+							disabled="@(_isBusy || _session.State == ProviderSignInState.Verifying || string.IsNullOrWhiteSpace(_code))">
+						@if (_session.State == ProviderSignInState.Verifying)
+						{
+							<span class="spinner-border spinner-sm" role="status"></span>
+						}
+						Finish
+					</button>
+				</div>
+			</form>
+		}
+		else
+		{
+			<div class="d-flex align-items-center gap-3 small fg-1">
+				<span class="spinner-border spinner-sm" role="status"></span>
+				Waiting for you to finish signing in…
+			</div>
+		}
+
+		@if (!string.IsNullOrWhiteSpace(_session.ErrorMessage))
+		{
+			<div class="fg-danger small"><i class="bi bi-exclamation-circle me-1"></i>@_session.ErrorMessage</div>
+		}
+
+		<div>
+			<button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="CancelAsync" disabled="@_isBusy">Cancel</button>
+		</div>
+	}
+	else if (_session.State == ProviderSignInState.Failed)
+	{
+		<div class="fg-danger small">
+			<i class="bi bi-exclamation-circle me-1"></i>@(_session.ErrorMessage ?? "Sign-in didn't finish.")
+		</div>
+		<div class="d-flex flex-wrap gap-3">
+			<button type="button" class="btn-solid theme-secondary btn-sm" @onclick="CloseAsync" disabled="@_isBusy">Close</button>
+			<button type="button" class="btn-solid theme-primary btn-sm" @onclick="StartAsync" disabled="@_isBusy">Try again</button>
+		</div>
+	}
+	else if (_session.State == ProviderSignInState.Succeeded)
+	{
+		<div class="fg-success small"><i class="bi bi-check-circle me-1"></i>@(_session.Message ?? "Signed in.")</div>
+	}
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public ProviderType ProviderType { get; set; }
+
+	[Parameter]
+	public string DisplayName { get; set; } = string.Empty;
+
+	/// <summary>A sign-in already waiting on the server, picked up instead of starting another.</summary>
+	[Parameter]
+	public ProviderSignInSession? InitialSession { get; set; }
+
+	[Parameter]
+	public EventCallback<ProviderSignInSession> OnSignedIn { get; set; }
+
+	/// <summary>Raised when the user cancels or closes a failed sign-in.</summary>
+	[Parameter]
+	public EventCallback OnClosed { get; set; }
+
+	/// <summary>How often the panel asks whether the CLI has finished.</summary>
+	[Parameter]
+	public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(2);
+
+	private IProviderSignInService _signInService = default!;
+	private ProviderSignInSession? _session;
+	private CancellationTokenSource? _pollCts;
+	private string _code = string.Empty;
+	private bool _isBusy;
+	private bool _disposed;
+
+	private string CodeInputId => $"sign-in-code-{ProviderType}";
+
+	protected override async Task OnInitializedAsync()
+	{
+		_signInService = Services.GetRequiredService<IProviderSignInService>();
+		if (InitialSession is { IsActive: true } pending)
+		{
+			_session = pending;
+			StartPolling();
+			return;
+		}
+
+		await StartAsync();
+	}
+
+	private async Task StartAsync()
+	{
+		_isBusy = true;
+		_code = string.Empty;
+		try
+		{
+			_session = await _signInService.StartAsync(ProviderType);
+		}
+		catch (Exception ex)
+		{
+			_session = Failed($"Couldn't start signing in: {ex.Message}");
+		}
+		finally
+		{
+			_isBusy = false;
+		}
+
+		await AfterUpdateAsync();
+	}
+
+	private void OnCodeInput(ChangeEventArgs args) => _code = args.Value?.ToString() ?? string.Empty;
+
+	private async Task SubmitCodeAsync()
+	{
+		if (_session is not { IsActive: true } || string.IsNullOrWhiteSpace(_code))
+		{
+			return;
+		}
+
+		_isBusy = true;
+		try
+		{
+			var updated = await _signInService.SubmitCodeAsync(ProviderType, _code);
+			if (updated.Id == _session.Id)
+			{
+				_session = updated;
+				if (updated.State == ProviderSignInState.Verifying)
+				{
+					_code = string.Empty;
+				}
+			}
+			else
+			{
+				// The sign-in it was meant for has already ended.
+				_session = updated;
+			}
+		}
+		catch (Exception ex)
+		{
+			_session.ErrorMessage = $"Couldn't send the code: {ex.Message}";
+		}
+		finally
+		{
+			_isBusy = false;
+		}
+
+		await AfterUpdateAsync();
+	}
+
+	private async Task CancelAsync()
+	{
+		StopPolling();
+		_isBusy = true;
+		try
+		{
+			await _signInService.CancelAsync(ProviderType);
+		}
+		catch
+		{
+			// The server times the sign-in out by itself if this didn't reach it.
+		}
+		finally
+		{
+			_isBusy = false;
+		}
+
+		await OnClosed.InvokeAsync();
+	}
+
+	private Task CloseAsync() => OnClosed.InvokeAsync();
+
+	private async Task CopyCodeAsync()
+	{
+		if (string.IsNullOrWhiteSpace(_session?.UserCode))
+		{
+			return;
+		}
+
+		var notifications = Services.GetRequiredService<NotificationService>();
+		try
+		{
+			await Services.GetRequiredService<IJSRuntime>().InvokeVoidAsync("copyToClipboard", _session.UserCode);
+			notifications.ShowSuccess("Code copied.", "Copied");
+		}
+		catch (Exception ex)
+		{
+			notifications.ShowError($"Couldn't copy the code: {ex.Message}", "Copy Failed");
+		}
+	}
+
+	/// <summary>Keeps following an active sign-in, and reports one that just succeeded.</summary>
+	private async Task AfterUpdateAsync()
+	{
+		if (_session is { IsActive: true })
+		{
+			StartPolling();
+			return;
+		}
+
+		StopPolling();
+		if (_session?.State == ProviderSignInState.Succeeded)
+		{
+			await OnSignedIn.InvokeAsync(_session);
+		}
+		else if (_session?.State == ProviderSignInState.Cancelled)
+		{
+			await OnClosed.InvokeAsync();
+		}
+	}
+
+	private void StartPolling()
+	{
+		if (_pollCts != null || _disposed)
+		{
+			return;
+		}
+
+		_pollCts = new CancellationTokenSource();
+		_ = PollAsync(_pollCts.Token);
+	}
+
+	private void StopPolling()
+	{
+		_pollCts?.Cancel();
+		_pollCts?.Dispose();
+		_pollCts = null;
+	}
+
+	private async Task PollAsync(CancellationToken cancellationToken)
+	{
+		while (!cancellationToken.IsCancellationRequested)
+		{
+			try
+			{
+				await Task.Delay(PollInterval, cancellationToken);
+				var latest = await _signInService.GetAsync(ProviderType, cancellationToken);
+				if (cancellationToken.IsCancellationRequested)
+				{
+					return;
+				}
+
+				// Nothing on the server (VibeSwarm restarted) ends this one; a newer sign-in, started
+				// from another tab, takes its place.
+				_session = latest ?? Failed("This sign-in is no longer running. Start it again.");
+				if (!_session.IsActive)
+				{
+					await InvokeAsync(async () =>
+					{
+						StopPolling();
+						await AfterUpdateAsync();
+						StateHasChanged();
+					});
+					return;
+				}
+
+				await InvokeAsync(StateHasChanged);
+			}
+			catch (OperationCanceledException)
+			{
+				return;
+			}
+			catch
+			{
+				// A dropped request while the phone is away; try again next round.
+			}
+		}
+	}
+
+	private ProviderSignInSession Failed(string error) => new()
+	{
+		ProviderType = ProviderType,
+		State = ProviderSignInState.Failed,
+		ErrorMessage = error,
+		StartedAt = DateTime.UtcNow,
+		FinishedAt = DateTime.UtcNow
+	};
+
+	public void Dispose()
+	{
+		_disposed = true;
+		StopPolling();
+	}
+}

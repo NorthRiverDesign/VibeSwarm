@@ -74,4 +74,32 @@ public class ProviderFailureClassifierTests
 	{
 		Assert.Null(ProviderFailureClassifier.Summarize("   "));
 	}
+
+	[Theory]
+	[InlineData("API Error: 401 {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"OAuth token has expired. Please obtain a new token or refresh your existing token.\"}}")]
+	[InlineData("Invalid API key · Please run /login")]
+	[InlineData("Error: No authentication information found.")]
+	[InlineData("Your GitHub sign-in was rejected. Sign in again and retry.")]
+	[InlineData("Run /login to sign in again.")]
+	public void IsSignInFailure_RecognizesAnExpiredOrMissingLogin(string error)
+	{
+		Assert.True(ProviderFailureClassifier.IsSignInFailure(error));
+	}
+
+	[Theory]
+	[InlineData(null)]
+	[InlineData("")]
+	[InlineData("Build failed: 3 errors")]
+	[InlineData("Rate limit exceeded, retry after 60s")]
+	public void IsSignInFailure_IgnoresOtherFailures(string? error)
+	{
+		Assert.False(ProviderFailureClassifier.IsSignInFailure(error));
+	}
+
+	[Fact]
+	public void IsSignInFailure_DoesNotChangeHowCopilotLoginFailuresAreRetried()
+	{
+		// Offering a sign-in link is separate from retry policy, which these markers leave alone.
+		Assert.Equal(ProviderFailureKind.Retryable, ProviderFailureClassifier.Classify("Error: No authentication information found."));
+	}
 }

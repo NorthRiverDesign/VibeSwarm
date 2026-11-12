@@ -23,6 +23,7 @@
 						Providers="ProvidersList"
 						InstallingProviderType="@InstallingProviderType"
 						SavingAuthenticationProviderType="@SavingAuthenticationProviderType"
+						SignInProviderType="@SignInProviderType"
 						ProviderModels="ProviderModels"
 						UsageSummaries="UsageSummaries"
 						TestResults="TestResults"
@@ -34,6 +35,7 @@
 						RefreshingUsageId="@RefreshingUsageId"
 						OnInstallProvider="InstallCommonProviderAsync"
 						OnSaveAuthentication="SaveCommonProviderAuthenticationAsync"
+						OnSignedIn="HandleProviderSignedInAsync"
 						OnAddConnection="HandleAddConnection"
 						OnRefreshUsage="RefreshUsageAsync"
 						OnToggleEnabled="ToggleEnabled"
@@ -63,6 +65,17 @@
 				   OnClose="HandleDefaultModelModalClosed" />
 
 @code {
+	/// <summary>A provider to sign in again, linked from a job that stopped on an expired login.</summary>
+	[SupplyParameterFromQuery(Name = "signin")]
+	public string? SignInQuery { get; set; }
+
+	private bool _signedInFromQuery;
+
+	private ProviderType? SignInProviderType =>
+		!_signedInFromQuery && Enum.TryParse<ProviderType>(SignInQuery, ignoreCase: true, out var providerType)
+			? providerType
+			: null;
+
 	private List<Provider> ProvidersList { get; set; } = new();
 	private bool IsLoading { get; set; } = true;
 	private bool ShowProviderModal { get; set; }
@@ -437,6 +450,27 @@
 		finally
 		{
 			SavingAuthenticationProviderType = null;
+			StateHasChanged();
+		}
+	}
+
+	private async Task HandleProviderSignedInAsync(ProviderSignInSession session)
+	{
+		_signedInFromQuery = true;
+		NotificationService.ShowSuccess(session.Message ?? "Signed in.", "Signed In");
+		try
+		{
+			// A fresh check, past the cached statuses, so the row stops asking to sign in.
+			CommonProviderStatuses = (await CommonProviderSetupService.RefreshAsync()).ToList();
+			ProvidersList = (await ProviderService.GetAllAsync()).ToList();
+			UsageSummaries = await HttpProviderService.GetAllUsageSummariesAsync();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Signed in, but the providers didn't reload: {ex.Message}");
+		}
+		finally
+		{
 			StateHasChanged();
 		}
 	}

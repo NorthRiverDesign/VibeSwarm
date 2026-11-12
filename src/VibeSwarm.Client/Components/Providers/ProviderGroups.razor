@@ -23,8 +23,10 @@
 				<ProviderHostRow Status="status"
 								 IsInstalling="@(InstallingProviderType == status.ProviderType)"
 								 IsSavingAuthentication="@(SavingAuthenticationProviderType == status.ProviderType)"
+								 SuggestSignIn="@(SignInProviderType == status.ProviderType)"
 								 OnInstall="OnInstallProvider"
-								 OnSaveAuthentication="OnSaveAuthentication" />
+								 OnSaveAuthentication="OnSaveAuthentication"
+								 OnSignedIn="OnSignedIn" />
 
 				@foreach (var provider in connections)
 				{
@@ -80,6 +82,10 @@
 	[Parameter]
 	public ProviderType? SavingAuthenticationProviderType { get; set; }
 
+	/// <summary>The provider whose host row should open on signing in, e.g. from a job that lost its login.</summary>
+	[Parameter]
+	public ProviderType? SignInProviderType { get; set; }
+
 	[Parameter]
 	public IReadOnlyDictionary<Guid, List<ProviderModel>> ProviderModels { get; set; } = new Dictionary<Guid, List<ProviderModel>>();
 
@@ -112,6 +118,9 @@
 
 	[Parameter]
 	public EventCallback<CommonProviderSetupRequest> OnSaveAuthentication { get; set; }
+
+	[Parameter]
+	public EventCallback<ProviderSignInSession> OnSignedIn { get; set; }
 
 	[Parameter]
 	public EventCallback<ProviderType> OnAddConnection { get; set; }

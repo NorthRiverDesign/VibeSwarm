@@ -330,6 +330,55 @@ public sealed class CommonProviderSetupServiceTests : IDisposable
 			});
 	}
 
+	[Fact]
+	public void ClaudeAuthStatus_SignedOutOrExpired_NeedsSigningInAgain()
+	{
+		var now = new DateTime(2026, 11, 11, 12, 0, 0, DateTimeKind.Utc);
+
+		var signedOut = CommonProviderSetupService.ParseClaudeAuthStatus("{\"loggedIn\": false, \"authMethod\": \"none\"}");
+		var signedOutState = CommonProviderSetupService.DescribeClaudeLogin(signedOut!, now);
+		Assert.False(signedOutState.IsAuthenticated);
+		Assert.Contains("signed out", signedOutState.Message);
+
+		var expired = CommonProviderSetupService.ParseClaudeAuthStatus(
+			"{\"loggedIn\": true, \"authMethod\": \"claude.ai\", \"loginExpiresAt\": \"2026-11-10T00:37:26.732Z\"}");
+		Assert.Equal(new DateTime(2026, 11, 10, 0, 37, 26, 732, DateTimeKind.Utc), expired!.ExpiresAt);
+		var expiredState = CommonProviderSetupService.DescribeClaudeLogin(expired, now);
+		Assert.False(expiredState.IsAuthenticated);
+		Assert.Contains("expired", expiredState.Message);
+	}
+
+	[Fact]
+	public void ClaudeAuthStatus_EndingSoon_StaysReadyButSaysWhen()
+	{
+		var now = new DateTime(2026, 11, 11, 12, 0, 0, DateTimeKind.Utc);
+
+		var endingSoon = CommonProviderSetupService.ParseClaudeAuthStatus(
+			"{\"loggedIn\": true, \"loginExpiresAt\": \"2026-11-15T00:00:00Z\"}");
+		var endingSoonState = CommonProviderSetupService.DescribeClaudeLogin(endingSoon!, now);
+		Assert.True(endingSoonState.IsAuthenticated);
+		Assert.Contains("ends Nov 15", endingSoonState.Message);
+
+		var later = CommonProviderSetupService.ParseClaudeAuthStatus(
+			"{\"loggedIn\": true, \"loginExpiresAt\": \"2026-12-04T00:37:26.732Z\"}");
+		var laterState = CommonProviderSetupService.DescribeClaudeLogin(later!, now);
+		Assert.True(laterState.IsAuthenticated);
+		Assert.Equal("Claude Code browser login detected on host for this CLI connection.", laterState.Message);
+
+		var noExpiry = CommonProviderSetupService.ParseClaudeAuthStatus("{\"loggedIn\": true, \"loginExpiresAt\": null}");
+		Assert.True(CommonProviderSetupService.DescribeClaudeLogin(noExpiry!, now).IsAuthenticated);
+	}
+
+	[Theory]
+	[InlineData(null)]
+	[InlineData("")]
+	[InlineData("Not logged in. Run claude auth login to authenticate.")]
+	[InlineData("{\"authMethod\": \"claude.ai\"}")]
+	public void ClaudeAuthStatus_UnreadableOutput_FallsBackToTheFileCheck(string? output)
+	{
+		Assert.Null(CommonProviderSetupService.ParseClaudeAuthStatus(output));
+	}
+
 	public void Dispose()
 	{
 		_connection.Dispose();

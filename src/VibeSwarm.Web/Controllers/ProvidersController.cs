@@ -14,15 +14,18 @@ public class ProvidersController : ControllerBase
     private readonly IProviderService _providerService;
     private readonly IProviderUsageService _usageService;
     private readonly ICommonProviderSetupService _commonProviderSetupService;
+    private readonly IProviderSignInService _providerSignInService;
 
     public ProvidersController(
         IProviderService providerService,
         IProviderUsageService usageService,
-        ICommonProviderSetupService commonProviderSetupService)
+        ICommonProviderSetupService commonProviderSetupService,
+        IProviderSignInService providerSignInService)
     {
         _providerService = providerService;
         _usageService = usageService;
         _commonProviderSetupService = commonProviderSetupService;
+        _providerSignInService = providerSignInService;
     }
 
     [HttpGet]
@@ -164,6 +167,31 @@ public class ProvidersController : ControllerBase
         request.ProviderType = providerType;
         var result = await _commonProviderSetupService.SaveAuthenticationAsync(request, ct);
         return result.Success ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpGet("common-setup/{providerType}/sign-in")]
+    public async Task<IActionResult> GetProviderSignIn(ProviderType providerType, CancellationToken ct)
+    {
+        var session = await _providerSignInService.GetAsync(providerType, ct);
+        return session == null ? NoContent() : Ok(session);
+    }
+
+    [HttpPost("common-setup/{providerType}/sign-in")]
+    public async Task<IActionResult> StartProviderSignIn(ProviderType providerType, CancellationToken ct)
+        => Ok(await _providerSignInService.StartAsync(providerType, ct));
+
+    [HttpPost("common-setup/{providerType}/sign-in/code")]
+    public async Task<IActionResult> SubmitProviderSignInCode(
+        ProviderType providerType,
+        [FromBody] ProviderSignInCodeRequest request,
+        CancellationToken ct)
+        => Ok(await _providerSignInService.SubmitCodeAsync(providerType, request.Code, ct));
+
+    [HttpDelete("common-setup/{providerType}/sign-in")]
+    public async Task<IActionResult> CancelProviderSignIn(ProviderType providerType, CancellationToken ct)
+    {
+        var session = await _providerSignInService.CancelAsync(providerType, ct);
+        return session == null ? NoContent() : Ok(session);
     }
 
     public record SetDefaultModelRequest(Guid ModelId);
