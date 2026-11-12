@@ -519,6 +519,143 @@ public sealed class QueueDropdownPanelTests
 		});
 	}
 
+	[Fact]
+	public void QueueDropdownPanel_JobsWaitingOnTheUser_GetTheirOwnSection()
+	{
+		using var context = CreateContext(new FakeIdeaService(
+			new GlobalQueueSnapshot
+			{
+				// The server counts paused and stalled jobs as running.
+				RunningJobsCount = 3,
+				QueuedJobsCount = 1,
+				RunningJobs =
+				[
+					new GlobalQueueJobSummary { Id = Guid.NewGuid(), ProjectName = "Alpha", GoalPrompt = "Busy job", Status = JobStatus.Processing },
+					new GlobalQueueJobSummary { Id = Guid.NewGuid(), ProjectName = "Beta", GoalPrompt = "Paused job", Status = JobStatus.Paused },
+					new GlobalQueueJobSummary { Id = Guid.NewGuid(), ProjectName = "Gamma", GoalPrompt = "Stalled job", Status = JobStatus.Stalled }
+				],
+				QueuedJobs =
+				[
+					new GlobalQueueJobSummary { Id = Guid.NewGuid(), ProjectName = "Delta", GoalPrompt = "Waiting job", Status = JobStatus.New }
+				]
+			}));
+
+		var cut = context.Render<QueueDropdownPanel>();
+
+		var sections = cut.FindAll("section");
+		Assert.Equal(["Running", "Needs you", "Queued"], sections.Select(section => section.QuerySelector("h2")!.TextContent.Trim()));
+		Assert.Contains("Busy job", sections[0].TextContent);
+		Assert.DoesNotContain("Paused job", sections[0].TextContent);
+
+		var needsYouRows = sections[1].QuerySelectorAll("a.list-group-item");
+		Assert.Equal(2, needsYouRows.Length);
+		Assert.Equal("Waiting for your reply · Beta", needsYouRows[0].QuerySelector(".fg-emphasis-warning")!.TextContent.Trim());
+		Assert.Equal("Stalled · Gamma", needsYouRows[1].QuerySelector(".fg-emphasis-warning")!.TextContent.Trim());
+
+		var summary = cut.Find("div.menu p.small.fg-1");
+		Assert.Equal("1 running · 2 need you · 1 queued", System.Text.RegularExpressions.Regex.Replace(summary.TextContent, @"\s+", " ").Trim());
+		Assert.Equal(3, summary.QuerySelectorAll(".text-nowrap").Length);
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_EveryRowHasTheSameShape()
+	{
+		using var context = CreateContext(new FakeIdeaService(
+			new GlobalQueueSnapshot
+			{
+				RunningJobsCount = 1,
+				QueuedJobsCount = 1,
+				UpcomingIdeasCount = 1,
+				RunningJobs =
+				[
+					new GlobalQueueJobSummary
+					{
+						Id = Guid.NewGuid(), ProjectName = "Alpha", GoalPrompt = "Busy job", Status = JobStatus.Processing,
+						CreatedAt = DateTime.UtcNow.AddHours(-3), StartedAt = DateTime.UtcNow.AddMinutes(-5)
+					}
+				],
+				QueuedJobs =
+				[
+					new GlobalQueueJobSummary
+					{
+						Id = Guid.NewGuid(), ProjectName = "", GoalPrompt = "Waiting job", Status = JobStatus.Pending,
+						CreatedAt = DateTime.UtcNow.AddHours(-2)
+					}
+				],
+				UpcomingIdeas =
+				[
+					new GlobalQueueIdeaSummary { IdeaId = Guid.NewGuid(), ProjectId = Guid.NewGuid(), ProjectName = "Gamma", Description = "An idea" }
+				]
+			}));
+
+		var cut = context.Render<QueueDropdownPanel>();
+
+		var rows = cut.FindAll("a.list-group-item");
+		Assert.Equal(3, rows.Count);
+		foreach (var row in rows)
+		{
+			Assert.NotNull(row.QuerySelector(".fw-medium.text-truncate"));
+			Assert.NotNull(row.QuerySelector(".small.fg-1.text-truncate"));
+			Assert.NotNull(row.QuerySelector(".bi-chevron-right"));
+			Assert.NotNull(row.QuerySelector("span.small.fg-1.flex-shrink-0"));
+		}
+
+		// The trailing fact is how long a job has run or waited, not a repeat of its section.
+		Assert.Equal("5m", rows[0].QuerySelector("span.small.fg-1.flex-shrink-0")!.TextContent.Trim());
+		Assert.Contains("Alpha · Working…", rows[0].TextContent);
+		Assert.Equal("2h", rows[1].QuerySelector("span.small.fg-1.flex-shrink-0")!.TextContent.Trim());
+		Assert.Contains("Unknown project", rows[1].TextContent);
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_EmptyQueue_SaysSoWithoutACountLine()
+	{
+		using var context = CreateContext(new FakeIdeaService(new GlobalQueueSnapshot()));
+
+		var cut = context.Render<QueueDropdownPanel>();
+
+		Assert.Contains("Nothing running or queued", cut.Markup);
+		Assert.Empty(cut.FindAll("section"));
+		// With nothing to press, All jobs sits under the empty message, not alone under the title.
+		Assert.Single(cut.FindAll("a[href='/jobs']"));
+		Assert.Contains("Nothing running or queued", cut.Find("a[href='/jobs']").ParentElement!.TextContent);
+		Assert.DoesNotContain("0 running", cut.Markup);
+		Assert.Contains("theme-secondary", cut.Find(".badge:not(.notification-bell-badge)").ClassList);
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_StoppedQueue_SaysStoppedLikeItsButton()
+	{
+		using var context = CreateContext(new FakeIdeaService(), queueControl: new FakeQueueControl(isPaused: true));
+
+		var cut = context.Render<QueueDropdownPanel>();
+
+		var status = cut.Find(".badge:not(.notification-bell-badge)");
+		Assert.Equal("Stopped", status.TextContent.Trim());
+		Assert.Contains("theme-warning", status.ClassList);
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_Menu_CapsItsHeightAndScrollsTheList()
+	{
+		using var context = CreateContext(new FakeIdeaService(
+			new GlobalQueueSnapshot
+			{
+				QueuedJobsCount = 1,
+				QueuedJobs = [new GlobalQueueJobSummary { Id = Guid.NewGuid(), ProjectName = "Alpha", GoalPrompt = "Waiting job", Status = JobStatus.New }]
+			}));
+
+		var cut = context.Render<QueueDropdownPanel>();
+
+		var menu = cut.Find("div.menu");
+		Assert.Contains("--bs-menu-max-height", menu.GetAttribute("style"));
+		Assert.Contains("overflow-hidden", menu.ClassList);
+		var scroller = menu.QuerySelector(".overflow-y-auto");
+		Assert.NotNull(scroller);
+		Assert.NotNull(scroller!.QuerySelector("section"));
+		Assert.Single(cut.FindAll("a[href='/jobs']"));
+	}
+
 	private static BunitContext CreateContext(
 		FakeIdeaService ideaService,
 		QueuePanelStateService? queuePanelStateService = null,

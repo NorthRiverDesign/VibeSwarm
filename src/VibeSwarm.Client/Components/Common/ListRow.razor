@@ -42,6 +42,10 @@ else
 	[Parameter]
 	public string? Icon { get; set; }
 
+	/// <summary>Leads the row in place of <see cref="Icon"/>, for a glyph that isn't a plain icon, such as a spinner.</summary>
+	[Parameter]
+	public RenderFragment? Leading { get; set; }
+
 	/// <summary>Colors the icon; defaults to the accent, pass fg-2 for something switched off.</summary>
 	[Parameter]
 	public string IconClass { get; set; } = "fg-primary";
@@ -99,7 +103,11 @@ else
 
 	private RenderFragment Body => __builder =>
 	{
-		@if (!string.IsNullOrEmpty(Icon))
+		@if (Leading != null)
+		{
+			<span class="d-flex flex-shrink-0">@Leading</span>
+		}
+		else if (!string.IsNullOrEmpty(Icon))
 		{
 			<i class="bi bi-@Icon flex-shrink-0 @IconClass"></i>
 		}
