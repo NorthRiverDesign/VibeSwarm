@@ -32,7 +32,7 @@ else
                                 CurrentCommitHash="@CurrentCommitHash" IsGitOperationInProgress="@IsGitOperationInProgress"
                                 GitProgressMessage="@GitProgressMessage" HasUncommittedChanges="@_hasUncommittedChangesHeader"
                                 UncommittedFilesCount="@_uncommittedFilesCount" RemoteSyncStatus="@_remoteSyncStatus"
-                                OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
+                                OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin" IsSyncing="@_isSyncingWithOrigin"
                                 OnRefresh="RefreshBranches" OnBranchSelected="RequestBranchSwitch"
                                 OnUncommittedChangesClick="ShowUncommittedChangesModal"
                                 OnEdit="ShowEditProjectModal" OnPruneBranches="PruneRemoteBranches"
@@ -349,6 +349,7 @@ else
     private string? CurrentBranch { get; set; }
     private string? CurrentCommitHash { get; set; }
     private bool IsGitOperationInProgress { get; set; }
+    private bool _isSyncingWithOrigin;
     private string? GitProgressMessage { get; set; }
     private GitRemoteSyncStatus? _remoteSyncStatus;
     private int _remoteSyncStatusVersion;

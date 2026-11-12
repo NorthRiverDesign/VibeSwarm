@@ -168,10 +168,32 @@ public sealed class ProjectDetailTabMergeTests
 		});
 		Assert.False(jobService.JobsLoadGate.Task.IsCompleted);
 
-		cut.FindAll("button").Single(button => button.TextContent.Trim() == "3 commits behind origin").Click();
+		// Sync re-reads the project's jobs first, so let them load.
+		jobService.JobsLoadGate.SetResult();
+		cut.FindAll("button").Single(button => button.TextContent.Trim() == "Sync").Click();
 
 		cut.WaitForAssertion(() => Assert.Equal(1, versionControl.SyncCount));
-		jobService.JobsLoadGate.SetResult();
+	}
+
+	[Fact]
+	public void ProjectDetail_SyncButton_DoesNotSyncWhileAJobUsesTheCheckout()
+	{
+		var versionControl = new FakeVersionControlService(
+			isRepository: true,
+			new GitRemoteSyncStatus { RemoteBranch = "origin/main", CommitsBehind = 3, IsRemoteReachable = true });
+		var jobService = new FakeJobService([]);
+		using var context = CreateContext(ideas: [], jobs: [], jobService, versionControl);
+		var notifications = context.Services.GetRequiredService<NotificationService>();
+
+		var cut = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
+		cut.WaitForAssertion(() => Assert.Contains("3 commits behind origin", cut.Markup));
+
+		// A job is queued after the page loaded its jobs, so only a fresh read at tap time sees it.
+		jobService.Jobs.Add(new JobSummary { Id = Guid.NewGuid(), ProjectId = TestProject.Id, Title = "Queued job", GoalPrompt = "Queued job", Status = JobStatus.New, CreatedAt = DateTime.UtcNow });
+		cut.FindAll("button").Single(button => button.TextContent.Trim() == "Sync").Click();
+
+		cut.WaitForAssertion(() => Assert.Contains(notifications.Notifications, toast => toast.Message.Contains("a job is using this checkout", StringComparison.Ordinal)));
+		Assert.Equal(0, versionControl.SyncCount);
 	}
 
 	private static readonly Project TestProject = new()
@@ -214,9 +236,12 @@ public sealed class ProjectDetailTabMergeTests
 		public override Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
 	}
 
-	private sealed class FakeJobService(IReadOnlyList<JobSummary> jobs) : FakeJobServiceBase
+	private sealed class FakeJobService(IReadOnlyList<JobSummary> initialJobs) : FakeJobServiceBase
 	{
+		private readonly List<JobSummary> jobs = initialJobs.ToList();
+
 		public List<Job> CreatedJobs { get; } = [];
+		public List<JobSummary> Jobs => jobs;
 		public TaskCompletionSource? JobsLoadGate { get; init; }
 
 		public override Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)

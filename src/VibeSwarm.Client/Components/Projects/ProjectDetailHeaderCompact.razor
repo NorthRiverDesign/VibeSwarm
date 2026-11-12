@@ -49,10 +49,22 @@
 			@if (RemoteSyncStatus?.IsBehind == true)
 			{
 				<span class="fg-2" aria-hidden="true">·</span>
-				<button type="button" class="btn-sm btn-link fg-warning text-decoration-none px-0"
-						@onclick="OnSync" disabled="@IsGitOperationInProgress" title="@BehindOriginTitle">
-					@BehindOriginLabel
-				</button>
+				<span class="d-inline-flex align-items-center gap-3">
+					<span class="fg-warning" title="@BehindOriginTitle">@BehindOriginLabel</span>
+					<button type="button" class="btn-sm btn-outline theme-warning rounded-pill"
+							@onclick="OnSync" disabled="@IsGitOperationInProgress" title="Sync with origin">
+						@if (IsSyncing)
+						{
+							<span class="spinner-border spinner-sm" role="status" aria-hidden="true"></span>
+							<span>Syncing…</span>
+						}
+						else
+						{
+							<i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+							<span>Sync</span>
+						}
+					</button>
+				</span>
 			}
 		</div>
 	}
@@ -117,6 +129,10 @@
 	[Parameter]
 	public EventCallback OnSync { get; set; }
 
+	/// <summary>A sync with origin is running, as opposed to another git operation.</summary>
+	[Parameter]
+	public bool IsSyncing { get; set; }
+
 	[Parameter]
 	public EventCallback OnRefresh { get; set; }
 
@@ -156,8 +172,8 @@
 	};
 
 	private string BehindOriginTitle => RemoteSyncStatus?.IsRemoteReachable == false
-		? $"Behind {RemoteSyncStatus.RemoteBranch} as of the last fetch (origin couldn't be reached). Sync with origin"
-		: $"{RemoteSyncStatus?.RemoteBranch} has commits this checkout doesn't. Sync with origin";
+		? $"Behind {RemoteSyncStatus.RemoteBranch} as of the last fetch (origin couldn't be reached)"
+		: $"{RemoteSyncStatus?.RemoteBranch} has commits this checkout doesn't";
 
 	private string? _currentGitOperation => IsGitOperationInProgress
 		? GitProgressMessage?.Contains("Pruning") == true ? "prune"

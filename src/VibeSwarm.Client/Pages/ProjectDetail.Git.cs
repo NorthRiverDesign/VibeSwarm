@@ -589,11 +589,21 @@ public partial class ProjectDetail
         if (Project == null || string.IsNullOrEmpty(Project.WorkingPath)) return;
 
         IsGitOperationInProgress = true;
+        _isSyncingWithOrigin = true;
         GitProgressMessage = null;
         StateHasChanged();
 
         try
         {
+            // A queued, running or paused job owns the checkout, and syncing would reset it under the job.
+            // Re-read the count now: the page's copy is debounced and starts at zero until jobs load.
+            var jobs = await JobService.GetPagedByProjectIdAsync(ProjectId, page: 1, pageSize: 1);
+            if (jobs.ActiveCount > 0)
+            {
+                NotificationService.ShowProjectWarning(Project.Name, "Not synced: a job is using this checkout.");
+                return;
+            }
+
             var result = await VersionControlService.SyncWithOriginAsync(Project.WorkingPath);
 
             if (result.Success)
@@ -622,6 +632,7 @@ public partial class ProjectDetail
         finally
         {
             IsGitOperationInProgress = false;
+            _isSyncingWithOrigin = false;
             GitProgressMessage = null;
             StateHasChanged();
         }
