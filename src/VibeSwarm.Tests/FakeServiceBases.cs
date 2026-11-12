@@ -192,6 +192,8 @@ internal abstract class FakeJobServiceBase : IJobService
 	public virtual Task<int> RetrySelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<int> CancelSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<int> PrioritizeSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<bool> RunNextAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<JobQueueStatus?> GetQueueStatusAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<bool> ForceFailJobAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 

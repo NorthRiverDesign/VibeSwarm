@@ -17,6 +17,12 @@
 				<i class="bi bi-three-dots"></i>
 			</button>
 			<div class="menu">
+				@if (CanRunNext)
+				{
+					<button type="button" class="menu-item" @onclick="OnRunNext" disabled="@IsRunningNext">
+						<i class="bi bi-skip-forward-fill"></i>Run next
+					</button>
+				}
 				@if (CanRetry)
 				{
 					<button type="button" class="menu-item" @onclick="OnRetry" disabled="@IsRetrying">
@@ -115,6 +121,10 @@
 				@if (IsRunning && !CancellationRequested)
 				{
 					<span class="live-dot"></span>
+				}
+				else if (IsQueued)
+				{
+					<i class="bi bi-hourglass-split" aria-hidden="true"></i>
 				}
 				@StatusText
 			</span>
@@ -405,6 +415,16 @@
 	[Parameter]
 	public EventCallback OnForceCancel { get; set; }
 
+	/// <summary>Offers moving a queued job to the front of the queue.</summary>
+	[Parameter]
+	public bool CanRunNext { get; set; }
+
+	[Parameter]
+	public bool IsRunningNext { get; set; }
+
+	[Parameter]
+	public EventCallback OnRunNext { get; set; }
+
 	[Parameter]
 	public string? CurrentActivity { get; set; }
 
@@ -434,7 +454,7 @@
 
 	private bool _isTitleExpanded;
 
-	private bool HasMoreMenu => CanRetry || ShowGitActions;
+	private bool HasMoreMenu => CanRunNext || CanRetry || ShowGitActions;
 
 	private bool HasStopMenu => CanCancel || CanForceCancel || CanForceReset;
 
@@ -451,7 +471,8 @@
 	private string StatusText => Status switch
 	{
 		_ when IsRunning && CancellationRequested => "Stopping…",
-		JobStatus.New => "Queued",
+		JobStatus.New => "Queued, not started",
+		JobStatus.Pending => "Starting",
 		JobStatus.Started => "Starting",
 		JobStatus.Processing => "Running",
 		JobStatus.Paused => "Waiting for input",
@@ -463,7 +484,7 @@
 		_ when IsRunning && CancellationRequested => "fg-warning",
 		JobStatus.Started or JobStatus.Planning or JobStatus.Processing or JobStatus.Completed => "fg-success",
 		JobStatus.Failed => "fg-danger",
-		JobStatus.Paused or JobStatus.Stalled => "fg-warning",
+		JobStatus.New or JobStatus.Pending or JobStatus.Paused or JobStatus.Stalled => "fg-warning",
 		_ => "fg-body"
 	};
 

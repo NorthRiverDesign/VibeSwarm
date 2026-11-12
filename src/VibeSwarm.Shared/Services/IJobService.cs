@@ -115,6 +115,15 @@ public interface IJobService
     Task<int> PrioritizeSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Moves a queued job ahead of every other queued job, so it is the next to start once its
+    /// project and provider are free. Returns false when the job is no longer queued.
+    /// </summary>
+    Task<bool> RunNextAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Why a queued job has not started yet; null once it is no longer queued.</summary>
+    Task<JobQueueStatus?> GetQueueStatusAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Bypasses the state machine and directly sets a non-terminal job to Failed.
     /// Use as a last resort for jobs stuck in active states with no recovery path.
     /// </summary>

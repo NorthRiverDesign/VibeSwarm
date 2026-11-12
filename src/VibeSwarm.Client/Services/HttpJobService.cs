@@ -256,6 +256,19 @@ public class HttpJobService : IJobService
         return result?.Prioritized ?? 0;
     }
 
+    public async Task<bool> RunNextAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"/api/jobs/{id}/run-next", null, ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<JobQueueStatus?> GetQueueStatusAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"/api/jobs/{id}/queue-status", ct);
+        if (response.StatusCode != System.Net.HttpStatusCode.OK) return null;
+        return await response.Content.ReadFromJsonAsync<JobQueueStatus>(ct);
+    }
+
     public async Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken ct = default)
     {
         var response = await _http.GetAsync($"/api/jobs/{jobId}/changesets", ct);

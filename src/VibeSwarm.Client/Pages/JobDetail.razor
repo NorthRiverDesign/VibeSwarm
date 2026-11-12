@@ -46,6 +46,7 @@ else
 					   OnRefresh="RefreshBranches" OnPruneBranches="PruneRemoteBranches"
 					   OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
 					   CanEdit="@CanEditJob" OnEdit="ShowEditJobModal"
+					   CanRunNext="@CanRunNext" IsRunningNext="@IsRunningNext" OnRunNext="RunNext"
 					   CanForceReset="@CanForceReset" IsForceResetting="@IsForceResetting" OnForceReset="ForceResetJob"
 					   CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" CurrentCycle="@Job.CurrentCycle"
 					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" AgentName="@Job.Agent?.Name"
@@ -178,6 +179,7 @@ else
                              SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()"
                              LiveMessages="@_pendingSessionMessages.ToList()" MaxOutputLines="@MaxOutputLines"
                              CurrentActivity="@Job.CurrentActivity"
+                             QueueStatus="@_queueStatus" CanRunNext="@CanRunNext" OnRunNext="RunNext" IsRunningNext="@IsRunningNext"
                              OnClearLiveOutput="ClearLiveOutput" OnSendFollowUp="ContinueJobWithFollowUp"
                              SendMessageToAgent="SendMessageToAgent"
                              DraftFollowUp="@(_followUpDraftModel != null ? DraftFollowUpAsync : null)"
@@ -261,6 +263,10 @@ else
         !Job.CancellationRequested;
 
     private bool CanEditJob => Job != null && Job.Status == JobStatus.New && !Job.CancellationRequested;
+
+    // Offered while another queued job would start first; a job already first in line has nothing to skip.
+    private bool CanRunNext => Job != null && Job.Status == JobStatus.New && !Job.CancellationRequested
+        && (_queueStatus == null || _queueStatus.JobsAhead > 0);
 
     private bool CanForceCancel => Job != null &&
         (Job.Status == JobStatus.Started || Job.Status == JobStatus.Planning || Job.Status == JobStatus.Processing) &&
@@ -391,7 +397,8 @@ else
                 // When SignalR is actively connected and the job is running, skip the poll —
                 // SignalR already pushes all status changes, so polling only wastes CPU/battery.
                 // Keep polling as a fallback when SignalR is disconnected or during early page load.
-                if (_signalRConnected && IsJobActive)
+                // A queued job still polls: whatever holds it back finishes without a push to this page.
+                if (_signalRConnected && IsJobActive && Job?.Status != JobStatus.New)
                     shouldPoll = false;
 
                 if (shouldPoll && !_isRefreshing)

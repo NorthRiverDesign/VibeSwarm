@@ -2116,6 +2116,83 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public void JobSessionPanel_Bunit_ShowsAQueuedJobAsNotRunning_WithWhyAndRunNext()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+		var blockingJobId = Guid.NewGuid();
+		var runNextClicks = 0;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.New)
+			.Add(panel => panel.IsJobActive, true)
+			.Add(panel => panel.GoalPrompt, "Add dark mode")
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.QueueStatus, new JobQueueStatus
+			{
+				Reason = JobQueueWaitReason.ProviderBusy,
+				ProviderName = "Claude",
+				BlockingJobId = blockingJobId,
+				BlockingJobTitle = "Refactor billing",
+				BlockingProjectName = "Beta",
+				BlockingJobStatus = JobStatus.Processing,
+				JobsAhead = 2
+			})
+			.Add(panel => panel.CanRunNext, true)
+			.Add(panel => panel.OnRunNext, () => runNextClicks++));
+
+		// Nothing suggests an agent is at work yet.
+		Assert.Empty(cut.FindAll(".typing-dot"));
+		Assert.Empty(cut.FindAll(".live-dot"));
+
+		var notice = cut.Find("[role='status']");
+		Assert.Contains("Queued, not running yet", notice.TextContent);
+		Assert.Contains("Waiting for Claude, which is busy with “Refactor billing” in Beta.", notice.TextContent);
+		Assert.Equal($"/jobs/view/{blockingJobId}", notice.QuerySelector("a")!.GetAttribute("href"));
+		Assert.Contains("2 jobs ahead in the queue", notice.TextContent);
+
+		cut.Find("[role='status'] button").Click();
+		Assert.Equal(1, runNextClicks);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_ShowsNextInLineWithoutRunNext()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.New)
+			.Add(panel => panel.IsJobActive, true)
+			.Add(panel => panel.GoalPrompt, "Add dark mode")
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.QueueStatus, new JobQueueStatus { Reason = JobQueueWaitReason.ProjectBusy, BlockingJobId = Guid.NewGuid(), BlockingJobTitle = "Fix login", BlockingJobStatus = JobStatus.Paused })
+			.Add(panel => panel.CanRunNext, false)
+			.Add(panel => panel.OnRunNext, () => { }));
+
+		var notice = cut.Find("[role='status']");
+		Assert.Contains("Waiting for “Fix login” in this project, which is waiting for your reply.", notice.TextContent);
+		Assert.Contains("Next in line", notice.TextContent);
+		Assert.Empty(notice.QuerySelectorAll("button"));
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_KeepsTheTypingIndicatorForARunningJob()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Processing)
+			.Add(panel => panel.IsJobActive, true)
+			.Add(panel => panel.GoalPrompt, "Add dark mode")
+			.Add(panel => panel.Messages, new List<JobMessage>()));
+
+		Assert.Equal(3, cut.FindAll(".typing-dot").Count);
+		Assert.DoesNotContain("Queued, not running yet", cut.Markup);
+	}
+
+	[Fact]
 	public void JobSessionPanel_Bunit_HidesFollowUpInputForActiveJob()
 	{
 		using var context = new BunitContext();

@@ -109,6 +109,31 @@ public sealed class JobHeaderSectionTests
 	}
 
 	[Fact]
+	public void JobHeaderSection_Bunit_MarksAQueuedJobAsNotStarted_AndOffersRunNext()
+	{
+		using var context = new BunitContext();
+		var runNextClicks = 0;
+
+		var cut = context.Render<JobHeaderSection>(parameters => parameters
+			.Add(header => header.Status, JobStatus.New)
+			.Add(header => header.JobTitle, "Add dark mode")
+			.Add(header => header.CanCancel, true)
+			.Add(header => header.CanRunNext, true)
+			.Add(header => header.OnRunNext, () => runNextClicks++)
+			.Add(header => header.CreatedAt, DateTime.UtcNow));
+
+		var status = cut.Find("summary > span");
+		Assert.Contains("Queued, not started", status.TextContent);
+		Assert.Contains("fg-warning", status.ClassName);
+		Assert.Empty(cut.FindAll(".live-dot"));
+
+		var runNext = cut.Find("button[aria-label='Job actions'] + .menu .menu-item");
+		Assert.Equal("Run next", runNext.TextContent.Trim());
+		runNext.Click();
+		Assert.Equal(1, runNextClicks);
+	}
+
+	[Fact]
 	public void JobHeaderSection_Bunit_OffersForceStopOnceAStopIsRequested()
 	{
 		using var context = new BunitContext();

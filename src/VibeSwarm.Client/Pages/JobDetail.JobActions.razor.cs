@@ -15,6 +15,10 @@ public partial class JobDetail : ComponentBase
     private bool IsRetrying { get; set; }
     private bool IsResuming { get; set; }
     private bool IsForceResetting { get; set; }
+    private bool IsRunningNext { get; set; }
+
+    // Why a queued job has not started yet; null once it leaves the queue.
+    private JobQueueStatus? _queueStatus;
 
     // Retry modal state
     private bool _showRetryModal = false;
@@ -158,6 +162,8 @@ public partial class JobDetail : ComponentBase
                 catch { /* non-critical — page still works without change history */ }
             }
 
+            await LoadQueueStatusAsync();
+
             ReconcilePendingSessionMessages();
 
             if (Job != null && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled) &&
@@ -184,6 +190,50 @@ public partial class JobDetail : ComponentBase
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private async Task LoadQueueStatusAsync()
+    {
+        if (Job?.Status != JobStatus.New)
+        {
+            _queueStatus = null;
+            return;
+        }
+
+        try { _queueStatus = await JobService.GetQueueStatusAsync(Job.Id); }
+        catch { /* non-critical — the queued notice still shows without a reason */ }
+    }
+
+    private async Task RunNext()
+    {
+        if (Job == null || IsRunningNext) return;
+
+        IsRunningNext = true;
+
+        try
+        {
+            if (await JobService.RunNextAsync(Job.Id))
+            {
+                var provider = Job.Provider?.Name;
+                NotificationService.ShowProjectSuccess(Job.Project?.Name, string.IsNullOrWhiteSpace(provider)
+                    ? "This job runs next."
+                    : $"This job runs next, as soon as {provider} is free.");
+            }
+            else
+            {
+                NotificationService.ShowProjectError(Job.Project?.Name, "This job is no longer queued.");
+            }
+
+            await LoadJob();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowProjectError(Job.Project?.Name, $"Could not move the job up: {ex.Message}");
+        }
+        finally
+        {
+            IsRunningNext = false;
         }
     }
 

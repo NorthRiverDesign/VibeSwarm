@@ -231,6 +231,17 @@ public class JobsController : ControllerBase
         return Ok(new { Prioritized = count });
     }
 
+    [HttpPost("{id:guid}/run-next")]
+    public async Task<IActionResult> RunNext(Guid id, CancellationToken ct)
+        => await _jobService.RunNextAsync(id, ct) ? Ok() : Conflict("This job is no longer queued.");
+
+    [HttpGet("{id:guid}/queue-status")]
+    public async Task<IActionResult> GetQueueStatus(Guid id, CancellationToken ct)
+    {
+        var status = await _jobService.GetQueueStatusAsync(id, ct);
+        return status == null ? NoContent() : Ok(status);
+    }
+
     [HttpGet("{id:guid}/changesets")]
     public async Task<IActionResult> GetChangeSets(Guid id, CancellationToken ct)
         => Ok(await _jobService.GetChangeSetsAsync(id, ct));

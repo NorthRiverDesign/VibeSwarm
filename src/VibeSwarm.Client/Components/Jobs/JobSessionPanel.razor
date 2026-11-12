@@ -13,7 +13,11 @@
                 <li class="nav-item" role="presentation">
                     <button type="button" class="nav-link px-5 sm:px-5 @(_activeTab == "session" ? "active" : "")"
                             @onclick="@(() => _activeTab = "session")" role="tab">
-                        @if (IsJobActive)
+                        @if (IsQueued)
+                        {
+                            <i class="bi bi-hourglass-split fg-warning"></i>
+                        }
+                        else if (IsJobActive)
                         {
                             <span class="live-dot me-1"></span>
                         }
@@ -293,7 +297,33 @@
                         }
                     }
 
-                    @if (ShowInlineWaitingActivity)
+                    @if (IsQueued)
+                    {
+                        @* A queued job has no agent yet: say so plainly instead of the typing dots. *@
+                        <div class="d-flex flex-column align-items-center gap-3 text-center py-7 px-5" role="status" aria-live="polite">
+                            <i class="bi bi-hourglass-split fg-warning fs-2xl" aria-hidden="true"></i>
+                            <div class="d-flex flex-column gap-1 min-w-0 max-w-100">
+                                <span class="fw-semibold">@(Status == JobStatus.Pending ? "Starting…" : "Queued, not running yet")</span>
+                                @if (Status == JobStatus.New)
+                                {
+                                    var reason = GetQueueReason();
+                                    <span class="small fg-1 text-break">@reason.Before@if (QueueStatus?.BlockingJobId is { } blockingJobId)
+                                        {<a href="@($"/jobs/view/{blockingJobId}")">“@QueueStatus.BlockingJobTitle”</a>}@reason.After</span>
+                                    @if (QueuePositionText is { } position)
+                                    {
+                                        <span class="small fg-2">@position</span>
+                                    }
+                                }
+                            </div>
+                            @if (CanRunNext && OnRunNext.HasDelegate)
+                            {
+                                <button type="button" class="btn-sm btn-solid theme-primary" @onclick="OnRunNext" disabled="@IsRunningNext">
+                                    <i class="bi bi-skip-forward-fill"></i>@(IsRunningNext ? "Moving up…" : "Run next")
+                                </button>
+                            }
+                        </div>
+                    }
+                    else if (ShowInlineWaitingActivity)
                     {
                         <div class="chat-message chat-message-assistant d-flex flex-column" role="status" aria-live="polite">
                             <div class="chat-bubble py-3 px-5 bg-2 border d-flex gap-3 align-items-center">
@@ -561,6 +591,20 @@
     [Parameter]
     public EventCallback<string> OnGoalPromptChanged { get; set; }
 
+    /// <summary>Why a queued job has not started yet, when known.</summary>
+    [Parameter]
+    public JobQueueStatus? QueueStatus { get; set; }
+
+    /// <summary>Offers moving a queued job to the front of the queue.</summary>
+    [Parameter]
+    public bool CanRunNext { get; set; }
+
+    [Parameter]
+    public bool IsRunningNext { get; set; }
+
+    [Parameter]
+    public EventCallback OnRunNext { get; set; }
+
     /// <summary>Opens the queued-job editor instead of editing a New job's prompt inline.</summary>
     [Parameter]
     public EventCallback OnEditQueuedJob { get; set; }
@@ -683,7 +727,69 @@
     }
 
     private bool ShowInlineWaitingActivity
-        => IsJobActive;
+        => IsJobActive && !IsQueued;
+
+    private bool IsQueued => Status is JobStatus.New or JobStatus.Pending;
+
+    private string? QueuePositionText => QueueStatus switch
+    {
+        null => null,
+        { JobsAhead: 0 } => "Next in line",
+        { JobsAhead: 1 } => "1 job ahead in the queue",
+        { JobsAhead: var ahead } => $"{ahead} jobs ahead in the queue"
+    };
+
+    /// <summary>
+    /// Why the job is still queued, split around the job it waits for (linked between the two
+    /// parts when there is one).
+    /// </summary>
+    private (string Before, string After) GetQueueReason()
+    {
+        if (QueueStatus is not { } status)
+        {
+            return ("It starts when its project and provider are free.", string.Empty);
+        }
+
+        var provider = string.IsNullOrWhiteSpace(status.ProviderName) ? "the provider" : status.ProviderName;
+        var hasBlocker = status.BlockingJobId.HasValue;
+        var blockerState = status.BlockingJobStatus switch
+        {
+            JobStatus.Paused => ", which is waiting for your reply",
+            JobStatus.Stalled => ", which has stalled",
+            _ => null
+        };
+
+        return status.Reason switch
+        {
+            JobQueueWaitReason.QueuePaused => ("The queue is stopped. This job starts once it resumes.", string.Empty),
+            JobQueueWaitReason.HeldUntil => (status.WaitUntilUtc is { } until
+                ? $"On hold until {FormatWaitUntil(until)}, then it can start."
+                : "On hold for now, then it can start.", string.Empty),
+            JobQueueWaitReason.ProjectEditHold => ("Waiting while a queued job in this project is being edited.", string.Empty),
+            JobQueueWaitReason.WaitingOnDependency when hasBlocker => ("Starts after ", status.BlockingJobStatus switch
+            {
+                JobStatus.Failed => " completes. It failed, so retry it or cancel this job.",
+                JobStatus.Cancelled => " completes. It was cancelled, so retry it or cancel this job.",
+                _ => " completes."
+            }),
+            JobQueueWaitReason.WaitingOnDependency => ("Waiting for an earlier job to complete.", string.Empty),
+            JobQueueWaitReason.ProjectBusy when hasBlocker => ("Waiting for ", blockerState != null
+                ? $" in this project{blockerState}."
+                : " to finish in this project."),
+            JobQueueWaitReason.ProjectBusy => ("Waiting for another job in this project to finish.", string.Empty),
+            JobQueueWaitReason.ProviderBusy when hasBlocker => ($"Waiting for {provider}, which is busy with ",
+                (string.IsNullOrWhiteSpace(status.BlockingProjectName) ? string.Empty : $" in {status.BlockingProjectName}")
+                    + (blockerState ?? string.Empty) + "."),
+            JobQueueWaitReason.ProviderBusy => ($"Waiting for {provider} to finish another job.", string.Empty),
+            _ when status.JobsAhead > 0 => ("Waiting for the jobs ahead of it to start.", string.Empty),
+            _ => ("Starting shortly.", string.Empty)
+        };
+    }
+
+    private static string FormatWaitUntil(DateTime untilUtc)
+        => untilUtc - DateTime.UtcNow < TimeSpan.FromHours(12)
+            ? untilUtc.FormatTimeShort()
+            : untilUtc.FormatDateTimeShort();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
