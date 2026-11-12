@@ -1248,12 +1248,8 @@ small, .small {
 .stepper-item-current::before { content: "\f41f"; }
 .stepper-item-failed::before { content: "\f659"; }
 
-/* ── Brand / project marks (gradients — no Bootstrap equivalent) ── */
+/* ── Project marks (gradient — no Bootstrap equivalent) ── */
 
-.app-brand-mark {
-	background: conic-gradient(from 200deg at 50% 50%, #6b8afd, #a78bfa, #5ec6d3, #6b8afd);
-	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-}
 .app-project-mark {
 	background: linear-gradient(135deg, #4c7fe3, #2d55a8);
 	color: #fff;
@@ -1265,8 +1261,8 @@ small, .small {
 	flex: none;
 }
 
-/* Mark sizes — use one of these with .app-brand-mark or .app-project-mark. The glyph
-   sizes scale with each box; they are part of the mark, not the type scale. */
+/* Mark sizes — use one of these with .app-project-mark or the navbar's app icon <img>. The
+   glyph sizes scale with each box; they are part of the mark, not the type scale. */
 .app-mark-xs { width: 20px; height: 20px; border-radius: 5px; font-size: 10px; }
 .app-mark-sm { width: 22px; height: 22px; border-radius: 6px; font-size: 11px; }
 .app-mark-md { width: 32px; height: 32px; border-radius: 8px; font-size: 12.5px; }
