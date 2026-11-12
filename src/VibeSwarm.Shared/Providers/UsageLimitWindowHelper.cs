@@ -61,6 +61,11 @@ public static class UsageLimitWindowHelper
 		};
 	}
 
+	/// <summary>
+	/// Combines an earlier usage reading with a later one. A window the later reading reports
+	/// replaces the same window in the earlier one, so a run that reports its usage several times
+	/// ends on its last figure, not its first. Windows only the earlier reading carries are kept.
+	/// </summary>
 	public static UsageLimits Merge(UsageLimits? existing, UsageLimits latest)
 	{
 		if (existing == null)
@@ -68,7 +73,10 @@ public static class UsageLimitWindowHelper
 			return latest;
 		}
 
-		var windows = NormalizeWindows(existing.Windows.Concat(latest.Windows));
+		var latestWindows = NormalizeWindows(latest.Windows);
+		var olderWindows = NormalizeWindows(existing.Windows)
+			.Where(window => !latestWindows.Any(newer => IsSameWindow(newer, window)));
+		var windows = NormalizeWindows(latestWindows.Concat(olderWindows));
 		var primaryWindow = SelectPrimaryWindow(windows);
 
 		return new UsageLimits
@@ -84,6 +92,36 @@ public static class UsageLimitWindowHelper
 			Windows = windows
 		};
 	}
+
+	/// <summary>
+	/// The window as it stands at <paramref name="utcNow"/>. Once it has reset, none of it is used
+	/// any more, whatever the last reading said, so it shows as empty until a new reading arrives.
+	/// The reset time stays so the reader can tell when that happened.
+	/// </summary>
+	public static UsageLimitWindow AsOf(UsageLimitWindow window, DateTime utcNow)
+	{
+		if (!window.HasResetBy(utcNow))
+		{
+			return window;
+		}
+
+		return new UsageLimitWindow
+		{
+			Scope = window.Scope,
+			LimitType = window.LimitType,
+			Label = window.Label,
+			CurrentUsage = window.CurrentUsage.HasValue ? 0 : null,
+			MaxUsage = window.MaxUsage,
+			ResetTime = window.ResetTime,
+			IsLimitReached = false
+		};
+	}
+
+	/// <summary>Same identity as <see cref="NormalizeWindows"/> groups on.</summary>
+	private static bool IsSameWindow(UsageLimitWindow left, UsageLimitWindow right)
+		=> left.Scope == right.Scope
+			&& left.LimitType == right.LimitType
+			&& string.Equals(left.Label, right.Label, StringComparison.Ordinal);
 
 	private static int GetPriority(UsageLimitWindow window)
 	{

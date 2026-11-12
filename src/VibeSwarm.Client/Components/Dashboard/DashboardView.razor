@@ -118,7 +118,7 @@
                 @if (!IsLoading && VisibleProviders.Any())
                 {
                     <button type="button" class="btn-sm btn-link text-decoration-none px-0"
-                            title="Reload usage. Connections that report limits on demand run one tiny request each."
+                            title="Reload usage and read each connection's current limits. Claude Code spends one tiny request to do it."
                             @onclick="RefreshProviderUsageAsync" disabled="@IsRefreshingUsage">
                         <i class="bi bi-arrow-repeat @(IsRefreshingUsage ? "spinner-rotate" : "")"></i>Refresh usage
                     </button>
@@ -470,7 +470,8 @@
 
             try
             {
-                await Task.WhenAll(LoadDashboardProjectsAsync(), LoadIdeasStatusAsync());
+                // Usage is recorded before a job reports completion, so the meters follow it here.
+                await Task.WhenAll(LoadDashboardProjectsAsync(), LoadIdeasStatusAsync(), ReloadUsageSummariesAsync());
                 await InvokeAsync(StateHasChanged);
             }
             finally
@@ -479,6 +480,31 @@
             }
         }
         while (PendingDashboardRefresh);
+    }
+
+    /// <summary>
+    /// Re-reads the stored usage figures; it doesn't ask any provider, so it costs nothing. A
+    /// failed read keeps the meters on screen, and a manual refresh in progress loads its own.
+    /// </summary>
+    private async Task ReloadUsageSummariesAsync()
+    {
+        if (IsRefreshingUsage)
+        {
+            return;
+        }
+
+        try
+        {
+            var summaries = await HttpProviderService.GetAllUsageSummariesAsync();
+            if (!IsRefreshingUsage)
+            {
+                UsageSummaries = summaries;
+            }
+        }
+        catch
+        {
+            // Keep the figures already shown
+        }
     }
 
     private async Task LoadIdeasStatusAsync()

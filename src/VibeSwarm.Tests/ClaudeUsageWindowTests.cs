@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Providers.Claude;
@@ -174,6 +175,56 @@ public sealed class ClaudeUsageWindowTests
 		Assert.NotNull(limits);
 		Assert.True(limits!.IsLimitReached);
 	}
+
+	[Fact]
+	public void ARunReportingUsageAfterEachRequest_EndsOnItsLastReading()
+	{
+		// The CLI reports usage after every request. A job once saved the session at 31% when its
+		// run had reached 41%, because merging kept the first reading of each window.
+		var provider = new ClaudeProvider(new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			ExecutablePath = "claude"
+		});
+		var result = new ExecutionResult { Messages = [] };
+
+		foreach (var (session, weekly) in new[] { ("0.31", "0.16"), ("0.36", "0.17"), ("0.41", "0.17") })
+		{
+			provider.ProcessStreamEvent(ParseEvent(CurrentCliEvent(session, weekly)), result, new StringBuilder(), null, []);
+		}
+
+		var limits = result.DetectedUsageLimits;
+		Assert.NotNull(limits);
+		Assert.Equal(41, limits!.Windows.Single(w => w.Label == "Session (5 hours)").CurrentUsage);
+		Assert.Equal(17, limits.Windows.Single(w => w.Label == "Weekly").CurrentUsage);
+		Assert.Equal(41, limits.CurrentUsage);
+	}
+
+	/// <summary>
+	/// The shape Claude Code 2.1.322 emits: no top-level utilization, and a status per window.
+	/// </summary>
+	private static string CurrentCliEvent(string session, string weekly) => $$"""
+		{
+		  "type": "rate_limit_event",
+		  "rate_limit_info": {
+		    "status": "allowed",
+		    "resetsAt": 1794456000,
+		    "rateLimitType": "five_hour",
+		    "overageStatus": "allowed",
+		    "isUsingOverage": false,
+		    "unifiedWindows": {
+		      "five_hour": { "utilization": {{session}}, "resetsAt": 1794456000, "status": "allowed" },
+		      "seven_day": { "utilization": {{weekly}}, "resetsAt": 1794873600, "status": "allowed" }
+		    }
+		  }
+		}
+		""";
+
+	private static ClaudeStreamEvent ParseEvent(string json)
+		=> JsonSerializer.Deserialize<ClaudeStreamEvent>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
 
 	[Fact]
 	public void IncludedUsageBelowTheLimit_IsNotTreatedAsReached()

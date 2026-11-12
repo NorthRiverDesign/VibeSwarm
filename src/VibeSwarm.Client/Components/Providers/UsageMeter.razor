@@ -49,7 +49,7 @@ else if (displayWindows.Count > 0)
 				@if (ShowResetTime && window.ResetTime.HasValue)
 				{
 					<div class="small fg-2 mt-1">
-						<i class="bi bi-clock me-1"></i>Resets @FormatResetTime(window.ResetTime.Value)
+						<i class="bi bi-clock me-1"></i>@FormatResetTime(window.ResetTime.Value)
 					</div>
 				}
 
@@ -83,7 +83,7 @@ else if (UsageSummary != null && ShowEmptyState)
 			@if (ShowResetTime && UsageSummary.LimitResetTime.HasValue)
 			{
 				<div class="small fg-2 mt-1">
-					<i class="bi bi-clock me-1"></i>Resets @FormatResetTime(UsageSummary.LimitResetTime.Value)
+					<i class="bi bi-clock me-1"></i>@FormatResetTime(UsageSummary.LimitResetTime.Value)
 				</div>
 			}
 		}
@@ -112,6 +112,10 @@ else if (UsageSummary != null && ShowEmptyState)
 	[Parameter]
 	public bool Compact { get; set; } = false;
 
+	/// <summary>
+	/// The windows to draw, as they stand now: one that has reset since its last reading shows as
+	/// empty rather than repeating figures from a window that is over.
+	/// </summary>
 	private List<UsageLimitWindow> GetDisplayWindows()
 	{
 		if (UsageSummary == null || UsageSummary.LimitType == UsageLimitType.Unmetered)
@@ -119,11 +123,13 @@ else if (UsageSummary != null && ShowEmptyState)
 			return [];
 		}
 
+		var now = DateTime.UtcNow;
 		if (UsageSummary.LimitWindows.Count > 0)
 		{
 			return UsageSummary.LimitWindows
 				.OrderBy(window => GetDisplayOrder(window.Scope))
 				.ThenBy(window => window.Label, StringComparer.OrdinalIgnoreCase)
+				.Select(window => UsageLimitWindowHelper.AsOf(window, now))
 				.ToList();
 		}
 
@@ -131,7 +137,7 @@ else if (UsageSummary != null && ShowEmptyState)
 		{
 			return
 			[
-				new UsageLimitWindow
+				UsageLimitWindowHelper.AsOf(new UsageLimitWindow
 				{
 					Scope = InferScope(UsageSummary.LimitType),
 					LimitType = UsageSummary.LimitType,
@@ -140,7 +146,7 @@ else if (UsageSummary != null && ShowEmptyState)
 					ResetTime = UsageSummary.LimitResetTime,
 					IsLimitReached = UsageSummary.IsLimitReached,
 					Message = UsageSummary.LimitMessage
-				}
+				}, now)
 			];
 		}
 
@@ -263,21 +269,29 @@ else if (UsageSummary != null && ShowEmptyState)
 		_ => ""
 	};
 
-	private string FormatResetTime(DateTime resetTime)
+	private static string FormatResetTime(DateTime resetTime)
 	{
-		var now = DateTime.UtcNow;
-		var diff = resetTime - now;
+		var diff = resetTime - DateTime.UtcNow;
 
 		if (diff.TotalDays > 1)
-			return $"in {(int)diff.TotalDays} days";
+			return $"Resets in {(int)diff.TotalDays} days";
 		if (diff.TotalHours > 1)
-			return $"in {(int)diff.TotalHours} hours";
+			return $"Resets in {(int)diff.TotalHours} hours";
 		if (diff.TotalMinutes > 1)
-			return $"in {(int)diff.TotalMinutes} minutes";
+			return $"Resets in {(int)diff.TotalMinutes} minutes";
 		if (diff.TotalSeconds > 0)
-			return "soon";
+			return "Resets soon";
 
-		return resetTime.ToString("M/d");
+		// Already past: the figures above start from zero again until a new reading arrives.
+		var ago = -diff;
+		if (ago.TotalDays > 1)
+			return $"Reset on {resetTime.FormatDate()}";
+		if (ago.TotalHours > 1)
+			return $"Reset {(int)ago.TotalHours} hours ago";
+		if (ago.TotalMinutes > 1)
+			return $"Reset {(int)ago.TotalMinutes} minutes ago";
+
+		return "Reset just now";
 	}
 
 	private static UsageLimitWindowScope InferScope(UsageLimitType limitType) => limitType switch

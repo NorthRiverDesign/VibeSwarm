@@ -417,9 +417,10 @@ public class ClaudeProvider : CliProviderBase
             var usageLimits = ClaudeUsageParser.ParseLimitSignals(error);
             if (usageLimits != null)
             {
+                // The structured reading goes second so it wins wherever both describe a window.
                 result.DetectedUsageLimits = result.DetectedUsageLimits == null
                     ? usageLimits
-                    : UsageLimitWindowHelper.Merge(result.DetectedUsageLimits, usageLimits);
+                    : UsageLimitWindowHelper.Merge(usageLimits, result.DetectedUsageLimits);
                 _lastObservedUsageLimits = result.DetectedUsageLimits;
             }
         }
@@ -761,7 +762,7 @@ public class ClaudeProvider : CliProviderBase
     private string? _systemErrorMessage = null;
     private readonly Dictionary<string, string> toolNamesById = new(StringComparer.Ordinal);
 
-    private void ProcessStreamEvent(
+    internal void ProcessStreamEvent(
         ClaudeStreamEvent evt,
         ExecutionResult result,
         System.Text.StringBuilder currentMessage,
@@ -788,8 +789,9 @@ public class ClaudeProvider : CliProviderBase
                 break;
 
             case "rate_limit_event":
-                // Structured usage limits, emitted mid-run. Merged rather than replaced so a
-                // later event reporting only one window doesn't discard the others.
+                // Structured usage limits, emitted after each request. Merged rather than replaced
+                // so a later event reporting only one window doesn't discard the others, while
+                // each window it does report takes the later figure.
                 var streamedLimits = ClaudeUsageParser.ParseRateLimitEvent(evt.RateLimitInfo);
                 if (streamedLimits != null)
                 {

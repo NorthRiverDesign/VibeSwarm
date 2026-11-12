@@ -8,7 +8,7 @@
 			<span class="d-block fw-medium text-truncate @(IsEnabled ? "" : "fg-1")">@Name</span>
 			<span class="d-block small fg-1 text-truncate" title="@CliVersion">@GetSummary()</span>
 		</span>
-		@if (UsageSummary?.IsLimitReached == true)
+		@if (UsageSummary?.IsLimitReachedAt(DateTime.UtcNow) == true)
 		{
 			<span class="small fg-emphasis-danger flex-shrink-0">Limit reached</span>
 		}

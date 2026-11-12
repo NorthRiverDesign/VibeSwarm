@@ -131,7 +131,7 @@
 					@if (SupportsUsageRefresh)
 					{
 						<button type="button" class="btn-sm btn-link text-decoration-none px-0"
-								title="Runs one tiny request to read your current limits"
+								title="@(ProviderCapabilities.IsUsageRefreshFree(Provider) ? "Reads your plan's quota without spending a request" : "Runs one tiny request to read your current limits")"
 								@onclick="HandleRefreshUsage" disabled="@IsRefreshingUsage">
 							<i class="bi bi-arrow-repeat @(IsRefreshingUsage ? "spinner-rotate" : "")"></i>Check usage
 						</button>

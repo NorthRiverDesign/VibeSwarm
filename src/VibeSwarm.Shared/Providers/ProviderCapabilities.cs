@@ -153,7 +153,15 @@ public static class ProviderCapabilities
 	/// </summary>
 	public static bool SupportsUsageRefresh(Provider provider)
 		=> provider.ConnectionMode == ProviderConnectionMode.CLI
-			&& provider.Type is ProviderType.Claude;
+			&& provider.Type is ProviderType.Claude or ProviderType.Copilot;
+
+	/// <summary>
+	/// Whether reading the provider's usage on demand costs nothing. Copilot reads the account's
+	/// quota from its runtime without a model request; Claude Code has to spend one tiny request.
+	/// </summary>
+	public static bool IsUsageRefreshFree(Provider provider)
+		=> provider.ConnectionMode == ProviderConnectionMode.CLI
+			&& provider.Type == ProviderType.Copilot;
 
 	/// <summary>Advisor setting that turns Claude Code's advisor off for a provider's runs.</summary>
 	public const string AdvisorOff = "off";

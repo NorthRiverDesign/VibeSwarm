@@ -300,11 +300,16 @@ public class ProviderService : IProviderService
 
         if (limits == null)
         {
+            // A provider that can be read but returned nothing (an unlimited plan, a failed read)
+            // says so, rather than claiming it can't report usage at all.
+            var isSupported = ProviderCapabilities.SupportsUsageRefresh(provider);
             return new UsageRefreshResult
             {
                 Success = false,
-                IsSupported = false,
-                ErrorMessage = $"{provider.Name} cannot report usage on demand."
+                IsSupported = isSupported,
+                ErrorMessage = isSupported
+                    ? $"{provider.Name} did not report any usage limits."
+                    : $"{provider.Name} cannot report usage on demand."
             };
         }
 

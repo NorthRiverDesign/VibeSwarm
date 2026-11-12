@@ -520,8 +520,8 @@
 	}
 
 	/// <summary>
-	/// Asks the provider for its current usage. This spends one tiny request against the very
-	/// limits it reports, which is why it only ever runs from this button.
+	/// Asks the provider for its current usage. For Claude Code this spends one tiny request
+	/// against the very limits it reports, which is why it only ever runs from this button.
 	/// </summary>
 	private async Task RefreshUsageAsync(Provider provider)
 	{

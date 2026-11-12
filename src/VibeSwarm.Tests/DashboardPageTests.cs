@@ -336,7 +336,8 @@ public sealed class DashboardPageTests
 		FindRefreshUsageButton(cut).Click();
 
 		cut.WaitForAssertion(() => Assert.Contains("Weekly limit 85/100 used", cut.Markup));
-		Assert.Equal([claude.Id], handler.RefreshedProviderIds);
+		// Copilot reads its account quota for free, so it is read alongside Claude.
+		Assert.Equivalent(new[] { claude.Id, copilot.Id }, handler.RefreshedProviderIds);
 		Assert.Equal(2, handler.SummaryReloads);
 		Assert.False(FindRefreshUsageButton(cut).HasAttribute("disabled"));
 	}
