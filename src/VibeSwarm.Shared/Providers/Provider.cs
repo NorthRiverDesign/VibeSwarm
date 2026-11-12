@@ -96,4 +96,12 @@ public class Provider
 	/// </summary>
 	[StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
 	public string? DefaultReasoningEffort { get; set; }
+
+	/// <summary>
+	/// Claude Code only: the model the agent consults through the advisor tool (<c>--advisor</c>),
+	/// such as <c>opus</c> or <c>fable</c>. <c>off</c> turns the advisor off; null leaves it to
+	/// Claude Code's own <c>advisorModel</c> setting.
+	/// </summary>
+	[StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ProviderAdvisorModelMaxLength)]
+	public string? AdvisorModel { get; set; }
 }

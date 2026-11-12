@@ -18,7 +18,7 @@ VibeSwarm is an agentic CI/CD system for turning ideas into application code. It
 
 | Agent          | CLI Command | Verified against | Minimum | Install                                           |
 | -------------- | ----------- | ---------------- | ------- | ------------------------------------------------- |
-| Claude Code    | `claude`    | 2.1.276          | 2.0.0   | [claude.ai/code](https://claude.ai/code)          |
+| Claude Code    | `claude`    | 2.1.322          | 2.0.0   | [claude.ai/code](https://claude.ai/code)          |
 | OpenCode       | `opencode`  | 1.18.31          | 1.0.0   | [opencode.ai](https://opencode.ai)                |
 | GitHub Copilot | `copilot`   | 1.0.86           | 1.0.0   | [copilot CLI](https://docs.github.com/en/copilot) |
 
@@ -28,7 +28,7 @@ Agents are **auto-detected** at startup. If a supported CLI tool is on your PATH
 
 These CLIs change fast. `ProviderVersionReference` (in `src/VibeSwarm.Shared/Providers/`) is the
 single source of truth for the release each integration was built and verified against — last
-reviewed **2026-09-18**. Newer CLI features are version-gated, so an older CLI keeps working
+reviewed **2026-11-11**. Newer CLI features are version-gated, so an older CLI keeps working
 with those features switched off rather than failing.
 
 At startup VibeSwarm compares each detected CLI against this reference and logs the result:
@@ -52,6 +52,19 @@ pauses work when a window is exhausted.
   configure. Self-hosted open-source models (Ollama, LM Studio, llama.cpp, vLLM and similar)
   are reported as **Unmetered**: no meter is drawn, and they are never paused for exhaustion,
   since there is no window to wait for.
+
+### Claude Code models and advisor
+
+Claude Code providers offer the CLI's aliases (`sonnet`, `opus`, `haiku`, `fable`), which always
+run the newest model of each line, followed by pinned model IDs. The list ships with VibeSwarm and
+is refreshed shortly after each start, so new models appear without a manual refresh.
+
+A Claude Code provider can also name an **Advisor** (`--advisor`): a stronger model the agent
+consults at hard moments, billed at that model's rate. It applies to every run of the provider
+(jobs, planning, review and ideas). Running them on Sonnet with Opus or Fable as advisor keeps
+most of the work on the cheaper model. Claude Code skips an advisor weaker than the run's model,
+and skips Fable until it has been enabled once in an interactive session. Leave it unset to use
+Claude Code's own `advisorModel` setting, or pick Off to turn it off for that provider.
 
 ### Project memory and session files
 

@@ -582,6 +582,77 @@ public sealed class ProviderCliArgsTests
         Assert.False(env!.ContainsKey("CLAUDE_STREAM_IDLE_TIMEOUT_MS"));
     }
 
+    [Fact]
+    public void Claude_WithAdvisorModel_AndSupportedVersion_AddsAdvisorFlag()
+    {
+        var config = CreateConfig(ProviderType.Claude);
+        config.AdvisorModel = " opus ";
+        var provider = new ClaudeProvider(config);
+        provider.CachedCliVersion = new Version(2, 1, 232);
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var index = args.IndexOf("--advisor");
+        Assert.True(index >= 0);
+        Assert.Equal("opus", args[index + 1]);
+        Assert.False(provider.BaseEnvironmentVariables!.ContainsKey("CLAUDE_CODE_DISABLE_ADVISOR_TOOL"));
+    }
+
+    [Fact]
+    public void Claude_WithAdvisorModel_AndOldVersion_OmitsAdvisorFlag()
+    {
+        var config = CreateConfig(ProviderType.Claude);
+        config.AdvisorModel = "opus";
+        var provider = new ClaudeProvider(config);
+        provider.CachedCliVersion = new Version(2, 1, 231);
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--advisor", args);
+    }
+
+    [Fact]
+    public void Claude_WithAdvisorOff_DisablesAdvisorToolWithoutFlag()
+    {
+        var config = CreateConfig(ProviderType.Claude);
+        config.AdvisorModel = "Off";
+        var provider = new ClaudeProvider(config);
+        provider.CachedCliVersion = new Version(2, 1, 322);
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--advisor", args);
+        Assert.Equal("1", provider.BaseEnvironmentVariables!["CLAUDE_CODE_DISABLE_ADVISOR_TOOL"]);
+    }
+
+    [Fact]
+    public void Claude_WithoutAdvisorModel_LeavesAdvisorToClaudeCode()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 322);
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--advisor", args);
+        Assert.False(provider.BaseEnvironmentVariables!.ContainsKey("CLAUDE_CODE_DISABLE_ADVISOR_TOOL"));
+    }
+
+    [Fact]
+    public async Task Claude_ProviderInfo_OffersFableAndCurrentModels()
+    {
+        var config = CreateConfig(ProviderType.Claude);
+        config.ConnectionMode = ProviderConnectionMode.SDK;
+        var provider = new ClaudeProvider(config);
+
+        var info = await provider.GetProviderInfoAsync();
+
+        Assert.Contains("fable", info.AvailableModels);
+        Assert.Contains("claude-fable-5-2", info.AvailableModels);
+        Assert.Contains("claude-opus-5-5", info.AvailableModels);
+        Assert.Contains("claude-sonnet-5-5", info.AvailableModels);
+        Assert.All(info.AvailableModels, model => Assert.True(info.Pricing!.ModelMultipliers!.ContainsKey(model), model));
+    }
+
     // ─── Copilot Provider ──────────────────────────────────────────────
 
 	[Fact]

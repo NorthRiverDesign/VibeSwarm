@@ -81,6 +81,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.ApiEndpoint).HasMaxLength(500);
 			entity.Property(e => e.ApiKey).HasMaxLength(200);
 			entity.Property(e => e.DefaultReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
+			entity.Property(e => e.AdvisorModel).HasMaxLength(ValidationLimits.ProviderAdvisorModelMaxLength);
 			entity.Property(e => e.ConfiguredLimitType).HasConversion<string>();
 			entity.HasIndex(e => e.Name).IsUnique();
 		});

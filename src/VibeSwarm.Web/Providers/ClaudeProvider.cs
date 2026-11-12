@@ -58,10 +58,15 @@ public class ClaudeProvider : CliProviderBase
     private static readonly Version IncludeHookEventsVersion = new(2, 1, 0);
     private static readonly Version AppendSystemPromptFileVersion = new(2, 1, 0);
     private static readonly Version SystemPromptSnapshotVersion = new(2, 1, 267);
+    // --advisor is a hidden flag; the changelog first names it in 2.1.232.
+    private static readonly Version AdvisorVersion = new(2, 1, 232);
     private UsageLimits? _lastObservedUsageLimits;
 
     /// <summary>Whether runs can authenticate with an API key, which <c>--bare</c> requires.</summary>
     private readonly bool _hasApiKey;
+
+    /// <summary>The provider's advisor model for <c>--advisor</c>; null when it is left to Claude Code or off.</summary>
+    private readonly string? _advisorModel;
 
     /// <summary>Shortest prompt that still produces a completed turn, so the probe costs as little as possible.</summary>
     private const string UsageProbePrompt = "hi";
@@ -114,6 +119,18 @@ public class ClaudeProvider : CliProviderBase
 
         _hasApiKey = !string.IsNullOrWhiteSpace(config.ApiKey)
             || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY"));
+
+        // The advisor: a stronger model the agent consults at hard moments, billed at that
+        // model's rate. Unset leaves Claude Code's own advisorModel setting in charge.
+        var advisorModel = ProviderCapabilities.NormalizeAdvisorModel(config, config.AdvisorModel);
+        if (advisorModel == ProviderCapabilities.AdvisorOff)
+        {
+            baseEnv["CLAUDE_CODE_DISABLE_ADVISOR_TOOL"] = "1";
+        }
+        else
+        {
+            _advisorModel = advisorModel;
+        }
 
         // Mirror the queue's stall threshold into Claude's own streaming watchdog
         // so the CLI bails on the same boundary as JobWatchdogService (v2.1.85+).
@@ -476,6 +493,14 @@ public class ClaudeProvider : CliProviderBase
         {
             args.Add("--fallback-model");
             args.Add(CurrentFallbackModel);
+        }
+
+        // Advisor model for the server-side advisor tool. The CLI skips an advisor weaker than
+        // the job's model and logs it, so a mismatched pair never fails a run.
+        if (!string.IsNullOrEmpty(_advisorModel) && SupportsCliVersion(AdvisorVersion))
+        {
+            args.Add("--advisor");
+            args.Add(_advisorModel);
         }
 
         // Display name for the session (enables `claude --resume <name>` for debugging). Only a
@@ -1043,11 +1068,19 @@ public class ClaudeProvider : CliProviderBase
     {
         var info = new ProviderInfo
         {
+            // Aliases come first: Claude Code points each at the newest model of its line, so a job
+            // that picks one keeps up without a model refresh. Pinned IDs follow for jobs that must
+            // not move.
             AvailableModels = new List<string>
             {
                 "sonnet",
                 "opus",
                 "haiku",
+                "fable",
+                "claude-fable-5-2",
+                "claude-opus-5-5",
+                "claude-sonnet-5-5",
+                "claude-haiku-5-5",
                 "claude-opus-4-7",
                 "claude-sonnet-4-6",
                 "claude-opus-4-6",
@@ -1059,18 +1092,24 @@ public class ClaudeProvider : CliProviderBase
             },
             Pricing = new PricingInfo
             {
-                InputTokenPricePerMillion = 3.00m,
-                OutputTokenPricePerMillion = 15.00m,
+                // Claude Sonnet 5.5 rates; the other models are multiples of them.
+                InputTokenPricePerMillion = 2.00m,
+                OutputTokenPricePerMillion = 10.00m,
                 Currency = "USD",
                 ModelMultipliers = new Dictionary<string, decimal>
                 {
                     ["sonnet"] = 1.0m,
-                    ["opus"] = 5.0m,
-                    ["haiku"] = 0.27m,
-                    ["claude-opus-4-7"] = 5.0m,
-                    ["claude-sonnet-4-6"] = 1.0m,
-                    ["claude-opus-4-6"] = 5.0m,
-                    ["claude-haiku-4-5"] = 0.27m,
+                    ["opus"] = 2.0m,
+                    ["haiku"] = 0.05m,
+                    ["fable"] = 4.0m,
+                    ["claude-fable-5-2"] = 4.0m,
+                    ["claude-opus-5-5"] = 2.0m,
+                    ["claude-sonnet-5-5"] = 1.0m,
+                    ["claude-haiku-5-5"] = 0.05m,
+                    ["claude-opus-4-7"] = 2.5m,
+                    ["claude-sonnet-4-6"] = 1.5m,
+                    ["claude-opus-4-6"] = 2.5m,
+                    ["claude-haiku-4-5"] = 0.5m,
                 }
             },
             ModelRetirementDates = new Dictionary<string, DateTime>

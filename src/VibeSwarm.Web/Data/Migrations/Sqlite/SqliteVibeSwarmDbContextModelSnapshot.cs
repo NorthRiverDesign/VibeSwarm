@@ -2356,6 +2356,10 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AdvisorModel")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ApiEndpoint")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");

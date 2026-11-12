@@ -24,6 +24,8 @@ public class ClaudeSdkProvider : SdkProviderBase
 	[
 		"claude-opus-5-5",
 		"claude-sonnet-5-5",
+		"claude-fable-5-2",
+		"claude-haiku-5-5",
 		"claude-fable-5-1",
 		"claude-haiku-4-5"
 	];
@@ -81,8 +83,8 @@ public class ClaudeSdkProvider : SdkProviderBase
 		{
 			"sonnet" => "claude-sonnet-5-5",
 			"opus" => "claude-opus-5-5",
-			"haiku" => "claude-haiku-4-5",
-			"fable" => "claude-fable-5-1",
+			"haiku" => "claude-haiku-5-5",
+			"fable" => "claude-fable-5-2",
 			_ => model
 		};
 	}
@@ -110,7 +112,7 @@ public class ClaudeSdkProvider : SdkProviderBase
 					await client.Messages.Create(new MessageCreateParams
 					{
 						MaxTokens = 1,
-						Messages = [new MessageParam { Role = Role.User, Content = "Hi" }],
+						Messages = [new UserMessageParam { Content = "Hi" }],
 						Model = model
 					}, cancellationToken);
 
@@ -173,7 +175,7 @@ public class ClaudeSdkProvider : SdkProviderBase
 		var message = await client.Messages.Create(new MessageCreateParams
 		{
 			MaxTokens = MaxTokensPerTurn,
-			Messages = [new MessageParam { Role = Role.User, Content = prompt }],
+			Messages = [new UserMessageParam { Content = prompt }],
 			Model = model
 		}, cancellationToken);
 
@@ -223,7 +225,7 @@ public class ClaudeSdkProvider : SdkProviderBase
 			systemPrompt += "\n\n" + CurrentAppendSystemPrompt;
 		}
 
-		var messages = new List<MessageParam> { new() { Role = Role.User, Content = prompt } };
+		var messages = new List<MessageParam> { new UserMessageParam { Content = prompt } };
 		var finalText = new System.Text.StringBuilder();
 		long inputTokens = 0;
 		long outputTokens = 0;
@@ -336,8 +338,8 @@ public class ClaudeSdkProvider : SdkProviderBase
 					});
 				}
 
-				messages.Add(new MessageParam { Role = Role.Assistant, Content = assistantContent });
-				messages.Add(new MessageParam { Role = Role.User, Content = toolResults });
+				messages.Add(new AssistantMessageParam { Content = assistantContent });
+				messages.Add(new UserMessageParam { Content = toolResults });
 			}
 
 			result.Output = finalText.ToString();
@@ -431,6 +433,8 @@ public class ClaudeSdkProvider : SdkProviderBase
 				{
 					["claude-opus-5-5"] = 2.0m,
 					["claude-sonnet-5-5"] = 1.0m,
+					["claude-fable-5-2"] = 4.0m,
+					["claude-haiku-5-5"] = 0.05m,
 					["claude-fable-5-1"] = 5.0m,
 					["claude-haiku-4-5"] = 0.5m
 				}
@@ -515,7 +519,7 @@ public class ClaudeSdkProvider : SdkProviderBase
 			var message = await client.Messages.Create(new MessageCreateParams
 			{
 				MaxTokens = 4096,
-				Messages = [new MessageParam { Role = Role.User, Content = prompt }],
+				Messages = [new UserMessageParam { Content = prompt }],
 				Model = model
 			}, cancellationToken);
 

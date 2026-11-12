@@ -189,6 +189,26 @@
 					</div>
 				</div>
 
+				@if (ProviderCapabilities.SupportsAdvisor(Provider))
+				{
+					<div class="mb-5">
+						<label for="modal-advisorModel" class="form-label">Advisor</label>
+						<InputSelect id="modal-advisorModel" @bind-Value="Provider.AdvisorModel" class="form-control">
+							<option value="">Use Claude Code's setting</option>
+							<option value="@ProviderCapabilities.AdvisorOff">Off</option>
+							@foreach (var advisor in AdvisorOptions)
+							{
+								<option value="@advisor">@FormatAdvisor(advisor)</option>
+							}
+						</InputSelect>
+						<div class="form-text">A stronger model the agent asks for a second opinion at hard moments, billed at
+							that model's rate. It applies to every run of this provider: jobs, planning, review and ideas.
+							Run them on Sonnet with Opus or Fable as advisor to keep most of the work cheap. It's skipped
+							when the run's model is the stronger one, and Fable is skipped until it's enabled once in an
+							interactive Claude Code session.</div>
+					</div>
+				}
+
 				@* Usage Limit Configuration *@
 				@if (Provider.Type == ProviderType.Copilot || Provider.Type == ProviderType.Claude)
 				{
@@ -335,6 +355,21 @@
 
 	private IReadOnlyList<string> ValidationErrors => ProviderCapabilities.ValidateConfiguration(Provider);
 	private IReadOnlyList<string> ReasoningOptions => ProviderCapabilities.GetSupportedReasoningEfforts(Provider);
+
+	// A saved advisor outside the offered list (set through the API) stays selectable.
+	private IEnumerable<string> AdvisorOptions =>
+		string.IsNullOrWhiteSpace(Provider.AdvisorModel)
+		|| Provider.AdvisorModel == ProviderCapabilities.AdvisorOff
+		|| ProviderCapabilities.AdvisorModels.Contains(Provider.AdvisorModel)
+			? ProviderCapabilities.AdvisorModels
+			: ProviderCapabilities.AdvisorModels.Append(Provider.AdvisorModel);
+
+	private static string FormatAdvisor(string advisor) => advisor switch
+	{
+		"opus" => "Opus",
+		"fable" => "Fable",
+		_ => advisor
+	};
 	private bool IsCopilotCustomProvider => ProviderCapabilities.IsCopilotCustomProvider(Provider);
 
 	protected override void OnParametersSet()
@@ -357,6 +392,7 @@
 					ApiEndpoint = EditProvider.ApiEndpoint,
 					ApiKey = EditProvider.ApiKey,
 					DefaultReasoningEffort = EditProvider.DefaultReasoningEffort,
+					AdvisorModel = EditProvider.AdvisorModel,
 					IsEnabled = EditProvider.IsEnabled,
 					MaxExecutionMinutes = EditProvider.MaxExecutionMinutes,
 					ConfiguredUsageLimit = EditProvider.ConfiguredUsageLimit,

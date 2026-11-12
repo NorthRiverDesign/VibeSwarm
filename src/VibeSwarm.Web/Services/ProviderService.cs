@@ -76,6 +76,7 @@ public class ProviderService : IProviderService
         existing.ApiEndpoint = provider.ApiEndpoint;
         existing.ApiKey = provider.ApiKey;
         existing.DefaultReasoningEffort = provider.DefaultReasoningEffort;
+        existing.AdvisorModel = provider.AdvisorModel;
         existing.IsEnabled = provider.IsEnabled;
         existing.MaxExecutionMinutes = provider.MaxExecutionMinutes;
         existing.ConfiguredUsageLimit = provider.ConfiguredUsageLimit;
@@ -337,6 +338,7 @@ public class ProviderService : IProviderService
         provider.ApiEndpoint = string.IsNullOrWhiteSpace(provider.ApiEndpoint) ? null : provider.ApiEndpoint.Trim();
         provider.ApiKey = string.IsNullOrWhiteSpace(provider.ApiKey) ? null : provider.ApiKey.Trim();
         provider.DefaultReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(provider, provider.DefaultReasoningEffort);
+        provider.AdvisorModel = ProviderCapabilities.NormalizeAdvisorModel(provider, provider.AdvisorModel);
     }
 
     public async Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default)
@@ -395,6 +397,10 @@ public class ProviderService : IProviderService
         // Track which models are still available
         var availableModelIds = new HashSet<string>(providerInfo.AvailableModels);
 
+        // A new model may become the default only while there is none, so a refresh that adds
+        // models never takes the default from the one the user picked.
+        var hasDefault = existingModels.Any(m => m.IsDefault);
+
         // Update existing models and add new ones
         foreach (var modelId in providerInfo.AvailableModels)
         {
@@ -419,9 +425,11 @@ public class ProviderService : IProviderService
                     ModelId = modelId,
                     DisplayName = FormatModelDisplayName(modelId),
                     IsAvailable = true,
-                    IsDefault = providerInfo.AvailableModels.Count == 1 || modelId.Contains("sonnet", StringComparison.OrdinalIgnoreCase),
+                    IsDefault = !hasDefault
+                        && (providerInfo.AvailableModels.Count == 1 || modelId.Contains("sonnet", StringComparison.OrdinalIgnoreCase)),
                     UpdatedAt = DateTime.UtcNow
                 };
+                hasDefault |= newModel.IsDefault;
 
                 if (providerInfo.Pricing?.ModelMultipliers?.TryGetValue(modelId, out var multiplier) == true)
                 {

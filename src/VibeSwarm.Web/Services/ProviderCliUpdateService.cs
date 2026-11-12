@@ -13,12 +13,14 @@ namespace VibeSwarm.Web.Services;
 /// Keeps the provider CLIs on their latest release. Jobs run with self-updates switched off, so
 /// without this a host that only runs jobs stays on whatever version was installed while the
 /// CLIs, and VibeSwarm's wrappers, move on. A CLI is only updated while none of its provider's
-/// jobs is running. Set <c>CliAutoUpdate:Enabled</c> to false to turn it off.
+/// jobs is running. Set <c>CliAutoUpdate:Enabled</c> to false to turn it off. Shortly after
+/// start it also refreshes the Claude Code model lists, which ship with VibeSwarm.
 /// </summary>
 public sealed class ProviderCliUpdateService : BackgroundService
 {
 	internal static readonly TimeSpan UpdateInterval = TimeSpan.FromHours(6);
 	private static readonly TimeSpan FirstCheckDelay = TimeSpan.FromMinutes(5);
+	private static readonly TimeSpan ModelListRefreshDelay = TimeSpan.FromSeconds(30);
 	private static readonly TimeSpan PollInterval = TimeSpan.FromMinutes(15);
 
 	private readonly IServiceScopeFactory _scopeFactory;
@@ -38,15 +40,25 @@ public sealed class ProviderCliUpdateService : BackgroundService
 
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
-		if (!_configuration.GetValue("CliAutoUpdate:Enabled", true))
-		{
-			_logger.LogInformation("Provider CLI auto-update is turned off");
-			return;
-		}
-
 		try
 		{
-			await Task.Delay(FirstCheckDelay, stoppingToken);
+			await Task.Delay(ModelListRefreshDelay, stoppingToken);
+			try
+			{
+				await RefreshBuiltInModelListsAsync(stoppingToken);
+			}
+			catch (Exception ex) when (ex is not OperationCanceledException)
+			{
+				_logger.LogError(ex, "Error refreshing provider model lists");
+			}
+
+			if (!_configuration.GetValue("CliAutoUpdate:Enabled", true))
+			{
+				_logger.LogInformation("Provider CLI auto-update is turned off");
+				return;
+			}
+
+			await Task.Delay(FirstCheckDelay - ModelListRefreshDelay, stoppingToken);
 			while (!stoppingToken.IsCancellationRequested)
 			{
 				try
@@ -63,6 +75,34 @@ public sealed class ProviderCliUpdateService : BackgroundService
 		}
 		catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
 		{
+		}
+	}
+
+	/// <summary>
+	/// Refreshes the saved model list of each Claude Code provider. That list ships with VibeSwarm,
+	/// so a new build can add models (a new Fable, say) that would otherwise stay hidden until
+	/// someone taps refresh. It costs one <c>claude --version</c> per provider and runs alongside jobs.
+	/// </summary>
+	internal async Task RefreshBuiltInModelListsAsync(CancellationToken cancellationToken)
+	{
+		using var scope = _scopeFactory.CreateScope();
+		var providerService = scope.ServiceProvider.GetRequiredService<IProviderService>();
+
+		var providers = (await providerService.GetAllAsync(cancellationToken))
+			.Where(provider => provider.IsEnabled
+				&& provider.Type == ProviderType.Claude
+				&& provider.ConnectionMode == ProviderConnectionMode.CLI)
+			.ToList();
+		foreach (var provider in providers)
+		{
+			try
+			{
+				await providerService.RefreshModelsAsync(provider.Id, cancellationToken);
+			}
+			catch (Exception ex) when (ex is not OperationCanceledException)
+			{
+				_logger.LogWarning(ex, "Could not refresh the model list for {Provider}", provider.Name);
+			}
 		}
 	}
 

@@ -155,6 +155,39 @@ public static class ProviderCapabilities
 		=> provider.ConnectionMode == ProviderConnectionMode.CLI
 			&& provider.Type is ProviderType.Claude;
 
+	/// <summary>Advisor setting that turns Claude Code's advisor off for a provider's runs.</summary>
+	public const string AdvisorOff = "off";
+
+	/// <summary>
+	/// Advisor models offered for a Claude Code provider. Each is an alias that follows the newest
+	/// model of its line. The advisor must be at least as capable as the job's model, so Sonnet and
+	/// Haiku are left out: they could advise only a weaker job model.
+	/// </summary>
+	public static readonly IReadOnlyList<string> AdvisorModels = ["opus", "fable"];
+
+	/// <summary>
+	/// Whether the provider can pick an advisor model: a model the agent consults at hard moments
+	/// through Claude Code's server-side advisor tool.
+	/// </summary>
+	public static bool SupportsAdvisor(Provider provider)
+		=> provider.Type == ProviderType.Claude && provider.ConnectionMode == ProviderConnectionMode.CLI;
+
+	/// <summary>
+	/// Trims an advisor setting. Blank (and any value on a provider without an advisor) means
+	/// "leave it to Claude Code's own setting", <see cref="AdvisorOff"/> turns it off, and anything
+	/// else is the advisor's model alias or ID.
+	/// </summary>
+	public static string? NormalizeAdvisorModel(Provider provider, string? advisorModel)
+	{
+		if (!SupportsAdvisor(provider) || string.IsNullOrWhiteSpace(advisorModel))
+		{
+			return null;
+		}
+
+		var trimmed = advisorModel.Trim();
+		return string.Equals(trimmed, AdvisorOff, StringComparison.OrdinalIgnoreCase) ? AdvisorOff : trimmed;
+	}
+
 	/// <summary>
 	/// Validates provider configuration and returns validation errors.
 	/// </summary>
