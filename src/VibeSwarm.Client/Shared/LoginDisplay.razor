@@ -20,7 +20,7 @@
                                 aria-expanded="false" title="User options">
                             <i class="bi bi-gear"></i>
                         </button>
-                        <div class="menu" style="min-width: 16rem;">
+                        <div class="menu menu-panel menu-panel-up shadow-xl shadow-opacity-100" style="min-width: 16rem;">
                             <ThemeSelector SelectedTheme="_selectedTheme" IsLoading="_isUpdatingTheme"
                                            OnThemeSelected="HandleThemeSelected" />
                             <hr class="menu-divider">
@@ -42,7 +42,7 @@
 						data-bs-toggle="menu" data-bs-placement="bottom-end" data-bs-display="static" aria-expanded="false" title="User menu" aria-label="User menu">
 					<i class="bi bi-person-circle"></i>
 				</button>
-                <div class="menu" style="min-width: 16rem;">
+                <div class="menu menu-panel shadow-xl shadow-opacity-100" style="min-width: 16rem;">
                     <div class="menu-header">
                         <span class="fw-semibold">@context.User.Identity?.Name</span>
                     </div>

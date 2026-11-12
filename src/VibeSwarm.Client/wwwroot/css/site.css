@@ -60,6 +60,20 @@
 	--vs-safe-area-left: env(safe-area-inset-left, 0px);
 	--vs-safe-area-right: env(safe-area-inset-right, 0px);
 
+	/* Navbar panels (search, notifications, queue, user menu) share one motion and one
+	   frame: they settle in on iOS's sheet curve, leave a little faster than they came,
+	   and on phones sit in the same spot below the header at the same width. */
+	--vs-panel-ease: cubic-bezier(0.32, 0.72, 0, 1);
+	--vs-panel-in: 0.3s;
+	--vs-panel-out: 0.2s;
+	--vs-panel-top: calc(var(--vs-header-height) + var(--vs-safe-area-top) + 0.5rem);
+	--vs-panel-width: min(
+		24rem,
+		calc(100vw - 1rem - var(--vs-safe-area-left) - var(--vs-safe-area-right))
+	);
+	/* The light dim behind an open panel, and behind the search palette. */
+	--vs-scrim-bg: light-dark(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.45));
+
 	/* Typography — system stack only (no webfont flicker) */
 	--bs-body-font-family:
 		system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
@@ -386,6 +400,11 @@ body:has(.app-layout) {
 .mobile-header-icon {
 	width: 44px;
 	height: 44px;
+	transition: opacity var(--vs-transition);
+}
+/* The same press feedback as the tab bar. */
+.mobile-header-icon:active {
+	opacity: 0.6;
 }
 
 /* Sidebar (desktop only) — markup uses position-fixed d-none lg:d-flex flex-column */
@@ -464,36 +483,60 @@ body:has(.app-layout) {
 
 /* Sticky tab bar on mobile — pins to the top of .app-main (the scroll container) */
 @media (width < 1024px) {
+	/* The page is its own stacking layer, so a sticky bar inside it (the job page's sits
+	   at the sticky z-index) stays under the header-panel dim below. */
 	.app-main {
 		scroll-padding-top: calc(
 			var(--vs-header-height) + var(--vs-safe-area-top) + 0.75rem
 		);
+		isolation: isolate;
 	}
 
 	/* Header menus drop from the header's centre, clear of the safe area, rather than
-	   hanging off the icon that opened them. */
+	   hanging off the icon that opened them. Every panel takes the one panel width here,
+	   whatever width its markup gives it for the desktop sidebar. */
 	.app-header .mobile-header-dropdown > .menu {
 		position: fixed !important;
-		top: calc(
-			var(--vs-header-height) + var(--vs-safe-area-top) + 0.5rem
-		) !important;
+		top: var(--vs-panel-top) !important;
 		left: 50% !important;
 		right: auto !important;
-		width: min(
-			24rem,
-			calc(
-				100vw - 1.5rem - var(--vs-safe-area-left) - var(--vs-safe-area-right)
-			)
-		);
-		max-width: min(
-			24rem,
-			calc(
-				100vw - 1.5rem - var(--vs-safe-area-left) - var(--vs-safe-area-right)
-			)
-		);
+		width: var(--vs-panel-width) !important;
+		min-width: 0 !important;
+		max-width: none !important;
 		margin-top: 0 !important;
 		transform: translateX(-50%) !important;
 		z-index: 1001;
+	}
+
+	/* While a header panel is open the page behind it dims a little, and a tap on the
+	   page only closes the panel, as on iOS. The header stays clear (it stacks above, at
+	   the sticky z-index) so another icon still opens its own panel in one tap. */
+	.app-layout::after {
+		content: "";
+		position: fixed;
+		inset: 0;
+		z-index: calc(var(--bs-z-sticky) - 1);
+		background: var(--vs-scrim-bg);
+		opacity: 0;
+		visibility: hidden;
+		pointer-events: none;
+		cursor: pointer;
+	}
+	.app-layout:has(> .app-header .menu.show)::after {
+		opacity: 1;
+		visibility: visible;
+		pointer-events: auto;
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		.app-layout::after {
+			transition:
+				opacity var(--vs-panel-out) var(--vs-panel-ease),
+				visibility 0s linear var(--vs-panel-out);
+		}
+		.app-layout:has(> .app-header .menu.show)::after {
+			transition-duration: var(--vs-panel-in), 0s;
+			transition-delay: 0s;
+		}
 	}
 
 	.project-detail-tabs {
@@ -758,11 +801,39 @@ details[open] > summary .details-chevron {
 	margin-bottom: calc(-1 * var(--vs-dialog-end-padding));
 }
 
-/* The search palette drops from near the top, like Spotlight, so results grow downward. */
+/* The search palette drops from near the top, like Spotlight, so results grow downward.
+   It is a navbar panel, so it moves like the header menus (section 10) over their dim. */
 .dialog.vs-search-dialog {
 	--bs-dialog-width: 680px;
+	--bs-dialog-transition-duration: var(--vs-panel-in);
+	--bs-dialog-transition-timing: var(--vs-panel-ease);
+	--bs-dialog-backdrop-bg: var(--vs-scrim-bg);
+	--bs-dialog-backdrop-blur: 0px;
 	margin-block-start: min(80px, 10vh);
 	max-height: calc(100dvh - min(80px, 10vh) - 2rem);
+}
+.dialog.vs-search-dialog.hiding {
+	--bs-dialog-transition-duration: var(--vs-panel-out);
+}
+/* Only the closed state carries the offset: this layer outranks Bootstrap's open
+   `transform: none`. */
+.dialog.vs-search-dialog:is(:not([open]), .hiding) {
+	transform: translateY(-0.5rem);
+}
+/* Below the desktop it opens where the header panels do, under the header. */
+@media (width < 1024px) {
+	.dialog.vs-search-dialog {
+		margin-block-start: var(--vs-panel-top);
+		max-height: calc(
+			100dvh - var(--vs-panel-top) - var(--vs-safe-area-bottom) - 0.5rem
+		);
+	}
+}
+@media (width < 576px) {
+	.dialog.vs-search-dialog {
+		--bs-dialog-width: var(--vs-panel-width);
+		--bs-dialog-margin: 0.5rem;
+	}
 }
 
 .directory-list {
@@ -839,14 +910,16 @@ details[open] > summary .details-chevron {
 	box-shadow: 0 0 0 2px var(--bs-bg-body);
 }
 
-/* Header panels (notifications, queue) slide a short way into place instead of
-   Bootstrap's zoom. The slide is the standalone `translate` property: on phones the
-   panels are centred with `transform: translateX(-50%) !important`, which a transform
-   slide would lose to. Only the transition variables change, so Bootstrap's
-   prefers-reduced-motion guard still applies. */
+/* Header panels (notifications, queue, user menu) slide a short way into place instead
+   of Bootstrap's zoom, on the shared panel motion (section 1). The slide is the
+   standalone `translate` property: on phones the panels are centred with
+   `transform: translateX(-50%) !important`, which a transform slide would lose to. Only
+   the transition variables change, so Bootstrap's prefers-reduced-motion guard still
+   applies. A panel takes the duration of the state it is heading for: in, then out. */
 .menu.menu-panel {
 	--bs-menu-transition-property: opacity, translate, display;
-	--bs-menu-transition-duration: 0.2s;
+	--bs-menu-transition-duration: var(--vs-panel-out);
+	--bs-menu-transition-timing: var(--vs-panel-ease);
 	transform: none;
 	translate: 0 -0.5rem;
 }
@@ -854,6 +927,7 @@ details[open] > summary .details-chevron {
 	translate: 0 0.5rem;
 }
 .menu.menu-panel.show {
+	--bs-menu-transition-duration: var(--vs-panel-in);
 	translate: 0 0;
 }
 @starting-style {
@@ -903,12 +977,13 @@ details[open] > summary .details-chevron {
 		padding: 0.5rem 0.75rem;
 	}
 
-	/* A full-screen dialog slides up from the bottom, as an iOS sheet does. */
-	.dialog:not(.dialog-instant) {
+	/* A full-screen dialog slides up from the bottom, as an iOS sheet does. Only a
+	   full-screen one: the search palette sits under the header and drops in instead. */
+	.dialog.sm-down\:dialog-fullscreen:not(.dialog-instant) {
 		--bs-dialog-transition-duration: 0.35s;
-		--bs-dialog-transition-timing: cubic-bezier(0.32, 0.72, 0, 1);
+		--bs-dialog-transition-timing: var(--vs-panel-ease);
 	}
-	.dialog:not(.dialog-instant):is(:not([open]), .hiding) {
+	.dialog.sm-down\:dialog-fullscreen:not(.dialog-instant):is(:not([open]), .hiding) {
 		transform: translateY(100%);
 	}
 	/* Only the outermost bands of a full-screen dialog clear the notch and the home
@@ -949,18 +1024,6 @@ details[open] > summary .details-chevron {
 	.git-branch-dropdown .menu {
 		width: calc(100vw - 2rem);
 		max-width: none;
-	}
-
-	/* Keep mobile header panels visually centered inside the safe area */
-	.app-header .menu {
-		width: calc(
-			100vw - 1rem - env(safe-area-inset-left, 0px) -
-				env(safe-area-inset-right, 0px)
-		);
-		max-width: calc(
-			100vw - 1rem - env(safe-area-inset-left, 0px) -
-				env(safe-area-inset-right, 0px)
-		);
 	}
 }
 
