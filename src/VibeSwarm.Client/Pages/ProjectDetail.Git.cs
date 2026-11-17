@@ -41,18 +41,22 @@ public partial class ProjectDetail
         }
 
         _isLoadingGitInfo = true;
+        var workingPath = Project.WorkingPath;
 
         try
         {
-            IsGitRepository = await VersionControlService.IsGitRepositoryAsync(Project.WorkingPath);
+            IsGitRepository = await VersionControlService.IsGitRepositoryAsync(workingPath);
 
             if (IsGitRepository)
             {
-                CurrentBranch = await VersionControlService.GetCurrentBranchAsync(Project.WorkingPath);
-                CurrentCommitHash = await VersionControlService.GetCurrentCommitHashAsync(Project.WorkingPath);
-                NewJob.Branch = CurrentBranch;
-                await LoadBranches();
-                await RefreshUncommittedChangesStatus();
+                // Independent reads: one round trip instead of four in a row.
+                var branchTask = VersionControlService.GetCurrentBranchAsync(workingPath);
+                var commitHashTask = VersionControlService.GetCurrentCommitHashAsync(workingPath);
+                await Task.WhenAll(branchTask, commitHashTask, LoadBranches(), RefreshUncommittedChangesStatus());
+
+                CurrentBranch = branchTask.Result;
+                CurrentCommitHash = commitHashTask.Result;
+                NewJob.Branch = string.IsNullOrWhiteSpace(Project?.DevelopmentBranch) ? CurrentBranch : Project.DevelopmentBranch;
             }
             else
             {
@@ -68,6 +72,38 @@ public partial class ProjectDetail
         {
             _isLoadingGitInfo = false;
         }
+    }
+
+    // Asking origin is slow next to the local reads, so it runs after them and renders on its own.
+    private async Task LoadRemoteSyncStatusAsync()
+    {
+        var version = ++_remoteSyncStatusVersion;
+        var workingPath = Project?.WorkingPath;
+        GitRemoteSyncStatus? status = null;
+
+        if (IsGitRepository && !string.IsNullOrEmpty(workingPath))
+        {
+            try
+            {
+                status = await VersionControlService.GetRemoteSyncStatusAsync(workingPath);
+            }
+            catch
+            {
+            }
+        }
+
+        // A newer check (after a sync or branch switch) owns the result.
+        if (_disposed || version != _remoteSyncStatusVersion)
+            return;
+
+        _remoteSyncStatus = status;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void RefreshRemoteSyncStatus()
+    {
+        _remoteSyncStatus = null;
+        _ = LoadRemoteSyncStatusAsync();
     }
 
     private async Task RefreshUncommittedChangesStatus()
@@ -120,6 +156,7 @@ public partial class ProjectDetail
                 await LoadBranches();
                 CurrentBranch = await VersionControlService.GetCurrentBranchAsync(Project.WorkingPath);
                 CurrentCommitHash = await VersionControlService.GetCurrentCommitHashAsync(Project.WorkingPath);
+                RefreshRemoteSyncStatus();
             }
         }
         catch (Exception ex)
@@ -526,6 +563,7 @@ public partial class ProjectDetail
                 CurrentCommitHash = result.CommitHash;
                 await LoadBranches();
                 await RefreshUncommittedChangesStatus();
+                RefreshRemoteSyncStatus();
                 CloseBranchSwitchModal();
             }
             else
@@ -551,17 +589,30 @@ public partial class ProjectDetail
         if (Project == null || string.IsNullOrEmpty(Project.WorkingPath)) return;
 
         IsGitOperationInProgress = true;
+        _isSyncingWithOrigin = true;
         GitProgressMessage = null;
         StateHasChanged();
 
         try
         {
+            // A queued, running or paused job owns the checkout, and syncing would reset it under the job.
+            // Re-read the count now: the page's copy is debounced and starts at zero until jobs load.
+            var jobs = await JobService.GetPagedByProjectIdAsync(ProjectId, page: 1, pageSize: 1);
+            if (jobs.ActiveCount > 0)
+            {
+                NotificationService.ShowProjectWarning(Project.Name, "Not synced: a job is using this checkout.");
+                return;
+            }
+
             var result = await VersionControlService.SyncWithOriginAsync(Project.WorkingPath);
 
             if (result.Success)
             {
                 CurrentCommitHash = result.CommitHash;
+                // The sync fetched, and on a branch that had no commits it created the local branch.
+                await LoadBranches();
                 await RefreshUncommittedChangesStatus();
+                RefreshRemoteSyncStatus();
                 await PopulateGitHubRepositoryIfMissing();
                 NotificationService.ShowProjectSuccess(
                     Project.Name,
@@ -581,6 +632,7 @@ public partial class ProjectDetail
         finally
         {
             IsGitOperationInProgress = false;
+            _isSyncingWithOrigin = false;
             GitProgressMessage = null;
             StateHasChanged();
         }
@@ -635,6 +687,7 @@ public partial class ProjectDetail
                 CurrentBranch = branchName.Trim();
                 CurrentCommitHash = result.CommitHash;
                 await LoadBranches();
+                RefreshRemoteSyncStatus();
                 _showCreateBranchModal = false;
             }
             else

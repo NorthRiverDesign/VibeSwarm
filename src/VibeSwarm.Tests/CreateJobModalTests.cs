@@ -7,6 +7,7 @@ using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Validation;
 using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Tests;
@@ -17,8 +18,7 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_RendersTemplateLibraryControls()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
-		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		context.Services.AddSingleton<IAgentService>(new FakeAgentService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
@@ -54,11 +54,87 @@ public sealed class CreateJobModalTests
 	}
 
 	[Fact]
+	public void CreateJobModal_GoalPromptLongerThanTwoThousandCharacters_CountsAndSubmits()
+	{
+		using var context = CreateGoalPromptContext();
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "GitHub Copilot", Type = ProviderType.Copilot, IsEnabled = true };
+		var submitted = false;
+		var job = new Job { ProviderId = provider.Id };
+		var cut = RenderGoalPromptModal(context, provider, job, () => submitted = true);
+
+		Assert.Equal($"0/{ValidationLimits.JobGoalPromptMaxLength:N0} characters", cut.Find("#goalPromptLength").TextContent);
+		Assert.Equal(ValidationLimits.JobGoalPromptMaxLength.ToString(), cut.Find("#goalPrompt").GetAttribute("maxlength"));
+
+		var prompt = new string('a', 5000);
+		cut.Find("#goalPrompt").Input(prompt);
+
+		Assert.Equal($"{5000:N0}/{ValidationLimits.JobGoalPromptMaxLength:N0} characters", cut.Find("#goalPromptLength").TextContent);
+
+		cut.Find("form").Submit();
+
+		Assert.True(submitted);
+		Assert.Equal(prompt, job.GoalPrompt);
+	}
+
+	[Fact]
+	public void CreateJobModal_GoalPromptOverTheLimit_IsRejected()
+	{
+		using var context = CreateGoalPromptContext();
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "GitHub Copilot", Type = ProviderType.Copilot, IsEnabled = true };
+		var submitted = false;
+		var cut = RenderGoalPromptModal(context, provider, new Job { ProviderId = provider.Id }, () => submitted = true);
+
+		cut.Find("#goalPrompt").Input(new string('a', ValidationLimits.JobGoalPromptMaxLength + 1));
+		cut.Find("form").Submit();
+
+		Assert.False(submitted);
+		Assert.Contains("fg-danger", cut.Find("#goalPromptLength").ClassList);
+		Assert.Contains($"Goal prompt must be {ValidationLimits.JobGoalPromptMaxLength:N0} characters or fewer.", cut.Markup);
+	}
+
+	[Fact]
+	public void CreateJobModal_TypingAGoalPrompt_ClearsTheRequiredMessage()
+	{
+		using var context = CreateGoalPromptContext();
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "GitHub Copilot", Type = ProviderType.Copilot, IsEnabled = true };
+		var cut = RenderGoalPromptModal(context, provider, new Job { ProviderId = provider.Id }, () => { });
+
+		cut.Find("form").Submit();
+		Assert.Contains("Goal prompt is required.", cut.Markup);
+
+		cut.Find("#goalPrompt").Input("Fix the flaky test");
+
+		Assert.DoesNotContain("Goal prompt is required.", cut.Markup);
+	}
+
+	private static BunitContext CreateGoalPromptContext()
+	{
+		var context = new BunitContext();
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([]));
+		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
+		context.Services.AddSingleton<NotificationService>();
+		return context;
+	}
+
+	private IRenderedComponent<CreateJobModal> RenderGoalPromptModal(BunitContext context, Provider provider, Job job, Action onSubmit)
+	{
+		return context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, job)
+			.Add(component => component.Providers, [provider])
+			.Add(component => component.AvailableModels, new List<ProviderModel>())
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, [])
+			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, onSubmit)));
+	}
+
+	[Fact]
 	public void CreateJobModal_SelectingAgentPresetAppliesAssignedExecutionDefaults()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
-		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
@@ -119,8 +195,7 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_SelectedAgentWithInstructions_AllowsBlankGoalPromptAndSubmitsFallback()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
-		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
@@ -167,8 +242,7 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_SelectedAgentWithoutInstructions_StillRequiresGoalPrompt()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
-		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
@@ -209,8 +283,7 @@ public sealed class CreateJobModalTests
 	public void CreateJobModal_RefreshesAgentAssignmentsFromProjectService_WhenParentProjectIsStale()
 	{
 		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
-		context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
 

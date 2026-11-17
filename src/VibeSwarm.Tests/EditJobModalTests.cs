@@ -103,6 +103,23 @@ public sealed class EditJobModalTests
 		Assert.Equal("Tightened prompt", savedPrompt);
 	}
 
+	[Fact]
+	public void CountsThePromptsCharactersAsTheyAreTyped()
+	{
+		using var context = CreateContext(new FakeQueueControl());
+		var job = CreateJob(JobStatus.New);
+
+		var cut = context.Render<EditJobModal>(parameters => parameters
+			.Add(modal => modal.IsVisible, true)
+			.Add(modal => modal.Job, job));
+
+		Assert.Equal("15 characters", cut.Find("#edit-job-prompt-length").TextContent);
+
+		cut.Find("#edit-job-prompt").Input(new string('a', 2500));
+
+		Assert.Equal($"{2500:N0} characters", cut.Find("#edit-job-prompt-length").TextContent);
+	}
+
 	private static Job CreateJob(JobStatus status) => new()
 	{
 		Id = Guid.NewGuid(),

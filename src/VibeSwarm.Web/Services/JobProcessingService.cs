@@ -2,10 +2,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
@@ -48,9 +50,17 @@ public partial class JobProcessingService : BackgroundService
     private readonly IInteractionResponseService? _interactionResponseService;
     private readonly IProjectEnvironmentCredentialService _projectEnvironmentCredentialService;
     private readonly JobWorkSnapshotService? _workSnapshots;
+    private readonly ReleaseBranchGit? _releaseGit;
+    private readonly SwarmWorktrees? _swarmWorktrees;
     private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(3); // Poll less frequently, SignalR handles real-time updates
-    private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
+    // Jobs running at once across projects (AppSettings.MaxConcurrentJobs), read on every
+    // dispatch; this keeps the last value read for when the database can't be reached.
+    private int _maxConcurrentJobs = JobConcurrency.DefaultTotalJobs;
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
+    // Read by job pages without _jobsLock, which is held while jobs are being started.
+    private readonly ConcurrentDictionary<Guid, JobLiveOutputTail> _liveOutputs = new();
+    // Open while a job's agent is working, so job pages can steer it.
+    private readonly ConcurrentDictionary<Guid, JobMessageInbox> _messageInboxes = new();
     private readonly SemaphoreSlim _jobsLock = new(1, 1);
     // Coalescing wake-up channel: bounded to 1 and drops newest writes so repeated triggers
     // collapse into a single pending signal. The polling tick serves as a safety fallback for
@@ -88,7 +98,9 @@ public partial class JobProcessingService : BackgroundService
         IProviderHealthTracker? healthTracker = null,
         IInteractionResponseService? interactionResponseService = null,
         IProjectEnvironmentCredentialService? projectEnvironmentCredentialService = null,
-        JobWorkSnapshotService? workSnapshots = null)
+        JobWorkSnapshotService? workSnapshots = null,
+        ReleaseBranchGit? releaseGit = null,
+        SwarmWorktrees? swarmWorktrees = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -99,6 +111,8 @@ public partial class JobProcessingService : BackgroundService
         _interactionResponseService = interactionResponseService;
         _projectEnvironmentCredentialService = projectEnvironmentCredentialService ?? throw new ArgumentNullException(nameof(projectEnvironmentCredentialService));
         _workSnapshots = workSnapshots;
+        _releaseGit = releaseGit;
+        _swarmWorktrees = swarmWorktrees;
     }
 
     /// <summary>
@@ -111,6 +125,12 @@ public partial class JobProcessingService : BackgroundService
         public int? ProcessId { get; set; }
         public Guid ProviderId { get; set; }
         public Guid ProjectId { get; set; }
+        public Guid? SwarmId { get; set; }
+
+        /// <summary>
+        /// The project checkout, when this run works in a swarm worktree of its own instead.
+        /// </summary>
+        public string? SwarmCheckout { get; set; }
 
         /// <summary>
         /// The provider instance used for this job execution.
@@ -155,6 +175,11 @@ public partial class JobProcessingService : BackgroundService
         public object OutputLock { get; } = new object();
 
         /// <summary>
+        /// The run's newest output lines, numbered, for job pages to load and catch up from.
+        /// </summary>
+        public JobLiveOutputTail LiveOutput { get; } = new JobLiveOutputTail();
+
+        /// <summary>
         /// Git commit hash at the start of job execution
         /// </summary>
         public string? GitCommitBefore { get; set; }
@@ -163,6 +188,7 @@ public partial class JobProcessingService : BackgroundService
         /// How a follow-up re-applied its job's earlier work, or null when it had none to restore.
         /// </summary>
         public JobWorkRestoreResult? PriorWorkRestore { get; set; }
+        public BranchMergeStart? BranchMerge { get; set; }
 
         /// <summary>
         /// Linked worktrees that existed before the agent started, so the ones it adds can be found.
@@ -206,9 +232,20 @@ public partial class JobProcessingService : BackgroundService
         public InteractionDetector.InteractionRequest? CurrentInteractionRequest { get; set; }
 
         /// <summary>
+        /// Questions inference has answered in this job, capped at
+        /// <see cref="AgentQuestionAnswerer.MaxAnswersPerJob"/>.
+        /// </summary>
+        public int InferenceAnswerCount { get; set; }
+
+        /// <summary>
         /// Cancellation token source for the currently running provider execution.
         /// </summary>
         public CancellationTokenSource? ActiveExecutionCancellationTokenSource { get; set; }
+
+        /// <summary>
+        /// Messages the user sends while the agent works.
+        /// </summary>
+        public JobMessageInbox UserMessages { get; } = new();
 
         /// <summary>
         /// Maximum console output size (5 MB)
@@ -220,10 +257,13 @@ public partial class JobProcessingService : BackgroundService
         /// </summary>
         private const int MaxRecentLines = 20;
 
-        public void AppendOutput(string line, bool isError)
+        /// <param name="broadcast">Sends the numbered line to live pages, in the order lines were appended.</param>
+        public void AppendOutput(string line, bool isError, Func<JobOutputLine, Task>? broadcast = null)
         {
             lock (OutputLock)
             {
+                LiveOutput.Append(line, isError, broadcast);
+
                 if (ConsoleOutputBuffer.Length < MaxOutputSize)
                 {
                     var prefix = isError ? "[ERR] " : "";
@@ -258,6 +298,14 @@ public partial class JobProcessingService : BackgroundService
                 return RecentOutputLines.ToArray();
             }
         }
+    }
+
+    /// <summary>
+    /// Runs the handler on the reporting thread, so reports are handled in the order they were made.
+    /// </summary>
+    private sealed class InlineProgress<T>(Action<T> handler) : IProgress<T>
+    {
+        public void Report(T value) => handler(value);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -379,7 +427,7 @@ public partial class JobProcessingService : BackgroundService
             {
                 _logger.LogWarning("Found job {JobId} interrupted on worker {WorkerId}; pausing it to be resumed",
                     job.Id, job.WorkerInstanceId ?? "unknown");
-                await PauseInterruptedJobAsync(job, job.Project?.WorkingPath, dbContext, InterruptedUnexpectedly, null, null, cancellationToken);
+                await PauseInterruptedJobAsync(job, GetRunDirectory(job), dbContext, InterruptedUnexpectedly, null, null, cancellationToken);
             }
 
             if (orphanedJobs.Any())
@@ -395,6 +443,26 @@ public partial class JobProcessingService : BackgroundService
     }
 
     /// <summary>
+    /// The current run's kept output lines after <paramref name="afterSequence"/>, or null when the
+    /// job isn't running in this process.
+    /// </summary>
+    public JobLiveOutput? GetLiveOutput(Guid jobId, long afterSequence)
+        => _liveOutputs.TryGetValue(jobId, out var liveOutput) ? liveOutput.GetSince(afterSequence) : null;
+
+    /// <summary>
+    /// Hands a message to the job's working agent: its current turn stops and the session carries
+    /// on with the message. False when the job isn't running here or its agent has finished.
+    /// </summary>
+    public bool TrySendUserMessage(Guid jobId, string message)
+        => _messageInboxes.TryGetValue(jobId, out var inbox) && inbox.TryPost(message);
+
+    private void CloseUserMessages(Guid jobId, JobExecutionContext executionContext)
+    {
+        executionContext.UserMessages.Close();
+        _messageInboxes.TryRemove(new KeyValuePair<Guid, JobMessageInbox>(jobId, executionContext.UserMessages));
+    }
+
+    /// <summary>
     /// Triggers immediate job processing. Safe to call from any thread.
     /// Repeated calls between ticks coalesce into a single pending wake (bounded channel, DropWrite).
     /// </summary>
@@ -406,16 +474,22 @@ public partial class JobProcessingService : BackgroundService
     /// <summary>Set once while paused so a stopped queue does not fill the log.</summary>
     private bool _queuePauseLogged;
 
-    private static async Task<bool> IsQueuePausedAsync(IServiceProvider services, CancellationToken cancellationToken)
+    /// <summary>
+    /// Reads the queue's stop switch, and refreshes <see cref="_maxConcurrentJobs"/> so a change
+    /// in Settings applies on the next dispatch.
+    /// </summary>
+    private async Task<bool> ReadQueueSettingsAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
         try
         {
             var dbContext = services.GetRequiredService<VibeSwarmDbContext>();
             var settings = await dbContext.AppSettings
                 .AsNoTracking()
-                .Select(appSettings => new { appSettings.JobQueuePaused })
+                .OrderBy(appSettings => appSettings.Id)
+                .Select(appSettings => new { appSettings.JobQueuePaused, appSettings.MaxConcurrentJobs })
                 .FirstOrDefaultAsync(cancellationToken);
 
+            _maxConcurrentJobs = JobConcurrency.Normalize(settings?.MaxConcurrentJobs ?? JobConcurrency.DefaultTotalJobs);
             return settings?.JobQueuePaused ?? false;
         }
         catch
@@ -431,6 +505,12 @@ public partial class JobProcessingService : BackgroundService
         await _jobsLock.WaitAsync(stoppingToken);
         try
         {
+            using var scope = _scopeFactory.CreateScope();
+
+            // The stop switch and the job limit. Checked on every dispatch rather than cached,
+            // so pausing from a phone takes effect on the next poll instead of the next restart.
+            var queuePaused = await ReadQueueSettingsAsync(scope.ServiceProvider, stoppingToken);
+
             // Check how many slots are available
             var availableSlots = _maxConcurrentJobs - _runningJobs.Count;
             if (availableSlots <= 0)
@@ -438,11 +518,7 @@ public partial class JobProcessingService : BackgroundService
                 return; // All slots are filled
             }
 
-            using var scope = _scopeFactory.CreateScope();
-
-            // The stop switch. Checked on every dispatch rather than cached, so pausing
-            // from a phone takes effect on the next poll instead of the next restart.
-            if (await IsQueuePausedAsync(scope.ServiceProvider, stoppingToken))
+            if (queuePaused)
             {
                 if (!_queuePauseLogged)
                 {
@@ -466,17 +542,27 @@ public partial class JobProcessingService : BackgroundService
             _logger.LogInformation("Found {PendingCount} pending jobs, {AvailableSlots} slots available, {RunningCount} jobs running",
                 pendingJobs.Count, availableSlots, _runningJobs.Count);
 
-            var busyProjectIds = _runningJobs.Values
+            var runningJobs = _runningJobs.Values
                 .Where(running => !running.Task.IsCompleted)
-                .Select(running => running.ProjectId);
-            var jobsToStart = SelectJobsToStart(pendingJobs, busyProjectIds, availableSlots);
+                .Select(running => (running.ProjectId, running.SwarmId, running.ProviderId));
+            var checkouts = await ProjectCheckouts.LoadAsync(scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>(), stoppingToken);
+            var jobsToStart = SelectJobsToStart(pendingJobs, runningJobs, availableSlots, checkouts);
             foreach (var job in jobsToStart)
             {
                 if (stoppingToken.IsCancellationRequested)
                     break;
 
                 var jobCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                var context = new JobExecutionContext { CancellationTokenSource = jobCts, ProjectId = job.ProjectId };
+                // The provider is set now, not when the task claims the job, so the next dispatch
+                // already counts this job against its provider's limit.
+                var context = new JobExecutionContext
+                {
+                    CancellationTokenSource = jobCts,
+                    ProjectId = job.ProjectId,
+                    SwarmId = job.SwarmId,
+                    ProviderId = job.ProviderId
+                };
+                _liveOutputs[job.Id] = context.LiveOutput;
 
                 // Start job processing in background
                 context.Task = Task.Run(async () =>
@@ -502,18 +588,39 @@ public partial class JobProcessingService : BackgroundService
     }
 
     /// <summary>
-    /// Picks which pending jobs to launch, at most one per project, skipping projects this
-    /// worker still has a job task running for. The database lags the task at both ends: a
-    /// dispatched job only shows as running once its task claims it, and a cancel can mark it
-    /// finished while the task is still in the checkout. The live tasks are the authority.
+    /// Picks which pending jobs to launch, at most one per project or shared checkout (members of
+    /// one swarm excepted) and no more per provider than its job limit, counting the job tasks this worker still has
+    /// running. The database lags the task at both ends: a dispatched job only shows as running
+    /// once its task claims it, and a cancel can mark it finished while the task is still in the
+    /// checkout. The live tasks are the authority.
     /// </summary>
-    internal static List<Job> SelectJobsToStart(IEnumerable<Job> pendingJobs, IEnumerable<Guid> busyProjectIds, int availableSlots)
+    internal static List<Job> SelectJobsToStart(
+        IEnumerable<Job> pendingJobs,
+        IEnumerable<(Guid ProjectId, Guid? SwarmId, Guid ProviderId)> runningJobs,
+        int availableSlots,
+        ProjectCheckouts? checkouts = null)
     {
-        var claimedProjectIds = busyProjectIds.ToHashSet();
-        return pendingJobs
-            .Where(job => claimedProjectIds.Add(job.ProjectId))
-            .Take(availableSlots)
-            .ToList();
+        var candidates = pendingJobs.ToList();
+        var running = runningJobs.ToList();
+        var projectSlots = new ProjectJobSlots(running.Select(job => (job.ProjectId, job.SwarmId)), checkouts);
+        var providerSlots = new ProviderJobSlots(running.Select(job => job.ProviderId), ProviderJobSlots.LimitsOf(candidates));
+        var jobsToStart = new List<Job>();
+        foreach (var job in candidates)
+        {
+            if (jobsToStart.Count >= availableSlots)
+            {
+                break;
+            }
+
+            if (projectSlots.CanStart(job.ProjectId, job.SwarmId) && providerSlots.CanStart(job.ProviderId))
+            {
+                projectSlots.Take(job.ProjectId, job.SwarmId);
+                providerSlots.Take(job.ProviderId);
+                jobsToStart.Add(job);
+            }
+        }
+
+        return jobsToStart;
     }
 
     private async Task CleanupCompletedJobsAsync()
@@ -525,6 +632,7 @@ public partial class JobProcessingService : BackgroundService
             foreach (var kvp in completedJobs)
             {
                 _runningJobs.Remove(kvp.Key);
+                _liveOutputs.TryRemove(new KeyValuePair<Guid, JobLiveOutputTail>(kvp.Key, kvp.Value.LiveOutput));
                 kvp.Value.CancellationTokenSource?.Dispose();
                 _logger.LogDebug("Removed completed job {JobId} from running jobs tracking", kvp.Key);
 

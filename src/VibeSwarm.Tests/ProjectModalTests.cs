@@ -56,9 +56,9 @@ var output = await renderer.RenderComponentAsync<ProjectModal>(parameters);
 return output.ToHtmlString();
 });
 
-Assert.Contains("vs-project-modal-body", html);
-Assert.Contains("vs-modal-dialog-wide-lg", html);
-Assert.Contains("modal-lg", html);
+Assert.Contains("vs-project-dialog-body", html);
+Assert.Contains("vs-dialog-wide-lg", html);
+Assert.Contains("dialog-lg", html);
 // Essentials render up front; everything else lives in collapsed accordion sections.
 Assert.Contains("Start from", html);
 Assert.Contains("Working folder", html);
@@ -112,6 +112,7 @@ public void BrowseGitHubRepositories_SelectingRepositoryPopulatesCloneInput()
 
 	cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
 	cut.Find("#modal-githubRepoBrowse").Click();
+	Assert.Empty(cut.FindAll("#githubRepositoryBrowserHideExisting"));
 	cut.FindAll("button")
 		.Single(button => button.TextContent.Contains("octocat/hello-world", StringComparison.Ordinal))
 		.Click();
@@ -142,6 +143,76 @@ public void BrowseGitHubRepositories_NullRepositoryListShowsEmptyState()
 	cut.Find("#modal-githubRepoBrowse").Click();
 
 	Assert.Contains("No repositories matched the current filter.", cut.Markup);
+}
+
+[Fact]
+public void BrowseGitHubRepositories_HidesRepositoriesAlreadyAddedUntilSwitchedOff()
+{
+	using var context = CreateBunitContext(new FakeProjectService
+	{
+		AllProjects =
+		[
+			new Project { Id = Guid.NewGuid(), Name = "Hello", WorkingPath = "/repos/hello", GitHubRepository = "Octocat/Hello-World.git" }
+		],
+		RepositoryBrowserResult = new GitHubRepositoryBrowserResult
+		{
+			IsGitHubCliAvailable = true,
+			IsAuthenticated = true,
+			Repositories =
+			[
+				new GitHubRepositoryBrowserItem { NameWithOwner = "octocat/hello-world" },
+				new GitHubRepositoryBrowserItem { NameWithOwner = "octocat/spoon-knife" }
+			]
+		}
+	});
+
+	var cut = context.Render<ProjectModal>(parameters => parameters
+		.Add(component => component.IsVisible, true));
+
+	cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
+	cut.Find("#modal-githubRepoBrowse").Click();
+
+	Assert.True(cut.Find("#githubRepositoryBrowserHideExisting").HasAttribute("checked"));
+	Assert.Contains("Hide the 1 already in VibeSwarm", cut.Markup);
+	Assert.Contains("spoon-knife", cut.Markup);
+	Assert.DoesNotContain("hello-world", cut.Markup);
+
+	cut.Find("#githubRepositoryBrowserHideExisting").Change(false);
+
+	Assert.Contains("hello-world", cut.Markup);
+	Assert.Contains("Added as Hello", cut.Markup);
+}
+
+[Fact]
+public void BrowseGitHubRepositories_AllAlreadyAddedOffersToShowThem()
+{
+	using var context = CreateBunitContext(new FakeProjectService
+	{
+		AllProjects =
+		[
+			new Project { Id = Guid.NewGuid(), Name = "Hello", WorkingPath = "/repos/hello", GitHubRepository = "octocat/hello-world" }
+		],
+		RepositoryBrowserResult = new GitHubRepositoryBrowserResult
+		{
+			IsGitHubCliAvailable = true,
+			IsAuthenticated = true,
+			Repositories = [new GitHubRepositoryBrowserItem { NameWithOwner = "octocat/hello-world" }]
+		}
+	});
+
+	var cut = context.Render<ProjectModal>(parameters => parameters
+		.Add(component => component.IsVisible, true));
+
+	cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
+	cut.Find("#modal-githubRepoBrowse").Click();
+
+	Assert.Contains("Every repository here is already in VibeSwarm.", cut.Markup);
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Show them", StringComparison.Ordinal))
+		.Click();
+
+	Assert.Contains("hello-world", cut.Markup);
+	Assert.False(cut.Find("#githubRepositoryBrowserHideExisting").HasAttribute("checked"));
 }
 
 [Fact]
@@ -311,6 +382,99 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 
 
 	[Fact]
+	public void TypingARepositoryToClone_FillsInTheWholeRepositoryNameAsTheProjectName()
+	{
+		using var context = CreateBunitContext();
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true));
+
+		cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").Change(true);
+		const string repository = "octocat/hello-world";
+		for (var length = 1; length <= repository.Length; length++)
+		{
+			cut.Find("#modal-githubRepo").Input(repository[..length]);
+		}
+
+		Assert.Equal("hello-world", cut.Find("#modal-name").GetAttribute("value"));
+		Assert.Equal("/tmp/projects/hello-world", cut.Find("#modal-workingPath").GetAttribute("value"));
+	}
+
+	[Fact]
+	public void CreateRepository_PickingAnOrganizationCreatesTheRepositoryUnderIt()
+	{
+		var projectService = new FakeProjectService
+		{
+			AccountsResult = new GitHubAccountsResult
+			{
+				IsGitHubCliAvailable = true,
+				IsAuthenticated = true,
+				AuthenticatedUser = "octocat",
+				Organizations = ["acme"]
+			}
+		};
+		using var context = CreateBunitContext(projectService);
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true));
+
+		cut.Find($"#project-source-{ProjectCreationMode.CreateGitHubRepository}").Change(true);
+
+		var owners = cut.FindAll("#modal-githubOwner option");
+		Assert.Equal(["octocat (me)", "acme"], owners.Select(option => option.TextContent.Trim()));
+		Assert.Equal("octocat", cut.Find("#modal-githubOwner").GetAttribute("value"));
+
+		cut.Find("#modal-githubOwner").Change("acme");
+		cut.Find("#modal-githubRepo").Input("tool");
+		cut.Find("form").Submit();
+
+		cut.WaitForAssertion(() => Assert.NotNull(projectService.LastCreationRequest), WaitTimeout);
+		var request = projectService.LastCreationRequest!;
+		Assert.Equal(ProjectCreationMode.CreateGitHubRepository, request.Mode);
+		Assert.Equal("acme/tool", request.GitHub!.Repository);
+		Assert.Equal("tool", request.Project.Name);
+	}
+
+	[Fact]
+	public void OpenedToCloneIntoAFolder_StartsInCloneMode_AndCreatesTheProjectInThatFolder()
+	{
+		var shop = new ProjectFolder { Id = Guid.NewGuid(), Name = "Shop" };
+		var projectService = new FakeProjectService { Folders = [shop] };
+		using var context = CreateBunitContext(projectService);
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.InitialFolderId, shop.Id)
+			.Add(component => component.InitialCreationMode, ProjectCreationMode.CloneGitHubRepository));
+
+		Assert.Equal("New Project in Shop", cut.Find("dialog h2").TextContent.Trim());
+		Assert.True(cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").HasAttribute("checked"));
+
+		cut.Find("#modal-githubRepo").Input("octocat/hello-world");
+		cut.Find("form").Submit();
+
+		cut.WaitForAssertion(() => Assert.NotNull(projectService.LastCreationRequest), WaitTimeout);
+		var request = projectService.LastCreationRequest!;
+		Assert.Equal(ProjectCreationMode.CloneGitHubRepository, request.Mode);
+		Assert.Equal("octocat/hello-world", request.GitHub!.Repository);
+		Assert.Equal(shop.Id, request.Project.FolderId);
+	}
+
+	[Fact]
+	public void CreateRepository_WithoutGitHubAccounts_HidesTheOwnerPicker()
+	{
+		using var context = CreateBunitContext();
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true));
+
+		cut.Find($"#project-source-{ProjectCreationMode.CreateGitHubRepository}").Change(true);
+
+		Assert.Empty(cut.FindAll("#modal-githubOwner"));
+		Assert.Contains("for an organization", cut.Markup);
+	}
+
+	[Fact]
 	public void InspectingAGitWorkingFolder_FillsInNameRepositoryAndBuildCommands()
 	{
 		var fileSystem = new FakeWorkspaceFileSystemService
@@ -388,16 +552,73 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 		cut.Find("#modal-workingPath").Input("/tmp/demo");
 
 		// Build verification lives in a collapsed section and requires a build command.
-		Assert.DoesNotContain("show", cut.FindAll(".accordion-collapse")
-			.Last().ClassList.ToArray());
+		Assert.False(cut.FindAll("details.accordion-item").Last().HasAttribute("open"));
 		cut.Find("#modal-buildVerificationEnabled").Change(true);
 		cut.Find("form").Submit();
 
 		cut.WaitForAssertion(() =>
 		{
 			Assert.Contains("Build command is required when build verification is enabled.", cut.Markup);
-			Assert.Contains("show", cut.FindAll(".accordion-collapse").Last().ClassList.ToArray());
+			Assert.True(cut.FindAll("details.accordion-item").Last().HasAttribute("open"));
 		}, WaitTimeout);
+	}
+
+	[Fact]
+	public void EditProject_PicksFolderAndSavesLinksSeparately()
+	{
+		var folder = new ProjectFolder { Id = Guid.NewGuid(), Name = "Storefront" };
+		var project = new Project { Id = Guid.NewGuid(), Name = "Web", WorkingPath = "/tmp/web", FolderId = folder.Id };
+		var sameFolder = new Project { Id = Guid.NewGuid(), Name = "Zeta Api", WorkingPath = "/tmp/api", FolderId = folder.Id };
+		var elsewhere = new Project { Id = Guid.NewGuid(), Name = "Alpha Docs", WorkingPath = "/tmp/docs" };
+		project.Links = [new ProjectLink { ProjectId = project.Id, LinkedProjectId = sameFolder.Id }];
+		var projectService = new FakeProjectService
+		{
+			AllProjects = [project, sameFolder, elsewhere],
+			Folders = [folder]
+		};
+
+		using var context = CreateBunitContext(projectService);
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditProject, project));
+
+		Assert.Equal(folder.Id.ToString(), cut.Find("#modal-projectFolder").GetAttribute("value"));
+		Assert.Empty(cut.FindAll($"#modal-linkedProject-{project.Id}"));
+		var checkboxes = cut.FindAll("input[id^='modal-linkedProject-']");
+		Assert.Equal([$"modal-linkedProject-{sameFolder.Id}", $"modal-linkedProject-{elsewhere.Id}"], checkboxes.Select(box => box.Id));
+		Assert.True(checkboxes[0].HasAttribute("checked"));
+		Assert.False(checkboxes[1].HasAttribute("checked"));
+
+		cut.Find($"#modal-linkedProject-{sameFolder.Id}").Change(false);
+		cut.Find($"#modal-linkedProject-{elsewhere.Id}").Change(true);
+		cut.Find("#modal-projectFolder").Change(string.Empty);
+		cut.Find("form").Submit();
+
+		cut.WaitForAssertion(() =>
+		{
+			var update = Assert.Single(projectService.LinkUpdates);
+			Assert.Equal(project.Id, update.ProjectId);
+			Assert.Equal([elsewhere.Id], update.LinkedProjectIds);
+			Assert.Null(projectService.LastUpdatedProject!.FolderId);
+		}, WaitTimeout);
+	}
+
+	[Fact]
+	public void EditProject_LeavesLinksAlone_WhenTheyDidNotChange()
+	{
+		var project = new Project { Id = Guid.NewGuid(), Name = "Web", WorkingPath = "/tmp/web" };
+		var projectService = new FakeProjectService { AllProjects = [project] };
+
+		using var context = CreateBunitContext(projectService);
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditProject, project));
+
+		Assert.Contains("There are no other projects to link yet.", cut.Markup);
+		cut.Find("form").Submit();
+
+		cut.WaitForAssertion(() => Assert.NotNull(projectService.LastUpdatedProject), WaitTimeout);
+		Assert.Empty(projectService.LinkUpdates);
 	}
 
 private static BunitContext CreateBunitContext(
@@ -408,9 +629,8 @@ private static BunitContext CreateBunitContext(
 	IFileSystemService? fileSystemService = null)
 {
 	var context = new BunitContext();
-	context.JSInterop.SetupVoid("eval", ModalDialog.LockBodyScrollScript);
-	context.JSInterop.SetupVoid("eval", ModalDialog.UnlockBodyScrollScript);
-	context.JSInterop.SetupVoid("vibeSwarmInitTouchDrag", _ => true);
+	context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
+	context.JSInterop.SetupVoid("vibeSwarmInitTouchDrag", _ => true).SetVoidResult();
 	context.Services.AddLogging();
 	var resolvedProvider = provider ?? new Provider
 	{
@@ -432,21 +652,42 @@ private static BunitContext CreateBunitContext(
 private sealed class FakeProjectService : FakeProjectServiceBase
 {
 public GitHubRepositoryBrowserResult RepositoryBrowserResult { get; set; } = new();
+public GitHubAccountsResult? AccountsResult { get; set; }
+public ProjectCreationRequest? LastCreationRequest { get; private set; }
 public Project? CreateProjectResult { get; set; }
 public Project? UpdateResult { get; set; }
-public override Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
+public List<Project> AllProjects { get; set; } = [];
+public List<ProjectFolder> Folders { get; set; } = [];
+public Project? LastUpdatedProject { get; private set; }
+public List<(Guid ProjectId, List<Guid> LinkedProjectIds)> LinkUpdates { get; } = [];
+public override Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>(AllProjects);
+public override Task<IEnumerable<ProjectFolder>> GetFoldersAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectFolder>>(Folders);
+public override Task SetLinkedProjectsAsync(Guid projectId, IEnumerable<Guid> linkedProjectIds, CancellationToken cancellationToken = default)
+{
+	LinkUpdates.Add((projectId, linkedProjectIds.ToList()));
+	return Task.CompletedTask;
+}
 public override Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
 public override Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
 public override Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
 public override Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default)
-	=> Task.FromResult(CreateProjectResult ?? new Project
+{
+	LastCreationRequest = request;
+	return Task.FromResult(CreateProjectResult ?? new Project
 	{
 		Id = Guid.NewGuid(),
 		Name = request.Project.Name,
 		WorkingPath = request.Project.WorkingPath
 	});
+}
+public override Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken cancellationToken = default)
+	=> AccountsResult is null ? base.GetGitHubAccountsAsync(cancellationToken) : Task.FromResult(AccountsResult);
 public override Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default) => Task.FromResult(RepositoryBrowserResult);
-public override Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => Task.FromResult(UpdateResult ?? project);
+public override Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default)
+{
+	LastUpdatedProject = project;
+	return Task.FromResult(UpdateResult ?? project);
+}
 public override Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
 public override Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
 public override Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => Task.FromResult(new DashboardJobMetrics { RangeDays = rangeDays, Buckets = [] });
@@ -476,6 +717,7 @@ IsDefault = true
 private sealed class FakeSettingsService : ISettingsService
 {
 public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
+public Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");
 }

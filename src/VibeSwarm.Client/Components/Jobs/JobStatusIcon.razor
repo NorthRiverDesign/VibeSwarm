@@ -1,0 +1,39 @@
+@* A job's status as one glyph: a spinner while it runs, an icon otherwise. Job rows lead with it. *@
+
+@switch (Status)
+{
+	case JobStatus.Completed:
+		<i class="bi bi-check-circle-fill fg-success" title="Completed"></i>
+		break;
+	case JobStatus.Failed:
+		<i class="bi bi-x-circle-fill fg-danger" title="Failed"></i>
+		break;
+	case JobStatus.Cancelled:
+		<i class="bi bi-slash-circle fg-1" title="Cancelled"></i>
+		break;
+	case JobStatus.Started:
+	case JobStatus.Planning:
+	case JobStatus.Processing:
+		<span class="spinner-border spinner-sm fg-primary" role="status" title="@Status.ToString()">
+			<span class="visually-hidden">Running</span>
+		</span>
+		break;
+	case JobStatus.New:
+	case JobStatus.Pending:
+		<i class="bi bi-hourglass-split fg-warning" title="Queued"></i>
+		break;
+	case JobStatus.Paused:
+		<i class="bi bi-chat-dots-fill fg-warning" title="Waiting for your reply"></i>
+		break;
+	case JobStatus.Stalled:
+		<i class="bi bi-exclamation-triangle-fill fg-warning" title="Stalled"></i>
+		break;
+	default:
+		<i class="bi bi-circle fg-secondary" title="@Status.ToString()"></i>
+		break;
+}
+
+@code {
+	[Parameter, EditorRequired]
+	public JobStatus Status { get; set; }
+}

@@ -55,7 +55,7 @@ public sealed class DashboardPageTests
 		Assert.Contains("Name", html);
 		Assert.Contains("Claude", html);
 		Assert.DoesNotContain("Copilot", html);
-		Assert.Contains("list-group rounded-4", html);
+		Assert.Contains("list-group rounded-9", html);
 		Assert.DoesNotContain("row-cols", html);
 		Assert.True(html.IndexOf("Beta", StringComparison.Ordinal) < html.IndexOf("Alpha", StringComparison.Ordinal));
 		Assert.True(html.IndexOf("Alpha", StringComparison.Ordinal) < html.IndexOf("Gamma", StringComparison.Ordinal));
@@ -336,7 +336,8 @@ public sealed class DashboardPageTests
 		FindRefreshUsageButton(cut).Click();
 
 		cut.WaitForAssertion(() => Assert.Contains("Weekly limit 85/100 used", cut.Markup));
-		Assert.Equal([claude.Id], handler.RefreshedProviderIds);
+		// Copilot reads its account quota for free, so it is read alongside Claude.
+		Assert.Equivalent(new[] { claude.Id, copilot.Id }, handler.RefreshedProviderIds);
 		Assert.Equal(2, handler.SummaryReloads);
 		Assert.False(FindRefreshUsageButton(cut).HasAttribute("disabled"));
 	}
@@ -537,6 +538,12 @@ public sealed class DashboardPageTests
 			});
 		public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default)
 			=> Task.FromResult<IEnumerable<DashboardRunningJobInfo>>(_runningJobs);
+		public Task SetLinkedProjectsAsync(Guid projectId, IEnumerable<Guid> linkedProjectIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IEnumerable<ProjectFolder>> GetFoldersAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectFolder>>([]);
+		public Task<ProjectFolder> CreateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<ProjectFolder> UpdateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task DeleteFolderAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task MoveToFolderAsync(Guid projectId, Guid? folderId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
 	private sealed class FakeVersionControlService : FakeVersionControlServiceBase

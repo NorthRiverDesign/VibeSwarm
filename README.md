@@ -18,7 +18,7 @@ VibeSwarm is an agentic CI/CD system for turning ideas into application code. It
 
 | Agent          | CLI Command | Verified against | Minimum | Install                                           |
 | -------------- | ----------- | ---------------- | ------- | ------------------------------------------------- |
-| Claude Code    | `claude`    | 2.1.276          | 2.0.0   | [claude.ai/code](https://claude.ai/code)          |
+| Claude Code    | `claude`    | 2.1.322          | 2.0.0   | [claude.ai/code](https://claude.ai/code)          |
 | OpenCode       | `opencode`  | 1.18.31          | 1.0.0   | [opencode.ai](https://opencode.ai)                |
 | GitHub Copilot | `copilot`   | 1.0.86           | 1.0.0   | [copilot CLI](https://docs.github.com/en/copilot) |
 
@@ -28,7 +28,7 @@ Agents are **auto-detected** at startup. If a supported CLI tool is on your PATH
 
 These CLIs change fast. `ProviderVersionReference` (in `src/VibeSwarm.Shared/Providers/`) is the
 single source of truth for the release each integration was built and verified against — last
-reviewed **2026-09-18**. Newer CLI features are version-gated, so an older CLI keeps working
+reviewed **2026-11-11**. Newer CLI features are version-gated, so an older CLI keeps working
 with those features switched off rather than failing.
 
 At startup VibeSwarm compares each detected CLI against this reference and logs the result:
@@ -53,6 +53,19 @@ pauses work when a window is exhausted.
   are reported as **Unmetered**: no meter is drawn, and they are never paused for exhaustion,
   since there is no window to wait for.
 
+### Claude Code models and advisor
+
+Claude Code providers offer the CLI's aliases (`sonnet`, `opus`, `haiku`, `fable`), which always
+run the newest model of each line, followed by pinned model IDs. The list ships with VibeSwarm and
+is refreshed shortly after each start, so new models appear without a manual refresh.
+
+A Claude Code provider can also name an **Advisor** (`--advisor`): a stronger model the agent
+consults at hard moments, billed at that model's rate. It applies to every run of the provider
+(jobs, planning, review and ideas). Running them on Sonnet with Opus or Fable as advisor keeps
+most of the work on the cheaper model. Claude Code skips an advisor weaker than the run's model,
+and skips Fable until it has been enabled once in an interactive session. Leave it unset to use
+Claude Code's own `advisorModel` setting, or pick Off to turn it off for that provider.
+
 ### Project memory and session files
 
 Each agent keeps its own memory in its own place, so VibeSwarm keeps one **project memory**
@@ -68,6 +81,53 @@ folders and files (`.vibeswarm/`, `.claude/`, `.opencode/`, `.copilot/`, `CLAUDE
 `.git/info/exclude`. That file is local to your clone, so your `.gitignore` is never changed,
 and a run that only leaves such files behind doesn't count as a code change. Agents are also
 told to keep plans, todo lists and scratch work out of the repository.
+
+### Browser for agents
+
+Agents can open, click through and screenshot the web apps they build. Every job gets the
+[Playwright MCP](https://github.com/microsoft/playwright-mcp) server, driving a headless
+Chromium on the host, whether Claude Code, Copilot or OpenCode runs it. Set it up under
+**Settings > General > Browser for agents**: it shows whether Node.js and Chromium are
+installed, and **Install Playwright and Chromium** installs whatever is missing. Chromium goes
+into Playwright's shared cache (`~/.cache/ms-playwright` on Linux), with its system libraries
+when VibeSwarm can use `sudo` without a password. A system Chromium (such as Debian's
+`chromium` package on a Raspberry Pi) works too. Turn off **Give every job a browser** to keep
+it to projects with a web environment.
+
+### Development and release branches
+
+To batch changes and ship them when you choose, set a **Development branch** and a
+**Release branch** under **When a job finishes** in a project's settings. Jobs then work on the
+development branch, and the project gets a **Release** tab listing the changes that are
+waiting. **Deploy** merges the development branch, as it is on origin, into the release
+branch and pushes it, so your CI/CD can ship it from there.
+
+If the release branch has changes of its own that conflict, such as a hotfix, nothing is
+pushed. VibeSwarm queues a job instead: it merges the release branch into the development
+branch and leaves the conflicts for a provider to resolve, and the result is committed as a
+merge only once no conflict markers remain. When that job finishes, press **Deploy** again.
+Deploys are always manual.
+
+### Review and Lead
+
+Two optional helpers sit above single jobs. Both are set per project in its settings, and both
+run read-only: Claude Code or Copilot with their write tools blocked.
+
+- **Review** (off by default) checks each job before its work is delivered. When the agent
+  finishes, the project's build and tests run. Then a second model reads the change against the
+  goal and the plan's acceptance criteria. The reviewer is a Claude or Copilot CLI that can open
+  files, or an inference provider that sees only the diff. Problems go back to the agent in the
+  same session, at most twice. Review never holds work back: if the reviewer is off, near its
+  usage limit, fails or gives no verdict, the work is delivered and the job says why it wasn't
+  reviewed.
+- **Lead** suggests what to build next. A Lead review copies the branch jobs deliver to, as it is
+  on origin, and reads it alongside the project memory, recent job outcomes, unresolved review
+  findings and an optional **Direction** you write. It returns a short report and up to eight
+  ideas, each with a goal and acceptance criteria. They wait under **Suggested by Lead** on the
+  project page until you approve them. Dismissed ones are never suggested again.
+
+On the Auto-Pilot tab, **Ideas → Only ones I approve** makes auto-pilot run only ideas you typed
+or approved. When none are left, it asks the Lead for more, tells you once, and waits.
 
 ---
 
@@ -102,19 +162,20 @@ Only copy `.env` when you want to customize ports, pre-create the first admin ac
 
 The application will:
 
-- Generate a self-signed HTTPS certificate (first run only)
 - Run database migrations (SQLite by default, zero configuration)
 - Auto-detect installed CLI agents
-- Start on **https://localhost:5001** and **http://localhost:5000**
+- Start on **http://localhost:5000**
 
 ### 5. Open Your Browser
 
-Navigate to `https://localhost:5001`
+Navigate to `http://localhost:5000`
 
-Your browser will show a certificate warning (self-signed cert). This is expected:
+To also serve HTTPS, turn on **Settings → Connection → Serve over HTTPS** and restart VibeSwarm. It then generates a self-signed certificate and listens on **https://localhost:5001** as well. Your browser will show a certificate warning until you trust it (devices can install it from `/cert`):
 
 - **Chrome/Edge**: Click "Advanced" → "Proceed to localhost"
 - **Firefox**: Click "Advanced" → "Accept the Risk and Continue"
+
+Browsers only allow installing VibeSwarm as an app and keeping the screen awake over HTTPS (or on `localhost`).
 
 On first launch you will be redirected to a setup wizard to create your admin account. For automated deployments, set `DEFAULT_ADMIN_PASS` and optionally `DEFAULT_ADMIN_USER` in your `.env` file before starting the app.
 
@@ -141,7 +202,7 @@ The `.env` file is the **only** configuration you need. Place it in the repo roo
 
 | Variable                     | Default                                        | Description                                              |
 | ---------------------------- | ---------------------------------------------- | -------------------------------------------------------- |
-| `ASPNETCORE_URLS`            | `https://localhost:5001;http://localhost:5000` | Bind addresses. Use `0.0.0.0` for remote access.         |
+| `ASPNETCORE_URLS`            | `http://localhost:5000`                        | Bind addresses. Use `0.0.0.0` for remote access. `https://` ones need HTTPS on in Settings. |
 | `DEFAULT_ADMIN_USER`         | `admin` when only a password is provided       | Optional admin username for automated setup.             |
 | `DEFAULT_ADMIN_PASS`         | _(empty — setup wizard)_                       | Admin password. Min 8 chars, upper + lower + digit.      |
 | `DATABASE_PROVIDER`          | `sqlite`                                       | Database engine: `sqlite` or `mysql`.                    |
@@ -230,7 +291,7 @@ ExecStart=/opt/vibeswarm/VibeSwarm.Web
 Restart=always
 RestartSec=10
 KillSignal=SIGINT
-Environment=ASPNETCORE_URLS=https://0.0.0.0:5001;http://0.0.0.0:5000
+Environment=ASPNETCORE_URLS=http://0.0.0.0:5000;https://0.0.0.0:5001
 Environment=ASPNETCORE_ENVIRONMENT=Production
 
 [Install]
@@ -256,7 +317,7 @@ nssm start VibeSwarm
 
 ## Security
 
-- VibeSwarm generates a self-signed HTTPS certificate on first run. For production, place behind a reverse proxy with a real certificate.
+- VibeSwarm serves plain HTTP by default. Turning on Settings → Connection → Serve over HTTPS adds HTTPS with a self-signed certificate. For production, place it behind a reverse proxy with a real certificate.
 - The application calls CLI tools on the host system. It does **not** store API keys — your agents authenticate through their own configurations.
 - All user passwords are hashed with ASP.NET Core Identity defaults.
 
@@ -266,16 +327,16 @@ nssm start VibeSwarm
 
 ### Certificate Warning
 
-Expected with self-signed certificates. Accept the warning in your browser, or replace with a real cert behind a reverse proxy.
+Expected with self-signed certificates, which VibeSwarm only uses while Settings → Connection → Serve over HTTPS is on. Turn it off and restart to serve HTTP only, accept the warning in your browser, or put a real certificate in front with a reverse proxy.
 
 ### Port Already in Use
 
 ```bash
 # Windows
-netstat -ano | findstr :5001
+netstat -ano | findstr :5000
 
 # Linux/macOS
-lsof -i :5001
+lsof -i :5000
 ```
 
 Change the port in `.env` via `ASPNETCORE_URLS`.

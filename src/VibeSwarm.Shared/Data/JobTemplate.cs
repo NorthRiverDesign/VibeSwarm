@@ -16,7 +16,7 @@ public class JobTemplate
 	public string? Description { get; set; }
 
 	[Required]
-	[StringLength(ValidationLimits.JobTemplatePromptMaxLength, MinimumLength = 1)]
+	[StringLength(ValidationLimits.JobGoalPromptMaxLength, MinimumLength = 1)]
 	public string GoalPrompt { get; set; } = string.Empty;
 
 	public Guid? ProviderId { get; set; }

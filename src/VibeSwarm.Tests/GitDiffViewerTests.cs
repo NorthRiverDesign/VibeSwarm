@@ -15,26 +15,26 @@ public sealed class GitDiffViewerTests
 		var cut = context.Render<GitDiffViewer>(parameters => parameters
 			.Add(viewer => viewer.DiffFiles, CreateDiffFiles()));
 
-		var panels = cut.FindAll(".accordion-collapse");
-		Assert.Contains("show", panels[0].ClassName);
-		Assert.DoesNotContain("show", panels[1].ClassName);
+		var panels = cut.FindAll("details.accordion-item");
+		Assert.True(panels[0].HasAttribute("open"));
+		Assert.False(panels[1].HasAttribute("open"));
 
 		cut.FindAll("button")
 			.Single(button => button.GetAttribute("title") == "Expand all files")
 			.Click();
 
-		foreach (var panel in cut.FindAll(".accordion-collapse"))
+		foreach (var panel in cut.FindAll("details.accordion-item"))
 		{
-			Assert.Contains("show", panel.ClassName);
+			Assert.True(panel.HasAttribute("open"));
 		}
 
 		cut.FindAll("button")
 			.Single(button => button.GetAttribute("title") == "Collapse all files")
 			.Click();
 
-		foreach (var panel in cut.FindAll(".accordion-collapse"))
+		foreach (var panel in cut.FindAll("details.accordion-item"))
 		{
-			Assert.DoesNotContain("show", panel.ClassName);
+			Assert.False(panel.HasAttribute("open"));
 		}
 	}
 
@@ -86,7 +86,7 @@ public sealed class GitDiffViewerTests
 		Assert.Contains("src/Extra.cs", cut.Markup);
 		Assert.Contains("src/Changed.cs", cut.Markup);
 
-		cut.Find("button.btn-warning").Click();
+		cut.Find("button.theme-warning").Click();
 
 		Assert.True(rechecked);
 	}

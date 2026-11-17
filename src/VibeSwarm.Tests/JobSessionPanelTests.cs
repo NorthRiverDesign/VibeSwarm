@@ -8,6 +8,8 @@ using Microsoft.JSInterop;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Client.Models;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Inference;
+using VibeSwarm.Shared.Models;
 
 namespace VibeSwarm.Tests;
 
@@ -67,8 +69,8 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("2 messages", html);
 		Assert.Contains("Tool Activity", html);
 		Assert.Contains("git status --short", html);
-		Assert.Contains("Response", html);
-		Assert.Contains("<details>", html);
+		Assert.Contains("Output", html);
+		Assert.Contains("<details class=\"chat-tool-call\">", html);
 		Assert.DoesNotContain("<details open", html);
 		Assert.DoesNotContain("Final summary only", html);
 	}
@@ -257,6 +259,63 @@ public sealed class JobSessionPanelTests
 		Assert.True(
 			html.IndexOf("Initial implementation is complete.", StringComparison.Ordinal)
 				< html.IndexOf("Please also cover the remaining edge case.", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[InlineData("Claude Code", "alex", "Claude Code", "alex")]
+	[InlineData(null, null, "Provider", "User")]
+	[InlineData(" ", "", "Provider", "User")]
+	public async Task RenderedJobSessionPanel_LabelsMessagesWithProviderAndUserNames(
+		string? providerName, string? userName, string expectedProviderLabel, string expectedUserLabel)
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Completed,
+				[nameof(JobSessionPanel.ProviderName)] = providerName,
+				[nameof(JobSessionPanel.UserName)] = userName,
+				[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.Assistant,
+						Content = "Initial implementation is complete.",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-10)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.User,
+						Content = "Please also cover the remaining edge case.",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-5)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains($"bi-stars me-1\"></i>{expectedProviderLabel}</span>", html);
+		Assert.Contains($"bi-person-circle me-1\"></i>{expectedUserLabel}</span>", html);
+		if (expectedProviderLabel != "Provider")
+		{
+			Assert.DoesNotContain("</i>Provider</span>", html);
+		}
+		if (expectedUserLabel != "User")
+		{
+			Assert.DoesNotContain("</i>User</span>", html);
+		}
 	}
 
 	[Fact]
@@ -464,6 +523,54 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public async Task RenderedJobSessionPanel_ExpandsOpenCodeJsonEventsInLiveTranscript()
+	{
+		var timestamp = DateTime.UtcNow;
+
+		var html = await RenderPanelHtmlAsync(new Dictionary<string, object?>
+		{
+			[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+			[nameof(JobSessionPanel.IsJobActive)] = true,
+			[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+			{
+				new()
+				{
+					Content = """{"type":"step_start","timestamp":1760000000000,"sessionID":"ses_live1","part":{"id":"prt_1","sessionID":"ses_live1","messageID":"msg_1","type":"step-start"}}""",
+					Timestamp = timestamp.AddSeconds(-4)
+				},
+				new()
+				{
+					Content = """{"type":"text","timestamp":1760000001000,"sessionID":"ses_live1","part":{"id":"prt_2","sessionID":"ses_live1","messageID":"msg_1","type":"text","text":"Running the test suite first.","time":{"start":1,"end":2}}}""",
+					Timestamp = timestamp.AddSeconds(-3)
+				},
+				new()
+				{
+					Content = """{"type":"tool_use","timestamp":1760000002000,"sessionID":"ses_live1","part":{"id":"prt_3","sessionID":"ses_live1","messageID":"msg_1","type":"tool","callID":"call_oc_1","tool":"bash","state":{"status":"error","input":{"command":"dotnet test"},"error":"exit code 1","time":{"start":1,"end":2}}}}""",
+					Timestamp = timestamp.AddSeconds(-2)
+				},
+				new()
+				{
+					Content = """{"type":"step_finish","timestamp":1760000003000,"sessionID":"ses_live1","part":{"id":"prt_4","type":"step-finish","reason":"tool-calls","cost":0.01,"tokens":{"input":10,"output":5,"reasoning":0,"cache":{"read":0,"write":0}}}}""",
+					Timestamp = timestamp.AddSeconds(-1)
+				},
+				new()
+				{
+					Content = """{"type":"error","timestamp":1760000004000,"sessionID":"ses_live1","error":{"name":"APIError","data":{"message":"Model not available"}}}""",
+					Timestamp = timestamp
+				}
+			}
+		});
+
+		Assert.Contains("Running the test suite first.", html);
+		Assert.Contains("dotnet test", html);
+		Assert.Contains("exit code 1", html);
+		Assert.Contains("Model not available", html);
+		Assert.DoesNotContain("ses_live1", html);
+		Assert.DoesNotContain("call_oc_1", html);
+		Assert.DoesNotContain("step-finish", html);
+	}
+
+	[Fact]
 	public async Task RenderedJobSessionPanel_KeepsSystemMessagesSeparateAndStyled()
 	{
 		var services = new ServiceCollection();
@@ -515,9 +622,9 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("5 messages", html);
 		Assert.Contains("System", html);
 		Assert.Contains("Provider", html);
-		Assert.Contains("bg-primary-subtle", html);
-		Assert.Contains("bg-success-subtle", html);
-		Assert.Contains("bg-warning-subtle", html);
+		Assert.Contains("bg-subtle-primary", html);
+		Assert.Contains("bg-subtle-success", html);
+		Assert.Contains("bg-subtle-warning", html);
 		Assert.Contains("Process started (PID: 123)", html);
 		Assert.Contains("Connected to provider stream", html);
 	}
@@ -919,8 +1026,61 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("Checking the modified files before applying a patch.", html);
 		Assert.Contains("Tool Activity", html);
 		Assert.Contains("git status --short", html);
-		Assert.Contains("bash", html);
+		// The shell call reads by its description, with the command shown on its own, not as JSON.
+		Assert.Contains("Check status", html);
+		Assert.DoesNotContain("&quot;command&quot;", html);
 		Assert.DoesNotContain("toolu_live_123", html);
+	}
+
+	[Theory]
+	[InlineData("""[{"type":"image","source":{"type":"base64","data":"iVBORw0KGgoAAAANSUhEUgAAAAE=","media_type":"image/png"}}]""", null)]
+	[InlineData("""[{"type":"text","text":"Took the screenshot of viewport"},{"type":"image","source":{"type":"base64","data":"iVBORw0KGgoAAAANSUhEUgAAAAE=","media_type":"image/png"}}]""", "Took the screenshot of viewport")]
+	public async Task RenderedJobSessionPanel_ShowsAnImageToolResultAsThePicture(string resultContent, string? expectedText)
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var timestamp = DateTime.UtcNow;
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+				[nameof(JobSessionPanel.IsJobActive)] = true,
+				[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+				{
+					new()
+					{
+						Content =
+							"""{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_shot","name":"Read","input":{"file_path":"/tmp/desktop.png"}}]}}""",
+						Timestamp = timestamp.AddSeconds(-2)
+					},
+					new()
+					{
+						Content =
+							$$$"""{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_shot","type":"tool_result","content":{{{resultContent}}}}]}}""",
+						Timestamp = timestamp.AddSeconds(-1)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("Tool Activity", html);
+		Assert.Contains("src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAE=\"", html);
+		// The base64 appears once, as the image source, never as text or JSON.
+		Assert.Single(Regex.Matches(html, "iVBORw0KGgo"));
+		Assert.DoesNotContain("&quot;source&quot;", html);
+		if (expectedText is not null)
+		{
+			Assert.Contains(expectedText, html);
+			Assert.DoesNotContain("&quot;text&quot;", html);
+		}
 	}
 
 	[Fact]
@@ -1083,7 +1243,7 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("2 messages", html);
 		Assert.DoesNotContain("data-tool-group=\"true\"", html);
 		Assert.DoesNotContain("2 tool calls:", html);
-		Assert.Equal(2, Regex.Matches(html, "<details>").Count);
+		Assert.Equal(2, Regex.Matches(html, "<details class=\"chat-tool-call\">").Count);
 	}
 
 	[Fact]
@@ -1519,6 +1679,7 @@ public sealed class JobSessionPanelTests
 	public void JobSessionPanel_Bunit_RendersGoalPromptBubbleWithDropdownActions()
 	{
 		using var context = new BunitContext();
+		context.JSInterop.SetupModule(VibeSwarm.Client.Components.Common.ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 		var copied = false;
 
 		var cut = context.Render<JobSessionPanel>(parameters => parameters
@@ -1537,7 +1698,7 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("Ship the requested feature.", cut.Markup);
 		Assert.Contains("Goal", cut.Markup);
 		Assert.DoesNotContain("overflow-hidden", cut.Find(".card-body").ClassName);
-		Assert.Equal("static", cut.Find("button[title='Goal prompt actions']").GetAttribute("data-bs-display"));
+		Assert.Equal("menu", cut.Find("button[title='Goal prompt actions']").GetAttribute("data-bs-toggle"));
 
 		cut.Find("button[title='Copy prompt']").Click();
 
@@ -1768,6 +1929,269 @@ public sealed class JobSessionPanelTests
 		Assert.Equal("Fix the null reference on line 42.", followUpPrompt);
 	}
 
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public void JobSessionPanel_Bunit_MessagesTheWorkingAgent_AndKeepsAMessageItDidNotTake(bool delivered)
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+		string? sentMessage = null;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Processing)
+			.Add(panel => panel.IsJobActive, true)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.DraftFollowUp, _ => Task.FromResult(new FollowUpDraft()))
+			.Add(panel => panel.OnSendFollowUp, (string _) => throw new InvalidOperationException("A running job takes messages, not follow-ups."))
+			.Add(panel => panel.SendMessageToAgent, message =>
+			{
+				sentMessage = message;
+				return Task.FromResult(delivered);
+			}));
+
+		Assert.StartsWith("Message the agent", cut.Find("textarea").GetAttribute("placeholder"));
+		Assert.Empty(cut.FindAll("button[title='Write a reply with inference']"));
+
+		cut.Find("textarea").Input("Use tabs, not spaces.");
+		cut.Find("button[title='Send to the agent']").Click();
+
+		Assert.Equal("Use tabs, not spaces.", sentMessage);
+		Assert.Equal(!delivered, !cut.Find("button[title='Send to the agent']").HasAttribute("disabled"));
+		Assert.Equal(delivered ? string.Empty : "Use tabs, not spaces.", cut.Find("textarea").GetAttribute("value"));
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_HidesTheMessageBoxWhileTheJobIsNotWorking()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Started)
+			.Add(panel => panel.IsJobActive, true)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.SendMessageToAgent, _ => Task.FromResult(true)));
+
+		Assert.Empty(cut.FindAll("textarea"));
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_AsksBeforeDraftingAFollowUp_ShowsItsUsage_AndSendsItOnlyOnceConfirmed()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+		FollowUpDraftRequest? draftRequest = null;
+		var draftRequests = 0;
+		string? followUpPrompt = null;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.DraftFollowUpModel, "grok-4 on Cloud")
+			.Add(panel => panel.DraftFollowUp, request =>
+			{
+				draftRequests++;
+				draftRequest = request;
+				return Task.FromResult(new FollowUpDraft
+				{
+					Text = "Yes, mock the clock.",
+					ProviderName = "Cloud",
+					ProviderType = InferenceProviderType.Grok,
+					ModelId = "grok-4",
+					PromptTokens = 1240,
+					CompletionTokens = 38,
+					DurationMs = 2300,
+					CostUsd = 0.0042m
+				});
+			})
+			.Add(panel => panel.OnSendFollowUp, async (string prompt) =>
+			{
+				followUpPrompt = prompt;
+				await Task.CompletedTask;
+			}));
+
+		cut.Find("textarea").Input("mock it");
+		cut.Find("button[title='Write a reply with inference']").Click();
+
+		// Nothing is generated until the user confirms.
+		Assert.Equal(0, draftRequests);
+		Assert.Contains("grok-4 on Cloud will read", cut.Find("dialog").TextContent);
+		Assert.Contains("what you typed", cut.Find("dialog").TextContent);
+
+		cut.Find($"#follow-up-action-{FollowUpDraftActions.TestAndVerify}").Change(true);
+		cut.Find($"#follow-up-action-{FollowUpDraftActions.KeepGoing}").Change(true);
+		cut.Find($"#follow-up-action-{FollowUpDraftActions.KeepGoing}").Change(false);
+		cut.Find($"#follow-up-action-{FollowUpDraftActions.CodeReview}").Change(true);
+		cut.FindAll(".dialog-footer button").Single(button => button.TextContent.Trim() == "Write reply").Click();
+
+		Assert.Equal(1, draftRequests);
+		Assert.Equal("mock it", draftRequest?.Notes);
+		Assert.Equal([FollowUpDraftActions.CodeReview, FollowUpDraftActions.TestAndVerify], draftRequest?.Actions);
+		Assert.Null(followUpPrompt);
+		Assert.Equal("Yes, mock the clock.", cut.Find("#follow-up-draft").GetAttribute("value"));
+		var stats = cut.Find("#follow-up-draft-stats").TextContent;
+		Assert.Contains("grok-4 on Cloud", stats);
+		Assert.Contains("1.2K in · 38 out", stats);
+		Assert.Contains("2.3s", stats);
+		Assert.Contains("$0.0042", stats);
+
+		cut.Find("#follow-up-draft").Input("Yes, mock the clock and rerun the tests.");
+		cut.FindAll(".dialog-footer button").Single(button => button.TextContent.Trim() == "Send").Click();
+
+		Assert.Equal("Yes, mock the clock and rerun the tests.", followUpPrompt);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_CancellingTheConfirmation_DraftsNothing()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+		var draftRequests = 0;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.DraftFollowUp, _ =>
+			{
+				draftRequests++;
+				return Task.FromResult(new FollowUpDraft { Text = "Proceed." });
+			})
+			.Add(panel => panel.OnSendFollowUp, async (string _) => await Task.CompletedTask));
+
+		cut.Find("button[title='Write a reply with inference']").Click();
+		cut.FindAll(".dialog-footer button").Single(button => button.TextContent.Trim() == "Cancel").Click();
+
+		Assert.Equal(0, draftRequests);
+		Assert.Empty(cut.FindAll("#follow-up-draft"));
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_ShowsWhyInferenceCouldNotDraftAFollowUp_AndWhatItUsed()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+		var sent = false;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Failed)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.DraftFollowUp, _ => Task.FromResult(new FollowUpDraft
+			{
+				Error = "Inference left this reply to you.",
+				ProviderName = "Desktop",
+				ProviderType = InferenceProviderType.Ollama,
+				ModelId = "qwen3",
+				PromptTokens = 300,
+				CompletionTokens = 3
+			}))
+			.Add(panel => panel.OnSendFollowUp, async (string _) =>
+			{
+				sent = true;
+				await Task.CompletedTask;
+			}));
+
+		cut.Find("button[title='Write a reply with inference']").Click();
+		cut.FindAll(".dialog-footer button").Single(button => button.TextContent.Trim() == "Write reply").Click();
+
+		Assert.Contains("Inference left this reply to you.", cut.Find("dialog .alert").TextContent);
+		Assert.Contains("Free (self-hosted)", cut.Find("#follow-up-draft-stats").TextContent);
+		Assert.Single(cut.FindAll(".dialog-footer button"), button => button.TextContent.Trim() == "Try again");
+		Assert.Empty(cut.FindAll("#follow-up-draft"));
+		Assert.False(sent);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_HidesTheInferenceButton_WhenNoModelCanDraft()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.OnSendFollowUp, async (string _) => await Task.CompletedTask));
+
+		Assert.Single(cut.FindAll("button[title='Send follow-up']"));
+		Assert.Empty(cut.FindAll("button[title='Write a reply with inference']"));
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_ShowsAQueuedJobAsNotRunning_WithWhyAndRunNext()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+		var blockingJobId = Guid.NewGuid();
+		var runNextClicks = 0;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.New)
+			.Add(panel => panel.IsJobActive, true)
+			.Add(panel => panel.GoalPrompt, "Add dark mode")
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.QueueStatus, new JobQueueStatus
+			{
+				Reason = JobQueueWaitReason.ProviderBusy,
+				ProviderName = "Claude",
+				BlockingJobId = blockingJobId,
+				BlockingJobTitle = "Refactor billing",
+				BlockingProjectName = "Beta",
+				BlockingJobStatus = JobStatus.Processing,
+				JobsAhead = 2
+			})
+			.Add(panel => panel.CanRunNext, true)
+			.Add(panel => panel.OnRunNext, () => runNextClicks++));
+
+		// Nothing suggests an agent is at work yet.
+		Assert.Empty(cut.FindAll(".typing-dot"));
+		Assert.Empty(cut.FindAll(".live-dot"));
+
+		var notice = cut.Find("[role='status']");
+		Assert.Contains("Queued, not running yet", notice.TextContent);
+		Assert.Contains("Waiting for Claude, which is busy with “Refactor billing” in Beta.", notice.TextContent);
+		Assert.Equal($"/jobs/view/{blockingJobId}", notice.QuerySelector("a")!.GetAttribute("href"));
+		Assert.Contains("2 jobs ahead in the queue", notice.TextContent);
+
+		cut.Find("[role='status'] button").Click();
+		Assert.Equal(1, runNextClicks);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_ShowsNextInLineWithoutRunNext()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.New)
+			.Add(panel => panel.IsJobActive, true)
+			.Add(panel => panel.GoalPrompt, "Add dark mode")
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.QueueStatus, new JobQueueStatus { Reason = JobQueueWaitReason.ProjectBusy, BlockingJobId = Guid.NewGuid(), BlockingJobTitle = "Fix login", BlockingJobStatus = JobStatus.Paused })
+			.Add(panel => panel.CanRunNext, false)
+			.Add(panel => panel.OnRunNext, () => { }));
+
+		var notice = cut.Find("[role='status']");
+		Assert.Contains("Waiting for “Fix login” in this project, which is waiting for your reply.", notice.TextContent);
+		Assert.Contains("Next in line", notice.TextContent);
+		Assert.Empty(notice.QuerySelectorAll("button"));
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_KeepsTheTypingIndicatorForARunningJob()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Processing)
+			.Add(panel => panel.IsJobActive, true)
+			.Add(panel => panel.GoalPrompt, "Add dark mode")
+			.Add(panel => panel.Messages, new List<JobMessage>()));
+
+		Assert.Equal(3, cut.FindAll(".typing-dot").Count);
+		Assert.DoesNotContain("Queued, not running yet", cut.Markup);
+	}
+
 	[Fact]
 	public void JobSessionPanel_Bunit_HidesFollowUpInputForActiveJob()
 	{
@@ -1779,6 +2203,40 @@ public sealed class JobSessionPanelTests
 			.Add(panel => panel.OnSendFollowUp, async (string prompt) => await Task.CompletedTask));
 
 		Assert.Empty(cut.FindAll("button[title='Send follow-up']"));
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_FoldsALongGoalPromptUntilShowMore()
+	{
+		using var context = new BunitContext();
+		var longPrompt = string.Join("\n", Enumerable.Range(1, 12).Select(line => $"Requirement {line}: keep the layout simple."));
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.GoalPrompt, longPrompt)
+			.Add(panel => panel.Messages, new List<JobMessage>()));
+
+		Assert.Single(cut.FindAll(".chat-message-user .line-clamp-8"));
+		var toggle = cut.FindAll("button").Single(button => button.TextContent.Trim() == "Show more");
+
+		toggle.Click();
+
+		Assert.Empty(cut.FindAll(".line-clamp-8"));
+		Assert.Single(cut.FindAll("button"), button => button.TextContent.Trim() == "Show less");
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_LeavesAShortGoalPromptUnfolded()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.GoalPrompt, "Fix the login button.")
+			.Add(panel => panel.Messages, new List<JobMessage>()));
+
+		Assert.Empty(cut.FindAll(".line-clamp-8"));
+		Assert.DoesNotContain("Show more", cut.Markup);
 	}
 
 	private static async Task<string> RenderPanelHtmlAsync(Dictionary<string, object?> parameters)

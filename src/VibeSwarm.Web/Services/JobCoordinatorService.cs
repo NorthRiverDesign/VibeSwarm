@@ -366,7 +366,7 @@ public class JobCoordinatorService : IJobCoordinatorService
 			? health.RateLimitResetTime.Value
 			: (DateTime?)null;
 
-		var sessionHold = await ProviderSessionLimitGuard.GetHoldAsync(dbContext, providerId, now, cancellationToken);
+		var sessionHold = await ProviderSessionLimitGuard.GetHoldAsync(dbContext, providerId, now, cancellationToken, countRunningJobs: true);
 
 		return GetLaterCooldown(GetLaterCooldown(persistedCooldownUntil, trackedCooldownUntil), sessionHold?.Until);
 	}

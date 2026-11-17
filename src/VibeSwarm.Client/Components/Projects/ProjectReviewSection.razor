@@ -1,0 +1,180 @@
+@inject IProviderService ProviderService
+@inject IInferenceProviderService InferenceProviderService
+
+@if (Project != null)
+{
+	<div class="form-field mb-1">
+		<div class="switch">
+			<InputCheckbox role="switch" switch id="modal-reviewEnabled" @bind-Value="Project.ReviewEnabled"
+						   @bind-Value:after="HandleReviewEnabledChanged" />
+		</div>
+		<label for="modal-reviewEnabled">Review each job</label>
+	</div>
+	<div class="form-text mb-5">
+		When an agent finishes, the build and tests run, then a second model reads the change against the goal.
+		Problems go back to the agent for up to @JobReview.MaxRounds fixes. If the reviewer can't run, the work is
+		delivered as it is.
+	</div>
+
+	@if (Project.ReviewEnabled)
+	{
+		@if (!AvailableProviders.Any() && !AvailableInferenceProviders.Any())
+		{
+			<Alert Type="Alert.AlertType.Warning" Class="py-3 px-5 small mb-0">
+				<span>Review needs an enabled Claude or Copilot provider, or an inference provider.</span>
+			</Alert>
+		}
+		else
+		{
+			<div class="mb-5">
+				<label for="modal-reviewer" class="form-label">Reviewer</label>
+				<select id="modal-reviewer" class="form-control" value="@ReviewerKey" @onchange="HandleReviewerChanged">
+					@if (string.IsNullOrEmpty(ReviewerKey))
+					{
+						<option value="">Choose a reviewer</option>
+					}
+					@foreach (var provider in AvailableProviders)
+					{
+						<option value="@($"p:{provider.Id}")">@provider.Name, reads the code</option>
+					}
+					@foreach (var provider in AvailableInferenceProviders)
+					{
+						<option value="@($"i:{provider.Id}")">@provider.Name, reads the diff only</option>
+					}
+				</select>
+				<div class="form-text">A different provider or model from the one that wrote the code gives the most independent check.</div>
+			</div>
+
+			<div class="row g-5">
+				<div class="col-12 sm:col-6">
+					<label for="modal-reviewModel" class="form-label">
+						Model <span class="fg-1 fw-normal">(optional)</span>
+					</label>
+					<select id="modal-reviewModel" class="form-control" value="@(Project.ReviewModelId ?? string.Empty)"
+							@onchange="HandleModelChanged" disabled="@(string.IsNullOrEmpty(ReviewerKey) || !_models.Any())">
+						<option value="">Provider default</option>
+						@foreach (var model in _models)
+						{
+							<option value="@model.Id">@model.Name</option>
+						}
+					</select>
+				</div>
+
+				@if (Project.ReviewProviderId.HasValue)
+				{
+					<div class="col-12 sm:col-6">
+						<label for="modal-reviewReasoning" class="form-label">
+							Reasoning <span class="fg-1 fw-normal">(optional)</span>
+						</label>
+						<InputSelect id="modal-reviewReasoning" @bind-Value="Project.ReviewReasoningEffort" class="form-control"
+									 disabled="@(!ReasoningOptions.Any())">
+							<option value="">Provider default</option>
+							@foreach (var reasoning in ReasoningOptions)
+							{
+								<option value="@reasoning">@reasoning</option>
+							}
+						</InputSelect>
+					</div>
+				}
+			</div>
+		}
+	}
+}
+
+@code {
+	[Parameter, EditorRequired]
+	public ProjectModalFormModel Project { get; set; } = default!;
+
+	[Parameter]
+	public IReadOnlyList<Provider> AvailableProviders { get; set; } = [];
+
+	[Parameter]
+	public IReadOnlyList<InferenceProvider> AvailableInferenceProviders { get; set; } = [];
+
+	private List<(string Id, string Name)> _models = [];
+	private string? _loadedFor;
+
+	private string? ReviewerKey => Project.ReviewProviderId is Guid providerId
+		? $"p:{providerId}"
+		: Project.ReviewInferenceProviderId is Guid inferenceId ? $"i:{inferenceId}" : null;
+
+	private IReadOnlyList<string> ReasoningOptions => Project.ReviewProviderId.HasValue
+		? AvailableProviders
+			.Where(provider => provider.Id == Project.ReviewProviderId.Value)
+			.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
+			.Distinct(StringComparer.Ordinal)
+			.ToList()
+		: [];
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (Project != null && ReviewerKey != _loadedFor)
+		{
+			await LoadModelsAsync();
+		}
+	}
+
+	private async Task HandleReviewEnabledChanged()
+	{
+		if (Project.ReviewEnabled && ReviewerKey == null)
+		{
+			if (AvailableProviders.FirstOrDefault() is { } provider)
+			{
+				Project.ReviewProviderId = provider.Id;
+			}
+			else if (AvailableInferenceProviders.FirstOrDefault() is { } inference)
+			{
+				Project.ReviewInferenceProviderId = inference.Id;
+			}
+		}
+
+		await LoadModelsAsync();
+	}
+
+	private async Task HandleReviewerChanged(ChangeEventArgs args)
+	{
+		var key = args.Value?.ToString() ?? string.Empty;
+		Project.ReviewProviderId = key.StartsWith("p:", StringComparison.Ordinal) && Guid.TryParse(key[2..], out var providerId) ? providerId : null;
+		Project.ReviewInferenceProviderId = key.StartsWith("i:", StringComparison.Ordinal) && Guid.TryParse(key[2..], out var inferenceId) ? inferenceId : null;
+		Project.ReviewModelId = null;
+		Project.ReviewReasoningEffort = null;
+		await LoadModelsAsync();
+	}
+
+	private void HandleModelChanged(ChangeEventArgs args)
+	{
+		var value = args.Value?.ToString();
+		Project.ReviewModelId = string.IsNullOrWhiteSpace(value) ? null : value;
+	}
+
+	private async Task LoadModelsAsync()
+	{
+		_loadedFor = ReviewerKey;
+		_models = [];
+		try
+		{
+			if (Project.ReviewProviderId is Guid providerId)
+			{
+				_models = (await ProviderService.GetModelsAsync(providerId))
+					.Where(model => model.IsAvailable)
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName ?? model.ModelId)
+					.Select(model => (model.ModelId, model.DisplayName ?? model.ModelId))
+					.ToList();
+			}
+			else if (Project.ReviewInferenceProviderId is Guid inferenceId)
+			{
+				_models = (await InferenceProviderService.GetModelsAsync(inferenceId))
+					.Where(model => model.IsAvailable)
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName ?? model.ModelId)
+					.Select(model => (model.ModelId, model.DisplayName ?? model.ModelId))
+					.ToList();
+			}
+		}
+		catch
+		{
+			_models = [];
+		}
+	}
+}

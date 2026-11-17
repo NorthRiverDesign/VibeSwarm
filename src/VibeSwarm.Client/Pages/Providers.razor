@@ -5,8 +5,8 @@
 @inject HttpProviderService HttpProviderService
 @inject NotificationService NotificationService
 
-<div class="d-flex flex-column gap-4">
-	<div class="d-flex align-items-center gap-2">
+<div class="d-flex flex-column gap-7">
+	<div class="d-flex align-items-center gap-3">
 		<h1 class="mb-0 me-auto">Providers</h1>
 		<TitleAction Icon="arrow-repeat" Label="Check this host again" IsLoading="IsRefreshingCommonProviders"
 					 OnClick="RefreshCommonProviderStatusesAsync" />
@@ -23,6 +23,7 @@
 						Providers="ProvidersList"
 						InstallingProviderType="@InstallingProviderType"
 						SavingAuthenticationProviderType="@SavingAuthenticationProviderType"
+						SignInProviderType="@SignInProviderType"
 						ProviderModels="ProviderModels"
 						UsageSummaries="UsageSummaries"
 						TestResults="TestResults"
@@ -34,6 +35,7 @@
 						RefreshingUsageId="@RefreshingUsageId"
 						OnInstallProvider="InstallCommonProviderAsync"
 						OnSaveAuthentication="SaveCommonProviderAuthenticationAsync"
+						OnSignedIn="HandleProviderSignedInAsync"
 						OnAddConnection="HandleAddConnection"
 						OnRefreshUsage="RefreshUsageAsync"
 						OnToggleEnabled="ToggleEnabled"
@@ -63,6 +65,17 @@
 				   OnClose="HandleDefaultModelModalClosed" />
 
 @code {
+	/// <summary>A provider to sign in again, linked from a job that stopped on an expired login.</summary>
+	[SupplyParameterFromQuery(Name = "signin")]
+	public string? SignInQuery { get; set; }
+
+	private bool _signedInFromQuery;
+
+	private ProviderType? SignInProviderType =>
+		!_signedInFromQuery && Enum.TryParse<ProviderType>(SignInQuery, ignoreCase: true, out var providerType)
+			? providerType
+			: null;
+
 	private List<Provider> ProvidersList { get; set; } = new();
 	private bool IsLoading { get; set; } = true;
 	private bool ShowProviderModal { get; set; }
@@ -441,6 +454,27 @@
 		}
 	}
 
+	private async Task HandleProviderSignedInAsync(ProviderSignInSession session)
+	{
+		_signedInFromQuery = true;
+		NotificationService.ShowSuccess(session.Message ?? "Signed in.", "Signed In");
+		try
+		{
+			// A fresh check, past the cached statuses, so the row stops asking to sign in.
+			CommonProviderStatuses = (await CommonProviderSetupService.RefreshAsync()).ToList();
+			ProvidersList = (await ProviderService.GetAllAsync()).ToList();
+			UsageSummaries = await HttpProviderService.GetAllUsageSummariesAsync();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Signed in, but the providers didn't reload: {ex.Message}");
+		}
+		finally
+		{
+			StateHasChanged();
+		}
+	}
+
 	private async Task ShowSelectDefaultModelModal(Provider provider)
 	{
 		ShowDeleteModal = false;
@@ -520,8 +554,8 @@
 	}
 
 	/// <summary>
-	/// Asks the provider for its current usage. This spends one tiny request against the very
-	/// limits it reports, which is why it only ever runs from this button.
+	/// Asks the provider for its current usage. For Claude Code this spends one tiny request
+	/// against the very limits it reports, which is why it only ever runs from this button.
 	/// </summary>
 	private async Task RefreshUsageAsync(Provider provider)
 	{

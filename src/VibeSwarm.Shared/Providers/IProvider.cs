@@ -289,6 +289,12 @@ public class UsageLimitWindow
     public int? PercentUsed => (CurrentUsage.HasValue && MaxUsage.HasValue && MaxUsage > 0)
         ? (int)((CurrentUsage.Value / (double)MaxUsage.Value) * 100)
         : null;
+
+    /// <summary>
+    /// Whether the window has reset since this reading. Its figures then describe a window that
+    /// is over, so they no longer count against the limit.
+    /// </summary>
+    public bool HasResetBy(DateTime utcNow) => ResetTime is DateTime resetTime && resetTime <= utcNow;
 }
 
 public class UsageLimits

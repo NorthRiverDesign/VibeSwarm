@@ -1,4 +1,5 @@
 using System.Text.Json;
+using VibeSwarm.Client.Components.Chat;
 using VibeSwarm.Client.Models;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Services;
@@ -621,6 +622,13 @@ internal static class JobSessionDisplayBuilder
 				return true;
 			}
 
+			// OpenCode's run --format json events name the session as "sessionID".
+			if (root.TryGetProperty("sessionID", out _))
+			{
+				messages = ExtractOpenCodeEventMessages(type, root, timestamp);
+				return true;
+			}
+
 			switch (type)
 			{
 				case "system":
@@ -947,6 +955,133 @@ internal static class JobSessionDisplayBuilder
 		}
 	}
 
+	private static IReadOnlyList<JobMessage> ExtractOpenCodeEventMessages(
+		string? type,
+		JsonElement root,
+		DateTime timestamp)
+	{
+		var part = root.TryGetProperty("part", out var partProp) && partProp.ValueKind == JsonValueKind.Object
+			? partProp
+			: default;
+
+		switch (type)
+		{
+			case "text":
+			case "reasoning":
+			{
+				var text = part.ValueKind == JsonValueKind.Object ? ReadJsonString(part, "text")?.Trim() : null;
+				if (string.IsNullOrEmpty(text))
+				{
+					return [];
+				}
+
+				return type == "text"
+					?
+					[
+						new JobMessage
+						{
+							Role = MessageRole.Assistant,
+							Content = text,
+							Source = MessageSource.Provider,
+							Level = MessageLevel.Normal,
+							CreatedAt = timestamp
+						}
+					]
+					:
+					[
+						new JobMessage
+						{
+							Role = MessageRole.System,
+							Content = text,
+							Source = MessageSource.Provider,
+							Level = MessageLevel.Normal,
+							DisplayVariant = MessageDisplayVariant.Thinking,
+							CreatedAt = timestamp
+						}
+					];
+			}
+
+			// One event per finished tool call, holding both the input and the result.
+			case "tool_use":
+			{
+				if (part.ValueKind != JsonValueKind.Object)
+				{
+					return [];
+				}
+
+				var toolName = ReadJsonString(part, "tool");
+				var displayName = string.IsNullOrWhiteSpace(toolName) ? "unknown_tool" : toolName;
+				var state = part.TryGetProperty("state", out var stateProp) && stateProp.ValueKind == JsonValueKind.Object
+					? stateProp
+					: default;
+				string? toolInput = null;
+				string? output = null;
+				if (state.ValueKind == JsonValueKind.Object)
+				{
+					toolInput = state.TryGetProperty("input", out var input) && input.ValueKind != JsonValueKind.Null
+						? input.GetRawText()
+						: null;
+					output = ReadJsonString(state, "status") == "error"
+						? ReadJsonString(state, "error")
+						: ReadJsonString(state, "output");
+				}
+
+				return
+				[
+					new JobMessage
+					{
+						Role = MessageRole.ToolUse,
+						Content = displayName,
+						ToolName = displayName,
+						ToolInput = toolInput,
+						CreatedAt = timestamp
+					},
+					new JobMessage
+					{
+						Role = MessageRole.ToolResult,
+						Content = output ?? string.Empty,
+						ToolName = displayName,
+						ToolOutput = output,
+						CreatedAt = timestamp
+					}
+				];
+			}
+
+			case "error":
+			{
+				var error = root.TryGetProperty("error", out var errorProp) ? errorProp : default;
+				string? message = null;
+				if (error.ValueKind == JsonValueKind.Object)
+				{
+					message = (error.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object
+						? ReadJsonString(data, "message")
+						: null)
+						?? ReadJsonString(error, "message")
+						?? ReadJsonString(error, "name");
+				}
+				else if (error.ValueKind == JsonValueKind.String)
+				{
+					message = error.GetString();
+				}
+
+				return
+				[
+					new JobMessage
+					{
+						Role = MessageRole.System,
+						Content = string.IsNullOrWhiteSpace(message) ? "The provider reported an error." : message,
+						Source = MessageSource.Provider,
+						Level = MessageLevel.Error,
+						CreatedAt = timestamp
+					}
+				];
+			}
+
+			default:
+				return [];
+		}
+	}
+
 	private static string? ReadJsonString(JsonElement element, string propertyName)
 		=> element.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
 			? value.GetString()
@@ -960,10 +1095,30 @@ internal static class JobSessionDisplayBuilder
 			JsonValueKind.Array => string.Join(Environment.NewLine, element.EnumerateArray()
 				.Select(ExtractJsonContent)
 				.Where(content => !string.IsNullOrWhiteSpace(content))),
-			JsonValueKind.Object => element.GetRawText(),
+			JsonValueKind.Object => ReadContentBlock(element),
 			JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
 			_ => element.GetRawText()
 		};
+	}
+
+	/// <summary>
+	/// Reads one block of a tool result: a text block as its text, and a base64 image block, such
+	/// as a screenshot, as a data URL that <see cref="ToolOutputContent"/> shows as the picture.
+	/// </summary>
+	private static string ReadContentBlock(JsonElement block)
+	{
+		switch (ReadJsonString(block, "type"))
+		{
+			case "text" when ReadJsonString(block, "text") is { } text:
+				return text;
+			case "image" when block.TryGetProperty("source", out var source)
+				&& source.ValueKind == JsonValueKind.Object
+				&& ReadJsonString(source, "type") == "base64"
+				&& ToolOutputContent.ToImageDataUrl(ReadJsonString(source, "media_type"), ReadJsonString(source, "data")) is { } dataUrl:
+				return dataUrl;
+			default:
+				return block.GetRawText();
+		}
 	}
 
 	private static bool IsCliWaitStatus(string content)

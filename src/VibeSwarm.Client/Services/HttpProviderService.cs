@@ -86,6 +86,13 @@ public class HttpProviderService : IProviderService
         return await response.ReadJsonAsync(new List<ProviderModel>(), ct);
     }
 
+    public async Task<Provider> UpdateUsageLimitsAsync(Guid id, ProviderUsageLimits limits, CancellationToken ct = default)
+    {
+        var response = await _http.PutAsJsonAsync($"/api/providers/{id}/usage-limits", limits, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.ReadJsonAsync(new Provider(), ct);
+    }
+
     public async Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken ct = default)
         => await _http.PutAsJsonAsync($"/api/providers/{providerId}/default-model", new { ModelId = modelId }, ct);
 

@@ -51,6 +51,7 @@ public class JobSummary
 	public string? Branch { get; set; }
 	public int? ChangedFilesCount { get; set; }
 	public bool? BuildVerified { get; set; }
+	public JobReviewStatus ReviewStatus { get; set; }
 	public bool BuildVerificationEnabled { get; set; }
 	public string? GitCommitHash { get; set; }
 	public int? PullRequestNumber { get; set; }

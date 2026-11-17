@@ -21,6 +21,12 @@ public interface IProviderService
     Task SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default);
     Task SetDefaultAsync(Guid id, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Changes only when jobs on a provider stop to protect its usage, leaving the rest of its
+    /// configuration alone.
+    /// </summary>
+    Task<Provider> UpdateUsageLimitsAsync(Guid id, ProviderUsageLimits limits, CancellationToken cancellationToken = default);
+
     Task<SessionSummary> GetSessionSummaryAsync(
         Guid providerId,
         string? sessionId,

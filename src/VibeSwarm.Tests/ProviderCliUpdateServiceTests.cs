@@ -60,6 +60,19 @@ public sealed class ProviderCliUpdateServiceTests : IDisposable
 		Assert.Equal([claude.Id, claude.Id], _providers.Updated);
 	}
 
+	[Fact]
+	public async Task RefreshesTheModelListOfEachEnabledClaudeCodeProvider()
+	{
+		var claude = AddProvider(ProviderType.Claude, ProviderConnectionMode.CLI, "/bin/claude");
+		AddProvider(ProviderType.Claude, ProviderConnectionMode.SDK, "/bin/claude");
+		AddProvider(ProviderType.Copilot, ProviderConnectionMode.CLI, "/bin/copilot");
+		AddProvider(ProviderType.Claude, ProviderConnectionMode.CLI, "/bin/claude").IsEnabled = false;
+
+		await CreateService().RefreshBuiltInModelListsAsync(CancellationToken.None);
+
+		Assert.Equal([claude.Id], _providers.Refreshed);
+	}
+
 	private ProviderCliUpdateService CreateService() => new(
 		_services.GetRequiredService<IServiceScopeFactory>(),
 		new ConfigurationBuilder().Build(),
@@ -110,6 +123,13 @@ public sealed class ProviderCliUpdateServiceTests : IDisposable
 	{
 		public List<Provider> All { get; } = [];
 		public List<Guid> Updated { get; } = [];
+		public List<Guid> Refreshed { get; } = [];
+
+		public override Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default)
+		{
+			Refreshed.Add(providerId);
+			return Task.FromResult<IEnumerable<ProviderModel>>([]);
+		}
 
 		public override Task<IEnumerable<Provider>> GetAllAsync(CancellationToken cancellationToken = default) =>
 			Task.FromResult<IEnumerable<Provider>>(All);

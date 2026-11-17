@@ -70,7 +70,7 @@ VibeSwarm has a Skills feature where instructions may be present for specific ta
 
 ## User Interface
 
-1. The application front-end is based on Bootstrap v5.x.
+1. The application front-end is based on Bootstrap 6 (6.0.0-alpha.1), served from `wwwroot/lib/bootstrap` with no build step. Its JavaScript is an ES module with no `window.bootstrap` global; Blazor components reach it through `wwwroot/js/bootstrap-interop.js`.
 2. Stick to what the framework provides as much as possible.
 3. Always ensure a consistent look and feel across the entire application.
 4. Make sure the application is fully responsive and mobile-friendly.
@@ -96,13 +96,13 @@ All pages and UI components are tested on an iPhone to ensure every aspect of th
 1. Always attempt to leverage existing features of Bootstrap such as padding, colors, margins, and flexbox utilities.
 2. Favor using Lists and List Items over Tables for layout. Tables are only for tabular data.
 3. Avoid outlined buttons where possible. Use filled buttons for primary actions and secondary buttons for secondary actions.
-4. Support both light and dark mode by using the primary, secondary and accent classes.
+4. Support both light and dark mode by using Bootstrap's theme classes (`theme-primary`, `theme-secondary`, …), the `fg-*` and `bg-*` utilities, and its `light-dark()` tokens rather than fixed colours.
 
 ### Site.css
 
 1. Only add generic utilities to `site.css` that can be reused across the application.
 2. Avoid adding component specific styles to `site.css`.
-3. Reference the links under the Bootstrap Utilities (`https://getbootstrap.com/docs/5.3/utilities/`) section before adding any custom styles.
+3. Reference the Bootstrap Utilities (`https://getbootstrap.com/docs/6.0/utilities/api/`) before adding any custom styles. Bootstrap 6 publishes its full docs for agents at `https://getbootstrap.com/llms-full.txt`.
 4. Utility classes should be short and ideally a single declaration. For example, a utility class to add a semitransparent background or blur.
 
 ### Bootstrap Icons

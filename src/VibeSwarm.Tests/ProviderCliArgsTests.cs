@@ -194,6 +194,37 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void Claude_ResumingWithAppendSystemPrompt_RendersSystemPromptFresh()
+    {
+        // A resumed conversation otherwise reuses the prompt recorded on its first run,
+        // dropping this run's rules (prior-work restore notes, current project memory).
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 267);
+        provider.ApplyOptions(new ExecutionOptions { AppendSystemPrompt = "extra rules" });
+
+        var args = provider.BuildCliArgs("test", "session-123");
+
+        var idx = args.IndexOf("--system-prompt-snapshot");
+        Assert.True(idx >= 0);
+        Assert.Equal("off", args[idx + 1]);
+    }
+
+    [Theory]
+    [InlineData(267, null, "extra rules")]
+    [InlineData(266, "session-123", "extra rules")]
+    [InlineData(296, "session-123", null)]
+    public void Claude_NewSessionOldCliOrNoSystemPrompt_KeepsRecordedSystemPrompt(int patch, string? sessionId, string? appendSystemPrompt)
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, patch);
+        provider.ApplyOptions(new ExecutionOptions { AppendSystemPrompt = appendSystemPrompt });
+
+        var args = provider.BuildCliArgs("test", sessionId);
+
+        Assert.DoesNotContain("--system-prompt-snapshot", args);
+    }
+
+    [Fact]
     public void Claude_WithAdditionalDirectories_AddsDistinctTrimmedAddDirFlags()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
@@ -549,6 +580,77 @@ public sealed class ProviderCliArgsTests
 
         Assert.NotNull(env);
         Assert.False(env!.ContainsKey("CLAUDE_STREAM_IDLE_TIMEOUT_MS"));
+    }
+
+    [Fact]
+    public void Claude_WithAdvisorModel_AndSupportedVersion_AddsAdvisorFlag()
+    {
+        var config = CreateConfig(ProviderType.Claude);
+        config.AdvisorModel = " opus ";
+        var provider = new ClaudeProvider(config);
+        provider.CachedCliVersion = new Version(2, 1, 232);
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var index = args.IndexOf("--advisor");
+        Assert.True(index >= 0);
+        Assert.Equal("opus", args[index + 1]);
+        Assert.False(provider.BaseEnvironmentVariables!.ContainsKey("CLAUDE_CODE_DISABLE_ADVISOR_TOOL"));
+    }
+
+    [Fact]
+    public void Claude_WithAdvisorModel_AndOldVersion_OmitsAdvisorFlag()
+    {
+        var config = CreateConfig(ProviderType.Claude);
+        config.AdvisorModel = "opus";
+        var provider = new ClaudeProvider(config);
+        provider.CachedCliVersion = new Version(2, 1, 231);
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--advisor", args);
+    }
+
+    [Fact]
+    public void Claude_WithAdvisorOff_DisablesAdvisorToolWithoutFlag()
+    {
+        var config = CreateConfig(ProviderType.Claude);
+        config.AdvisorModel = "Off";
+        var provider = new ClaudeProvider(config);
+        provider.CachedCliVersion = new Version(2, 1, 322);
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--advisor", args);
+        Assert.Equal("1", provider.BaseEnvironmentVariables!["CLAUDE_CODE_DISABLE_ADVISOR_TOOL"]);
+    }
+
+    [Fact]
+    public void Claude_WithoutAdvisorModel_LeavesAdvisorToClaudeCode()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 322);
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--advisor", args);
+        Assert.False(provider.BaseEnvironmentVariables!.ContainsKey("CLAUDE_CODE_DISABLE_ADVISOR_TOOL"));
+    }
+
+    [Fact]
+    public async Task Claude_ProviderInfo_OffersFableAndCurrentModels()
+    {
+        var config = CreateConfig(ProviderType.Claude);
+        config.ConnectionMode = ProviderConnectionMode.SDK;
+        var provider = new ClaudeProvider(config);
+
+        var info = await provider.GetProviderInfoAsync();
+
+        Assert.Contains("fable", info.AvailableModels);
+        Assert.Contains("claude-fable-5-2", info.AvailableModels);
+        Assert.Contains("claude-opus-5-5", info.AvailableModels);
+        Assert.Contains("claude-sonnet-5-5", info.AvailableModels);
+        Assert.All(info.AvailableModels, model => Assert.True(info.Pricing!.ModelMultipliers!.ContainsKey(model), model));
     }
 
     // ─── Copilot Provider ──────────────────────────────────────────────
@@ -1044,6 +1146,19 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void OpenCode_FoldsJobRulesIntoPrompt()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.ApplyOptions(new ExecutionOptions { AppendSystemPrompt = "extra rules" });
+
+        var args = provider.BuildRunCommandArgs("my prompt", null);
+
+        // `opencode run` has no system prompt flag, so the rules lead the prompt argument.
+        Assert.Equal("<system-instructions>\nextra rules\n</system-instructions>\n\nmy prompt", args[^1]);
+        Assert.DoesNotContain("--append-system-prompt", args);
+    }
+
+    [Fact]
     public void OpenCode_WithModel_AddsModelFlag()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
@@ -1054,6 +1169,38 @@ public sealed class ProviderCliArgsTests
         var idx = args.IndexOf("--model");
         Assert.True(idx >= 0);
         Assert.Equal("anthropic/opus", args[idx + 1]);
+    }
+
+    [Fact]
+    public void OpenCode_McpConfig_ReachesTheCliThroughOpenCodeConfigEnvironmentVariable()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        var callerEnvironment = new Dictionary<string, string> { ["APP_URL"] = "http://localhost:5000" };
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            McpConfigPath = "/tmp/vibeswarm/mcp/opencode-mcp-test.json",
+            EnvironmentVariables = callerEnvironment
+        });
+
+        provider.ApplyMcpConfigEnvironmentVariable();
+        var environment = provider.GetEffectiveEnvironmentVariables();
+
+        Assert.NotNull(environment);
+        Assert.Equal("/tmp/vibeswarm/mcp/opencode-mcp-test.json", environment!["OPENCODE_CONFIG"]);
+        Assert.Equal("http://localhost:5000", environment["APP_URL"]);
+        Assert.False(callerEnvironment.ContainsKey("OPENCODE_CONFIG"));
+        Assert.DoesNotContain(provider.BuildRunCommandArgs("test", null), arg => arg.Contains("opencode-mcp-test.json"));
+    }
+
+    [Fact]
+    public void OpenCode_WithoutMcpConfig_LeavesOpenCodeConfigUnset()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.ApplyOptions(new ExecutionOptions());
+
+        provider.ApplyMcpConfigEnvironmentVariable();
+
+        Assert.False(provider.GetEffectiveEnvironmentVariables()?.ContainsKey("OPENCODE_CONFIG") ?? false);
     }
 
     [Fact]
@@ -1132,6 +1279,99 @@ public sealed class ProviderCliArgsTests
         Assert.DoesNotContain("--variant", args);
         Assert.DoesNotContain("--effort", args);
         Assert.DoesNotContain("--reasoning-effort", args);
+    }
+
+    [Theory]
+    [InlineData("1.19.0", "1.19.0")]
+    [InlineData("opencode v2.0.26", "2.0.26")]
+    [InlineData("0.0.0-dev-202610110139", "0.0.0")]
+    public void OpenCode_ParseCliVersion_ReadsBothMajorsVersionOutput(string output, string expected)
+    {
+        Assert.Equal(Version.Parse(expected), OpenCodeProvider.ParseCliVersion(output));
+    }
+
+    [Fact]
+    public void OpenCode2_WithReasoningEffort_PutsTheVariantOnTheModel()
+    {
+        // OpenCode 2 rejects --variant with a usage error; it takes provider/model#variant.
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(2, 0, 26);
+        provider.ApplyOptions(new ExecutionOptions { Model = "anthropic/claude-sonnet-5-5", ReasoningEffort = "high" });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        var idx = args.IndexOf("--model");
+        Assert.True(idx >= 0);
+        Assert.Equal("anthropic/claude-sonnet-5-5#high", args[idx + 1]);
+        Assert.DoesNotContain("--variant", args);
+    }
+
+    [Fact]
+    public void OpenCode2_WithReasoningEffort_AndNoModel_OmitsTheVariant()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(2, 0, 26);
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "high" });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.DoesNotContain("--variant", args);
+        Assert.DoesNotContain("--model", args);
+    }
+
+    [Fact]
+    public void OpenCode2_RunsStandalone_WithOnlyFlagsItAccepts()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(2, 0, 26);
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            AdditionalDirectories = ["/tmp/worktree"],
+            SkipPermissions = true,
+            ShowThinking = true
+        });
+
+        var args = provider.BuildRunCommandArgs("test", "ses_123");
+
+        Assert.Equal(["run", "--standalone"], args.Take(2));
+        Assert.DoesNotContain("--dir", args);
+        Assert.Contains("--auto", args);
+        Assert.Contains("--thinking", args);
+        Assert.Equal("ses_123", args[args.IndexOf("--session") + 1]);
+        Assert.Equal("test", args[^1]);
+    }
+
+    [Fact]
+    public void OpenCode1_DoesNotRunStandalone()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 19, 0);
+        provider.ApplyOptions(new ExecutionOptions());
+
+        Assert.DoesNotContain("--standalone", provider.BuildRunCommandArgs("test", null));
+    }
+
+    [Fact]
+    public void OpenCode_ModelsCommand_DropsRefreshOnOpenCode2()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 19, 0);
+        Assert.Equal(["models", "--refresh"], provider.BuildModelsCommandArgs());
+
+        provider.CachedCliVersion = new Version(2, 0, 26);
+        Assert.Equal(["models", "--standalone"], provider.BuildModelsCommandArgs());
+    }
+
+    [Fact]
+    public void OpenCode_WithApiKey_PassesItThroughOpenCodeApiKey()
+    {
+        // OpenCode 2 stops reading auth.json after its one-time import of v1 credentials.
+        var config = CreateConfig(ProviderType.OpenCode);
+        config.ApiKey = "zen-key";
+        var provider = new OpenCodeProvider(config);
+        provider.ApplyOptions(new ExecutionOptions());
+
+        Assert.Equal("zen-key", provider.GetEffectiveEnvironmentVariables()?["OPENCODE_API_KEY"]);
     }
 
     [Fact]
@@ -1801,6 +2041,20 @@ public sealed class ProviderCliArgsTests
         var args = provider.BuildRunCommandArgs("test", null);
 
         Assert.Contains("--dangerously-skip-permissions", args);
+        Assert.DoesNotContain("--auto", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithSkipPermissions_AndAutoVersion_UsesAutoFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 17, 12);
+        provider.ApplyOptions(new ExecutionOptions { SkipPermissions = true });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.Contains("--auto", args);
+        Assert.DoesNotContain("--dangerously-skip-permissions", args);
     }
 
     [Fact]
@@ -1860,11 +2114,11 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void OpenCode_SessionSummaryArgs_ReadsTheStoredSessionAsJson()
+    public void OpenCode_SessionSummaryArgs_AreNull_BecauseNeitherMajorCanShowASession()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
 
-        Assert.Equal("session show sess-123 --format json", provider.BuildSessionSummaryArgs("sess-123"));
+        Assert.Null(provider.BuildSessionSummaryArgs("ses_123"));
     }
 
     [Fact]
@@ -1885,10 +2139,88 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void OpenCode_ExtractSessionSummary_ReadsTheSummaryField()
+    public void OpenCode_JobRun_DefaultsToJsonFormat_ButAnExplicitFormatWins()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.ApplyOptions(new ExecutionOptions());
 
-        Assert.Equal("Added a test", provider.ExtractSessionSummary("""{"summary":"Added a test"}"""));
+        var jobArgs = provider.BuildRunCommandArgs("test", null, defaultOutputFormat: "json");
+        Assert.Equal("json", jobArgs[jobArgs.IndexOf("--format") + 1]);
+        Assert.DoesNotContain("--format", provider.BuildRunCommandArgs("test", null));
+
+        provider.ApplyOptions(new ExecutionOptions { OutputFormat = "default" });
+        var explicitArgs = provider.BuildRunCommandArgs("test", null, defaultOutputFormat: "json");
+        Assert.Equal("default", explicitArgs[explicitArgs.IndexOf("--format") + 1]);
+    }
+
+    [Fact]
+    public void OpenCode_StreamLines_CaptureSessionMessagesTokensAndCost()
+    {
+        // Lines as `opencode run --format json` writes them (1.x and 2.x share the shape).
+        string[] lines =
+        [
+            """{"type":"step_start","timestamp":1,"sessionID":"ses_abc","part":{"id":"prt_1","type":"step-start"}}""",
+            """{"type":"text","timestamp":2,"sessionID":"ses_abc","part":{"id":"prt_2","type":"text","text":"I'll check why the API key was not found.","time":{"start":1,"end":2}}}""",
+            """{"type":"tool_use","timestamp":3,"sessionID":"ses_abc","part":{"id":"prt_3","type":"tool","callID":"call_1","tool":"bash","state":{"status":"completed","input":{"command":"dotnet build"},"output":"error CS0103: name not found","title":"dotnet build"}}}""",
+            """{"type":"tool_use","timestamp":4,"sessionID":"ses_abc","part":{"id":"prt_4","type":"tool","callID":"call_2","tool":"read","state":{"status":"error","input":{"filePath":"/x"},"error":"File not found: /x"}}}""",
+            """{"type":"step_finish","timestamp":5,"sessionID":"ses_abc","part":{"id":"prt_5","type":"step-finish","reason":"tool-calls","cost":0.0125,"tokens":{"input":1200,"output":300,"reasoning":50,"cache":{"read":900,"write":0}}}}""",
+            """{"type":"text","timestamp":6,"sessionID":"ses_abc","part":{"id":"prt_6","type":"text","text":"Fixed it.","time":{"start":5,"end":6}}}""",
+            """{"type":"step_finish","timestamp":7,"sessionID":"ses_abc","part":{"id":"prt_7","type":"step-finish","reason":"stop","cost":0.0025,"tokens":{"input":100,"output":20,"reasoning":0,"cache":{"read":0,"write":0}}}}""",
+        ];
+        var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
+        var currentMessage = new System.Text.StringBuilder();
+        var reports = new List<ExecutionProgress>();
+        var progress = new SynchronousProgress<ExecutionProgress>(reports.Add);
+
+        foreach (var line in lines)
+        {
+            Assert.True(OpenCodeProvider.TryProcessStreamLine(line, result, currentMessage, progress));
+        }
+
+        Assert.Equal("ses_abc", result.SessionId);
+        Assert.Single(reports, report => report.SessionId == "ses_abc");
+        Assert.Equal(1300, result.InputTokens);
+        Assert.Equal(370, result.OutputTokens);
+        Assert.Equal(0.015m, result.CostUsd);
+        Assert.Null(result.ErrorMessage);
+
+        Assert.Equal(["assistant", "tool_use", "tool_result", "tool_use", "tool_error"], result.Messages.Select(m => m.Role));
+        Assert.Equal("I'll check why the API key was not found.", result.Messages[0].Content);
+        Assert.Equal("bash", result.Messages[1].ToolName);
+        Assert.Equal("""{"command":"dotnet build"}""", result.Messages[1].ToolInput);
+        Assert.Equal("error CS0103: name not found", result.Messages[2].ToolOutput);
+        Assert.Equal("File not found: /x", result.Messages[4].ToolOutput);
+        Assert.Equal("Fixed it.", currentMessage.ToString());
+    }
+
+    [Theory]
+    [InlineData("""{"type":"error","timestamp":1,"sessionID":"ses_abc","error":{"name":"ProviderAuthError","data":{"providerID":"anthropic","message":"Invalid API key"}}}""")]
+    [InlineData("""{"type":"error","timestamp":1,"sessionID":"ses_abc","error":{"type":"provider","message":"Invalid API key"}}""")]
+    public void OpenCode_StreamErrorEvent_FailsTheRunWithItsMessage(string line)
+    {
+        var result = new ExecutionResult { Success = true, Messages = new List<ExecutionMessage>() };
+
+        Assert.True(OpenCodeProvider.TryProcessStreamLine(line, result, new System.Text.StringBuilder(), null));
+
+        Assert.False(result.Success);
+        Assert.Equal("Invalid API key", result.ErrorMessage);
+        Assert.Equal("system", Assert.Single(result.Messages).Role);
+    }
+
+    [Theory]
+    [InlineData("Plain text reply")]
+    [InlineData("{not json")]
+    [InlineData("""{"message":"no type"}""")]
+    public void OpenCode_NonEventLines_AreLeftForPlainTextHandling(string line)
+    {
+        var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
+
+        Assert.False(OpenCodeProvider.TryProcessStreamLine(line, result, new System.Text.StringBuilder(), null));
+        Assert.Empty(result.Messages);
+    }
+
+    private sealed class SynchronousProgress<T>(Action<T> handler) : IProgress<T>
+    {
+        public void Report(T value) => handler(value);
     }
 }

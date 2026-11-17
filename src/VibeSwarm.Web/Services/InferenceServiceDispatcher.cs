@@ -73,6 +73,14 @@ public class InferenceServiceDispatcher : IInferenceService
 		return await _ollama.GenerateForTaskAsync(taskType, prompt, systemPrompt, ct);
 	}
 
+	public async Task<InferenceBalanceResult> GetBalanceAsync(Guid providerId, CancellationToken ct = default)
+	{
+		var provider = await _providerService.GetByIdAsync(providerId, ct);
+		return provider == null
+			? new InferenceBalanceResult { Error = "Inference provider not found." }
+			: await GetService(provider.ProviderType).GetBalanceAsync(providerId, ct);
+	}
+
 	private IInferenceService GetService(InferenceProviderType providerType)
 	{
 		return providerType switch

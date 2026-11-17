@@ -50,6 +50,8 @@ public class ProviderService : IProviderService
     {
         NormalizeProvider(provider);
         provider.Id = Guid.NewGuid();
+        // Only admins raise it, through UpdateUsageLimitsAsync.
+        provider.MaxConcurrentJobs = JobConcurrency.DefaultJobsPerProvider;
         provider.CreatedAt = DateTime.UtcNow;
 
         _dbContext.Providers.Add(provider);
@@ -76,16 +78,43 @@ public class ProviderService : IProviderService
         existing.ApiEndpoint = provider.ApiEndpoint;
         existing.ApiKey = provider.ApiKey;
         existing.DefaultReasoningEffort = provider.DefaultReasoningEffort;
+        existing.AdvisorModel = provider.AdvisorModel;
         existing.IsEnabled = provider.IsEnabled;
         existing.MaxExecutionMinutes = provider.MaxExecutionMinutes;
         existing.ConfiguredUsageLimit = provider.ConfiguredUsageLimit;
         existing.ConfiguredLimitType = provider.ConfiguredLimitType;
         existing.SessionLimitPauseThresholdPercent = provider.SessionLimitPauseThresholdPercent;
+        existing.WeeklyLimitPauseThresholdPercent = provider.WeeklyLimitPauseThresholdPercent;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return existing;
     }
+
+    public async Task<Provider> UpdateUsageLimitsAsync(Guid id, ProviderUsageLimits limits, CancellationToken cancellationToken = default)
+    {
+        var existing = await _dbContext.Providers
+            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken)
+            ?? throw new InvalidOperationException($"Provider with ID {id} not found.");
+
+        existing.SessionLimitPauseThresholdPercent = NormalizePauseThreshold(limits.SessionPausePercent);
+        existing.WeeklyLimitPauseThresholdPercent = NormalizePauseThreshold(limits.WeeklyPausePercent);
+        existing.ConfiguredUsageLimit = limits.ConfiguredUsageLimit is > 0 ? limits.ConfiguredUsageLimit : null;
+        if (limits.MaxConcurrentJobs is int maxConcurrentJobs)
+        {
+            existing.MaxConcurrentJobs = JobConcurrency.Normalize(maxConcurrentJobs);
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return existing;
+    }
+
+    // The default is stored as null, so a later change to the default reaches this provider too.
+    private static int? NormalizePauseThreshold(int? percent)
+        => percent is int value && value != SessionLimitPolicy.DefaultPauseThresholdPercent
+            ? SessionLimitPolicy.ResolvePauseThreshold(value)
+            : null;
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -277,11 +306,16 @@ public class ProviderService : IProviderService
 
         if (limits == null)
         {
+            // A provider that can be read but returned nothing (an unlimited plan, a failed read)
+            // says so, rather than claiming it can't report usage at all.
+            var isSupported = ProviderCapabilities.SupportsUsageRefresh(provider);
             return new UsageRefreshResult
             {
                 Success = false,
-                IsSupported = false,
-                ErrorMessage = $"{provider.Name} cannot report usage on demand."
+                IsSupported = isSupported,
+                ErrorMessage = isSupported
+                    ? $"{provider.Name} did not report any usage limits."
+                    : $"{provider.Name} cannot report usage on demand."
             };
         }
 
@@ -315,6 +349,7 @@ public class ProviderService : IProviderService
         provider.ApiEndpoint = string.IsNullOrWhiteSpace(provider.ApiEndpoint) ? null : provider.ApiEndpoint.Trim();
         provider.ApiKey = string.IsNullOrWhiteSpace(provider.ApiKey) ? null : provider.ApiKey.Trim();
         provider.DefaultReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(provider, provider.DefaultReasoningEffort);
+        provider.AdvisorModel = ProviderCapabilities.NormalizeAdvisorModel(provider, provider.AdvisorModel);
     }
 
     public async Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default)
@@ -373,6 +408,10 @@ public class ProviderService : IProviderService
         // Track which models are still available
         var availableModelIds = new HashSet<string>(providerInfo.AvailableModels);
 
+        // A new model may become the default only while there is none, so a refresh that adds
+        // models never takes the default from the one the user picked.
+        var hasDefault = existingModels.Any(m => m.IsDefault);
+
         // Update existing models and add new ones
         foreach (var modelId in providerInfo.AvailableModels)
         {
@@ -397,9 +436,11 @@ public class ProviderService : IProviderService
                     ModelId = modelId,
                     DisplayName = FormatModelDisplayName(modelId),
                     IsAvailable = true,
-                    IsDefault = providerInfo.AvailableModels.Count == 1 || modelId.Contains("sonnet", StringComparison.OrdinalIgnoreCase),
+                    IsDefault = !hasDefault
+                        && (providerInfo.AvailableModels.Count == 1 || modelId.Contains("sonnet", StringComparison.OrdinalIgnoreCase)),
                     UpdatedAt = DateTime.UtcNow
                 };
+                hasDefault |= newModel.IsDefault;
 
                 if (providerInfo.Pricing?.ModelMultipliers?.TryGetValue(modelId, out var multiplier) == true)
                 {

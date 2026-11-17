@@ -80,6 +80,7 @@ public partial class JobService : IJobService
              Branch = j.Branch,
              ChangedFilesCount = j.ChangedFilesCount,
              BuildVerified = j.BuildVerified,
+             ReviewStatus = j.ReviewStatus,
              BuildVerificationEnabled = j.Project != null && j.Project.BuildVerificationEnabled,
              GitCommitHash = j.GitCommitHash,
              PullRequestNumber = j.PullRequestNumber,
@@ -89,7 +90,8 @@ public partial class JobService : IJobService
              	|| j.MergedAt.HasValue
              	|| (!string.IsNullOrWhiteSpace(j.GitCommitHash)
              		&& (j.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest
-             			|| (j.Project != null && j.Project.AutoCommitMode == AutoCommitMode.CommitAndPush))),
+             			|| j.CommitModeOverride == AutoCommitMode.CommitAndPush
+             			|| (j.CommitModeOverride == null && j.Project != null && j.Project.AutoCommitMode == AutoCommitMode.CommitAndPush))),
              SessionSummary = j.SessionSummary,
              IsScheduled = j.IsScheduled,
             JobScheduleId = j.JobScheduleId,
@@ -266,8 +268,10 @@ public partial class JobService : IJobService
 	{
 		var now = DateTime.UtcNow;
 
-        // A project runs one job at a time, swarm members included: every job resets and
-        // cleans the shared checkout before it starts, so a second agent would wipe the first's work.
+        // A project runs one job at a time: every job resets and cleans the shared checkout
+        // before it starts. Members of one team swarm are the exception, each running in a
+        // worktree of its own (see ProjectJobSlots). A provider runs up to its own job limit,
+        // each job in a different project (see ProviderJobSlots).
         var runningJobInfo = await _dbContext.Jobs
             .Where(j => j.Status == JobStatus.Pending
                 || j.Status == JobStatus.Started
@@ -275,15 +279,17 @@ public partial class JobService : IJobService
                 || j.Status == JobStatus.Processing
                 || j.Status == JobStatus.Paused
                 || j.Status == JobStatus.Stalled)
-            .Select(j => new { j.ProjectId, j.ProviderId })
+            .Select(j => new { j.ProjectId, j.ProviderId, j.SwarmId })
             .ToListAsync(cancellationToken);
 
-        var projectsWithRunningJobs = runningJobInfo.Select(j => j.ProjectId).Distinct().ToList();
-        var providersWithRunningJobs = runningJobInfo
-            .Select(j => j.ProviderId)
-            .Where(id => id != Guid.Empty)
-            .Distinct()
-            .ToList();
+        var projectSlots = new ProjectJobSlots(
+            runningJobInfo.Select(j => (j.ProjectId, j.SwarmId)),
+            await ProjectCheckouts.LoadAsync(_dbContext, cancellationToken));
+        var closedProjects = projectSlots.ClosedProjectIds;
+        var providerSlots = new ProviderJobSlots(
+            runningJobInfo.Select(j => j.ProviderId),
+            await ProviderJobSlots.LoadLimitsAsync(_dbContext, cancellationToken));
+        var fullProviders = providerSlots.FullProviderIds;
 
 		var pendingJobs = await _dbContext.Jobs
 			.Include(j => j.Statistics)
@@ -296,17 +302,16 @@ public partial class JobService : IJobService
 			.Where(j => j.NotBeforeUtc == null || j.NotBeforeUtc <= now)
 			.Where(j => !j.DependsOnJobId.HasValue
 				|| _dbContext.Jobs.Any(dependency => dependency.Id == j.DependsOnJobId && dependency.Status == JobStatus.Completed))
-            .Where(j => !projectsWithRunningJobs.Contains(j.ProjectId))
-            .Where(j => j.ProviderId == Guid.Empty || !providersWithRunningJobs.Contains(j.ProviderId))
+            .Where(j => !closedProjects.Contains(j.ProjectId))
+            .Where(j => j.ProviderId == Guid.Empty || !fullProviders.Contains(j.ProviderId))
             .OrderByDescending(j => j.Priority)
             .ThenBy(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
 
-        // Return at most one job per provider and one job per project so the worker never
-        // launches two concurrent runs against the same provider or the same checkout.
+        // Return at most one job per project unless they belong to one swarm, so the worker
+        // never launches two concurrent runs against the same checkout, and no more jobs per
+        // provider than it has room for. The worker caps the total (AppSettings.MaxConcurrentJobs).
         var projectHolds = _serviceProvider.GetService<ProjectQueueHolds>();
-        var seen = new HashSet<Guid>();
-        var seenProviders = new HashSet<Guid>();
         var result = new List<Job>();
         foreach (var job in pendingJobs)
         {
@@ -316,19 +321,19 @@ public partial class JobService : IJobService
                 continue;
             }
 
-            if (job.ProviderId != Guid.Empty && !seenProviders.Add(job.ProviderId))
+            if (!projectSlots.CanStart(job.ProjectId, job.SwarmId))
             {
                 continue;
             }
 
-            if (seen.Add(job.ProjectId))
+            if (!providerSlots.CanStart(job.ProviderId))
             {
-                result.Add(job);
+                continue;
             }
-            else if (job.ProviderId != Guid.Empty)
-            {
-                seenProviders.Remove(job.ProviderId);
-            }
+
+            projectSlots.Take(job.ProjectId, job.SwarmId);
+            providerSlots.Take(job.ProviderId);
+            result.Add(job);
         }
 
         return result;
@@ -384,6 +389,9 @@ public partial class JobService : IJobService
 		return job;
     }
 
+	public Task<JobLiveOutput?> GetLiveOutputAsync(Guid id, long afterSequence = 0, CancellationToken cancellationToken = default)
+		=> Task.FromResult(_jobProcessingService?.GetLiveOutput(id, afterSequence));
+
     public async Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)
     {
         NormalizeJobForPersistence(job);
@@ -436,8 +444,9 @@ public partial class JobService : IJobService
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        // Fan out to team swarm jobs if the project has team swarm enabled
-		var swarmJobs = job.AgentId.HasValue || LocalEnvironmentSetup.IsSetupJob(job)
+        // Fan out to team swarm jobs if the project has team swarm enabled. A merge has one
+        // resolution, so a deploy's conflict job is never split across agents.
+		var swarmJobs = job.AgentId.HasValue || LocalEnvironmentSetup.IsSetupJob(job) || !string.IsNullOrWhiteSpace(job.MergeFromBranch)
 			? []
 			: await TryCreateTeamSwarmJobsAsync(job, cancellationToken);
 
@@ -527,6 +536,7 @@ public partial class JobService : IJobService
                 Branch = primaryJob.Branch,
                 TargetBranch = primaryJob.TargetBranch,
                 GitChangeDeliveryMode = primaryJob.GitChangeDeliveryMode,
+                CommitModeOverride = primaryJob.CommitModeOverride,
                 Priority = primaryJob.Priority,
                 CreatedAt = DateTime.UtcNow,
                 MaxCostUsd = primaryJob.MaxCostUsd,

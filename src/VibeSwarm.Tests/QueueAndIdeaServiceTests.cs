@@ -161,7 +161,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task GetPendingJobsAsync_HoldsSwarmMembersBack_WhileAnotherMemberRunsInTheProject()
+	public async Task GetPendingJobsAsync_StartsASwarmMember_WhileItsSiblingRuns()
 	{
 		await using var dbContext = CreateDbContext();
 		var (project, firstProvider, secondProvider) = await SeedSwarmProjectAsync(dbContext);
@@ -173,43 +173,90 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 
 		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
 
-		var pendingJobs = (await jobService.GetPendingJobsAsync()).ToList();
-
-		Assert.Empty(pendingJobs);
+		var pendingJob = Assert.Single(await jobService.GetPendingJobsAsync());
+		Assert.Equal("Queued swarm member", pendingJob.Title);
 	}
 
 	[Fact]
-	public async Task GetPendingJobsAsync_ReturnsOneSwarmMemberPerProject()
+	public async Task GetPendingJobsAsync_StartsEverySwarmMemberTogether()
 	{
 		await using var dbContext = CreateDbContext();
 		var (project, firstProvider, secondProvider) = await SeedSwarmProjectAsync(dbContext);
+		var thirdProvider = await AddThirdProviderAsync(dbContext);
 		var swarmId = Guid.NewGuid();
 		dbContext.Jobs.AddRange(
 			CreateSwarmJob(project.Id, firstProvider.Id, swarmId, "First swarm member", JobStatus.New, DateTime.UtcNow.AddMinutes(-2)),
-			CreateSwarmJob(project.Id, secondProvider.Id, swarmId, "Second swarm member", JobStatus.New, DateTime.UtcNow.AddMinutes(-1)));
+			CreateSwarmJob(project.Id, secondProvider.Id, swarmId, "Second swarm member", JobStatus.New, DateTime.UtcNow.AddMinutes(-1)),
+			CreateSwarmJob(project.Id, thirdProvider.Id, null, "Job after the swarm", JobStatus.New, DateTime.UtcNow));
 		await dbContext.SaveChangesAsync();
 
 		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
 
 		var pendingJobs = (await jobService.GetPendingJobsAsync()).ToList();
 
-		var pendingJob = Assert.Single(pendingJobs);
-		Assert.Equal("First swarm member", pendingJob.Title);
+		Assert.Equal(["First swarm member", "Second swarm member"], pendingJobs.Select(job => job.Title));
 	}
 
 	[Fact]
-	public async Task JobQueueManager_GetPendingJobsAsync_RunsSwarmMembersOneAtATime()
+	public async Task GetPendingJobsAsync_KeepsOneJobPerProvider_InsideASwarm()
+	{
+		await using var dbContext = CreateDbContext();
+		var (project, firstProvider, _) = await SeedSwarmProjectAsync(dbContext);
+		var swarmId = Guid.NewGuid();
+		dbContext.Jobs.AddRange(
+			CreateSwarmJob(project.Id, firstProvider.Id, swarmId, "Running swarm member", JobStatus.Processing, DateTime.UtcNow.AddMinutes(-2)),
+			CreateSwarmJob(project.Id, firstProvider.Id, swarmId, "Member on the same provider", JobStatus.New, DateTime.UtcNow.AddMinutes(-1)));
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+
+		Assert.Empty(await jobService.GetPendingJobsAsync());
+	}
+
+	[Fact]
+	public async Task GetPendingJobsAsync_HoldsOtherJobsBack_WhileASwarmRuns()
+	{
+		await using var dbContext = CreateDbContext();
+		var (project, firstProvider, secondProvider) = await SeedSwarmProjectAsync(dbContext);
+		dbContext.Jobs.AddRange(
+			CreateSwarmJob(project.Id, firstProvider.Id, Guid.NewGuid(), "Running swarm member", JobStatus.Processing, DateTime.UtcNow.AddMinutes(-3)),
+			CreateSwarmJob(project.Id, secondProvider.Id, null, "Queued job", JobStatus.New, DateTime.UtcNow.AddMinutes(-2)),
+			CreateSwarmJob(project.Id, secondProvider.Id, Guid.NewGuid(), "Member of another swarm", JobStatus.New, DateTime.UtcNow.AddMinutes(-1)));
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+
+		Assert.Empty(await jobService.GetPendingJobsAsync());
+	}
+
+	[Fact]
+	public async Task GetPendingJobsAsync_HoldsSwarmMembersBack_WhileAnotherJobRuns()
+	{
+		await using var dbContext = CreateDbContext();
+		var (project, firstProvider, secondProvider) = await SeedSwarmProjectAsync(dbContext);
+		dbContext.Jobs.AddRange(
+			CreateSwarmJob(project.Id, firstProvider.Id, null, "Running job", JobStatus.Processing, DateTime.UtcNow.AddMinutes(-2)),
+			CreateSwarmJob(project.Id, secondProvider.Id, Guid.NewGuid(), "Queued swarm member", JobStatus.New, DateTime.UtcNow.AddMinutes(-1)));
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+
+		Assert.Empty(await jobService.GetPendingJobsAsync());
+	}
+
+	[Fact]
+	public async Task JobQueueManager_GetPendingJobsAsync_RunsSwarmMembersSideBySide()
 	{
 		var swarmId = Guid.NewGuid();
-		Guid runningJobId;
 		await using (var dbContext = CreateDbContext())
 		{
 			var (project, firstProvider, secondProvider) = await SeedSwarmProjectAsync(dbContext);
-			var runningJob = CreateSwarmJob(project.Id, firstProvider.Id, swarmId, "Running swarm member", JobStatus.Processing, DateTime.UtcNow.AddMinutes(-2));
-			runningJobId = runningJob.Id;
+			var thirdProvider = await AddThirdProviderAsync(dbContext);
+			var runningJob = CreateSwarmJob(project.Id, firstProvider.Id, swarmId, "Running swarm member", JobStatus.Processing, DateTime.UtcNow.AddMinutes(-3));
 			dbContext.Jobs.AddRange(
 				runningJob,
-				CreateSwarmJob(project.Id, secondProvider.Id, swarmId, "Queued swarm member", JobStatus.New, DateTime.UtcNow.AddMinutes(-1)));
+				CreateSwarmJob(project.Id, secondProvider.Id, swarmId, "Queued swarm member", JobStatus.New, DateTime.UtcNow.AddMinutes(-2)),
+				CreateSwarmJob(project.Id, thirdProvider.Id, null, "Job after the swarm", JobStatus.New, DateTime.UtcNow.AddMinutes(-1)));
 			await dbContext.SaveChangesAsync();
 		}
 
@@ -218,17 +265,39 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			serviceProvider.GetRequiredService<IServiceScopeFactory>(),
 			NullLogger<JobQueueManager>.Instance);
 
-		Assert.Empty(await queueManager.GetPendingJobsAsync(10));
+		var pendingJob = Assert.Single(await queueManager.GetPendingJobsAsync(10));
+		Assert.Equal("Queued swarm member", pendingJob.Title);
 
 		await using (var dbContext = CreateDbContext())
 		{
-			var runningJob = await dbContext.Jobs.SingleAsync(job => job.Id == runningJobId);
-			runningJob.Status = JobStatus.Completed;
+			foreach (var job in await dbContext.Jobs.Where(job => job.SwarmId == swarmId).ToListAsync())
+			{
+				job.Status = JobStatus.Completed;
+			}
+
 			await dbContext.SaveChangesAsync();
 		}
 
-		var pendingJob = Assert.Single(await queueManager.GetPendingJobsAsync(10));
-		Assert.Equal("Queued swarm member", pendingJob.Title);
+		pendingJob = Assert.Single(await queueManager.GetPendingJobsAsync(10));
+		Assert.Equal("Job after the swarm", pendingJob.Title);
+	}
+
+	[Fact]
+	public void SelectJobsToStart_StartsSwarmMembersBesideTheirRunningSibling()
+	{
+		var projectId = Guid.NewGuid();
+		var swarmId = Guid.NewGuid();
+		var pendingJobs = new[]
+		{
+			new Job { Id = Guid.NewGuid(), ProjectId = projectId, SwarmId = swarmId, GoalPrompt = "Sibling" },
+			new Job { Id = Guid.NewGuid(), ProjectId = projectId, SwarmId = Guid.NewGuid(), GoalPrompt = "Other swarm" },
+			new Job { Id = Guid.NewGuid(), ProjectId = projectId, GoalPrompt = "Plain job" }
+		};
+
+		var jobsToStart = JobProcessingService.SelectJobsToStart(pendingJobs, [(projectId, swarmId, Guid.Empty)], availableSlots: 5);
+
+		var jobToStart = Assert.Single(jobsToStart);
+		Assert.Equal("Sibling", jobToStart.GoalPrompt);
 	}
 
 	[Fact]
@@ -243,7 +312,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			new Job { Id = Guid.NewGuid(), ProjectId = idleProjectId, GoalPrompt = "Idle project second job" }
 		};
 
-		var jobsToStart = JobProcessingService.SelectJobsToStart(pendingJobs, [busyProjectId], availableSlots: 5);
+		var jobsToStart = JobProcessingService.SelectJobsToStart(pendingJobs, [(busyProjectId, null, Guid.Empty)], availableSlots: 5);
 
 		var jobToStart = Assert.Single(jobsToStart);
 		Assert.Equal("Idle project first job", jobToStart.GoalPrompt);
@@ -993,6 +1062,37 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ContinueJobAsync_KeepsAPreviousGoalLongerThanTwoThousandCharacters()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Long Goal Project", WorkingPath = "/tmp/long-goal-project" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true, IsDefault = true };
+		var previousGoal = "Build the feature. " + new string('a', 4980);
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = previousGoal,
+			Status = JobStatus.Completed,
+			CompletedAt = DateTime.UtcNow
+		};
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+
+		Assert.True(await jobService.ContinueJobAsync(job.Id, "Address the review comments."));
+
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Contains($"Previous goal: {previousGoal}\n", savedJob.GoalPrompt);
+		Assert.EndsWith("Follow-up instructions:\nAddress the review comments.", savedJob.GoalPrompt);
+		Assert.InRange(savedJob.GoalPrompt.Length, 1, ValidationLimits.JobGoalPromptMaxLength);
+	}
+
+	[Fact]
 	public async Task ContinueJobAsync_SavesChangeSetSnapshotBeforeReset()
 	{
 		await using var dbContext = CreateDbContext();
@@ -1390,6 +1490,46 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Assert.Contains("De-prioritize development-only work such as adding tests", inferenceService.LastRequest?.Prompt);
 			Assert.Contains("Do not repeat, restate, or lightly rename existing project ideas.", inferenceService.LastRequest?.Prompt);
 			Assert.Equal(2, await dbContext.Ideas.CountAsync(idea => idea.ProjectId == project.Id));
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_SkipsAnOfflineProvider_WhenNoneIsRequested()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project { Id = Guid.NewGuid(), Name = "Suggestion Project", WorkingPath = workingPath };
+			var desktop = new InferenceProvider { Name = "Desktop", Endpoint = "http://desktop:11434", Priority = 0, IsEnabled = true };
+			desktop.Models.Add(new InferenceModel { ModelId = "qwen3", TaskType = "default", IsDefault = true, IsAvailable = true });
+			var cloud = new InferenceProvider { Name = "Cloud", Endpoint = "https://cloud.example/v1", ProviderType = InferenceProviderType.Grok, Priority = 1, IsEnabled = true };
+			cloud.Models.Add(new InferenceModel { ModelId = "grok-4.6", TaskType = "default", IsDefault = true, IsAvailable = true });
+			dbContext.Projects.Add(project);
+			dbContext.InferenceProviders.AddRange(desktop, cloud);
+			await dbContext.SaveChangesAsync();
+
+			var inferenceService = new FakeInferenceService
+			{
+				Response = new InferenceResponse { Success = true, ModelUsed = "grok-4.6", Response = "- Add a weekly performance email" }
+			};
+			inferenceService.UnreachableEndpoints.Add(desktop.Endpoint);
+
+			var ideaService = CreateIdeaService(dbContext, new Provider(), inferenceService: inferenceService);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest { IdeaCount = 1 });
+
+			Assert.True(result.Success, result.Message);
+			Assert.Equal(cloud.Endpoint, inferenceService.LastRequest?.Endpoint);
+			Assert.Equal("grok-4.6", inferenceService.LastRequest?.Model);
 		}
 		finally
 		{
@@ -4331,7 +4471,21 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		return (project, firstProvider, secondProvider);
 	}
 
-	private static Job CreateSwarmJob(Guid projectId, Guid providerId, Guid swarmId, string title, JobStatus status, DateTime createdAt)
+	private static async Task<Provider> AddThirdProviderAsync(VibeSwarmDbContext dbContext)
+	{
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "OpenCode",
+			Type = ProviderType.OpenCode,
+			IsEnabled = true
+		};
+		dbContext.Providers.Add(provider);
+		await dbContext.SaveChangesAsync();
+		return provider;
+	}
+
+	private static Job CreateSwarmJob(Guid projectId, Guid providerId, Guid? swarmId, string title, JobStatus status, DateTime createdAt)
 	{
 		return new Job
 		{
@@ -4427,6 +4581,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task<ConnectionTestResult> TestConnectionWithDetailsAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task SetDefaultAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Provider> UpdateUsageLimitsAsync(Guid id, ProviderUsageLimits limits, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<SessionSummary> GetSessionSummaryAsync(Guid providerId, string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default)
 			=> Task.FromResult<IEnumerable<ProviderModel>>(providerId == _provider.Id ? _models : []);
@@ -4504,11 +4659,19 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public InferenceResponse Response { get; set; } = new() { Success = true };
 		public InferenceRequest? LastRequest { get; private set; }
 
+		/// <summary>Endpoints whose health check fails, like a machine that is switched off.</summary>
+		public HashSet<string> UnreachableEndpoints { get; } = [];
+
 		public Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default)
 			=> CheckHealthAsync(request.Endpoint, request.ProviderType, ct);
 
 		public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 		{
+			if (endpoint != null && UnreachableEndpoints.Contains(endpoint))
+			{
+				return Task.FromResult(new InferenceHealthResult { IsAvailable = false, Error = "Connection refused" });
+			}
+
 			return Task.FromResult(new InferenceHealthResult
 			{
 				IsAvailable = Health.IsAvailable,
@@ -4553,7 +4716,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task NotifyJobCreated(Guid jobId, Guid projectId) => Task.CompletedTask;
 		public Task NotifyJobDeleted(Guid jobId, Guid projectId) => Task.CompletedTask;
 		public Task NotifyJobHeartbeat(Guid jobId, DateTime timestamp) => Task.CompletedTask;
-		public Task NotifyJobOutput(Guid jobId, string line, bool isError, DateTime timestamp) => Task.CompletedTask;
+		public Task NotifyJobOutput(Guid jobId, string line, bool isError, DateTime timestamp, long sequence) => Task.CompletedTask;
 		public Task NotifyProcessStarted(Guid jobId, int processId, string command) => Task.CompletedTask;
 		public Task NotifyProcessExited(Guid jobId, int processId, int exitCode, TimeSpan duration) => Task.CompletedTask;
 		public Task NotifyJobGitDiffUpdated(Guid jobId, bool hasChanges) => Task.CompletedTask;

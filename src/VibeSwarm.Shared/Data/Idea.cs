@@ -3,6 +3,13 @@ using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Data;
 
+public enum IdeaSource
+{
+	User = 0,
+	AutoPilot = 1,
+	Lead = 2
+}
+
 public enum IdeaExpansionStatus
 {
 	NotExpanded,
@@ -47,6 +54,21 @@ public class Idea
 	/// Order for processing ideas (lower numbers processed first)
 	/// </summary>
 	public int SortOrder { get; set; }
+
+	/// <summary>Who came up with the idea.</summary>
+	public IdeaSource Source { get; set; } = IdeaSource.User;
+
+	/// <summary>
+	/// A suggestion waiting for the owner's tap. It stays out of the Ideas list, the queue and
+	/// auto-pilot until it is approved.
+	/// </summary>
+	public bool NeedsApproval { get; set; }
+
+	/// <summary>When the owner turned the suggestion down. The Lead is told not to suggest it again.</summary>
+	public DateTime? DismissedAt { get; set; }
+
+	/// <summary>The Lead review that suggested it.</summary>
+	public Guid? LeadReviewId { get; set; }
 
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

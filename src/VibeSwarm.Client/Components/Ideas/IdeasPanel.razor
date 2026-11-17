@@ -10,16 +10,16 @@
 @using VibeSwarm.Shared.Validation
 @implements IAsyncDisposable
 
-<div class="d-flex flex-column gap-4">
+<div class="d-flex flex-column gap-7">
 	@if (_suggestResult != null)
 	{
-		<div class="d-flex align-items-start gap-2 rounded-3 border px-3 py-2 @GetSuggestResultContainerClass()">
+		<div class="d-flex align-items-start gap-3 rounded-5 border px-5 py-3 @GetSuggestResultContainerClass()">
 			<i class="bi @(_suggestResult.Success ? "bi-stars" : "bi-exclamation-triangle") mt-1"></i>
-			<div class="flex-grow-1 min-width-0">
+			<div class="flex-grow-1 min-w-0">
 				<div class="small fw-medium">@_suggestResult.Message</div>
 				@if (!string.IsNullOrEmpty(_suggestResult.ErrorDetail) && !_suggestResult.Success)
 				{
-					<div class="small text-body-secondary font-monospace mt-1">
+					<div class="small fg-1 font-monospace mt-1">
 						@_suggestResult.ErrorDetail[..Math.Min(200, _suggestResult.ErrorDetail.Length)]
 					</div>
 				}
@@ -29,61 +29,53 @@
 		</div>
 	}
 
-	<div class="d-flex flex-column gap-2">
-		<div class="card rounded-4">
-			<div class="d-flex align-items-end gap-2 p-2">
-				<div class="dropdown flex-shrink-0">
-					<button type="button" class="btn btn-link text-body-secondary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center"
-							data-bs-toggle="dropdown" aria-expanded="false" title="Attach, suggest or create a job" aria-label="More ways to add work">
+	<div class="d-flex flex-column gap-3">
+		<div class="card composer-card rounded-9">
+			<div class="d-flex align-items-end gap-3 p-3">
+				<div class="flex-shrink-0">
+					<button type="button" class="btn-link fg-1 rounded-circle p-0 icon-button-round"
+							data-bs-toggle="menu" data-bs-placement="bottom-start" aria-expanded="false" title="Attach, suggest or create a job" aria-label="More ways to add work">
 						@if (IsSuggestingIdeas)
 						{
-							<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+							<span class="spinner-border spinner-sm" role="status" aria-hidden="true"></span>
 						}
 						else
 						{
-							<i class="bi bi-plus-circle fs-5"></i>
+							<i class="bi bi-plus-circle fs-lg"></i>
 						}
 					</button>
-					<ul class="dropdown-menu">
-						<li>
-							<label class="dropdown-item m-0 cursor-pointer @(_attachmentInteropAvailable ? "" : "disabled")"
-								   for="@_fileInputId" title="@GetAttachmentButtonTooltip()">
-								<i class="bi bi-paperclip me-2"></i>Attach files
-							</label>
-						</li>
+					<div class="menu">
+						<label class="menu-item m-0" for="@_fileInputId" title="Attach files from the host filesystem">
+							<i class="bi bi-paperclip"></i>Attach files
+						</label>
 						@if (CanSuggestIdeas)
 						{
-							<li>
-								<button type="button" class="dropdown-item" @onclick="OpenSuggestIdeasModal"
-										disabled="@(IsSuggestingIdeas || IsProcessingActive)" title="Suggest ideas from the codebase">
-									<i class="bi bi-stars me-2"></i>Suggest ideas
-								</button>
-							</li>
+							<button type="button" class="menu-item" @onclick="OpenSuggestIdeasModal"
+									disabled="@(IsSuggestingIdeas || IsProcessingActive)" title="Suggest ideas from the codebase">
+								<i class="bi bi-stars"></i>Suggest ideas
+							</button>
 						}
 						@if (OnCreateJob.HasDelegate)
 						{
-							<li><hr class="dropdown-divider"></li>
-							<li>
-								<button type="button" class="dropdown-item" @onclick="OnCreateJob"
-										title="@(HasActiveJobs ? "Create a job with its own provider, model and branch. It will be queued behind the current run." : "Create a job with its own provider, model and branch")">
-									<i class="bi bi-sliders me-2"></i>New job with options…
-								</button>
-							</li>
+							<hr class="menu-divider">
+							<button type="button" class="menu-item" @onclick="OnCreateJob"
+									title="@(HasActiveJobs ? "Create a job with its own provider, model and branch. It will be queued behind the current run." : "Create a job with its own provider, model and branch")">
+								<i class="bi bi-sliders"></i>New job with options…
+							</button>
 						}
-					</ul>
+					</div>
 				</div>
-				<input id="@_fileInputId" class="d-none" type="file" multiple @onchange="HandleFileSelection"
-					   disabled="@(!_attachmentInteropAvailable)" />
-				<textarea class="form-control border-0 shadow-none bg-transparent px-1" id="@_textareaId" rows="2"
+				<InputFile id="@_fileInputId" class="d-none" multiple OnChange="HandleFileSelection" />
+				<textarea class="form-control textarea-autogrow border-0 shadow-none bg-transparent px-1" id="@_textareaId" rows="3"
 						  placeholder="Add an idea…" aria-label="New idea"
-						  value="@NewIdeaDescription" @oninput="HandleNewIdeaInput" @onblur="FlushDraftSyncAsync" @onkeypress="HandleKeyPress"
+						  @bind="NewIdeaDescription" @bind:event="oninput" @bind:after="ScheduleDraftSync" @onblur="FlushDraftSyncAsync" @onkeypress="HandleKeyPress"
 						  @ref="_newIdeaTextarea"
 						  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"></textarea>
-				<button type="button" class="btn btn-primary rounded-circle p-0 icon-button-round d-inline-flex align-items-center justify-content-center flex-shrink-0"
+				<button type="button" class="btn-solid theme-primary rounded-circle p-0 icon-button-round flex-shrink-0"
 						@onclick="AddIdea" disabled="@(!CanAddIdea)" title="Add idea" aria-label="Add idea">
 					@if (IsAddingIdea)
 					{
-						<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+						<span class="spinner-border spinner-sm" role="status" aria-hidden="true"></span>
 					}
 					else
 					{
@@ -94,11 +86,11 @@
 
 		@if (_pendingAttachments.Any())
 		{
-			<div class="d-flex flex-wrap gap-2 px-3 pb-3">
+			<div class="d-flex flex-wrap gap-3 px-5 pb-5">
 				@foreach (var attachment in _pendingAttachments.Select((item, index) => (item, index)))
 				{
 					var attachmentIndex = attachment.index;
-					<span class="badge text-bg-secondary d-inline-flex align-items-center gap-2 p-1">
+					<span class="badge theme-secondary gap-3 p-1">
 						@if (TryGetAttachmentPreviewDataUrl(attachment.item, out var previewDataUrl))
 						{
 							<img src="@previewDataUrl" alt="@attachment.item.FileName" class="rounded object-fit-cover attachment-thumb-sm" />
@@ -107,8 +99,8 @@
 						{
 							<i class="bi bi-paperclip"></i>
 						}
-						<span class="text-truncate mw-100">@attachment.item.FileName</span>
-						<button type="button" class="btn-close btn-close-white" @onclick="() => RemovePendingAttachment(attachmentIndex)" aria-label="Remove"></button>
+						<span class="text-truncate max-w-100">@attachment.item.FileName</span>
+						<button type="button" class="btn-close " @onclick="() => RemovePendingAttachment(attachmentIndex)" aria-label="Remove"></button>
 					</span>
 				}
 			</div>
@@ -118,22 +110,22 @@
 
 		@if (IsNearLengthLimit || !string.IsNullOrWhiteSpace(AddIdeaValidationMessage))
 		{
-			<div class="d-flex flex-wrap align-items-center gap-2 px-2 small">
+			<div class="d-flex flex-wrap align-items-center gap-3 px-3 small">
 				@if (!string.IsNullOrWhiteSpace(AddIdeaValidationMessage))
 				{
-					<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>@AddIdeaValidationMessage</span>
+					<span class="fg-danger"><i class="bi bi-exclamation-circle me-1"></i>@AddIdeaValidationMessage</span>
 				}
 				@if (IsNearLengthLimit)
 				{
-					<span class="ms-auto font-monospace @(IsOverLength ? "text-warning" : "text-body-secondary")">@GetIdeaLengthSummary(NewIdeaDescription)</span>
+					<span class="ms-auto font-monospace @(IsOverLength ? "fg-warning" : "fg-1")">@GetIdeaLengthSummary(NewIdeaDescription)</span>
 				}
 			</div>
 		}
 
 		@if (!HasDefaultProvider)
 		{
-			<a class="btn btn-sm btn-warning" href="/providers">
-				<i class="bi bi-plug me-1"></i>Set default provider
+			<a class="btn-sm btn-solid theme-warning" href="/providers">
+				<i class="bi bi-plug"></i>Set default provider
 			</a>
 		}
 	</div>
@@ -149,21 +141,21 @@
 	}
 	else
 	{
-		<section class="d-flex flex-column gap-2" aria-label="Up next">
-			<div class="d-flex align-items-center gap-3 px-1">
+		<section class="d-flex flex-column gap-3" aria-label="Up next">
+			<div class="d-flex align-items-center gap-5 px-1">
 				<h2 class="text-eyebrow mb-0 me-auto">@UpNextTitle</h2>
 				@if (IsPageLoading)
 				{
-					<span class="spinner-border spinner-border-sm text-body-secondary" role="status" aria-label="Refreshing ideas"></span>
+					<span class="spinner-border spinner-sm fg-1" role="status" aria-label="Refreshing ideas"></span>
 				}
 				@if (IsProcessingActive)
 				{
-					<span class="small text-body-secondary" title="@ActiveProcessingMessage">Running automatically</span>
-					<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none fw-medium px-0"
+					<span class="small fg-1" title="@ActiveProcessingMessage">Running automatically</span>
+					<button type="button" class="btn-sm btn-link fg-danger text-decoration-none fw-medium px-0"
 							@onclick="OnStopProcessing" disabled="@IsTogglingProcessing" title="Stop running ideas automatically">
 						@if (IsTogglingProcessing)
 						{
-							<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+							<span class="spinner-border spinner-sm me-1" role="status" aria-hidden="true"></span>
 						}
 						else
 						{
@@ -174,13 +166,13 @@
 				}
 				else
 				{
-					<button type="button" class="btn btn-sm btn-link text-success text-decoration-none fw-medium px-0"
+					<button type="button" class="btn-sm btn-link fg-success text-decoration-none fw-medium px-0"
 							@onclick="OpenStartAllModal"
 							disabled="@(IsTogglingProcessing || !HasDefaultProvider || UnprocessedIdeasCount == 0)"
 							title="@GetStartAllTooltip()">
 						@if (IsTogglingProcessing)
 						{
-							<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+							<span class="spinner-border spinner-sm me-1" role="status" aria-hidden="true"></span>
 						}
 						else
 						{
@@ -190,7 +182,7 @@
 					</button>
 				}
 			</div>
-			<ul class="list-group rounded-4">
+			<ul class="list-group rounded-9">
 				@foreach (var idea in Ideas)
 				{
 					<IdeaListItem @key="idea.Id" Idea="idea" IsProcessing="@IsIdeaProcessing(idea.Id)"
@@ -235,9 +227,9 @@
 
 				@if (IsGitRepository)
 				{
-					<div class="mb-2">
+					<div class="mb-3">
 						<label for="startAllAutoCommit" class="form-label fw-medium">Auto-Commit Mode</label>
-						<select id="startAllAutoCommit" class="form-select" @bind="_startAllAutoCommitMode">
+						<select id="startAllAutoCommit" class="form-control" @bind="_startAllAutoCommitMode">
 							<option value="@AutoCommitMode.Off">Off - Manual commit required</option>
 							<option value="@AutoCommitMode.CommitOnly">Commit Only - Auto-commit after job completion</option>
 							<option value="@AutoCommitMode.CommitAndPush">Commit & Push - Auto-commit and push</option>
@@ -246,9 +238,9 @@
 					</div>
 				}
 
-				<div class="mb-2">
+				<div class="mb-3">
 					<label for="startAllProvider" class="form-label fw-medium">Provider</label>
-					<select id="startAllProvider" class="form-select" @bind="SelectedStartAllProviderIdValue"
+					<select id="startAllProvider" class="form-control" @bind="SelectedStartAllProviderIdValue"
 							disabled="@(!StartAllProviders.Any())">
 						@foreach (var provider in StartAllProviders)
 						{
@@ -263,10 +255,10 @@
 				<div class="mb-0">
 					<label for="startAllModel" class="form-label fw-medium">
 						Model
-						<span class="text-body-secondary fw-normal">(optional)</span>
+						<span class="fg-1 fw-normal">(optional)</span>
 					</label>
 					<div class="input-group">
-						<select id="startAllModel" class="form-select" @bind="SelectedStartAllModelIdValue"
+						<select id="startAllModel" class="form-control" @bind="SelectedStartAllModelIdValue"
 								disabled="@(!SelectedStartAllProviderId.HasValue || !SelectedStartAllProviderModels.Any())">
 							<option value="">Use project/provider default model</option>
 							@foreach (var model in SelectedStartAllProviderModels)
@@ -282,13 +274,13 @@
 				</div>
 			</ChildContent>
 			<FooterContent>
-				<button type="button" class="btn btn-secondary" @onclick="CloseStartAllModal">Cancel</button>
-				<button type="button" class="btn btn-success" @onclick="ConfirmStartAll" disabled="@IsTogglingProcessing">
+				<button type="button" class="btn-solid theme-secondary" @onclick="CloseStartAllModal">Cancel</button>
+				<button type="button" class="btn-solid theme-success" @onclick="ConfirmStartAll" disabled="@IsTogglingProcessing">
 					@if (IsTogglingProcessing)
 					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						<span class="spinner-border spinner-sm me-1" role="status"></span>
 					}
-					<i class="bi bi-play-fill me-1"></i>Start All
+					<i class="bi bi-play-fill"></i>Start All
 				</button>
 			</FooterContent>
 		</ModalDialog>
@@ -485,12 +477,6 @@
 		{
 			await AddIdea();
 		}
-	}
-
-	private async Task HandleNewIdeaInput(ChangeEventArgs e)
-	{
-		NewIdeaDescription = e.Value?.ToString() ?? string.Empty;
-		ScheduleDraftSync();
 	}
 
 	private bool _isSubmitting;
@@ -931,50 +917,22 @@
 		return null;
 	}
 
-	private async Task HandleFileSelection(ChangeEventArgs _)
+	private async Task HandleFileSelection(InputFileChangeEventArgs e)
 	{
-		if (!_attachmentInteropAvailable)
-		{
-			ShowAttachmentInteropUnavailableWarning();
-			return;
-		}
-
 		try
 		{
-			var uploads = await InvokeIdeasInteropAsync<List<ClipboardAttachmentDto>>("vibeSwarmIdeas.consumeSelectedFiles", _fileInputId);
-			if (uploads == null)
+			// Count and size limits are reported with the pending attachments, so take every file.
+			foreach (var file in e.GetMultipleFiles(e.FileCount))
 			{
-				return;
+				using var content = new MemoryStream();
+				await file.OpenReadStream(ValidationLimits.IdeaAttachmentMaxTotalBytes).CopyToAsync(content);
+				_pendingAttachments.Add(new IdeaAttachmentUpload
+				{
+					FileName = file.Name,
+					ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? null : file.ContentType,
+					Content = content.ToArray()
+				});
 			}
-
-			foreach (var upload in uploads)
-			{
-				AddPendingAttachment(upload);
-			}
-		}
-		catch (JSException ex) when (IsMissingIdeasInteropException(ex))
-		{
-			DisableAttachmentInterop();
-		}
-		catch (JSException ex)
-		{
-			LogIdeasInteropFailure("read selected attachments", ex);
-			DisableAttachmentInterop();
-		}
-		catch (InvalidOperationException ex)
-		{
-			LogIdeasInteropFailure("read selected attachments", ex);
-			DisableAttachmentInterop();
-		}
-		catch (OperationCanceledException ex)
-		{
-			LogIdeasInteropFailure("read selected attachments", ex);
-			DisableAttachmentInterop();
-		}
-		catch (TimeoutException ex)
-		{
-			LogIdeasInteropFailure("read selected attachments", ex);
-			DisableAttachmentInterop();
 		}
 		catch (Exception ex)
 		{
@@ -1077,37 +1035,15 @@
 			await InvokeIdeasInteropVoidAsync("vibeSwarmIdeas.registerPasteTarget", _textareaId, _newIdeaTextarea, _dotNetReference);
 			_pasteTargetRegistered = true;
 		}
-		catch (JSException ex) when (IsMissingIdeasInteropException(ex))
+		catch (Exception ex) when (ex is JSException or InvalidOperationException or OperationCanceledException or TimeoutException)
 		{
-			DisableAttachmentInterop();
-		}
-		catch (JSException ex)
-		{
-			LogIdeasInteropFailure("initialize attachment interop", ex);
-			DisableAttachmentInterop();
-		}
-		catch (InvalidOperationException ex)
-		{
-			LogIdeasInteropFailure("initialize attachment interop", ex);
-			DisableAttachmentInterop();
-		}
-		catch (OperationCanceledException ex)
-		{
-			LogIdeasInteropFailure("initialize attachment interop", ex);
-			DisableAttachmentInterop();
-		}
-		catch (TimeoutException ex)
-		{
-			LogIdeasInteropFailure("initialize attachment interop", ex);
-			DisableAttachmentInterop();
-		}
-	}
+			if (!ex.Message.Contains("vibeSwarmIdeas", StringComparison.OrdinalIgnoreCase))
+			{
+				LogIdeasInteropFailure("initialize clipboard paste", ex);
+			}
 
-	private string GetAttachmentButtonTooltip()
-	{
-		return _attachmentInteropAvailable
-			? "Attach files from the host filesystem"
-			: "Attachments are temporarily unavailable. Refresh the page to restore them.";
+			DisableAttachmentInterop();
+		}
 	}
 
 	private void DisableAttachmentInterop()
@@ -1128,8 +1064,8 @@
 	private void ShowAttachmentInteropUnavailableWarning()
 	{
 		NotificationService.ShowWarning(
-			"Idea attachments and clipboard image paste are temporarily unavailable on this page. Refresh the page to restore them.",
-			"Attachments unavailable");
+			"Pasting images is temporarily unavailable on this page. Refresh the page to restore it.",
+			"Image paste unavailable");
 	}
 
 	private static void LogIdeasInteropFailure(string action, Exception exception)
@@ -1142,18 +1078,6 @@
 		await JSRuntime.InvokeVoidAsync(identifier, args).AsTask().WaitAsync(IdeasInteropTimeout);
 	}
 
-	private async Task<T?> InvokeIdeasInteropAsync<T>(string identifier, params object?[] args)
-	{
-		return await JSRuntime.InvokeAsync<T>(identifier, args).AsTask().WaitAsync(IdeasInteropTimeout);
-	}
-
-	private static bool IsMissingIdeasInteropException(JSException exception)
-	{
-		return exception.Message.Contains("vibeSwarmIdeas", StringComparison.OrdinalIgnoreCase) ||
-			exception.Message.Contains("registerPasteTarget", StringComparison.OrdinalIgnoreCase) ||
-			exception.Message.Contains("consumeSelectedFiles", StringComparison.OrdinalIgnoreCase) ||
-			exception.Message.Contains("readImageFromClipboard", StringComparison.OrdinalIgnoreCase);
-	}
 
 	private string GetDraftStorageKey()
 	{
@@ -1275,8 +1199,8 @@
 	}
 
 	private string GetSuggestResultContainerClass() => _suggestResult?.Success == true
-		? "border-success-subtle bg-success-subtle text-success-emphasis"
-		: "border-warning-subtle bg-warning-subtle text-warning-emphasis";
+		? "border-subtle-success bg-subtle-success fg-emphasis-success"
+		: "border-subtle-warning bg-subtle-warning fg-emphasis-warning";
 
 	private void OpenSuggestIdeasModal()
 	{

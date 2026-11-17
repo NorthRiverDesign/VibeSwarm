@@ -9,58 +9,102 @@ else if (Providers.Count == 0)
 }
 else
 {
-	<div class="list-group rounded-4">
+	<div class="list-group rounded-9">
 		@for (var index = 0; index < Providers.Count; index++)
 		{
 			var provider = Providers[index];
 			var position = index;
 			<ListRow @key="provider.Id"
 					 Icon="@GetProviderIcon(provider.ProviderType)"
-					 IconClass="@(provider.IsEnabled ? "text-primary" : "text-body-tertiary")"
-					 Title="@provider.Name" TitleClass="@(provider.IsEnabled ? null : "text-body-secondary")"
+					 IconClass="@(provider.IsEnabled ? "fg-primary" : "fg-2")"
+					 Title="@provider.Name" TitleClass="@(provider.IsEnabled ? null : "fg-1")"
 					 Subtitle="@GetSubtitle(provider)"
+					 AttentionLine="@(provider.IsEnabled ? GetLowCreditLine(Balances.GetValueOrDefault(provider.Id)) : null)"
 					 InitiallyExpanded="@(provider.Id == InitiallyOpenProviderId)">
 				<Trailing>
 					@if (!provider.IsEnabled)
 					{
-						<span class="small text-body-tertiary flex-shrink-0">Off</span>
+						<span class="small fg-2 flex-shrink-0">Off</span>
 					}
 					else if (HealthChecked.Contains(provider.Id))
 					{
 						@if (HealthStatus.GetValueOrDefault(provider.Id))
 						{
-							<span class="small text-success flex-shrink-0">Connected</span>
+							@if (Balances.GetValueOrDefault(provider.Id)?.RemainingUsd is { } remaining)
+							{
+								<span class="small flex-shrink-0 @(GetLowCreditLine(Balances[provider.Id]) == null ? "fg-success" : "fg-emphasis-warning")">@FormatUsd(remaining) left</span>
+							}
+							else
+							{
+								<span class="small fg-success flex-shrink-0">Connected</span>
+							}
 						}
 						else
 						{
-							<span class="small text-danger-emphasis flex-shrink-0">Can't connect</span>
+							<span class="small fg-emphasis-danger flex-shrink-0">Can't connect</span>
 						}
 					}
 				</Trailing>
 				<ChildContent>
+					@if (provider.ProviderType == InferenceProviderType.Grok)
+					{
+						<dl class="d-flex flex-column gap-3 small mb-0">
+							<div class="d-flex justify-content-between gap-5">
+								<dt class="fw-normal fg-1">Prepaid credit</dt>
+								<dd class="mb-0 text-end">@GetCreditText(provider)</dd>
+							</div>
+							@if (Balances.GetValueOrDefault(provider.Id) is { RemainingUsd: not null, SpentUsd: { } spent, AddedUsd: { } added })
+							{
+								<div class="d-flex justify-content-between gap-5">
+									<dt class="fw-normal fg-1">Spent</dt>
+									<dd class="mb-0 text-end">@FormatUsd(spent) of @FormatUsd(added) added</dd>
+								</div>
+							}
+							else if (CanCheckCredit(provider) && Balances.GetValueOrDefault(provider.Id) is { RemainingUsd: null, Error: { } error })
+							{
+								<dd class="mb-0 fg-1 text-break">@error</dd>
+							}
+						</dl>
+					}
+
 					<InferenceTestSection Provider="provider" ModelRefreshVersion="@ModelRefreshVersions.GetValueOrDefault(provider.Id)" />
 
-					<div class="d-flex flex-wrap align-items-center gap-2">
-						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnRefreshModels.InvokeAsync(provider)"
+					<div class="d-flex flex-wrap align-items-center gap-3">
+						<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => OnRefreshModels.InvokeAsync(provider)"
 								disabled="@RefreshingModelsProviderId.HasValue">
-							<i class="bi bi-arrow-repeat me-1 @(RefreshingModelsProviderId == provider.Id ? "spin" : "")"></i>Refresh models
+							<i class="bi bi-arrow-repeat @(RefreshingModelsProviderId == provider.Id ? "spinner-rotate" : "")"></i>Refresh models
 						</button>
-						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnEditProvider.InvokeAsync(provider)">Edit</button>
+						@if (CanCheckCredit(provider))
+						{
+							<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => OnCheckBalance.InvokeAsync(provider)"
+									disabled="@CheckingBalanceProviderIds.Contains(provider.Id)">
+								@if (CheckingBalanceProviderIds.Contains(provider.Id))
+								{
+									<span class="spinner-border spinner-sm" role="status"></span>
+								}
+								else
+								{
+									<i class="bi bi-wallet2"></i>
+								}
+								Check credit
+							</button>
+						}
+						<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => OnEditProvider.InvokeAsync(provider)">Edit</button>
 						@if (Providers.Count > 1)
 						{
 							<div class="btn-group btn-group-sm" role="group" aria-label="Priority">
-								<button type="button" class="btn btn-secondary" title="Move up" aria-label="Move up"
+								<button type="button" class="btn-solid theme-secondary" title="Move up" aria-label="Move up"
 										disabled="@(position == 0 || IsReordering)" @onclick="() => OnMoveProvider.InvokeAsync((provider, -1))">
 									<i class="bi bi-arrow-up"></i>
 								</button>
-								<button type="button" class="btn btn-secondary" title="Move down" aria-label="Move down"
+								<button type="button" class="btn-solid theme-secondary" title="Move down" aria-label="Move down"
 										disabled="@(position == Providers.Count - 1 || IsReordering)" @onclick="() => OnMoveProvider.InvokeAsync((provider, 1))">
 									<i class="bi bi-arrow-down"></i>
 								</button>
 							</div>
 						}
-						<button type="button" class="btn btn-sm btn-link text-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDeleteProvider.InvokeAsync(provider)">
-							<i class="bi bi-trash me-1"></i>Delete
+						<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDeleteProvider.InvokeAsync(provider)">
+							<i class="bi bi-trash"></i>Delete
 						</button>
 					</div>
 				</ChildContent>
@@ -107,6 +151,57 @@ else
 
 	[Parameter]
 	public IReadOnlyDictionary<Guid, int> ModelRefreshVersions { get; set; } = new Dictionary<Guid, int>();
+
+	/// <summary>The latest prepaid credit reading for each connection that reports one.</summary>
+	[Parameter]
+	public IReadOnlyDictionary<Guid, InferenceBalanceResult> Balances { get; set; } = new Dictionary<Guid, InferenceBalanceResult>();
+
+	[Parameter]
+	public IReadOnlyCollection<Guid> CheckingBalanceProviderIds { get; set; } = Array.Empty<Guid>();
+
+	[Parameter]
+	public EventCallback<InferenceProvider> OnCheckBalance { get; set; }
+
+	/// <summary>Below this much prepaid credit the row asks for a top-up.</summary>
+	public const decimal LowCreditUsd = 1m;
+
+	/// <summary>The balance only reads with a management key, which only Grok takes.</summary>
+	public static bool CanCheckCredit(InferenceProvider provider)
+		=> provider.ProviderType == InferenceProviderType.Grok && !string.IsNullOrWhiteSpace(provider.ManagementApiKey);
+
+	/// <summary>
+	/// Asks for a top-up when prepaid credit runs low. A team that never bought credit pays by
+	/// invoice, so an empty balance is normal for it.
+	/// </summary>
+	public static string? GetLowCreditLine(InferenceBalanceResult? balance)
+	{
+		if (balance?.RemainingUsd is not { } remaining || balance.AddedUsd is not > 0m || remaining >= LowCreditUsd)
+		{
+			return null;
+		}
+
+		return remaining <= 0m
+			? "Out of prepaid credit"
+			: $"Only {FormatUsd(remaining)} of prepaid credit left";
+	}
+
+	public static string FormatUsd(decimal amount)
+		=> amount.ToString("$#,##0.00;-$#,##0.00", System.Globalization.CultureInfo.InvariantCulture);
+
+	private string GetCreditText(InferenceProvider provider)
+	{
+		if (!CanCheckCredit(provider))
+		{
+			return "Needs a management key";
+		}
+
+		return Balances.GetValueOrDefault(provider.Id) switch
+		{
+			null => "Checking…",
+			{ RemainingUsd: { } remaining } => $"{FormatUsd(remaining)} left",
+			_ => "Couldn't check"
+		};
+	}
 
 	// The first enabled connection is the one picked for you, so it says so.
 	private string GetSubtitle(InferenceProvider provider)

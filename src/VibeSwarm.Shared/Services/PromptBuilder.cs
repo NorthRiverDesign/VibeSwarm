@@ -13,6 +13,8 @@ public static class PromptBuilder
 {
 	private const int MaxEnvironmentEntriesLength = 1200;
 	private const int MaxSkillSummaryLength = 160;
+	private const int MaxLinkedProjectEntriesLength = 1200;
+	private const int MaxLinkedProjectDescriptionLength = 160;
 	public const string IdeaToken = "{{idea}}";
 	public const string SpecificationToken = "{{specification}}";
 	public const string RequestToken = "{{request}}";
@@ -56,6 +58,8 @@ public static class PromptBuilder
 		4. Keep it concrete. No code samples or provider/model attribution.
 		""";
 
+	// The implementation templates end without a <commit-summary> block: every job's system
+	// prompt rules already ask for one (BuildSystemPromptRules).
 	public static string DefaultIdeaImplementationPromptTemplate =>
 		"""
 		You are a staff-level software engineer implementing a feature directly from a product idea.
@@ -64,19 +68,14 @@ public static class PromptBuilder
 		{{idea}}
 
 		## Instructions
-		1. Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.
+		1. Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents only for broad, parallel research.
 		2. Fill in missing details from repository patterns and prefer the simplest solution that fully satisfies the idea.
 		3. Reuse existing patterns, helpers, and components before adding new ones.
 		4. Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
-		5. Keep changes scoped, preserve existing behavior unless the idea requires a change, and leave the repository in a working state.
+		5. Keep changes scoped and preserve existing behavior unless the idea requires a change.
 		6. Do not mention or attribute the work to any provider, model, or CLI tool.
 
 		Implement this feature now without first writing a separate specification.
-
-		When you are finished, end your response with a short summary in this exact format:
-		<commit-summary>
-		A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)
-		</commit-summary>
 		""";
 
 	public static string DefaultApprovedIdeaImplementationPromptTemplate =>
@@ -91,18 +90,13 @@ public static class PromptBuilder
 
 		## Instructions
 		1. Use the approved specification as the source of truth, then fill in missing details from repository patterns.
-		2. Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.
+		2. Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents only for broad, parallel research.
 		3. Reuse existing patterns, helpers, and components before adding new ones.
 		4. Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
-		5. Keep changes scoped, preserve existing behavior unless the specification requires a change, and leave the repository in a working state.
+		5. Keep changes scoped and preserve existing behavior unless the specification requires a change.
 		6. Do not mention or attribute the work to any provider, model, or CLI tool.
 
 		Implement this feature now.
-
-		When you are finished, end your response with a short summary in this exact format:
-		<commit-summary>
-		A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)
-		</commit-summary>
 		""";
 
 	public static string BuildStructuredPrompt(Job job, bool enableStructuring = true)
@@ -117,6 +111,7 @@ public static class PromptBuilder
 			return job.GoalPrompt;
 		}
 
+		var linkedProjectsSection = BuildLinkedProjectsSection(job.Project);
 		var environmentSection = BuildEnvironmentSection(job.Project);
 		var teamSection = BuildTeamSection(job.Project);
 		var skillSection = BuildSkillSection(job.Project);
@@ -133,6 +128,11 @@ public static class PromptBuilder
 			sb.AppendLine($"  <description>{EscapeXml(job.Project.Description)}</description>");
 		}
 		sb.AppendLine("</project>");
+
+		if (!string.IsNullOrWhiteSpace(linkedProjectsSection))
+		{
+			sb.Append(linkedProjectsSection);
+		}
 
 		if (!string.IsNullOrWhiteSpace(environmentSection))
 		{
@@ -186,8 +186,7 @@ public static class PromptBuilder
 				sb.AppendLine("  VibeSwarm opens a pull request for your changes after you finish. Do not open one yourself.");
 			}
 
-			sb.AppendLine("  Only modify files directly related to the task.");
-			sb.AppendLine("  Do not refactor unrelated code.");
+			// Scope is a system prompt rule (BuildSystemPromptRules), which the efficiency setting controls.
 			sb.AppendLine("</constraints>");
 		}
 
@@ -286,6 +285,54 @@ public static class PromptBuilder
 		return sb.ToString().TrimEnd();
 	}
 
+	/// <summary>
+	/// Messages the user sent while watching the agent work. <paramref name="interruptedTurn"/> says
+	/// the agent's turn was stopped to deliver them, possibly mid-step.
+	/// </summary>
+	public static string BuildUserMessagesPrompt(IReadOnlyList<string> messages, bool interruptedTurn)
+	{
+		var (noun, pronoun) = messages.Count == 1 ? ("message", "it") : ("messages", "them");
+		var sb = new StringBuilder();
+		sb.AppendLine("<user_messages>");
+		sb.AppendLine(interruptedTurn
+			? $"The user is watching this job and sent the {noun} below while you were working. Your last step was stopped so you could read {pronoun}, possibly partway through: check the state of the working tree before continuing."
+			: $"The user is watching this job and sent the {noun} below while you were working.");
+		sb.AppendLine($"Follow {pronoun}, overriding earlier instructions where they conflict, then carry on and finish the task.");
+		foreach (var message in messages)
+		{
+			sb.AppendLine();
+			sb.AppendLine(message.Trim());
+		}
+
+		sb.AppendLine("</user_messages>");
+		return sb.ToString().TrimEnd();
+	}
+
+	/// <summary>
+	/// Starts a new session for messages the user sent mid-run when the agent's session can't be
+	/// resumed: the task, the messages, and the end of the run's output so far.
+	/// </summary>
+	public static string BuildUserMessagesFreshSessionPrompt(
+		string basePrompt,
+		IReadOnlyList<string> messages,
+		string? recentConsoleOutput)
+	{
+		var sb = new StringBuilder();
+		sb.AppendLine(basePrompt.Trim());
+		sb.AppendLine();
+		sb.AppendLine("An earlier session already worked on this task and was stopped to deliver the user's message. Continue from the current state of the working tree without redoing finished work.");
+		if (!string.IsNullOrWhiteSpace(recentConsoleOutput))
+		{
+			sb.AppendLine("<recent_console_output>");
+			sb.AppendLine(recentConsoleOutput.Trim());
+			sb.AppendLine("</recent_console_output>");
+		}
+
+		sb.AppendLine();
+		sb.AppendLine(BuildUserMessagesPrompt(messages, interruptedTurn: true));
+		return sb.ToString().TrimEnd();
+	}
+
 	public static string BuildIdeaExpansionPrompt(string ideaDescription, string? template = null)
 	{
 		return ApplyIdeaPromptTemplate(
@@ -326,105 +373,98 @@ public static class PromptBuilder
 		}
 
 		var sb = new StringBuilder();
+		// Why the rules below exist, once, so each rule can stay short.
+		sb.AppendLine("VibeSwarm runs this job unattended and delivers your changes after you exit.");
+		sb.AppendLine();
 
 		// The setting only limits scope. Everything after it is how the pipeline works (no
 		// questions, no git, the commit summary it parses), so it is sent whatever the setting.
 		if (injectEfficiencyRules)
 		{
-			sb.AppendLine("IMPORTANT RULES:");
-			sb.AppendLine("- Do only the requested work. Do not modify unrelated files, refactor beyond the request, or add comments, docstrings, or type annotations to untouched code. Note unrelated issues instead of fixing them.");
+			sb.AppendLine("SCOPE:");
+			sb.AppendLine("- Do only the requested work. Do not refactor, comment or annotate code you are not changing; note unrelated issues in your summary instead of fixing them.");
 			sb.AppendLine();
 		}
 
-		sb.AppendLine("BUILD VERIFICATION (CRITICAL):");
-
+		sb.AppendLine("BUILD VERIFICATION:");
 		var buildStep = string.IsNullOrWhiteSpace(project.BuildCommand)
-			? "the appropriate build command for this project (for example: dotnet build, npm run build, cargo build)"
+			? "the appropriate build command and tests for this project"
 			: $"`{project.BuildCommand.Trim()}`";
 		sb.AppendLine(string.IsNullOrWhiteSpace(project.TestCommand)
-			? $"- Verify the project builds before finishing. Run {buildStep} and fix any failures."
-			: $"- Verify the project builds before finishing. Run {buildStep}, then `{project.TestCommand.Trim()}`, and fix any failures.");
-		sb.AppendLine("- Do not leave the repository in a broken state. The next queued job starts from it.");
+			? $"- Before finishing, run {buildStep} and fix any failures. The next queued job starts from this checkout."
+			: $"- Before finishing, run {buildStep}, then `{project.TestCommand.Trim()}`, and fix any failures. The next queued job starts from this checkout.");
 		// Installing dependencies rewrites lockfiles when the local tool version differs
 		// from the one that wrote them, and everything in the tree gets committed. That
 		// churn lands in every commit and reverses itself on the next machine.
-		sb.AppendLine("- Install dependencies without rewriting lockfiles (npm ci, not npm install; composer install, not update). Unless the task changes dependencies, restore any lockfile a build rewrote.");
+		sb.AppendLine("- Install dependencies without rewriting lockfiles (npm ci, composer install). Unless the task changes dependencies, restore any lockfile a build rewrote.");
 		sb.AppendLine();
-		// Jobs run one after another from a queue, unattended. VibeSwarm owns git: it
-		// resets the checkout before each job and commits the working tree after it,
-		// with its own attribution settings, so agent commits only get in the way.
+		// VibeSwarm owns git: it resets the checkout before each job and commits the working
+		// tree after it, with its own attribution settings, so agent commits only get in the way.
 		sb.AppendLine("COMPLETING THE JOB:");
-		sb.AppendLine("- This job runs unattended. Do not stop to ask questions or wait for confirmation; make the reasonable call and keep going.");
+		sb.AppendLine("- Nobody is watching, so never stop to ask a question or wait for confirmation: make the reasonable call and keep going.");
 		if (requireCodeChange)
 		{
-			sb.AppendLine("- The deliverable is a code change. A run that leaves the working tree unchanged is recorded as failed.");
+			sb.AppendLine("- The deliverable is a code change. A run that changes nothing is recorded as failed.");
 		}
-		sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. It delivers this checkout's changes after you exit, so bring back and remove any worktree you used.");
-		sb.AppendLine("- End with a short summary of what changed, how you verified it, assumptions, and anything left undone. Make its last line the commit subject: <commit-summary>A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)</commit-summary>");
+		sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. Bring back and remove any worktree you use.");
+		sb.AppendLine("- End with a short summary: what changed, how you verified it, assumptions, and anything left undone. Its last line is the commit subject: <commit-summary>A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)</commit-summary>");
 		sb.AppendLine();
 		sb.AppendLine("SESSION ARTIFACTS:");
-		sb.AppendLine("- Anything left in the working tree may be committed. Write screenshots, browser traces, test logs and reports, scratch scripts and temp files under /tmp or the git-ignored .vibeswarm/ folder.");
-		sb.AppendLine("- If a tool can only write inside the repository, delete its output before finishing or list the path in .git/info/exclude, not .gitignore.");
-		sb.AppendLine("- Keep plans, todo lists and session notes out of the repository: use your built-in todo tool or /tmp. Do not add or append to agent instruction, plan or memory files (such as CLAUDE.md, AGENTS.md, todo.md or notes) unless the task asks for them.");
+		sb.AppendLine("- Anything left in the working tree may be committed. Put screenshots, browser traces, logs and scratch files in /tmp or the git-ignored .vibeswarm/ folder; if a tool can only write inside the repository, delete its output or list it in .git/info/exclude, not .gitignore.");
+		sb.AppendLine("- Keep plans, todo lists and session notes out of the repository (use your todo tool or /tmp), and do not add to agent instruction or memory files (CLAUDE.md, AGENTS.md, todo.md) unless the task asks.");
 
-		var enabledEnvironments = project.Environments
-			.Where(environment => environment.IsEnabled)
+		// Environment stages, browser use and logins are described once, beside the URLs, in the
+		// task prompt's <environments> block.
+		AppendRepoMap(sb, project, injectRepoMap);
+		return sb.ToString().TrimEnd();
+	}
+
+	/// <summary>
+	/// Rules for the read-only planning stage. Building, git and the deliverable are the
+	/// execution agent's concern, so the planner only gets what helps it plan.
+	/// </summary>
+	public static string? BuildPlanningSystemPromptRules(Project? project, string? memoryFilePath, bool injectRepoMap = true)
+	{
+		if (project == null)
+		{
+			return null;
+		}
+
+		var sb = new StringBuilder();
+		sb.AppendLine("VibeSwarm runs this read-only planning step unattended; a separate agent implements the plan. Nobody can answer questions, so state assumptions in the plan instead of asking.");
+		if (!string.IsNullOrWhiteSpace(memoryFilePath))
+		{
+			sb.AppendLine();
+			sb.AppendLine("PROJECT MEMORY:");
+			sb.AppendLine($"- Read {memoryFilePath} first. It holds durable notes from earlier runs on this project.");
+		}
+
+		AppendRepoMap(sb, project, injectRepoMap);
+		return sb.ToString().TrimEnd();
+	}
+
+	/// <summary>
+	/// Joins rule blocks with a blank line between them, skipping empty ones.
+	/// </summary>
+	public static string? JoinRuleSections(params string?[] sections)
+	{
+		var present = sections
+			.Where(section => !string.IsNullOrWhiteSpace(section))
+			.Select(section => section!.Trim())
 			.ToList();
+		return present.Count == 0 ? null : string.Join($"{Environment.NewLine}{Environment.NewLine}", present);
+	}
 
-		if (enabledEnvironments.Any(environment => environment.Type == EnvironmentType.Web))
+	private static void AppendRepoMap(StringBuilder sb, Project project, bool injectRepoMap)
+	{
+		if (!injectRepoMap || string.IsNullOrWhiteSpace(project.RepoMap))
 		{
-			if (sb.Length > 0)
-			{
-				sb.AppendLine();
-			}
-
-			sb.AppendLine("DEPLOYED ENVIRONMENTS:");
-			sb.AppendLine("- Use Playwright MCP for browser work against configured web environments. Do not assume localhost when a project environment URL is available; deployed code may lag behind the repository until a deploy or restart.");
+			return;
 		}
 
-		if (enabledEnvironments.Count > 0)
-		{
-			var environmentStageRules = BuildEnvironmentStageRules(enabledEnvironments);
-			if (environmentStageRules.Count > 0)
-			{
-				if (sb.Length > 0)
-				{
-					sb.AppendLine();
-				}
-
-				sb.AppendLine("ENVIRONMENT SAFETY:");
-				foreach (var rule in environmentStageRules)
-				{
-					sb.AppendLine($"- {rule}");
-				}
-			}
-		}
-
-		if (enabledEnvironments.Any(environment =>
-			environment.Type == EnvironmentType.Web &&
-			(!string.IsNullOrWhiteSpace(environment.Username) || !string.IsNullOrWhiteSpace(environment.Password))))
-		{
-			if (sb.Length > 0)
-			{
-				sb.AppendLine();
-			}
-
-			sb.AppendLine("ENVIRONMENT AUTHENTICATION:");
-			sb.AppendLine("- When a web environment has login credentials, use those exact values for browser automation, never guessed accounts such as test@test.com.");
-		}
-
-		if (injectRepoMap && !string.IsNullOrWhiteSpace(project.RepoMap))
-		{
-			if (sb.Length > 0)
-			{
-				sb.AppendLine();
-			}
-
-			sb.AppendLine("PROJECT STRUCTURE:");
-			sb.AppendLine(project.RepoMap.Trim());
-		}
-
-		return sb.Length > 0 ? sb.ToString().TrimEnd() : null;
+		sb.AppendLine();
+		sb.AppendLine("PROJECT STRUCTURE:");
+		sb.AppendLine(project.RepoMap.Trim());
 	}
 
 	/// <summary>
@@ -502,6 +542,53 @@ public static class PromptBuilder
 		return sb.ToString().TrimEnd();
 	}
 
+	/// <summary>
+	/// Rules for a job that finishes merging <paramref name="mergeFromBranch"/> into the checkout,
+	/// which VibeSwarm started before the agent ran.
+	/// </summary>
+	public static string? BuildBranchMergeRules(string? mergeFromBranch, BranchMergeOutcome? outcome, IReadOnlyList<string>? conflictedFiles)
+	{
+		if (string.IsNullOrWhiteSpace(mergeFromBranch) || outcome == null)
+		{
+			return null;
+		}
+
+		const int maxListedFiles = 30;
+		var sb = new StringBuilder();
+		sb.AppendLine("MERGE IN PROGRESS:");
+		if (outcome == BranchMergeOutcome.AlreadyMerged)
+		{
+			sb.AppendLine($"- '{mergeFromBranch}' is already merged into this branch, so there are no conflicts left to resolve.");
+			sb.AppendLine("- Check that the project still builds and its tests pass, and fix anything that doesn't.");
+			return sb.ToString().TrimEnd();
+		}
+
+		sb.AppendLine($"- VibeSwarm has merged '{mergeFromBranch}' into this branch without committing, so the deploy can go through cleanly afterwards.");
+		var files = conflictedFiles ?? [];
+		if (files.Count > 0)
+		{
+			sb.AppendLine("- Resolve the git conflict markers (<<<<<<< / ======= / >>>>>>>) in these files:");
+			foreach (var file in files.Take(maxListedFiles))
+			{
+				sb.AppendLine($"  - {file}");
+			}
+			if (files.Count > maxListedFiles)
+			{
+				sb.AppendLine($"  - ...and {files.Count - maxListedFiles} more (search for <<<<<<<)");
+			}
+			sb.AppendLine($"- Keep the intent of both sides: '{mergeFromBranch}' holds what is already released, and this branch holds the work waiting to deploy. Never drop a change from either side just to make the conflict go away.");
+			sb.AppendLine("- VibeSwarm will not deliver a file that still contains conflict markers.");
+		}
+		else
+		{
+			sb.AppendLine("- Nothing conflicted. Review the merged result for anything that no longer fits together.");
+		}
+
+		sb.AppendLine("- Then make sure the project builds and its tests pass, fixing whatever the merge broke.");
+		sb.AppendLine("- Do not run git commit, git merge --abort, git reset, git stash or git checkout. VibeSwarm commits the result as the merge commit.");
+		return sb.ToString().TrimEnd();
+	}
+
 	public static string? BuildProjectMemoryRules(Project? project, string? memoryFilePath)
 	{
 		if (project == null || string.IsNullOrWhiteSpace(memoryFilePath))
@@ -511,14 +598,78 @@ public static class PromptBuilder
 
 		var sb = new StringBuilder();
 		sb.AppendLine("PROJECT MEMORY:");
-		sb.AppendLine($"- Read {memoryFilePath} before making changes. It holds durable context from earlier runs, is shared by every agent that works on this project, and stays out of the repository.");
-		sb.AppendLine($"- Update this file, rather than files in the repository, when you learn stable project guidance or workflow gotchas, or after you make and correct a mistake. Keep entries factual, concise and actionable, the file under {ValidationLimits.ProjectMemoryMaxLength} characters, and secrets, credentials and personal data out.");
-		sb.AppendLine("- Leave out session notes: task progress, plans, todo lists, and facts that only hold for this run.");
-		sb.AppendLine(string.IsNullOrWhiteSpace(project.Memory)
-			? "- If the file is empty, add a first entry once you learn something worth keeping. VibeSwarm will sync changes back to the project after the job."
-			: "- VibeSwarm will sync changes back to the project after the job.");
+		sb.AppendLine($"- Read {memoryFilePath} before making changes: durable context from earlier runs, shared by every agent that works on this project. It stays out of the repository, and VibeSwarm syncs it back to the project after the job.");
+		sb.AppendLine($"- Update this file, rather than files in the repository, when you learn stable project guidance or a workflow gotcha, or after you make and correct a mistake. Keep entries factual, concise and actionable, and the file under {ValidationLimits.ProjectMemoryMaxLength} characters.");
+		sb.AppendLine("- Leave out session notes (task progress, plans, todo lists, facts that only hold for this run), secrets, credentials and personal data.");
+		if (string.IsNullOrWhiteSpace(project.Memory))
+		{
+			sb.AppendLine("- If the file is empty, add a first entry once you learn something worth keeping.");
+		}
 
 		return sb.ToString().TrimEnd();
+	}
+
+	/// <summary>
+	/// Lists the projects the user linked to this one, so the agent knows where related
+	/// repositories live. Needs <see cref="ProjectLink.LinkedProject"/> loaded.
+	/// </summary>
+	private static string BuildLinkedProjectsSection(Project project)
+	{
+		var linkedProjects = (project.Links ?? [])
+			.Select(link => link.LinkedProject)
+			.OfType<Project>()
+			.Where(linked => linked.Id != project.Id)
+			.DistinctBy(linked => linked.Id)
+			.OrderBy(linked => linked.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		if (linkedProjects.Count == 0)
+		{
+			return string.Empty;
+		}
+
+		var sb = new StringBuilder();
+		sb.AppendLine("<linked-projects>");
+		sb.AppendLine("  Related repositories linked to this project. Read them for context when the task touches them. Change files only in this project: VibeSwarm delivers nothing from the others.");
+
+		var includedCount = 0;
+		var entriesLength = 0;
+		foreach (var linked in linkedProjects)
+		{
+			var lineBuilder = new StringBuilder();
+			lineBuilder.Append("  - ");
+			lineBuilder.Append(linked.Name);
+			lineBuilder.Append(": ");
+			lineBuilder.Append(linked.WorkingPath);
+			if (!string.IsNullOrWhiteSpace(linked.GitHubRepository))
+			{
+				lineBuilder.Append(" | GitHub: ");
+				lineBuilder.Append(linked.GitHubRepository);
+			}
+			if (!string.IsNullOrWhiteSpace(linked.Description))
+			{
+				lineBuilder.Append(" | ");
+				lineBuilder.Append(Summarize(linked.Description, MaxLinkedProjectDescriptionLength));
+			}
+
+			var escapedLine = EscapeXml(lineBuilder.ToString());
+			if (entriesLength + escapedLine.Length > MaxLinkedProjectEntriesLength)
+			{
+				break;
+			}
+
+			sb.AppendLine(escapedLine);
+			entriesLength += escapedLine.Length;
+			includedCount++;
+		}
+
+		var omittedCount = linkedProjects.Count - includedCount;
+		if (omittedCount > 0)
+		{
+			sb.AppendLine($"  {omittedCount} additional linked project(s) omitted for brevity.");
+		}
+
+		sb.AppendLine("</linked-projects>");
+		return sb.ToString();
 	}
 
 	private static string BuildEnvironmentSection(Project project)
@@ -541,15 +692,19 @@ public static class PromptBuilder
 
 		var sb = new StringBuilder();
 		sb.AppendLine("<environments>");
-		sb.AppendLine("  Configured deployment targets. Prefer these URLs instead of assuming localhost. Let each stage decide which changes, deploys, and resets are appropriate.");
+		sb.AppendLine("  Configured deployment targets. Use these URLs instead of assuming localhost; deployed code may lag the repository until a deploy or restart.");
 		foreach (var rule in BuildEnvironmentStageRules(environments))
 		{
 			sb.Append("  - ");
 			sb.AppendLine(EscapeXml(rule));
 		}
-		if (environments.Any(environment => environment.Type == EnvironmentType.Web))
+		var webEnvironments = environments.Where(environment => environment.Type == EnvironmentType.Web).ToList();
+		if (webEnvironments.Count > 0)
 		{
-			sb.AppendLine("  - Use Playwright MCP for browser interaction with web environments.");
+			sb.AppendLine(webEnvironments.Any(environment =>
+					!string.IsNullOrWhiteSpace(environment.Username) || !string.IsNullOrWhiteSpace(environment.Password))
+				? "  - Use Playwright MCP for web environments. Sign in with a listed login, never a guessed account such as test@test.com."
+				: "  - Use Playwright MCP for web environments.");
 		}
 
 		// The budget covers the environment entries only, so the fixed guidance above never
@@ -704,9 +859,7 @@ public static class PromptBuilder
 
 		var sb = new StringBuilder();
 		sb.AppendLine("<available_skills>");
-		sb.AppendLine("  Skills are folders of instructions installed on this machine. When a skill");
-		sb.AppendLine("  matches the task, read its SKILL.md (and any referenced files in the skill's");
-		sb.AppendLine("  folder) before acting. Honor each skill's allowed-tools list when present:");
+		sb.AppendLine("  Skills installed on this machine. When one matches the task, read its SKILL.md (and the files it references) before acting, and honor its allowed-tools list:");
 		foreach (var skill in skills)
 		{
 			var lineBuilder = new StringBuilder();
@@ -746,17 +899,17 @@ public static class PromptBuilder
 
 		if (enabledStages.Contains(EnvironmentStage.Production))
 		{
-			rules.Add("Production environments are live/stable targets. Only make direct environment changes or redeploy them when the task explicitly asks for it, and expect slower deployments that may lag behind current code.");
+			rules.Add("Production is live: change or redeploy it only when the task explicitly asks.");
 		}
 
 		if (enabledStages.Contains(EnvironmentStage.Development))
 		{
-			rules.Add("Development environments allow normal testing, iterative changes, and redeploys, but they may still need a deploy or restart before new code appears.");
+			rules.Add("Development allows normal testing, changes and redeploys.");
 		}
 
 		if (enabledStages.Contains(EnvironmentStage.Local))
 		{
-			rules.Add("Local environments assume immediate feedback. It is acceptable to rebuild, restart services, redeploy, reseed data, or wipe the local database when the task benefits from it.");
+			rules.Add("Local gives immediate feedback: rebuild, restart services, redeploy, reseed data or wipe the local database whenever the task benefits.");
 		}
 
 		return rules;
@@ -765,9 +918,11 @@ public static class PromptBuilder
 	/// <summary>
 	/// Builds a role-specific system prompt context block that is prepended to the agent's
 	/// append-system-prompt when the job is part of a team swarm. This establishes the agent's
-	/// persona, responsibilities, and coordination guidelines for taking turns on one checkout.
+	/// persona, responsibilities, and how to work beside teammates running at the same time,
+	/// each in its own worktree, so their work merges cleanly.
 	/// </summary>
-	public static string BuildRoleSystemPromptContext(Agent role, int totalSwarmSize)
+	/// <param name="teammates">The swarm's other agents, so this one knows what they own.</param>
+	public static string BuildRoleSystemPromptContext(Agent role, int totalSwarmSize, IReadOnlyList<Agent>? teammates = null)
 	{
 		var sb = new StringBuilder();
 
@@ -799,14 +954,30 @@ public static class PromptBuilder
 		if (totalSwarmSize > 1)
 		{
 			sb.AppendLine();
-			sb.AppendLine($"You are one of {totalSwarmSize} specialized agents taking turns on the same repository; the others run before or after you, never at the same time.");
-			sb.AppendLine("Each agent focuses exclusively on their designated area of responsibility.");
-			sb.AppendLine("Limit your changes to your area of expertise and avoid modifying files clearly owned by other roles.");
-			sb.AppendLine("Keep your changes small and focused, and build on what earlier agents left in the repository rather than redoing or reverting it.");
+			sb.AppendLine($"You are one of {totalSwarmSize} specialized agents working on this goal at the same time, each in its own copy of the repository, so you won't see the others' changes while you work.");
+			var others = (teammates ?? [])
+				.Where(teammate => !string.IsNullOrWhiteSpace(teammate.Name))
+				.Select(teammate => string.IsNullOrWhiteSpace(teammate.Description)
+					? teammate.Name.Trim()
+					: $"{teammate.Name.Trim()} ({Truncate(teammate.Description.Trim(), 120)})")
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+			if (others.Count > 0)
+			{
+				sb.AppendLine($"Your teammates: {string.Join("; ", others)}.");
+			}
+
+			sb.AppendLine("When you finish, VibeSwarm commits your work and replays it onto the branch with theirs. To keep that merge clean:");
+			sb.AppendLine("- Do only your part of the goal, and leave files and areas a teammate owns to them.");
+			sb.AppendLine("- Don't reformat, rename or move code your change doesn't need.");
+			sb.AppendLine("- Work in this directory on its current branch; don't switch branches or rewrite history.");
 		}
 
 		return sb.ToString().TrimEnd();
 	}
+
+	private static string Truncate(string text, int maxLength) =>
+		text.Length <= maxLength ? text : text[..(maxLength - 1)].TrimEnd() + "…";
 
 	private static string FormatSkillReference(Skill skill)
 	{
@@ -862,13 +1033,18 @@ public static class PromptBuilder
 			return null;
 		}
 
-		var summary = string.Join(" ", skill.Description.Split([' ', '\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries));
-		if (summary.Length <= MaxSkillSummaryLength)
+		return Summarize(skill.Description, MaxSkillSummaryLength);
+	}
+
+	private static string Summarize(string text, int maxLength)
+	{
+		var summary = string.Join(" ", text.Split([' ', '\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries));
+		if (summary.Length <= maxLength)
 		{
 			return summary;
 		}
 
-		return $"{summary[..(MaxSkillSummaryLength - 3)].TrimEnd()}...";
+		return $"{summary[..(maxLength - 3)].TrimEnd()}...";
 	}
 
 	private static string EscapeXml(string value)

@@ -23,7 +23,7 @@ else if (!_agents.Any())
 }
 else
 {
-	<div class="list-group rounded-4">
+	<div class="list-group rounded-9">
 		@foreach (var agent in _agents)
 		{
 			<AgentRow @key="agent.Id" Agent="agent" OnToggleEnabled="ToggleEnabled" OnEdit="EditAgent" OnDelete="ShowDeleteConfirmation" />
@@ -36,7 +36,7 @@ else
 
 <ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete Agent"
 				   Message="@($"Are you sure you want to delete {_agentToDelete?.Name}?")" SubMessage="This action cannot be undone."
-				   ConfirmText="Delete" ButtonClass="btn-danger" IsProcessing="_isDeleting" OnConfirm="ConfirmDelete"
+				   ConfirmText="Delete" ButtonClass="btn-solid theme-danger" IsProcessing="_isDeleting" OnConfirm="ConfirmDelete"
 				   OnCancel="CancelDelete" />
 
 @code {

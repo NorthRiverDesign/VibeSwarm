@@ -37,6 +37,8 @@ public sealed class SettingsServiceTests : IDisposable
 			InjectRepoMap = false,
 			InjectEfficiencyRules = false,
 			EnableCommitAttribution = false,
+			EnableHttps = true,
+			EnableBrowserTools = false,
 			CriticalErrorLogRetentionDays = 45,
 			CriticalErrorLogMaxEntries = 350,
 			IdeaExpansionPromptTemplate = "Expand {{idea}}",
@@ -52,6 +54,8 @@ public sealed class SettingsServiceTests : IDisposable
 		Assert.False(saved.InjectRepoMap);
 		Assert.False(saved.InjectEfficiencyRules);
 		Assert.False(saved.EnableCommitAttribution);
+		Assert.True(saved.EnableHttps);
+		Assert.False(saved.EnableBrowserTools);
 		Assert.Equal(45, saved.CriticalErrorLogRetentionDays);
 		Assert.Equal(350, saved.CriticalErrorLogMaxEntries);
 		Assert.Equal("Expand {{idea}}", saved.IdeaExpansionPromptTemplate);
@@ -69,6 +73,8 @@ public sealed class SettingsServiceTests : IDisposable
 		var settings = await service.GetSettingsAsync();
 
 		Assert.True(settings.EnableCommitAttribution);
+		Assert.False(settings.EnableHttps);
+		Assert.True(settings.EnableBrowserTools);
 	}
 
 	[Fact]
@@ -82,8 +88,9 @@ public sealed class SettingsServiceTests : IDisposable
 		Assert.Equal(PromptBuilder.DefaultIdeaExpansionPromptTemplate, settings.IdeaExpansionPromptTemplate);
 		Assert.Equal(PromptBuilder.DefaultIdeaImplementationPromptTemplate, settings.IdeaImplementationPromptTemplate);
 		Assert.Equal(PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate, settings.ApprovedIdeaImplementationPromptTemplate);
-		Assert.Contains("aim for 72 chars; hard max 96 chars", settings.IdeaImplementationPromptTemplate);
-		Assert.Contains("aim for 72 chars; hard max 96 chars", settings.ApprovedIdeaImplementationPromptTemplate);
+		// Every job's system prompt rules ask for the commit summary, so the templates don't repeat it.
+		Assert.DoesNotContain("<commit-summary>", settings.IdeaImplementationPromptTemplate);
+		Assert.DoesNotContain("<commit-summary>", settings.ApprovedIdeaImplementationPromptTemplate);
 	}
 
 	[Fact]
@@ -232,8 +239,10 @@ public sealed class SettingsServiceTests : IDisposable
 		Assert.Equal(PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate, saved.ApprovedIdeaImplementationPromptTemplate);
 	}
 
-	[Fact]
-	public async Task GetSettingsAsync_UpgradesPreviousDefaultCommitSummaryPromptLimits()
+	[Theory]
+	[InlineData("max 72 chars")]
+	[InlineData("aim for 72 chars; hard max 96 chars")]
+	public async Task GetSettingsAsync_UpgradesPreviousDefaultCommitSummaryPromptLimits(string limit)
 	{
 		const string previousIdeaImplementationPromptTemplate =
 			"""
@@ -289,8 +298,8 @@ public sealed class SettingsServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			TimeZoneId = "UTC",
 			IdeaExpansionPromptTemplate = PromptBuilder.DefaultIdeaExpansionPromptTemplate,
-			IdeaImplementationPromptTemplate = previousIdeaImplementationPromptTemplate,
-			ApprovedIdeaImplementationPromptTemplate = previousApprovedIdeaImplementationPromptTemplate
+			IdeaImplementationPromptTemplate = previousIdeaImplementationPromptTemplate.Replace("max 72 chars", limit),
+			ApprovedIdeaImplementationPromptTemplate = previousApprovedIdeaImplementationPromptTemplate.Replace("max 72 chars", limit)
 		});
 		await seedContext.SaveChangesAsync();
 

@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Components;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Inference;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.VersionControl;
 
 namespace VibeSwarm.Client.Pages;
@@ -13,6 +15,10 @@ public partial class JobDetail : ComponentBase
     private bool IsRetrying { get; set; }
     private bool IsResuming { get; set; }
     private bool IsForceResetting { get; set; }
+    private bool IsRunningNext { get; set; }
+
+    // Why a queued job has not started yet; null once it leaves the queue.
+    private JobQueueStatus? _queueStatus;
 
     // Retry modal state
     private bool _showRetryModal = false;
@@ -36,10 +42,7 @@ public partial class JobDetail : ComponentBase
 		IsRetrying = false;
 		IsForceResetting = false;
 
-		lock (_liveOutput)
-		{
-			_liveOutput.Clear();
-		}
+		_liveOutput.Reset();
 
 		_pendingSessionMessages.Clear();
 		_pendingOutputUpdate = false;
@@ -118,21 +121,18 @@ public partial class JobDetail : ComponentBase
                     || Job.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest;
             }
 
-            // Populate live output buffer from persisted console output so refreshes can still
-            // reconstruct the chat-style transcript even after the job has completed.
-            if (Job != null && !string.IsNullOrEmpty(Job.ConsoleOutput))
+            // A running job's output comes from the server's live copy, so every device shows the
+            // same lines however late it opened the page, and a refresh fills in any it missed.
+            if (Job != null && IsJobActive)
             {
-                lock (_liveOutput)
-                {
-                    if (!_liveOutput.Any())
-                    {
-                        var lines = Job.ConsoleOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                        foreach (var line in lines.TakeLast(MaxOutputLines))
-                        {
-                            _liveOutput.Add(JobSessionDisplayBuilder.CreateOutputLine(line, DateTime.UtcNow));
-                        }
-                    }
-                }
+                await CatchUpLiveOutputAsync();
+            }
+
+            // Otherwise persisted console output rebuilds the chat-style transcript, as after the
+            // job has completed. (While running, it holds only the newest part of the output.)
+            if (Job != null && !string.IsNullOrEmpty(Job.ConsoleOutput) && !_liveOutput.IsSynced && _liveOutput.IsEmpty)
+            {
+                _liveOutput.LoadSavedOutput(Job.ConsoleOutput);
             }
 
             if (Job != null && Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.InteractionChoices))
@@ -162,6 +162,8 @@ public partial class JobDetail : ComponentBase
                 catch { /* non-critical — page still works without change history */ }
             }
 
+            await LoadQueueStatusAsync();
+
             ReconcilePendingSessionMessages();
 
             if (Job != null && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled) &&
@@ -188,6 +190,50 @@ public partial class JobDetail : ComponentBase
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private async Task LoadQueueStatusAsync()
+    {
+        if (Job?.Status != JobStatus.New)
+        {
+            _queueStatus = null;
+            return;
+        }
+
+        try { _queueStatus = await JobService.GetQueueStatusAsync(Job.Id); }
+        catch { /* non-critical — the queued notice still shows without a reason */ }
+    }
+
+    private async Task RunNext()
+    {
+        if (Job == null || IsRunningNext) return;
+
+        IsRunningNext = true;
+
+        try
+        {
+            if (await JobService.RunNextAsync(Job.Id))
+            {
+                var provider = Job.Provider?.Name;
+                NotificationService.ShowProjectSuccess(Job.Project?.Name, string.IsNullOrWhiteSpace(provider)
+                    ? "This job runs next."
+                    : $"This job runs next, as soon as {provider} is free.");
+            }
+            else
+            {
+                NotificationService.ShowProjectError(Job.Project?.Name, "This job is no longer queued.");
+            }
+
+            await LoadJob();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowProjectError(Job.Project?.Name, $"Could not move the job up: {ex.Message}");
+        }
+        finally
+        {
+            IsRunningNext = false;
         }
     }
 
@@ -339,6 +385,31 @@ public partial class JobDetail : ComponentBase
         }
     }
 
+    // The inference model tried first for follow-ups ("qwen3 on Desktop"), or null when none can
+    // write them; the same models answer agents' questions.
+    private string? _followUpDraftModel;
+
+    private async Task LoadFollowUpDraftAvailabilityAsync()
+    {
+        try
+        {
+            var providers = await InferenceProviderService.GetAllAsync();
+            var (provider, model) = InferenceTaskModels.Candidates(providers, InferenceTaskModels.AgentAnswer).FirstOrDefault();
+            _followUpDraftModel = provider == null ? null : $"{model.ModelId} on {provider.Name}";
+            if (_followUpDraftModel != null && !_disposed)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch
+        {
+            _followUpDraftModel = null;
+        }
+    }
+
+    private Task<FollowUpDraft> DraftFollowUpAsync(FollowUpDraftRequest request)
+        => JobService.DraftFollowUpAsync(Job!.Id, request);
+
     private async Task ContinueJobWithFollowUp(string followUpPrompt)
     {
         if (Job == null || string.IsNullOrWhiteSpace(followUpPrompt)) return;
@@ -392,7 +463,7 @@ public partial class JobDetail : ComponentBase
     {
         if (IsFinishedStatus(previousStatus) && !IsFinishedStatus(newStatus))
         {
-            ClearLiveOutput();
+            _liveOutput.Reset();
         }
     }
 

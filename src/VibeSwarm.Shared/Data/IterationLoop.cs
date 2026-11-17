@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace VibeSwarm.Shared.Data;
 
@@ -30,7 +31,8 @@ public enum IterationLoopStatus
 	Stopped = 4,
 
 	/// <summary>
-	/// Stopped because the provider's usage limit was reached.
+	/// Stopped because the provider's usage limit was reached. Only older loops end here:
+	/// a running loop now waits for the limit to reset instead.
 	/// </summary>
 	Exhausted = 5,
 
@@ -45,6 +47,15 @@ public enum IterationLoopStatus
 /// When running, the loop autonomously scans the codebase, generates improvement ideas,
 /// executes them as jobs, evaluates results, and repeats until a guardrail triggers.
 /// </summary>
+public enum AutoPilotIdeaSource
+{
+	/// <summary>Auto-pilot comes up with one idea of its own each iteration.</summary>
+	OwnIdeas = 0,
+
+	/// <summary>Auto-pilot runs only ideas the owner approved, and asks the Lead for more when they run out.</summary>
+	ApprovedBacklog = 1
+}
+
 public class IterationLoop
 {
 	public Guid Id { get; set; }
@@ -60,8 +71,27 @@ public class IterationLoop
 	#region Configuration
 
 	/// <summary>
-	/// Inference provider (e.g., Grok, Ollama) used for idea generation.
-	/// If null, falls back to the coding provider or project default.
+	/// Whether ideas come from inference rather than the coding provider. With no
+	/// <see cref="InferenceProviderId"/>, the first enabled inference provider that answers is used.
+	/// When inference can't answer, the coding provider is asked instead.
+	/// </summary>
+	public bool UseInferenceForIdeas { get; set; }
+
+	/// <summary>
+	/// Where the loop's ideas come from: its own, one per iteration, or the project's approved
+	/// backlog (ideas the owner typed and Lead suggestions the owner approved).
+	/// </summary>
+	public AutoPilotIdeaSource IdeaSource { get; set; } = AutoPilotIdeaSource.OwnIdeas;
+
+	/// <summary>
+	/// When the loop last told the owner it was waiting for approved ideas; cleared once one arrives,
+	/// so the owner is told once rather than on every tick.
+	/// </summary>
+	public DateTime? ApprovalNudgeSentAt { get; set; }
+
+	/// <summary>
+	/// Inference provider (e.g., Grok, Ollama) used for idea generation. Setting it also means
+	/// ideas come from inference, for loops started before <see cref="UseInferenceForIdeas"/>.
 	/// </summary>
 	public Guid? InferenceProviderId { get; set; }
 
@@ -98,10 +128,15 @@ public class IterationLoop
 	public int CooldownSeconds { get; set; } = 60;
 
 	/// <summary>
-	/// Whether to auto-commit changes after each successful job.
+	/// After this many successful changes, the next iteration is a polish pass that reviews and
+	/// tidies them instead of starting something new. 0 = never.
 	/// </summary>
-	public bool AutoCommit { get; set; } = true;
+	public int PolishEveryIterations { get; set; } = 5;
 
+	/// <summary>
+	/// Whether each change is pushed after it is committed. Auto-pilot always commits its
+	/// changes, so every iteration builds on the one before.
+	/// </summary>
 	public bool AutoPush { get; set; }
 
 	#endregion
@@ -122,6 +157,47 @@ public class IterationLoop
 	public Guid? CurrentJobId { get; set; }
 	public Job? CurrentJob { get; set; }
 	public Guid? CurrentIdeaId { get; set; }
+
+	/// <summary>
+	/// How many times the loop resumed its current job after a restart, crash or power loss
+	/// interrupted it. Capped, so a job that keeps getting interrupted stops the loop instead.
+	/// </summary>
+	public int CurrentJobResumeCount { get; set; }
+
+	/// <summary>
+	/// Successful changes since the last polish pass.
+	/// </summary>
+	public int IterationsSinceLastPolish { get; set; }
+
+	/// <summary>
+	/// Idea rounds in a row that produced nothing to build, because every suggestion repeated
+	/// earlier work or the idea source did not answer. Each miss moves to the next focus area.
+	/// </summary>
+	public int ConsecutiveIdeaMisses { get; set; }
+
+	/// <summary>
+	/// What the loop is waiting for right now, such as a usage limit reset. Null while it is
+	/// simply working.
+	/// </summary>
+	[StringLength(500)]
+	public string? StatusMessage { get; set; }
+
+	/// <summary>Filled in for status responses; not stored.</summary>
+	[NotMapped]
+	public string? CurrentJobTitle { get; set; }
+
+	[NotMapped]
+	public JobStatus? CurrentJobStatus { get; set; }
+
+	/// <summary>Set while the current job is held in the queue, e.g. until a usage limit resets.</summary>
+	[NotMapped]
+	public DateTime? CurrentJobNotBeforeUtc { get; set; }
+
+	/// <summary>
+	/// Ideas come from inference, for status responses and the start form.
+	/// </summary>
+	[NotMapped]
+	public bool IdeasFromInference => UseInferenceForIdeas || InferenceProviderId.HasValue;
 
 	#endregion
 

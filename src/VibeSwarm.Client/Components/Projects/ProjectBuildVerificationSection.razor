@@ -1,36 +1,37 @@
-<div class="form-check form-switch mb-1">
-	<InputCheckbox id="modal-buildVerificationEnabled" @bind-Value="Project.BuildVerificationEnabled"
-				   class="form-check-input" />
-	<label class="form-check-label" for="modal-buildVerificationEnabled">Verify builds before committing</label>
+<div class="form-field mb-1">
+	<div class="switch">
+		<InputCheckbox role="switch" switch id="modal-buildVerificationEnabled" @bind-Value="Project.BuildVerificationEnabled" />
+	</div>
+	<label for="modal-buildVerificationEnabled">Verify builds before committing</label>
 </div>
-<div class="form-text mb-3">
+<div class="form-text mb-5">
 	VibeSwarm runs these commands after a job finishes and only commits when they pass.
 </div>
 
 @if (!string.IsNullOrWhiteSpace(DetectedStack))
 {
-	<div class="alert alert-info d-flex gap-2 py-2 px-3 small" role="status">
+	<div class="alert theme-info py-3 px-5 small" role="status">
 		<i class="bi bi-magic flex-shrink-0 mt-1"></i>
-		<div class="min-width-0">Detected a <strong>@DetectedStack</strong> project — the commands below were filled in for you.</div>
+		<div class="min-w-0">Detected a <strong>@DetectedStack</strong> project — the commands below were filled in for you.</div>
 	</div>
 }
 
-<div class="mb-3">
+<div class="mb-5">
 	<label for="modal-buildCommand" class="form-label">
-		Build command <span class="text-body-secondary fw-normal">(required when enabled)</span>
+		Build command <span class="fg-1 fw-normal">(required when enabled)</span>
 	</label>
 	<InputText id="modal-buildCommand" @bind-Value="Project.BuildCommand" class="form-control font-monospace"
 			   placeholder="dotnet build" maxlength="500" />
-	<ValidationMessage For="@(() => Project.BuildCommand)" class="text-danger small" />
+	<ValidationMessage For="@(() => Project.BuildCommand)" class="fg-danger small" />
 </div>
 
 <div>
 	<label for="modal-testCommand" class="form-label">
-		Test command <span class="text-body-secondary fw-normal">(optional)</span>
+		Test command <span class="fg-1 fw-normal">(optional)</span>
 	</label>
 	<InputText id="modal-testCommand" @bind-Value="Project.TestCommand" class="form-control font-monospace"
 			   placeholder="dotnet test" maxlength="500" />
-	<ValidationMessage For="@(() => Project.TestCommand)" class="text-danger small" />
+	<ValidationMessage For="@(() => Project.TestCommand)" class="fg-danger small" />
 	<div class="form-text">Runs after the build command succeeds.</div>
 </div>
 

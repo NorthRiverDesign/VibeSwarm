@@ -13,16 +13,24 @@ public partial class JobProcessingService
     /// <summary>
     /// Performs auto-commit (and optionally push) based on project settings.
     /// </summary>
-    private async Task PerformAutoCommitAsync(
+    private Task PerformAutoCommitAsync(
         Job job,
         string workingDirectory,
         bool enableCommitAttribution,
+        CancellationToken cancellationToken) =>
+        CommitJobWorkAsync(job, workingDirectory, enableCommitAttribution, push: true, cancellationToken);
+
+    /// <param name="push">False leaves the push to the caller, as for a swarm member whose commit
+    /// is pushed once it has been replayed onto the project's branch.</param>
+    private async Task CommitJobWorkAsync(
+        Job job,
+        string workingDirectory,
+        bool enableCommitAttribution,
+        bool push,
         CancellationToken cancellationToken)
     {
         try
         {
-            var shouldCreatePullRequest = ShouldCreatePullRequest(job);
-
             // Check if there are uncommitted changes
             var hasChanges = await _versionControlService.HasUncommittedChangesAsync(workingDirectory, cancellationToken);
             if (!hasChanges)
@@ -41,15 +49,10 @@ public partial class JobProcessingService
                             "Agent already committed changes for job {JobId}. Recorded HEAD {CommitHash} as GitCommitHash.",
                             job.Id, currentHash[..Math.Min(8, currentHash.Length)]);
 
-                        // Determine effective commit mode: use project setting, or default to CommitOnly for IdeasAutoCommit
-                        var effectiveMode = shouldCreatePullRequest
-                            ? AutoCommitMode.CommitAndPush
-                            : job.Project!.AutoCommitMode != AutoCommitMode.Off
-                            ? job.Project.AutoCommitMode
-                            : AutoCommitMode.CommitOnly;
+                        var effectiveMode = GetEffectiveCommitMode(job);
 
                         // Push if configured
-                        if (effectiveMode == AutoCommitMode.CommitAndPush)
+                        if (push && effectiveMode == AutoCommitMode.CommitAndPush)
                         {
                             await PushJobCommitAsync(job, workingDirectory, cancellationToken);
                         }
@@ -66,12 +69,7 @@ public partial class JobProcessingService
                 return;
             }
 
-            // Determine effective commit mode: use project setting, or default to CommitOnly for IdeasAutoCommit
-            var effectiveCommitMode = shouldCreatePullRequest
-                ? AutoCommitMode.CommitAndPush
-                : job.Project!.AutoCommitMode != AutoCommitMode.Off
-                ? job.Project.AutoCommitMode
-                : AutoCommitMode.CommitOnly;
+            var effectiveCommitMode = GetEffectiveCommitMode(job);
 
             var commitMessage = await BuildCommitMessageAsync(job, workingDirectory, cancellationToken);
             var commitOptions = CommitAttributionHelper.BuildGitCommitOptions(job.Provider?.Type, enableCommitAttribution);
@@ -92,7 +90,7 @@ public partial class JobProcessingService
                     job.Id, commitResult.CommitHash?[..Math.Min(8, commitResult.CommitHash?.Length ?? 0)]);
 
                 // Push if configured
-                if (effectiveCommitMode == AutoCommitMode.CommitAndPush)
+                if (push && effectiveCommitMode == AutoCommitMode.CommitAndPush)
                 {
                     await PushJobCommitAsync(job, workingDirectory, cancellationToken);
                 }
@@ -188,6 +186,35 @@ public partial class JobProcessingService
     }
 
     /// <summary>
+    /// A job that merged another branch in must not commit while any file the merge conflicted
+    /// on still holds conflict markers. Returns false (and records why) if one does.
+    /// </summary>
+    private async Task<bool> VerifyBranchMergeResolvedAsync(
+        Job job,
+        string workingDirectory,
+        BranchMergeStart? branchMerge,
+        CancellationToken cancellationToken)
+    {
+        if (_workSnapshots == null || branchMerge is not { ConflictedFiles.Count: > 0 })
+        {
+            return true;
+        }
+
+        var unresolved = await _workSnapshots.FindUnresolvedConflictsAsync(workingDirectory, branchMerge.ConflictedFiles, cancellationToken);
+        if (unresolved.Count == 0)
+        {
+            return true;
+        }
+
+        _logger.LogWarning("Job {JobId} left merge conflict markers in {Files}", job.Id, string.Join(", ", unresolved));
+        job.BuildVerified = false;
+        job.BuildOutput = $"Merging '{job.MergeFromBranch}' conflicted, and these files still contain conflict markers (<<<<<<< / >>>>>>>):" + Environment.NewLine +
+            string.Join(Environment.NewLine, unresolved.Select(file => $"- {file}")) + Environment.NewLine +
+            "The merge was not committed. Deploy again to have a provider retry it.";
+        return false;
+    }
+
+    /// <summary>
     /// Runs the project's configured build and test commands to verify the agent's changes compile and pass tests.
     /// Returns true if verification passed (or was not enabled), false if the build/tests failed.
     /// </summary>
@@ -221,6 +248,7 @@ public partial class JobProcessingService
             {
                 _logger.LogWarning("Build verification FAILED for job {JobId}. Build command exited with code {ExitCode}",
                     job.Id, buildResult.ExitCode);
+                LogVerificationFailures(job.Id, outputBuilder.ToString());
                 job.BuildVerified = false;
                 job.BuildOutput = TruncateBuildOutput(outputBuilder.ToString());
                 return false;
@@ -231,26 +259,22 @@ public partial class JobProcessingService
             // Run test command if configured
             if (!string.IsNullOrWhiteSpace(project.TestCommand))
             {
-                var testResult = await RunShellCommandAsync(project.TestCommand.Trim(), workingDirectory, cancellationToken);
-                outputBuilder.AppendLine();
-                outputBuilder.AppendLine($"=== Test Command: {project.TestCommand.Trim()} ===");
-                outputBuilder.AppendLine($"Exit Code: {testResult.ExitCode}");
-                if (!string.IsNullOrWhiteSpace(testResult.Output))
-                {
-                    outputBuilder.AppendLine(testResult.Output);
-                }
-                if (!string.IsNullOrWhiteSpace(testResult.Error))
-                {
-                    outputBuilder.AppendLine(testResult.Error);
-                }
+                var testResult = await RunTestCommandAsync(project.TestCommand.Trim(), workingDirectory, outputBuilder, cancellationToken);
 
                 if (testResult.ExitCode != 0)
                 {
-                    _logger.LogWarning("Test verification FAILED for job {JobId}. Test command exited with code {ExitCode}",
+                    _logger.LogWarning("Test verification FAILED for job {JobId}. Test command exited with code {ExitCode} on both runs",
                         job.Id, testResult.ExitCode);
+                    LogVerificationFailures(job.Id, outputBuilder.ToString());
                     job.BuildVerified = false;
                     job.BuildOutput = TruncateBuildOutput(outputBuilder.ToString());
                     return false;
+                }
+
+                if (testResult.Runs > 1)
+                {
+                    _logger.LogWarning("Test command failed for job {JobId}, then passed when re-run; treating the failure as a flaky test",
+                        job.Id);
                 }
 
                 _logger.LogInformation("Test command succeeded for job {JobId}", job.Id);
@@ -329,6 +353,47 @@ public partial class JobProcessingService
         _logger.LogInformation("Created pull request for job {JobId}: {PullRequestUrl}", job.Id, job.PullRequestUrl);
     }
 
+    /// <summary>
+    /// Runs the project's test command, and once more if it fails. Timing-sensitive tests fail
+    /// when other jobs or builds are loading the CPU, and a false failure leaves the job's finished
+    /// work uncommitted. A real failure fails again; a flaky one usually passes the second time.
+    /// Both runs' output goes into <paramref name="outputBuilder"/>.
+    /// </summary>
+    internal static async Task<(int ExitCode, int Runs)> RunTestCommandAsync(
+        string command, string workingDirectory, StringBuilder outputBuilder, CancellationToken cancellationToken)
+    {
+        const int maxRuns = 2;
+        var exitCode = 0;
+        var run = 0;
+        while (run < maxRuns)
+        {
+            run++;
+            var result = await RunShellCommandAsync(command, workingDirectory, cancellationToken);
+            exitCode = result.ExitCode;
+
+            outputBuilder.AppendLine();
+            outputBuilder.AppendLine(run == 1
+                ? $"=== Test Command: {command} ==="
+                : $"=== Test Command (re-run after a failure): {command} ===");
+            outputBuilder.AppendLine($"Exit Code: {exitCode}");
+            if (!string.IsNullOrWhiteSpace(result.Output))
+            {
+                outputBuilder.AppendLine(result.Output);
+            }
+            if (!string.IsNullOrWhiteSpace(result.Error))
+            {
+                outputBuilder.AppendLine(result.Error);
+            }
+
+            if (exitCode == 0)
+            {
+                break;
+            }
+        }
+
+        return (exitCode, run);
+    }
+
     internal static async Task<(int ExitCode, string Output, string Error)> RunShellCommandAsync(
         string command, string workingDirectory, CancellationToken cancellationToken)
     {
@@ -373,6 +438,35 @@ public partial class JobProcessingService
     }
 
     /// <summary>
+    /// A follow-up clears the job's saved verification output, so the log is the only lasting
+    /// record of a failed check. Logging just the exit code left nothing to diagnose.
+    /// </summary>
+    private void LogVerificationFailures(Guid jobId, string output)
+    {
+        var failures = FindVerificationFailureLines(output);
+        if (failures.Count > 0)
+        {
+            _logger.LogWarning("Verification failures for job {JobId}: {Failures}", jobId, string.Join(" ; ", failures));
+        }
+    }
+
+    /// <summary>
+    /// Picks the lines that say what failed out of build and test output: failing tests, the
+    /// failed run summary, compiler and MSBuild errors, and aborted test runs.
+    /// </summary>
+    internal static IReadOnlyList<string> FindVerificationFailureLines(string output, int maxLines = 20)
+    {
+        return output.Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.StartsWith("Failed", StringComparison.Ordinal)
+                || line.Contains(": error ", StringComparison.Ordinal)
+                || line.Contains("aborted", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.Ordinal)
+            .Take(maxLines)
+            .ToList();
+    }
+
+    /// <summary>
     /// VibeSwarm loads its own database settings into its process environment, and every child
     /// inherits them. A project's tests would then read VibeSwarm's provider and connection
     /// string instead of their own, so verification runs without them.
@@ -408,7 +502,29 @@ public partial class JobProcessingService
     {
         return job.Project?.AutoCommitMode != AutoCommitMode.Off
             || job.Project?.IdeasAutoCommit == true
+            || job.CommitModeOverride is AutoCommitMode.CommitOnly or AutoCommitMode.CommitAndPush
             || ShouldCreatePullRequest(job);
+    }
+
+    /// <summary>
+    /// How a delivered job's changes go out: a pull request always pushes, then the job's own
+    /// override (auto-pilot), then the project setting, else commit only (ideas auto-commit).
+    /// </summary>
+    internal static AutoCommitMode GetEffectiveCommitMode(Job job)
+    {
+        if (ShouldCreatePullRequest(job))
+        {
+            return AutoCommitMode.CommitAndPush;
+        }
+
+        if (job.CommitModeOverride is AutoCommitMode.CommitOnly or AutoCommitMode.CommitAndPush)
+        {
+            return job.CommitModeOverride.Value;
+        }
+
+        return job.Project?.AutoCommitMode is AutoCommitMode.CommitOnly or AutoCommitMode.CommitAndPush
+            ? job.Project.AutoCommitMode
+            : AutoCommitMode.CommitOnly;
     }
 
     private static bool ShouldCreatePullRequest(Job job)

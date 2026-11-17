@@ -1,0 +1,60 @@
+@* One on/off setting as a row of a grouped list (`list-group rounded-9`): an icon, a title, a short
+   quiet line saying what it does, and a switch. The whole row is the switch's label, so a tap
+   anywhere flips it. AttentionLine replaces the second line while the setting can't take effect. *@
+
+<label class="list-group-item d-flex align-items-center gap-5 cursor-pointer @Class" for="@Id">
+	@if (!string.IsNullOrEmpty(Icon))
+	{
+		<i class="bi bi-@Icon flex-shrink-0 @(Value ? "fg-primary" : "fg-2")"></i>
+	}
+	<span class="flex-grow-1 min-w-0">
+		<span class="d-block fw-medium">@Title</span>
+		@if (!string.IsNullOrWhiteSpace(AttentionLine))
+		{
+			<span class="d-block small fg-emphasis-warning">@AttentionLine</span>
+		}
+		else if (!string.IsNullOrWhiteSpace(Subtitle))
+		{
+			<span class="d-block small fg-1">@Subtitle</span>
+		}
+	</span>
+	<span class="switch flex-shrink-0">
+		<input type="checkbox" role="switch" switch id="@Id" checked="@Value" disabled="@Disabled" @onchange="HandleChangeAsync" />
+	</span>
+</label>
+
+@code {
+	[Parameter, EditorRequired]
+	public string Id { get; set; } = string.Empty;
+
+	[Parameter, EditorRequired]
+	public string Title { get; set; } = string.Empty;
+
+	[Parameter]
+	public string? Subtitle { get; set; }
+
+	/// <summary>Shown in place of the subtitle, in the warning color.</summary>
+	[Parameter]
+	public string? AttentionLine { get; set; }
+
+	[Parameter]
+	public string? Icon { get; set; }
+
+	[Parameter]
+	public bool Value { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> ValueChanged { get; set; }
+
+	[Parameter]
+	public bool Disabled { get; set; }
+
+	[Parameter]
+	public string? Class { get; set; }
+
+	private async Task HandleChangeAsync(ChangeEventArgs e)
+	{
+		Value = e.Value is bool isOn && isOn;
+		await ValueChanged.InvokeAsync(Value);
+	}
+}

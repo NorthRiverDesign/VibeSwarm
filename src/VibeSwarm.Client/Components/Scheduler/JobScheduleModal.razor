@@ -13,11 +13,11 @@
 	<ChildContent>
 		<EditForm Model="@Schedule" OnValidSubmit="HandleValidSubmit">
 			<DataAnnotationsValidator />
-			<ValidationSummary class="text-danger mb-3" />
+			<ValidationSummary class="fg-danger mb-5" />
 
-			<div class="mb-3">
+			<div class="mb-5">
 				<label for="schedule-project" class="form-label">Project</label>
-				<select id="schedule-project" class="form-select" value="@GetProjectValue()" @onchange="OnProjectChanged">
+				<select id="schedule-project" class="form-control" value="@GetProjectValue()" @onchange="OnProjectChanged">
 					<option value="">Select project...</option>
 					@foreach (var project in _projects)
 					{
@@ -26,10 +26,10 @@
 				</select>
 			</div>
 
-			<div class="row g-3 mb-3">
-				<div class="col-12 col-lg-4">
+			<div class="row g-5 mb-5">
+				<div class="col-12 lg:col-4">
 					<label for="schedule-type" class="form-label">Schedule Type</label>
-					<InputSelect id="schedule-type" @bind-Value="Schedule.ScheduleType" @bind-Value:after="OnScheduleTypeChanged" class="form-select">
+					<InputSelect id="schedule-type" @bind-Value="Schedule.ScheduleType" @bind-Value:after="OnScheduleTypeChanged" class="form-control">
 						<option value="@JobScheduleType.RunJob">Run Job</option>
 						<option value="@JobScheduleType.GenerateIdeas">Generate Ideas</option>
 					</InputSelect>
@@ -38,19 +38,19 @@
 
 			@if (Schedule.ScheduleType == JobScheduleType.RunJob)
 			{
-				<div class="mb-3">
+				<div class="mb-5">
 					<label for="schedule-prompt" class="form-label">Prompt</label>
 					<InputTextArea id="schedule-prompt" @bind-Value="Schedule.Prompt" class="form-control" rows="5"
 								   placeholder="update dependencies, check for security issues" />
-					<ValidationMessage For="@(() => Schedule.Prompt)" class="text-danger small" />
+					<ValidationMessage For="@(() => Schedule.Prompt)" class="fg-danger small" />
 					<div class="form-text">Each time this schedule runs, VibeSwarm will create a new job with this prompt.</div>
 				</div>
 			}
 			else
 			{
-				<div class="mb-3">
+				<div class="mb-5">
 					<label for="schedule-idea-count" class="form-label">Ideas to Generate</label>
-					<InputSelect id="schedule-idea-count" @bind-Value="Schedule.IdeaCount" class="form-select">
+					<InputSelect id="schedule-idea-count" @bind-Value="Schedule.IdeaCount" class="form-control">
 						@for (var count = ValidationLimits.JobScheduleIdeaCountMin; count <= ValidationLimits.JobScheduleIdeaCountMax; count++)
 						{
 							<option value="@count">@count</option>
@@ -60,12 +60,12 @@
 				</div>
 			}
 
-			<div class="row g-3">
+			<div class="row g-5">
 				@if (Schedule.ScheduleType == JobScheduleType.RunJob)
 				{
-					<div class="col-12 col-lg-4">
+					<div class="col-12 lg:col-4">
 						<label for="schedule-target" class="form-label">Executor Type</label>
-						<InputSelect id="schedule-target" @bind-Value="Schedule.ExecutionTarget" @bind-Value:after="OnExecutionTargetChanged" class="form-select">
+						<InputSelect id="schedule-target" @bind-Value="Schedule.ExecutionTarget" @bind-Value:after="OnExecutionTargetChanged" class="form-control">
 							<option value="@JobScheduleExecutionTarget.Provider">Provider</option>
 							<option value="@JobScheduleExecutionTarget.Agent">Agent</option>
 						</InputSelect>
@@ -74,9 +74,9 @@
 
 					@if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 					{
-						<div class="col-12 col-lg-4">
+						<div class="col-12 lg:col-4">
 							<label for="schedule-provider" class="form-label">Provider</label>
-							<select id="schedule-provider" class="form-select" value="@GetProviderValue()" @onchange="OnProviderChanged"
+							<select id="schedule-provider" class="form-control" value="@GetProviderValue()" @onchange="OnProviderChanged"
 									disabled="@(!_allowedProviders.Any())">
 								<option value="">@(_allowedProviders.Any() ? "Select provider..." : "No enabled providers")</option>
 								@foreach (var provider in _allowedProviders)
@@ -88,9 +88,9 @@
 					}
 					else
 					{
-						<div class="col-12 col-lg-4">
+						<div class="col-12 lg:col-4">
 							<label for="schedule-team-role" class="form-label">Agent</label>
-							<select id="schedule-team-role" class="form-select" value="@GetAgentValue()" @onchange="OnAgentChanged"
+							<select id="schedule-team-role" class="form-control" value="@GetAgentValue()" @onchange="OnAgentChanged"
 									disabled="@(!_agents.Any())">
 								<option value="">@(_agents.Any() ? "Select agent..." : "No enabled agents")</option>
 								@foreach (var agent in _agents)
@@ -100,16 +100,16 @@
 							</select>
 							@if (!_agents.Any())
 							{
-								<div class="form-text text-warning">Create an enabled agent from the Agents page first.</div>
+								<div class="form-text fg-warning">Create an enabled agent from the Agents page first.</div>
 							}
 						</div>
 					}
 				}
 				else
 				{
-					<div class="col-12 col-lg-4">
+					<div class="col-12 lg:col-4">
 						<label for="schedule-inference-provider" class="form-label">Inference Provider</label>
-						<select id="schedule-inference-provider" class="form-select" value="@GetInferenceProviderValue()" @onchange="OnInferenceProviderChanged"
+						<select id="schedule-inference-provider" class="form-control" value="@GetInferenceProviderValue()" @onchange="OnInferenceProviderChanged"
 								disabled="@(!_inferenceProviders.Any())">
 							<option value="">@(_inferenceProviders.Any() ? "Select inference provider..." : "No enabled inference providers")</option>
 							@foreach (var provider in _inferenceProviders)
@@ -119,15 +119,15 @@
 						</select>
 						@if (!_inferenceProviders.Any())
 						{
-							<div class="form-text text-warning">Configure an enabled inference provider first.</div>
+							<div class="form-text fg-warning">Configure an enabled inference provider first.</div>
 						}
 					</div>
 				}
 
-				<div class="col-12 col-lg-4">
+				<div class="col-12 lg:col-4">
 					<label for="schedule-model" class="form-label">Model</label>
 					<div class="input-group">
-						<select id="schedule-model" class="form-select" @bind="_selectedModelId" @bind:after="OnModelChanged"
+						<select id="schedule-model" class="form-control" @bind="_selectedModelId" @bind:after="OnModelChanged"
 								disabled="@(_isLoadingModels || !_models.Any())">
 							<option value="">@(_isLoadingModels ? "Loading..." : "Use assigned default")</option>
 							@foreach (var model in _models)
@@ -135,13 +135,13 @@
 								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
 							}
 						</select>
-						<button type="button" class="btn btn-secondary"
+						<button type="button" class="btn-solid theme-secondary"
 								@onclick="RefreshModelsAsync"
 								disabled="@(_isRefreshingModels || _isLoadingModels || !ResolveSelectedProviderId().HasValue)"
 								title="Refresh models from provider">
 							@if (_isRefreshingModels)
 							{
-								<span class="spinner-border spinner-border-sm" role="status"></span>
+								<span class="spinner-border spinner-sm" role="status"></span>
 							}
 							else
 							{
@@ -158,7 +158,7 @@
 				var selectedAgent = GetSelectedAgent();
 				@if (selectedAgent != null)
 				{
-					<div class="small text-body-secondary mt-2 d-flex flex-wrap gap-3">
+					<div class="small fg-1 mt-3 d-flex flex-wrap gap-5">
 						<span class="d-inline-flex align-items-center gap-1">
 							<i class="bi bi-cpu opacity-75"></i>
 							@(selectedAgent.DefaultProvider?.Name ?? "No default provider")
@@ -174,10 +174,10 @@
 				}
 			}
 
-			<div class="row g-3 mt-1">
-				<div class="col-12 col-lg-4">
+			<div class="row g-5 mt-1">
+				<div class="col-12 lg:col-4">
 					<label for="schedule-frequency" class="form-label">Schedule</label>
-					<InputSelect id="schedule-frequency" @bind-Value="Schedule.Frequency" class="form-select">
+					<InputSelect id="schedule-frequency" @bind-Value="Schedule.Frequency" class="form-control">
 						@foreach (var frequency in Enum.GetValues<JobScheduleFrequency>())
 						{
 							<option value="@frequency">@GetFrequencyLabel(frequency)</option>
@@ -187,7 +187,7 @@
 
 				@if (Schedule.Frequency == JobScheduleFrequency.Minutes)
 				{
-					<div class="col-12 col-lg-4">
+					<div class="col-12 lg:col-4">
 						<label for="schedule-interval-minutes" class="form-label">Run every</label>
 						<div class="input-group">
 							<InputNumber id="schedule-interval-minutes" @bind-Value="Schedule.IntervalMinutes" class="form-control" min="5" max="60" />
@@ -198,14 +198,14 @@
 				}
 				else if (Schedule.Frequency == JobScheduleFrequency.Hourly)
 				{
-					<div class="col-12 col-lg-4">
+					<div class="col-12 lg:col-4">
 						<label for="schedule-minute" class="form-label">Minute past the hour</label>
 						<InputNumber id="schedule-minute" @bind-Value="Schedule.MinuteUtc" class="form-control" min="0" max="59" />
 					</div>
 				}
 				else
 				{
-					<div class="col-12 col-lg-4">
+					<div class="col-12 lg:col-4">
 						<label for="schedule-time" class="form-label">Run time</label>
 						<input id="schedule-time" type="time" class="form-control" value="@_timeValue" @onchange="OnTimeChanged" />
 					</div>
@@ -213,9 +213,9 @@
 
 				@if (Schedule.Frequency == JobScheduleFrequency.Weekly)
 				{
-					<div class="col-12 col-lg-4">
+					<div class="col-12 lg:col-4">
 						<label for="schedule-weekday" class="form-label">Day of week</label>
-						<InputSelect id="schedule-weekday" @bind-Value="Schedule.WeeklyDay" class="form-select">
+						<InputSelect id="schedule-weekday" @bind-Value="Schedule.WeeklyDay" class="form-control">
 							@foreach (var day in Enum.GetValues<DayOfWeek>())
 							{
 								<option value="@day">@day</option>
@@ -225,7 +225,7 @@
 				}
 				else if (Schedule.Frequency == JobScheduleFrequency.Monthly)
 				{
-					<div class="col-12 col-lg-4">
+					<div class="col-12 lg:col-4">
 						<label for="schedule-day-of-month" class="form-label">Day of month</label>
 						<InputNumber id="schedule-day-of-month" @bind-Value="Schedule.DayOfMonth" class="form-control" min="1" max="31" />
 						<div class="form-text">Shorter months run on their final day.</div>
@@ -233,20 +233,22 @@
 				}
 			</div>
 
-			<div class="form-check form-switch mt-3">
-				<InputCheckbox id="schedule-enabled" @bind-Value="Schedule.IsEnabled" class="form-check-input" />
-				<label class="form-check-label" for="schedule-enabled">Active</label>
+			<div class="form-field mt-5">
+				<div class="switch">
+					<InputCheckbox role="switch" switch id="schedule-enabled" @bind-Value="Schedule.IsEnabled" />
+				</div>
+				<label for="schedule-enabled">Active</label>
 			</div>
 			<div class="form-text">Times use the configured timezone and are converted to UTC when the scheduler runs.</div>
 
 			@if (!string.IsNullOrEmpty(ErrorMessage))
 			{
-				<div class="text-danger small mt-3">
+				<div class="fg-danger small mt-5">
 					<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
 				</div>
 			}
 
-			<div class="mt-4">
+			<div class="mt-7">
 				<ModalFooterActions OnCancel="HandleCancel" Busy="@IsSaving" IsSubmit="true"
 									SubmitText="@(IsEdit ? "Update Schedule" : "Add Schedule")"
 									SubmitLoadingText="Saving..."

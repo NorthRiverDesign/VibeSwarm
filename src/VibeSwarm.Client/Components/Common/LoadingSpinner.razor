@@ -1,7 +1,7 @@
 @* Reusable loading spinner component *@
 
-<div class="d-flex justify-content-center py-@(Size == SpinnerSize.Small ? "3" : "5")">
-	<div class="spinner-border @GetSizeClass() text-primary" role="status">
+<div class="d-flex justify-content-center py-@(Size == SpinnerSize.Small ? "5" : "12")">
+	<div class="spinner-border @GetSizeClass() fg-primary" role="status">
 		<span class="visually-hidden">@Text</span>
 	</div>
 </div>
@@ -13,11 +13,12 @@
 	[Parameter]
 	public SpinnerSize Size { get; set; } = SpinnerSize.Default;
 
+	// Bootstrap 6 sizes spinners in em, so the font size sets the spinner's size.
 	private string GetSizeClass() => Size switch
 	{
-		SpinnerSize.Small => "spinner-border-sm",
-		SpinnerSize.Large => "",
-		_ => ""
+		SpinnerSize.Small => "",
+		SpinnerSize.Large => "fs-3xl",
+		_ => "fs-2xl"
 	};
 
 	public enum SpinnerSize

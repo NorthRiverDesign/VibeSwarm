@@ -19,25 +19,29 @@ public static partial class ProviderVersionReference
 	/// <summary>
 	/// Date the provider integrations were last checked against live CLI releases.
 	/// </summary>
-	public static readonly DateOnly LastReviewed = new(2026, 10, 1);
+	public static readonly DateOnly LastReviewed = new(2026, 11, 11);
 
 	private static readonly Dictionary<ProviderType, ProviderVersionTarget> Targets = new()
 	{
 		[ProviderType.Claude] = new ProviderVersionTarget(
 			ProviderType.Claude,
 			Executable: "claude",
-			VerifiedAgainst: new Version(2, 1, 287),
+			VerifiedAgainst: new Version(2, 1, 322),
 			MinimumSupported: new Version(2, 0, 0),
 			DocumentationUrl: "https://code.claude.com/docs/en/cli-reference",
 			Notes: "Usage limits arrive as 'rate_limit_event' stream-json messages carrying "
 				+ "five_hour and seven_day windows. Effort levels are low/medium/high/xhigh/max; "
 				+ "'standard' is ignored with a warning, not aliased. --bare never reads the OAuth "
-				+ "login, so it needs an API key."),
+				+ "login, so it needs an API key. Since 2.1.267 a resumed conversation reuses the "
+				+ "system prompt recorded on its first run unless --system-prompt-snapshot off is passed. "
+				+ "Model aliases (sonnet, opus, haiku, fable) follow the newest model of each line. "
+				+ "The hidden --advisor <model> flag (2.1.232+) turns on the server-side advisor tool, "
+				+ "skipped when weaker than the main model; CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1 turns it off."),
 
 		[ProviderType.Copilot] = new ProviderVersionTarget(
 			ProviderType.Copilot,
 			Executable: "copilot",
-			VerifiedAgainst: new Version(1, 0, 91),
+			VerifiedAgainst: new Version(1, 0, 95),
 			MinimumSupported: new Version(1, 0, 0),
 			DocumentationUrl: "https://docs.github.com/en/copilot/how-tos/copilot-cli",
 			Notes: "Billing is moving from premium requests to GitHub AI Credits (--max-ai-credits). "
@@ -49,12 +53,20 @@ public static partial class ProviderVersionReference
 		[ProviderType.OpenCode] = new ProviderVersionTarget(
 			ProviderType.OpenCode,
 			Executable: "opencode",
-			VerifiedAgainst: new Version(1, 18, 31),
+			VerifiedAgainst: new Version(2, 0, 27),
 			MinimumSupported: new Version(1, 0, 0),
 			DocumentationUrl: "https://opencode.ai/docs/cli",
 			Notes: "Bring-your-own-model harness with no first-party quota. Reasoning effort maps to "
-				+ "--variant. Metering depends entirely on the configured model provider, so locally "
-				+ "hosted open-source models are unmetered."),
+				+ "--variant on 1.x. --auto (1.17.12+) replaced --dangerously-skip-permissions, which "
+				+ "stays as a hidden alias. OpenCode 2 (npm @opencode/cli, version output "
+				+ "'opencode v2.x') rejects --variant and --dir: the variant goes on the model as "
+				+ "provider/model#variant, and --standalone keeps run off the shared background "
+				+ "service. It reads auth.json only once, so the API key also goes in OPENCODE_API_KEY. "
+				+ "Jobs run with --format json: both majors emit {type, sessionID, part} events (text, "
+				+ "reasoning, tool_use, step_start, step_finish, error), the only output carrying the "
+				+ "session ID and token/cost totals. Neither has a 'session show' command. "
+				+ "1.x (latest 1.19.0) stays supported. Metering depends entirely on the configured "
+				+ "model provider, so locally hosted open-source models are unmetered."),
 	};
 
 	/// <summary>

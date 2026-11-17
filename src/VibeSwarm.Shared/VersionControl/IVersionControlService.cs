@@ -139,6 +139,7 @@ public interface IVersionControlService
 	/// <param name="targetBranch">The branch that should receive the changes.</param>
 	/// <param name="progressCallback">Optional callback for progress updates.</param>
 	/// <param name="pushAfterMerge">If true, pushes the merged target branch after a successful merge.</param>
+	/// <param name="preferRemoteSource">If true, merges the source branch as it is on the remote, ignoring local commits that were never pushed.</param>
 	/// <returns>Result containing success status and merge details.</returns>
 	Task<GitOperationResult> MergeBranchAsync(
 		string workingDirectory,
@@ -148,7 +149,8 @@ public interface IVersionControlService
 		Action<string>? progressCallback = null,
 		CancellationToken cancellationToken = default,
 		bool pushAfterMerge = true,
-		IReadOnlyList<MergeConflictResolution>? conflictResolutions = null);
+		IReadOnlyList<MergeConflictResolution>? conflictResolutions = null,
+		bool preferRemoteSource = false);
 
 	/// <summary>
 	/// Gets all branches (local and remote) for a repository.
@@ -162,6 +164,13 @@ public interface IVersionControlService
 	/// </summary>
 	/// <param name="prune">Whether to prune deleted remote branches.</param>
 	Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Compares the checked-out branch with the remote without fetching: asks the remote for the
+	/// branch's tip (read-only, so it can't disturb a running job's git work) and counts the
+	/// commits the checkout is missing. Falls back to the last fetch when the remote can't be reached.
+	/// </summary>
+	Task<GitRemoteSyncStatus> GetRemoteSyncStatusAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default);
 
 	/// <summary>
 	/// Checks out a branch at the latest commit on the remote: git fetch, git checkout branch,
@@ -299,6 +308,16 @@ public interface IVersionControlService
 		=> Task.FromResult(new GitHubRepositoryBrowserResult
 		{
 			ErrorMessage = "GitHub repository browsing is not available."
+		});
+
+	/// <summary>
+	/// Lists the accounts a new repository can be created under: the authenticated GitHub CLI
+	/// user and the organizations it belongs to.
+	/// </summary>
+	Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken cancellationToken = default)
+		=> Task.FromResult(new GitHubAccountsResult
+		{
+			ErrorMessage = "GitHub accounts are not available."
 		});
 
 	/// <summary>

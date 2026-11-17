@@ -1,35 +1,32 @@
-@* Bootstrap accordion item driven by Blazor state rather than data-bs-toggle,
-   so expand/collapse survives re-renders. Wrap one or more in <div class="accordion">. *@
+@* Bootstrap accordion item on a native <details>, driven by Blazor state rather than the
+   browser's own toggle, so expand/collapse survives re-renders. Wrap one or more in
+   <div class="accordion">. *@
 
-<div class="accordion-item">
-	<h2 class="accordion-header">
-		<button type="button" class="accordion-button @(IsOpen ? string.Empty : "collapsed") gap-3"
-				aria-expanded="@IsOpen" @onclick="Toggle">
-			@if (!string.IsNullOrWhiteSpace(Icon))
+<details class="accordion-item" open="@IsOpen">
+	<summary class="accordion-header gap-5" @onclick="Toggle" @onclick:preventDefault="true">
+		@if (!string.IsNullOrWhiteSpace(Icon))
+		{
+			<i class="bi bi-@Icon fg-primary flex-shrink-0"></i>
+		}
+		<span class="d-flex flex-column min-w-0 flex-grow-1">
+			@* The title wraps rather than truncates: on a phone the badge leaves it
+			   little room, and "Providers and ag…" tells the user nothing. *@
+			<span class="fw-medium fg-body">@Title</span>
+			@if (!string.IsNullOrWhiteSpace(Summary))
 			{
-				<i class="bi bi-@Icon text-primary flex-shrink-0"></i>
+				<span class="small fg-1 text-truncate fw-normal">@Summary</span>
 			}
-			<span class="d-flex flex-column min-width-0 flex-grow-1">
-				@* The title wraps rather than truncates: on a phone the badge leaves it
-				   little room, and "Providers and ag…" tells the user nothing. *@
-				<span class="fw-medium">@Title</span>
-				@if (!string.IsNullOrWhiteSpace(Summary))
-				{
-					<span class="small text-body-secondary text-truncate fw-normal">@Summary</span>
-				}
-			</span>
-			@if (!string.IsNullOrWhiteSpace(Badge))
-			{
-				<span class="badge rounded-pill @BadgeClass flex-shrink-0">@Badge</span>
-			}
-		</button>
-	</h2>
-	<div class="accordion-collapse collapse @(IsOpen ? "show" : string.Empty)">
-		<div class="accordion-body">
-			@ChildContent
-		</div>
+		</span>
+		@if (!string.IsNullOrWhiteSpace(Badge))
+		{
+			<span class="badge rounded-pill @BadgeClass flex-shrink-0">@Badge</span>
+		}
+		<AccordionIcon />
+	</summary>
+	<div class="accordion-body">
+		@ChildContent
 	</div>
-</div>
+</details>
 
 @code {
 	[Parameter, EditorRequired]
@@ -48,7 +45,7 @@
 	public string? Badge { get; set; }
 
 	[Parameter]
-	public string BadgeClass { get; set; } = "text-bg-secondary";
+	public string BadgeClass { get; set; } = "theme-secondary";
 
 	[Parameter]
 	public bool IsOpen { get; set; }

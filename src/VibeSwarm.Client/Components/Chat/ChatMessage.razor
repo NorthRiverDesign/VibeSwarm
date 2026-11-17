@@ -1,42 +1,70 @@
 @* Single chat message component *@
 
 <div class="@GetContainerClasses()">
-	<div class="chat-bubble py-2 px-3 text-break @GetBubbleClasses()">
-		@if (IsCombinedToolActivity)
+	<div class="chat-bubble max-w-100 py-3 px-5 text-break @GetBubbleClasses()">
+		@if (Role == MessageRole.ToolUse)
 		{
-			<details>
-				<summary class="fw-semibold small opacity-75">
-					<i class="bi bi-tools me-1"></i>@GetToolDisplayName()
+			@* Collapsed, a call reads as what it did and on what; open, it shows the command as a
+			   terminal line and the other arguments as labelled values, never the raw JSON. *@
+			var call = ToolCall;
+			<details class="chat-tool-call">
+				<summary class="d-flex align-items-start gap-3 cursor-pointer user-select-none">
+					<i class="bi bi-@call.Icon flex-shrink-0 opacity-75"></i>
+					<span class="d-flex flex-column min-w-0 flex-grow-1">
+						<span class="fw-semibold small text-break">@call.Title</span>
+						@if (!string.IsNullOrEmpty(call.Preview))
+						{
+							<span class="font-monospace small text-truncate opacity-75">@call.Preview</span>
+						}
+					</span>
+					<i class="bi bi-chevron-right details-chevron flex-shrink-0 small opacity-75"></i>
 				</summary>
-				@if (!string.IsNullOrEmpty(ToolInput))
-				{
-					<div class="mt-2">
-						<div class="small fw-semibold text-body-secondary text-uppercase mb-1">Call</div>
-						<pre class="chat-tool-code white-space-pre-wrap m-0 p-2 rounded small text-break overflow-auto"
-							style="max-height: 150px;">@ToolInput</pre>
-					</div>
-				}
-				@if (!string.IsNullOrEmpty(ToolOutput))
-				{
-					<div class="mt-2">
-						<div class="small fw-semibold text-body-secondary text-uppercase mb-1">Response</div>
-						<pre class="chat-tool-code white-space-pre-wrap m-0 p-2 rounded small text-break overflow-auto"
-							style="max-height: 150px;">@TruncateOutput(ToolOutput, 500)</pre>
-					</div>
-				}
-			</details>
-		}
-		else if (Role == MessageRole.ToolUse)
-		{
-			<details>
-				<summary class="fw-semibold small opacity-75">
-					<i class="bi bi-tools me-1"></i>@GetToolDisplayName()
-				</summary>
-				@if (!string.IsNullOrEmpty(ToolInput))
-				{
-					<pre class="chat-tool-code white-space-pre-wrap m-0 mt-2 p-2 rounded small text-break overflow-auto"
-						style="max-height: 150px;">@ToolInput</pre>
-				}
+				<div class="d-flex flex-column gap-3 mt-3">
+					@if (!string.IsNullOrEmpty(call.Command))
+					{
+						<pre class="chat-tool-code white-space-pre-wrap m-0 p-3 rounded small text-break overflow-auto"><span class="opacity-50 user-select-none">$ </span>@call.Command</pre>
+					}
+					@if (call.Fields.Count > 0)
+					{
+						<dl class="d-flex flex-column gap-3 small mb-0">
+							@foreach (var field in call.Fields)
+							{
+								@if (field.IsBlock)
+								{
+									<div class="d-flex flex-column gap-1 min-w-0">
+										<dt class="fw-normal opacity-75">@field.Label</dt>
+										<dd class="mb-0"><pre class="chat-tool-code white-space-pre-wrap m-0 p-3 rounded text-break overflow-auto">@field.Value</pre></dd>
+									</div>
+								}
+								else
+								{
+									<div class="d-flex justify-content-between gap-5 min-w-0">
+										<dt class="fw-normal opacity-75 flex-shrink-0">@field.Label</dt>
+										<dd class="mb-0 text-end text-break">@field.Value</dd>
+									</div>
+								}
+							}
+						</dl>
+					}
+					@if (!string.IsNullOrEmpty(call.RawInput))
+					{
+						<pre class="chat-tool-code white-space-pre-wrap m-0 p-3 rounded small text-break overflow-auto">@call.RawInput</pre>
+					}
+					@if (IsCombinedToolActivity)
+					{
+						<div class="d-flex flex-column gap-1">
+							<div class="small opacity-75">Output</div>
+							@foreach (var image in Output.Images)
+							{
+								<img src="@image" alt="Image output" loading="lazy" class="d-block align-self-start max-w-100 h-auto max-height-50dvh rounded border" />
+							}
+							@if (Output.Text.Length > 0)
+							{
+								<pre class="chat-tool-code white-space-pre-wrap m-0 p-3 rounded small text-break overflow-auto">@TruncateOutput(Output.Text, 500)</pre>
+							}
+						</div>
+					}
+				</div>
 			</details>
 		}
 		else if (Role == MessageRole.ToolResult)
@@ -45,8 +73,16 @@
 				<summary class="fw-semibold small opacity-75">
 					<i class="bi bi-arrow-return-right me-1"></i>@GetToolDisplayName()
 				</summary>
-				<pre class="chat-tool-code white-space-pre-wrap m-0 mt-2 p-2 rounded small text-break overflow-auto"
-					style="max-height: 150px;">@TruncateOutput(ToolOutput ?? Content ?? "", 500)</pre>
+				@* A returned image, such as a screenshot, shows as the picture, never its base64. *@
+				@foreach (var image in Output.Images)
+				{
+					<img src="@image" alt="Image output" loading="lazy" class="d-block max-w-100 h-auto max-height-50dvh mt-3 rounded border" />
+				}
+				@if (Output.Images.Count == 0 || Output.Text.Length > 0)
+				{
+					<pre class="chat-tool-code white-space-pre-wrap m-0 mt-3 p-3 rounded small text-break overflow-auto"
+						style="max-height: 150px;">@TruncateOutput(Output.Text, 500)</pre>
+				}
 			</details>
 		}
 		else
@@ -54,9 +90,9 @@
 			<div class="@GetContentClasses()">@Content</div>
 		}
 	</div>
-	<div class="d-flex gap-2 mt-1 px-2 small text-secondary">
-		<span class="fw-medium"><i class="@GetLabelIcon() me-1"></i>@GetLabel()</span>
-		<span class="opacity-75">@Timestamp.FormatTime()</span>
+	<div class="d-flex gap-3 mt-1 px-3 small fg-secondary max-w-100">
+		<span class="fw-medium text-truncate"><i class="@GetLabelIcon() me-1"></i>@GetLabel()</span>
+		<span class="opacity-75 flex-shrink-0">@Timestamp.FormatTime()</span>
 	</div>
 </div>
 
@@ -91,6 +127,14 @@
 	[Parameter]
 	public string? LabelOverride { get; set; }
 
+	/// <summary>Labels the agent's messages, such as the job's provider; "Provider" when unset.</summary>
+	[Parameter]
+	public string? ProviderName { get; set; }
+
+	/// <summary>Labels the user's messages, such as the signed-in user; "User" when unset.</summary>
+	[Parameter]
+	public string? UserName { get; set; }
+
 	[Parameter]
 	public string? BubbleClassOverride { get; set; }
 
@@ -100,6 +144,18 @@
 	private bool IsCombinedToolActivity
 		=> Role == MessageRole.ToolUse
 			&& !string.IsNullOrWhiteSpace(ToolOutput);
+
+	private ToolCallView ToolCall => _toolCall ??= ToolCallFormatter.Format(ToolName, ToolInput);
+	private ToolCallView? _toolCall;
+
+	private ToolOutputContent Output => _output ??= ToolOutputContent.Parse(ToolOutput ?? Content);
+	private ToolOutputContent? _output;
+
+	protected override void OnParametersSet()
+	{
+		_toolCall = null;
+		_output = null;
+	}
 
 	private static string TruncateOutput(string text, int maxLength)
 	{
@@ -124,19 +180,23 @@
 
 		return Role switch
 		{
-			MessageRole.User => "User",
-			MessageRole.Assistant => "Provider",
+			MessageRole.User => UserLabel,
+			MessageRole.Assistant => ProviderLabel,
 			MessageRole.ToolUse => "Tool Call",
 			MessageRole.ToolResult => "Tool Result",
 			MessageRole.System => Source switch
 			{
-				MessageSource.Provider => "Provider",
-				MessageSource.User => "User",
+				MessageSource.Provider => ProviderLabel,
+				MessageSource.User => UserLabel,
 				_ => "System"
 			},
 			_ => Role.ToString()
 		};
 	}
+
+	private string ProviderLabel => string.IsNullOrWhiteSpace(ProviderName) ? "Provider" : ProviderName;
+
+	private string UserLabel => string.IsNullOrWhiteSpace(UserName) ? "User" : UserName;
 
 	private string GetBubbleClasses()
 	{
@@ -144,28 +204,28 @@
 			return BubbleClassOverride;
 
 		if (DisplayVariant == MessageDisplayVariant.Thinking)
-			return "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle";
+			return "bg-subtle-secondary fg-emphasis-secondary border border-subtle-secondary";
 
 		if (IsCombinedToolActivity)
-			return "bg-info-subtle text-info-emphasis border";
+			return "bg-subtle-info fg-emphasis-info border";
 
 		if (Role == MessageRole.System)
 		{
 			return Level switch
 			{
-				MessageLevel.Success => "bg-success-subtle text-success-emphasis border border-success-subtle",
-				MessageLevel.Warning => "bg-warning-subtle text-warning-emphasis border border-warning-subtle",
-				MessageLevel.Error => "bg-danger-subtle text-danger-emphasis border border-danger-subtle",
-				_ => "bg-primary-subtle text-primary-emphasis border border-primary-subtle"
+				MessageLevel.Success => "bg-subtle-success fg-emphasis-success border border-subtle-success",
+				MessageLevel.Warning => "bg-subtle-warning fg-emphasis-warning border border-subtle-warning",
+				MessageLevel.Error => "bg-subtle-danger fg-emphasis-danger border border-subtle-danger",
+				_ => "bg-subtle-primary fg-emphasis-primary border border-subtle-primary"
 			};
 		}
 
 		return Role switch
 		{
-			MessageRole.User => "bg-primary text-white",
-			MessageRole.Assistant => "bg-body-tertiary border",
-			MessageRole.ToolUse => "bg-info-subtle text-info-emphasis border",
-			MessageRole.ToolResult => "bg-success-subtle text-success-emphasis border",
+			MessageRole.User => "bg-primary fg-white",
+			MessageRole.Assistant => "bg-2 border",
+			MessageRole.ToolUse => "bg-subtle-info fg-emphasis-info border",
+			MessageRole.ToolResult => "bg-subtle-success fg-emphasis-success border",
 			_ => ""
 		};
 	}
@@ -207,12 +267,12 @@
 		var roleClass = DisplayVariant == MessageDisplayVariant.Thinking
 			? "chat-message-thinking"
 			: $"chat-message-{Role.ToString().ToLower()}";
-		var indentClass = Role is MessageRole.ToolUse or MessageRole.ToolResult ? " ms-3" : string.Empty;
+		var indentClass = Role is MessageRole.ToolUse or MessageRole.ToolResult ? " ms-5" : string.Empty;
 		return $"chat-message d-flex flex-column {roleClass}{indentClass}";
 	}
 
 	private string GetContentClasses()
 		=> DisplayVariant == MessageDisplayVariant.Thinking
-			? "white-space-pre-wrap m-0 lh-base fst-italic"
-			: "white-space-pre-wrap m-0 lh-base";
+			? "white-space-pre-wrap m-0 lh-md fst-italic"
+			: "white-space-pre-wrap m-0 lh-md";
 }

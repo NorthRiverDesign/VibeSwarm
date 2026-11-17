@@ -1,14 +1,14 @@
 @* Refresh button that sits beside a model select and re-syncs that provider's model list *@
 @inject IServiceProvider Services
 
-<button type="button" class="btn btn-secondary @(Small ? "btn-sm" : string.Empty)"
+<button type="button" class="btn-solid theme-secondary @(Small ? "btn-sm" : string.Empty)"
 		@onclick="RefreshAsync"
 		disabled="@(_isRefreshing || Disabled || !HasProvider)"
 		title="@(HasProvider ? "Refresh models from provider" : "Select a provider first")"
 		aria-label="Refresh models">
 	@if (_isRefreshing)
 	{
-		<span class="spinner-border spinner-border-sm" role="status"></span>
+		<span class="spinner-border spinner-sm" role="status"></span>
 	}
 	else
 	{

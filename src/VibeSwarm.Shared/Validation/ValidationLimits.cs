@@ -8,10 +8,15 @@ public static class ValidationLimits
 	public const int ProjectGitHubRepositoryMaxLength = 200;
 	public const int ProjectGitHubDescriptionMaxLength = 1000;
 	public const int ProjectDefaultTargetBranchMaxLength = 250;
+	public const int ProjectBranchMaxLength = 250;
 	public const int ProjectPlanningModelIdMaxLength = 200;
 	public const int ReasoningEffortMaxLength = 32;
+	public const int ProviderAdvisorModelMaxLength = 200;
 	public const int ProjectPromptContextMaxLength = 4000;
 	public const int ProjectMemoryMaxLength = 20000;
+	public const int ProjectFolderNameMaxLength = 100;
+	public const int FolderManagerNotesMaxLength = 2000;
+	public const int FolderManagerReportMaxLength = 100000;
 	public const int JobSchedulePromptMaxLength = 2000;
 	public const int JobScheduleModelIdMaxLength = 200;
 	public const int JobScheduleLastErrorMaxLength = 1000;
@@ -20,6 +25,8 @@ public static class ValidationLimits
 	public const int JobTemplateNameMaxLength = 100;
 	public const int JobTemplateDescriptionMaxLength = 500;
 	public const int JobTemplatePromptMaxLength = 2000;
+	public const int JobGoalPromptMaxLength = 20000;
+	public const int JobAgentMessageMaxLength = 4000;
 	public const int JobTemplateModelIdMaxLength = 200;
 	public const int JobTemplateBranchMaxLength = 250;
 	public const int SkillDescriptionMaxLength = 2000;

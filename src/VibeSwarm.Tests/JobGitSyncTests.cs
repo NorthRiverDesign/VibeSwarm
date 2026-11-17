@@ -67,6 +67,109 @@ public sealed class JobGitSyncTests : IDisposable
 	}
 
 	[Fact]
+	public async Task Sync_PullsOriginIntoACheckoutClonedWhileItWasEmpty()
+	{
+		await InitEmptyCloneAsync();
+		await PushFirstCommitFromOtherCloneAsync();
+
+		Assert.Equal("main", await _versionControl.GetCurrentBranchAsync(_repo));
+
+		var result = await _versionControl.SyncWithOriginAsync(_repo);
+
+		Assert.True(result.Success, result.Error);
+		Assert.Equal("main", result.BranchName);
+		Assert.Equal(await GitAsync(_repo, "rev-parse origin/main"), await GitAsync(_repo, "rev-parse HEAD"));
+		Assert.True(File.Exists(Path.Combine(_repo, "README.md")));
+	}
+
+	[Fact]
+	public async Task Sync_SaysWhyWhenNeitherSideHasCommitsYet()
+	{
+		await InitEmptyCloneAsync();
+
+		var result = await _versionControl.SyncWithOriginAsync(_repo);
+
+		Assert.False(result.Success);
+		Assert.Equal("'main' has no commits yet, and origin has no 'main' branch to sync from. Push a first commit to origin, then sync again.", result.Error);
+	}
+
+	[Fact]
+	public async Task CurrentBranch_IsStillHeadWhenDetached()
+	{
+		await InitRepositoryAsync();
+		await GitAsync(_repo, "checkout -q --detach");
+
+		Assert.Equal("HEAD", await _versionControl.GetCurrentBranchAsync(_repo));
+	}
+
+	[Fact]
+	public async Task Prepare_PullsOriginIntoACheckoutClonedWhileItWasEmpty()
+	{
+		await InitEmptyCloneAsync();
+		await PushFirstCommitFromOtherCloneAsync();
+
+		await PrepareAsync(CreateProcessor(), new Job { Id = Guid.NewGuid(), GoalPrompt = "x" });
+
+		Assert.Equal("main", await GitAsync(_repo, "rev-parse --abbrev-ref HEAD"));
+		Assert.Equal(await GitAsync(_repo, "rev-parse origin/main"), await GitAsync(_repo, "rev-parse HEAD"));
+	}
+
+	[Theory]
+	[InlineData("main")]
+	[InlineData(null)]
+	public async Task Prepare_StartsTheFirstJobOnARepositoryWithNoCommits(string? branch)
+	{
+		await InitEmptyCloneAsync();
+
+		await PrepareAsync(CreateProcessor(), new Job { Id = Guid.NewGuid(), GoalPrompt = "x", Branch = branch });
+
+		Assert.Equal("main", await GitAsync(_repo, "symbolic-ref --short HEAD"));
+		Assert.Null(await _versionControl.GetCurrentCommitHashAsync(_repo));
+	}
+
+	[Fact]
+	public async Task FirstJob_MakesTheFirstCommitAndTheNextJobStartsFromIt()
+	{
+		await InitEmptyCloneAsync();
+		var processor = CreateProcessor();
+		var job = new Job { Id = Guid.NewGuid(), GoalPrompt = "x", Branch = "main" };
+
+		await PrepareAsync(processor, job);
+		await WriteAsync(_repo, "README.md", "# New project\n");
+		var commit = await _versionControl.CommitAllChangesAsync(_repo, "Start the project");
+		Assert.True(commit.Success, commit.Error);
+		job.GitCommitHash = commit.CommitHash;
+		await PushAsync(processor, job);
+
+		Assert.Null(job.ErrorMessage);
+		Assert.Equal(commit.CommitHash, await GitAsync(_repo, "rev-parse origin/main"));
+
+		await PrepareAsync(processor, new Job { Id = Guid.NewGuid(), GoalPrompt = "x", Branch = "main" });
+
+		Assert.Equal(commit.CommitHash, await GitAsync(_repo, "rev-parse HEAD"));
+	}
+
+	[Fact]
+	public async Task Checkpoint_LeavesFilesInPlaceWhenNothingIsCommittedYet()
+	{
+		await InitEmptyCloneAsync();
+		await WriteAsync(_repo, "app.txt", "written before the first commit\n");
+
+		var processor = CreateProcessor();
+		await using var dbContext = await CreateDbContextAsync();
+		var job = await AddJobAsync(dbContext);
+		var preserve = GetMethod("PreserveWorkingTreeBeforeBranchPreparationAsync");
+		var baseBranch = await (Task<string?>)preserve.Invoke(processor, [job, _repo, dbContext, false, "test", CancellationToken.None])!;
+		await PrepareAsync(processor, job);
+
+		Assert.Null(baseBranch);
+		Assert.Null(job.GitCheckpointBranch);
+		Assert.Equal("main", await GitAsync(_repo, "symbolic-ref --short HEAD"));
+		Assert.Equal("?? app.txt", await GitAsync(_repo, "status --porcelain"));
+		Assert.Equal("", await GitAsync(_repo, "branch --list"));
+	}
+
+	[Fact]
 	public async Task Checkpoint_LeavesTheCheckoutOnTheProjectBranch()
 	{
 		await InitRepositoryAsync();
@@ -355,6 +458,25 @@ public sealed class JobGitSyncTests : IDisposable
 		await GitAsync(_repo, "push -q -u origin main");
 		await RunAsync(_root, "clone -q origin.git other");
 		await ConfigureAsync(_other);
+	}
+
+	// The state `gh repo create --clone` leaves when the new repository has no README: a checkout
+	// on a branch with no commits yet, tracking a branch origin doesn't have.
+	private async Task InitEmptyCloneAsync()
+	{
+		await RunAsync(_root, "init -q --bare -b main origin.git");
+		foreach (var clone in new[] { _repo, _other })
+		{
+			await RunAsync(_root, $"clone -q origin.git {Path.GetFileName(clone)}");
+			await GitAsync(clone, "symbolic-ref HEAD refs/heads/main");
+			await ConfigureAsync(clone);
+		}
+	}
+
+	private async Task PushFirstCommitFromOtherCloneAsync()
+	{
+		await CommitAsync(_other, "README.md", "# New project\n", "Initial commit");
+		await GitAsync(_other, "push -q origin main");
 	}
 
 	private async Task ConfigureAsync(string repo)

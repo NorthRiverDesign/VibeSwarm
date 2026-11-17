@@ -42,6 +42,9 @@ public class HttpJobService : IJobService
     public async Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken ct = default)
         => await _http.GetJsonOrNullAsync<Job>($"/api/jobs/{id}/with-messages", ct);
 
+    public async Task<JobLiveOutput?> GetLiveOutputAsync(Guid id, long afterSequence = 0, CancellationToken ct = default)
+        => await _http.GetJsonOrNullAsync<JobLiveOutput>($"/api/jobs/{id}/live-output?after={afterSequence}", ct);
+
     public async Task<Job> CreateAsync(Job job, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/jobs", job, ct);
@@ -157,10 +160,27 @@ public class HttpJobService : IJobService
 		return response.IsSuccessStatusCode;
 	}
 
+	public async Task<bool> SendMessageToAgentAsync(Guid id, string message, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/agent-message", new { Message = message }, ct);
+		return response.IsSuccessStatusCode;
+	}
+
 	public async Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken ct = default)
 	{
 		var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/continue", new { FollowUpPrompt = followUpPrompt }, ct);
 		return response.IsSuccessStatusCode;
+	}
+
+	public async Task<FollowUpDraft> DraftFollowUpAsync(Guid id, FollowUpDraftRequest request, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/follow-up-draft", request, ct);
+		if (!response.IsSuccessStatusCode)
+		{
+			return new FollowUpDraft { Error = $"Could not draft a reply ({(int)response.StatusCode} {response.ReasonPhrase})." };
+		}
+
+		return await response.ReadJsonAsync(new FollowUpDraft { Error = "The server sent an empty reply." }, ct);
 	}
 
 	public async Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken ct = default)
@@ -234,6 +254,19 @@ public class HttpJobService : IJobService
         if (!response.IsSuccessStatusCode) return 0;
         var result = await response.Content.ReadFromJsonAsync<JobBulkActionResponse>(ct);
         return result?.Prioritized ?? 0;
+    }
+
+    public async Task<bool> RunNextAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"/api/jobs/{id}/run-next", null, ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<JobQueueStatus?> GetQueueStatusAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"/api/jobs/{id}/queue-status", ct);
+        if (response.StatusCode != System.Net.HttpStatusCode.OK) return null;
+        return await response.Content.ReadFromJsonAsync<JobQueueStatus>(ct);
     }
 
     public async Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken ct = default)

@@ -35,6 +35,18 @@ public abstract class CliProviderBase : ProviderBase
 	}
 
 	/// <summary>
+	/// Folds system prompt content into the prompt text, for CLIs that take no system prompt
+	/// flag (Copilot, OpenCode), so their jobs still get the build, git and summary rules.
+	/// </summary>
+	protected static string FoldSystemPromptIntoPrompt(string prompt, string? systemPrompt, string? appendSystemPrompt)
+	{
+		var instructions = PromptBuilder.JoinRuleSections(systemPrompt, appendSystemPrompt);
+		return instructions == null
+			? prompt
+			: $"<system-instructions>\n{instructions}\n</system-instructions>\n\n{prompt}";
+	}
+
+	/// <summary>
 	/// Gets the full path to the CLI executable, using platform-specific resolution.
 	/// </summary>
 	/// <param name="defaultExecutable">The default executable name if no path is configured</param>
@@ -226,7 +238,7 @@ public abstract class CliProviderBase : ProviderBase
 			var version = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
 			await process.WaitForExitAsync(linkedCts.Token);
 
-			return version.Trim();
+			return FirstVersionLine(version);
 		}
 		catch (OperationCanceledException)
 		{
@@ -236,6 +248,16 @@ public abstract class CliProviderBase : ProviderBase
 		{
 			return "unknown";
 		}
+	}
+
+	/// <summary>
+	/// Keeps the line that carries the version. Some CLIs add hints after it (Copilot prints
+	/// "Run 'copilot update' to check for updates."), which would overflow the stored version.
+	/// </summary>
+	internal static string FirstVersionLine(string output)
+	{
+		var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		return lines.FirstOrDefault(line => line.Any(char.IsAsciiDigit)) ?? lines.FirstOrDefault() ?? string.Empty;
 	}
 
 	/// <summary>

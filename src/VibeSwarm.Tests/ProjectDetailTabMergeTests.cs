@@ -25,7 +25,7 @@ public sealed class ProjectDetailTabMergeTests
 
 		cut.WaitForAssertion(() =>
 		{
-			var tabLabels = cut.FindAll("ul.nav-pills button.nav-link")
+			var tabLabels = cut.FindAll("ul.nav button.nav-link")
 				.Select(button => button.TextContent.Trim())
 				.ToList();
 
@@ -93,8 +93,8 @@ public sealed class ProjectDetailTabMergeTests
 		var navigation = context.Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
 
 		var cut = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
-		cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("ul.nav-pills button.nav-link")));
-		cut.FindAll("ul.nav-pills button.nav-link").Single(button => button.TextContent.Trim() == "Environments").Click();
+		cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("ul.nav button.nav-link")));
+		cut.FindAll("ul.nav button.nav-link").Single(button => button.TextContent.Trim() == "Environments").Click();
 
 		// Providers load after the tabs appear, and the row shows its subtitle only once they have.
 		cut.WaitForAssertion(() =>
@@ -103,6 +103,16 @@ public sealed class ProjectDetailTabMergeTests
 			Assert.Contains("so it runs on this machine", setupRow.TextContent);
 		});
 		cut.FindAll("button.list-group-item").Single(button => button.TextContent.Contains("Set up local environment", StringComparison.Ordinal)).Click();
+
+		// The row only asks: confirming is what starts the job.
+		cut.WaitForAssertion(() =>
+		{
+			var dialog = cut.Find("dialog");
+			Assert.Contains("Start a job now to get VibeSwarm running on this machine?", dialog.TextContent);
+			Assert.Contains("GitHub Copilot sets up config", dialog.TextContent);
+		});
+		Assert.Empty(jobService.CreatedJobs);
+		cut.FindAll("dialog button").Single(button => button.TextContent.Trim() == "Start job").Click();
 
 		cut.WaitForAssertion(() =>
 		{
@@ -114,6 +124,78 @@ public sealed class ProjectDetailTabMergeTests
 		});
 	}
 
+	[Fact]
+	public void ProjectDetail_SetUpLocalEnvironment_CancelLeavesNoJob()
+	{
+		var jobService = new FakeJobService([]);
+		using var context = CreateContext(ideas: [], jobs: [], jobService);
+
+		var cut = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
+		cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("ul.nav button.nav-link")));
+		cut.FindAll("ul.nav button.nav-link").Single(button => button.TextContent.Trim() == "Environments").Click();
+
+		cut.WaitForAssertion(() =>
+		{
+			var setupRow = cut.FindAll("button.list-group-item").Single(button => button.TextContent.Contains("Set up local environment", StringComparison.Ordinal));
+			Assert.Contains("so it runs on this machine", setupRow.TextContent);
+		});
+		cut.FindAll("button.list-group-item").Single(button => button.TextContent.Contains("Set up local environment", StringComparison.Ordinal)).Click();
+		cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("dialog")));
+		cut.FindAll("dialog button").Single(button => button.TextContent.Trim() == "Cancel").Click();
+
+		cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("dialog")));
+		Assert.Empty(jobService.CreatedJobs);
+	}
+
+	[Fact]
+	public void ProjectDetail_ShowsGitInfoWhileJobsLoad_ThenCommitsBehindOriginSyncs()
+	{
+		var jobService = new FakeJobService([]) { JobsLoadGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
+		var versionControl = new FakeVersionControlService(
+			isRepository: true,
+			new GitRemoteSyncStatus { RemoteBranch = "origin/main", CommitsBehind = 3, IsRemoteReachable = true });
+		using var context = CreateContext(ideas: [], jobs: [], jobService, versionControl);
+
+		var cut = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
+
+		// Jobs never finish loading here, so the header can only fill in if git doesn't wait for them.
+		cut.WaitForAssertion(() =>
+		{
+			Assert.DoesNotContain("Checking Git", cut.Markup);
+			Assert.Contains("Current branch: main", cut.Markup);
+			Assert.False(cut.FindAll("ul.nav button.nav-link").Single(button => button.TextContent.Trim() == "Changes").HasAttribute("disabled"));
+			Assert.Contains("3 commits behind origin", cut.Markup);
+		});
+		Assert.False(jobService.JobsLoadGate.Task.IsCompleted);
+
+		// Sync re-reads the project's jobs first, so let them load.
+		jobService.JobsLoadGate.SetResult();
+		cut.FindAll("button").Single(button => button.TextContent.Trim() == "Sync").Click();
+
+		cut.WaitForAssertion(() => Assert.Equal(1, versionControl.SyncCount));
+	}
+
+	[Fact]
+	public void ProjectDetail_SyncButton_DoesNotSyncWhileAJobUsesTheCheckout()
+	{
+		var versionControl = new FakeVersionControlService(
+			isRepository: true,
+			new GitRemoteSyncStatus { RemoteBranch = "origin/main", CommitsBehind = 3, IsRemoteReachable = true });
+		var jobService = new FakeJobService([]);
+		using var context = CreateContext(ideas: [], jobs: [], jobService, versionControl);
+		var notifications = context.Services.GetRequiredService<NotificationService>();
+
+		var cut = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
+		cut.WaitForAssertion(() => Assert.Contains("3 commits behind origin", cut.Markup));
+
+		// A job is queued after the page loaded its jobs, so only a fresh read at tap time sees it.
+		jobService.Jobs.Add(new JobSummary { Id = Guid.NewGuid(), ProjectId = TestProject.Id, Title = "Queued job", GoalPrompt = "Queued job", Status = JobStatus.New, CreatedAt = DateTime.UtcNow });
+		cut.FindAll("button").Single(button => button.TextContent.Trim() == "Sync").Click();
+
+		cut.WaitForAssertion(() => Assert.Contains(notifications.Notifications, toast => toast.Message.Contains("a job is using this checkout", StringComparison.Ordinal)));
+		Assert.Equal(0, versionControl.SyncCount);
+	}
+
 	private static readonly Project TestProject = new()
 	{
 		Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -121,7 +203,7 @@ public sealed class ProjectDetailTabMergeTests
 		WorkingPath = "/tmp/vibeswarm-tests"
 	};
 
-	private static BunitContext CreateContext(IReadOnlyList<Idea> ideas, IReadOnlyList<JobSummary> jobs, FakeJobService? jobService = null)
+	private static BunitContext CreateContext(IReadOnlyList<Idea> ideas, IReadOnlyList<JobSummary> jobs, FakeJobService? jobService = null, FakeVersionControlService? versionControlService = null)
 	{
 		var context = new BunitContext();
 		context.JSInterop.Mode = JSRuntimeMode.Loose;
@@ -130,11 +212,12 @@ public sealed class ProjectDetailTabMergeTests
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<IAgentService>(new FakeAgentService());
-		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		context.Services.AddSingleton<IVersionControlService>(versionControlService ?? new FakeVersionControlService());
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService(ideas));
 		context.Services.AddSingleton<IInferenceService>(new FakeInferenceService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<IAutoPilotService>(new FakeAutoPilotService());
+		context.Services.AddSingleton<ILeadService>(new FakeLeadService());
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<NotificationService>();
 		context.Services.AddSingleton<QueuePanelStateService>();
@@ -153,9 +236,13 @@ public sealed class ProjectDetailTabMergeTests
 		public override Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
 	}
 
-	private sealed class FakeJobService(IReadOnlyList<JobSummary> jobs) : FakeJobServiceBase
+	private sealed class FakeJobService(IReadOnlyList<JobSummary> initialJobs) : FakeJobServiceBase
 	{
+		private readonly List<JobSummary> jobs = initialJobs.ToList();
+
 		public List<Job> CreatedJobs { get; } = [];
+		public List<JobSummary> Jobs => jobs;
+		public TaskCompletionSource? JobsLoadGate { get; init; }
 
 		public override Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)
 		{
@@ -166,8 +253,14 @@ public sealed class ProjectDetailTabMergeTests
 
 		public override Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);
 		public override Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);
-		public override Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, string? search = null, string statusFilter = "all", CancellationToken cancellationToken = default)
-			=> Task.FromResult(new ProjectJobsListResult
+		public override async Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, string? search = null, string statusFilter = "all", CancellationToken cancellationToken = default)
+		{
+			if (JobsLoadGate != null)
+			{
+				await JobsLoadGate.Task;
+			}
+
+			return new ProjectJobsListResult
 			{
 				Items = jobs.ToList(),
 				PageNumber = page,
@@ -175,7 +268,8 @@ public sealed class ProjectDetailTabMergeTests
 				TotalCount = jobs.Count,
 				ActiveCount = jobs.Count(job => job.Status is JobStatus.New or JobStatus.Pending or JobStatus.Started or JobStatus.Planning or JobStatus.Processing or JobStatus.Paused or JobStatus.Stalled),
 				CompletedCount = jobs.Count(job => job.Status == JobStatus.Completed)
-			});
+			};
+		}
 		public override Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);
 		public override Task<IEnumerable<JobSummary>> GetActiveJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<JobSummary>>([]);
 		public override Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);
@@ -263,16 +357,20 @@ public sealed class ProjectDetailTabMergeTests
 	private sealed class FakeSettingsService : ISettingsService
 	{
 		public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
+		public Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
 		public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 	}
 
-	private sealed class FakeVersionControlService : FakeVersionControlServiceBase
+	private sealed class FakeVersionControlService(bool isRepository = false, GitRemoteSyncStatus? remoteSyncStatus = null) : FakeVersionControlServiceBase
 	{
+		public int SyncCount { get; private set; }
+
 		public override Task<bool> IsGitAvailableAsync(CancellationToken cancellationToken = default) => Task.FromResult(false);
-		public override Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public override Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(isRepository);
 		public override Task<string?> GetCurrentCommitHashAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
-		public override Task<string?> GetCurrentBranchAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+		public override Task<string?> GetCurrentBranchAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(isRepository ? "main" : null);
+		public override Task<GitRemoteSyncStatus> GetRemoteSyncStatusAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => Task.FromResult(remoteSyncStatus ?? new GitRemoteSyncStatus());
 		public override Task<string?> GetRemoteUrlAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 		public override Task<bool> HasUncommittedChangesAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public override Task<GitWorkingTreeStatus> GetWorkingTreeStatusAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(new GitWorkingTreeStatus());
@@ -285,11 +383,15 @@ public sealed class ProjectDetailTabMergeTests
 		public override Task<GitOperationResult> CommitAndPushAsync(string workingDirectory, string commitMessage, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => Task.FromResult(new GitOperationResult());
 		public override Task<GitOperationResult> CreatePullRequestAsync(string workingDirectory, string sourceBranch, string targetBranch, string title, string? body = null, CancellationToken cancellationToken = default) => Task.FromResult(new GitOperationResult());
 		public override Task<GitOperationResult> PreviewMergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", CancellationToken cancellationToken = default) => Task.FromResult(new GitOperationResult());
-		public override Task<GitOperationResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true, IReadOnlyList<MergeConflictResolution>? conflictResolutions = null) => Task.FromResult(new GitOperationResult());
+		public override Task<GitOperationResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true, IReadOnlyList<MergeConflictResolution>? conflictResolutions = null, bool preferRemoteSource = false) => Task.FromResult(new GitOperationResult());
 		public override Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync(string workingDirectory, bool includeRemote = true, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<GitBranchInfo>>([]);
 		public override Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken cancellationToken = default) => Task.FromResult(new GitOperationResult());
 		public override Task<GitOperationResult> HardCheckoutBranchAsync(string workingDirectory, string branchName, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => Task.FromResult(new GitOperationResult());
-		public override Task<GitOperationResult> SyncWithOriginAsync(string workingDirectory, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => Task.FromResult(new GitOperationResult());
+		public override Task<GitOperationResult> SyncWithOriginAsync(string workingDirectory, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default)
+		{
+			SyncCount++;
+			return Task.FromResult(new GitOperationResult());
+		}
 		public override Task<GitOperationResult> CloneRepositoryAsync(string repositoryUrl, string targetDirectory, string? branch = null, Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => Task.FromResult(new GitOperationResult());
 		public override string GetGitHubCloneUrl(string ownerAndRepo, bool useSsh = true) => ownerAndRepo;
 		public override string? ExtractGitHubRepository(string? remoteUrl) => null;

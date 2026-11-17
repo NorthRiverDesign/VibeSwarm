@@ -21,8 +21,12 @@ public class AppSettingsExportDto
 	public bool InjectRepoMap { get; set; }
 	public bool InjectEfficiencyRules { get; set; }
 	public bool EnableCommitAttribution { get; set; } = true;
+	public bool EnableHttps { get; set; }
+	public bool EnableBrowserTools { get; set; } = true;
+	public bool InferenceAnswersAgentQuestions { get; set; } = true;
 	public int CriticalErrorLogRetentionDays { get; set; } = AppSettings.DefaultCriticalErrorLogRetentionDays;
 	public int CriticalErrorLogMaxEntries { get; set; } = AppSettings.DefaultCriticalErrorLogMaxEntries;
+	public int MaxConcurrentJobs { get; set; } = JobConcurrency.DefaultTotalJobs;
 }
 
 public class ProjectExportDto
@@ -34,6 +38,8 @@ public class ProjectExportDto
 	public AutoCommitMode AutoCommitMode { get; set; }
 	public GitChangeDeliveryMode GitChangeDeliveryMode { get; set; }
 	public string? DefaultTargetBranch { get; set; }
+	public string? DevelopmentBranch { get; set; }
+	public string? ReleaseBranch { get; set; }
 	public bool PlanningEnabled { get; set; }
 	public string? PromptContext { get; set; }
 	public bool IdeasAutoCommit { get; set; }

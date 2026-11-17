@@ -86,10 +86,12 @@ public partial class IdeaService
 				ProviderId = defaultProvider.Id,
 				Title = idea.Description,  // Use the original idea text as the title
 				GoalPrompt = goalPrompt,
-				Branch = currentBranch,
+				Branch = string.IsNullOrWhiteSpace(idea.Project.DevelopmentBranch) ? currentBranch : idea.Project.DevelopmentBranch,
 				ModelUsed = await ResolveJobModelAsync(idea.ProjectId, defaultProvider.Id, options, cancellationToken),
 				ReasoningEffort = await ResolveJobReasoningAsync(idea.ProjectId, defaultProvider.Id, cancellationToken),
 				AttachedFilesJson = attachmentPaths.Count > 0 ? JsonSerializer.Serialize(attachmentPaths) : null,
+				IterationLoopId = options?.IterationLoopId,
+				CommitModeOverride = options?.CommitModeOverride,
 				Status = JobStatus.New
 			};
 

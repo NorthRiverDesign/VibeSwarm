@@ -38,7 +38,7 @@ public sealed class UsersPageTests
 
 		Assert.Contains(">Users<", html);
 		Assert.Contains("aria-label=\"Add a user\"", html);
-		Assert.Contains("btn btn-primary", html);
+		Assert.Contains("btn-solid theme-primary", html);
 	}
 
 	[Fact]

@@ -31,6 +31,12 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(ValidationLimits.ProjectDefaultTargetBranchMaxLength)]
 	public string? DefaultTargetBranch { get; set; }
 
+	[StringLength(ValidationLimits.ProjectBranchMaxLength)]
+	public string? DevelopmentBranch { get; set; }
+
+	[StringLength(ValidationLimits.ProjectBranchMaxLength)]
+	public string? ReleaseBranch { get; set; }
+
 	public bool PlanningEnabled { get; set; }
 
 	public Guid? PlanningProviderId { get; set; }
@@ -40,6 +46,29 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? PlanningReasoningEffort { get; set; }
+
+	public bool ReviewEnabled { get; set; }
+
+	public Guid? ReviewProviderId { get; set; }
+
+	public Guid? ReviewInferenceProviderId { get; set; }
+
+	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
+	public string? ReviewModelId { get; set; }
+
+	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
+	public string? ReviewReasoningEffort { get; set; }
+
+	public Guid? LeadProviderId { get; set; }
+
+	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
+	public string? LeadModelId { get; set; }
+
+	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
+	public string? LeadReasoningEffort { get; set; }
+
+	[StringLength(LeadReviewLimits.DirectionMaxLength)]
+	public string? LeadDirection { get; set; }
 
 	public Guid? IdeaInferenceProviderId { get; set; }
 
@@ -60,6 +89,14 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	public ICollection<ProjectAgent> AgentAssignments { get; set; } = new List<ProjectAgent>();
 
 	public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
+
+	public Guid? FolderId { get; set; }
+
+	/// <summary>
+	/// Projects checked under Linked projects. Saved separately from the project, because a
+	/// link also changes the project at its other end.
+	/// </summary>
+	public HashSet<Guid> LinkedProjectIds { get; set; } = [];
 
 	[StringLength(ValidationLimits.ProjectPromptContextMaxLength)]
 	public string? PromptContext { get; set; }
@@ -84,6 +121,13 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(ValidationLimits.ProjectGitHubRepositoryMaxLength)]
 	public string GitHubRepositoryInput { get; set; } = string.Empty;
 
+	/// <summary>
+	/// Account or organization a new repository is created under. Applies only when
+	/// <see cref="GitHubRepositoryInput"/> is a bare name; empty leaves it to the GitHub CLI's signed-in user.
+	/// </summary>
+	[StringLength(ValidationLimits.ProjectGitHubRepositoryMaxLength)]
+	public string NewGitHubRepositoryOwner { get; set; } = string.Empty;
+
 	[StringLength(ValidationLimits.ProjectGitHubDescriptionMaxLength)]
 	public string NewGitHubRepositoryDescription { get; set; } = string.Empty;
 
@@ -107,10 +151,21 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			AutoCommitMode = source.AutoCommitMode,
 			GitChangeDeliveryMode = source.GitChangeDeliveryMode,
 			DefaultTargetBranch = source.DefaultTargetBranch,
+			DevelopmentBranch = source.DevelopmentBranch,
+			ReleaseBranch = source.ReleaseBranch,
 			PlanningEnabled = source.PlanningEnabled,
 			PlanningProviderId = source.PlanningProviderId,
 			PlanningModelId = source.PlanningModelId,
 			PlanningReasoningEffort = source.PlanningReasoningEffort,
+			ReviewEnabled = source.ReviewEnabled,
+			ReviewProviderId = source.ReviewProviderId,
+			ReviewInferenceProviderId = source.ReviewInferenceProviderId,
+			ReviewModelId = source.ReviewModelId,
+			ReviewReasoningEffort = source.ReviewReasoningEffort,
+			LeadProviderId = source.LeadProviderId,
+			LeadModelId = source.LeadModelId,
+			LeadReasoningEffort = source.LeadReasoningEffort,
+			LeadDirection = source.LeadDirection,
 			IdeaInferenceProviderId = source.IdeaInferenceProviderId,
 			IdeaInferenceModelId = source.IdeaInferenceModelId,
 			CommitSummaryInferenceProviderId = source.CommitSummaryInferenceProviderId,
@@ -120,6 +175,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			ProviderSelections = source.ProviderSelections.ToList(),
 			AgentAssignments = source.AgentAssignments.ToList(),
 			Environments = source.Environments.ToList(),
+			FolderId = source.FolderId,
+			LinkedProjectIds = (source.Links ?? []).Select(link => link.LinkedProjectId).ToHashSet(),
 			PromptContext = source.PromptContext,
 			Memory = source.Memory,
 			IsActive = source.IsActive,
@@ -143,10 +200,21 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			AutoCommitMode = AutoCommitMode,
 			GitChangeDeliveryMode = GitChangeDeliveryMode,
 			DefaultTargetBranch = string.IsNullOrWhiteSpace(DefaultTargetBranch) ? null : DefaultTargetBranch.Trim(),
+			DevelopmentBranch = string.IsNullOrWhiteSpace(DevelopmentBranch) ? null : DevelopmentBranch.Trim(),
+			ReleaseBranch = string.IsNullOrWhiteSpace(ReleaseBranch) ? null : ReleaseBranch.Trim(),
 			PlanningEnabled = PlanningEnabled,
 			PlanningProviderId = PlanningProviderId,
 			PlanningModelId = string.IsNullOrWhiteSpace(PlanningModelId) ? null : PlanningModelId.Trim(),
 			PlanningReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(PlanningReasoningEffort),
+			ReviewEnabled = ReviewEnabled,
+			ReviewProviderId = ReviewProviderId,
+			ReviewInferenceProviderId = ReviewProviderId.HasValue ? null : ReviewInferenceProviderId,
+			ReviewModelId = string.IsNullOrWhiteSpace(ReviewModelId) ? null : ReviewModelId.Trim(),
+			ReviewReasoningEffort = ReviewProviderId.HasValue ? ProviderCapabilities.NormalizeReasoningEffort(ReviewReasoningEffort) : null,
+			LeadProviderId = LeadProviderId,
+			LeadModelId = string.IsNullOrWhiteSpace(LeadModelId) ? null : LeadModelId.Trim(),
+			LeadReasoningEffort = LeadProviderId.HasValue ? ProviderCapabilities.NormalizeReasoningEffort(LeadReasoningEffort) : null,
+			LeadDirection = string.IsNullOrWhiteSpace(LeadDirection) ? null : LeadDirection.Trim(),
 			IdeaInferenceProviderId = IdeaInferenceProviderId,
 			IdeaInferenceModelId = string.IsNullOrWhiteSpace(IdeaInferenceModelId) ? null : IdeaInferenceModelId.Trim(),
 			CommitSummaryInferenceProviderId = CommitSummaryInferenceProviderId,
@@ -178,6 +246,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 				UpdatedAt = a.UpdatedAt
 			}).ToList(),
 			Environments = Environments.ToList(),
+			FolderId = FolderId,
 			PromptContext = string.IsNullOrWhiteSpace(PromptContext) ? null : PromptContext.Trim(),
 			Memory = string.IsNullOrWhiteSpace(Memory) ? null : Memory.Trim(),
 			EnableTeamSwarm = EnableTeamSwarm,
@@ -190,9 +259,16 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	public string? GetNormalizedGitHubRepository()
 	{
-		return TryNormalizeGitHubRepository(GitHubRepositoryInput, CreationMode == ProjectCreationMode.CreateGitHubRepository, out var normalizedRepository)
-			? normalizedRepository
-			: null;
+		var isCreate = CreationMode == ProjectCreationMode.CreateGitHubRepository;
+		if (!TryNormalizeGitHubRepository(GitHubRepositoryInput, isCreate, out var normalizedRepository))
+		{
+			return null;
+		}
+
+		// An owner typed into the repository field wins over the picked one.
+		return isCreate && !normalizedRepository.Contains('/') && !string.IsNullOrWhiteSpace(NewGitHubRepositoryOwner)
+			? $"{NewGitHubRepositoryOwner.Trim()}/{normalizedRepository}"
+			: normalizedRepository;
 	}
 
 	public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
@@ -202,6 +278,14 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			yield return new ValidationResult(
 				"Build command is required when build verification is enabled.",
 				[nameof(BuildCommand)]);
+		}
+
+		if (!string.IsNullOrWhiteSpace(DevelopmentBranch) &&
+			string.Equals(DevelopmentBranch.Trim(), ReleaseBranch?.Trim(), StringComparison.Ordinal))
+		{
+			yield return new ValidationResult(
+				"The development and release branches must be different.",
+				[nameof(ReleaseBranch)]);
 		}
 
 		var duplicateAgentIds = AgentAssignments

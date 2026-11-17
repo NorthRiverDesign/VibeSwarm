@@ -10,6 +10,7 @@ using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Models;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Tests;
@@ -42,16 +43,21 @@ public async Task RenderedLocalInferencePage_ShowsSetupAction_WhenNoProviderConf
 	Assert.Contains("No inference connections yet", html);
 	Assert.Contains("Ollama", html);
 	Assert.DoesNotContain("nav-tabs", html);
-	Assert.Contains("justify-content-between gap-2 mb-4", html);
+	Assert.Contains("justify-content-between gap-3 mb-7", html);
 	Assert.DoesNotContain("App Settings", html);
 }
 
 [Fact]
-public async Task RenderedSettingsPage_DoesNotShowLocalInferenceTab()
+public async Task RenderedSettingsPage_GroupsEverySettingAsRows()
 {
 var services = new ServiceCollection();
 	services.AddLogging();
 	services.AddSingleton<ISettingsService>(new FakeSettingsService());
+	var desktop = new InferenceProvider { Name = "Desktop", Endpoint = "http://desktop:11434" };
+	desktop.Models.Add(new InferenceModel { ModelId = "qwen3", TaskType = "default", IsDefault = true });
+	services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService([desktop]));
+	services.AddSingleton(new HttpProviderService(new HttpClient(new SettingsProvidersHandler()) { BaseAddress = new Uri("http://localhost") }));
+	services.AddSingleton<IProviderService>(sp => sp.GetRequiredService<HttpProviderService>());
 	services.AddSingleton<AppTimeZoneService>();
 	services.AddSingleton<IDeveloperModeService>(new FakeDeveloperModeService());
 	services.AddSingleton<IFileSystemService>(new FakeFileSystemService());
@@ -71,22 +77,66 @@ var output = await renderer.RenderComponentAsync<Settings>();
 return output.ToHtmlString();
 });
 
-	Assert.Contains(">General<", html);
-	Assert.Contains("Timezone", html);
-	Assert.Contains(">Eastern (UTC-0", html);
-	Assert.DoesNotContain("Europe/", html);
-	Assert.Contains("Enable provider commit attribution", html);
-	Assert.Contains("Idea Prompt Templates", html);
-	Assert.Contains("Idea expansion template", html);
-	Assert.Contains("Direct idea implementation template", html);
-	Assert.Contains("Critical error logs", html);
-	Assert.Contains("Database", html);
+	Assert.Contains("Unattended jobs", html);
+	Assert.Contains("Answered by qwen3 on Desktop", html);
+	Assert.Contains("Browser for agents", html);
+	Assert.Contains("Usage limits", html);
+	Assert.Contains("Waits at 90% of a session or the week", html);
+	Assert.Contains("95% of the week used", html);
+	Assert.Contains("Set its monthly request allowance", html);
+	Assert.Contains("Keep agents on task", html);
+	Assert.Contains("Credit the provider in commits", html);
+	Assert.Contains("Idea prompts", html);
+	Assert.Contains("Projects folder", html);
+	Assert.Contains("Time zone", html);
+	Assert.Contains("Also serve over HTTPS", html);
+	Assert.Contains("href=\"/settings/database\"", html);
+	Assert.Contains("href=\"/settings/crash-reports\"", html);
+	Assert.Contains("href=\"/settings/about\"", html);
 	Assert.Contains("Developer mode", html);
-	Assert.Contains("Rebuild And Restart", html);
-	Assert.DoesNotContain("Add Provider", html);
-	Assert.DoesNotContain("inference provider", html);
-	Assert.DoesNotContain("Database Size", html);
-	Assert.DoesNotContain("Open Database Tab", html);
+	Assert.Contains("Rebuild and restart", html);
+	// Every change saves as it is made.
+	Assert.DoesNotContain("Save settings", html);
+	// Rows open in place, so their contents stay out of the page until tapped.
+	Assert.DoesNotContain("Expanding an idea", html);
+}
+
+private sealed class SettingsProvidersHandler : HttpMessageHandler
+{
+	private static readonly Guid ClaudeId = Guid.NewGuid();
+	private static readonly Guid CopilotId = Guid.NewGuid();
+
+	protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+	{
+		object body = request.RequestUri!.AbsolutePath switch
+		{
+			"/api/providers" => new List<Provider>
+			{
+				new() { Id = ClaudeId, Name = "Claude Code", Type = ProviderType.Claude, IsEnabled = true },
+				new() { Id = CopilotId, Name = "GitHub Copilot", Type = ProviderType.Copilot, IsEnabled = true },
+				new() { Id = Guid.NewGuid(), Name = "Claude Work", Type = ProviderType.Claude, IsEnabled = true }
+			},
+			"/api/providers/usage-summaries" => new Dictionary<Guid, ProviderUsageSummary>
+			{
+				[ClaudeId] = new()
+				{
+					ProviderId = ClaudeId,
+					LimitType = UsageLimitType.RateLimit,
+					LimitWindows =
+					[
+						new UsageLimitWindow { Scope = UsageLimitWindowScope.Session, CurrentUsage = 10, MaxUsage = 100, ResetTime = DateTime.UtcNow.AddHours(2) },
+						new UsageLimitWindow { Scope = UsageLimitWindowScope.Weekly, CurrentUsage = 95, MaxUsage = 100, ResetTime = DateTime.UtcNow.AddDays(2) }
+					]
+				}
+			},
+			_ => new { }
+		};
+
+		return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+		{
+			Content = System.Net.Http.Json.JsonContent.Create(body, body.GetType())
+		});
+	}
 }
 
 [Fact]
@@ -282,7 +332,7 @@ public void InferenceProvidersSection_OpenRowShowsEditDeleteAndRefreshModels()
 	Assert.Contains("Refresh models", cut.Markup);
 	Assert.Contains("Edit", cut.Markup);
 	Assert.Contains("Delete", cut.Markup);
-	Assert.DoesNotContain("btn-danger", cut.Markup);
+	Assert.DoesNotContain("btn-solid theme-danger", cut.Markup);
 }
 
 [Fact]
@@ -374,10 +424,128 @@ public void LocalInferencePage_MoveUpMakesTheProviderTheDefault()
 	});
 }
 
-private static void AddInferenceComponentServices(BunitContext context, IInferenceProviderService providerService)
+[Fact]
+public void LocalInferencePage_ShowsPrepaidCreditLeftForGrokWithManagementKey()
+{
+	var grok = new InferenceProvider
+	{
+		Id = Guid.NewGuid(),
+		Name = "Grok (X.AI)",
+		ProviderType = InferenceProviderType.Grok,
+		Endpoint = "https://api.x.ai/v1",
+		ApiKey = "xai-key",
+		ManagementApiKey = "management-key",
+		IsEnabled = true
+	};
+	var inferenceService = new FakeInferenceService
+	{
+		Balance = new InferenceBalanceResult { IsSupported = true, RemainingUsd = 12.34m, AddedUsd = 25m, SpentUsd = 12.66m }
+	};
+
+	using var context = new BunitContext();
+	AddInferenceComponentServices(context, new FakeInferenceProviderService([grok]), inferenceService);
+
+	var cut = context.Render<LocalInference>();
+
+	cut.WaitForAssertion(() =>
+	{
+		Assert.Contains("$12.34 left", cut.Markup);
+		Assert.Contains("$12.66 of $25.00 added", cut.Markup);
+	});
+	Assert.Equal(1, inferenceService.BalanceRequests);
+
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Check credit", StringComparison.Ordinal))
+		.Click();
+
+	cut.WaitForAssertion(() => Assert.Equal(2, inferenceService.BalanceRequests));
+}
+
+[Fact]
+public void InferenceProvidersSection_FlagsLowCreditAndAsksForAManagementKey()
+{
+	var lowGrok = new InferenceProvider
+	{
+		Id = Guid.NewGuid(),
+		Name = "Grok low",
+		ProviderType = InferenceProviderType.Grok,
+		Endpoint = "https://api.x.ai/v1",
+		ManagementApiKey = "management-key",
+		IsEnabled = true
+	};
+	var keylessGrok = new InferenceProvider
+	{
+		Id = Guid.NewGuid(),
+		Name = "Grok keyless",
+		ProviderType = InferenceProviderType.Grok,
+		Endpoint = "https://api.x.ai/v1",
+		IsEnabled = true
+	};
+
+	using var context = new BunitContext();
+	AddInferenceComponentServices(context, new FakeInferenceProviderService([lowGrok, keylessGrok]));
+
+	var cut = context.Render<InferenceProvidersSection>(parameters => parameters
+		.Add(component => component.Providers, [lowGrok, keylessGrok])
+		.Add(component => component.InitiallyOpenProviderId, keylessGrok.Id)
+		.Add(component => component.HealthStatus, new Dictionary<Guid, bool> { [lowGrok.Id] = true })
+		.Add(component => component.HealthChecked, [lowGrok.Id])
+		.Add(component => component.Balances, new Dictionary<Guid, InferenceBalanceResult>
+		{
+			[lowGrok.Id] = new() { IsSupported = true, RemainingUsd = 0.42m, AddedUsd = 10m, SpentUsd = 9.58m }
+		}));
+
+	Assert.Contains("Only $0.42 of prepaid credit left", cut.Markup);
+	Assert.Contains("$0.42 left", cut.Markup);
+	Assert.Contains("Needs a management key", cut.Markup);
+	Assert.DoesNotContain("Check credit", cut.Markup);
+}
+
+[Fact]
+public void InferenceProvidersSection_ShowsWhyCreditCouldNotBeChecked()
+{
+	var grok = new InferenceProvider
+	{
+		Id = Guid.NewGuid(),
+		Name = "Grok (X.AI)",
+		ProviderType = InferenceProviderType.Grok,
+		Endpoint = "https://api.x.ai/v1",
+		ManagementApiKey = "wrong-key",
+		IsEnabled = true
+	};
+
+	using var context = new BunitContext();
+	AddInferenceComponentServices(context, new FakeInferenceProviderService([grok]));
+
+	var cut = context.Render<InferenceProvidersSection>(parameters => parameters
+		.Add(component => component.Providers, [grok])
+		.Add(component => component.InitiallyOpenProviderId, grok.Id)
+		.Add(component => component.Balances, new Dictionary<Guid, InferenceBalanceResult>
+		{
+			[grok.Id] = new() { IsSupported = true, Error = "X.AI rejected the management key (403)." }
+		}));
+
+	Assert.Contains("Couldn't check", cut.Markup);
+	Assert.Contains("X.AI rejected the management key (403).", cut.Markup);
+	Assert.Contains("Check credit", cut.Markup);
+}
+
+[Theory]
+[InlineData(5, 10, null)]
+[InlineData(0, 0, null)]
+[InlineData(0.42, 10, "Only $0.42 of prepaid credit left")]
+[InlineData(0, 10, "Out of prepaid credit")]
+public void InferenceProvidersSection_LowCreditLine_OnlyForTeamsThatBuyCredit(double remaining, double added, string? expected)
+{
+	var balance = new InferenceBalanceResult { IsSupported = true, RemainingUsd = (decimal)remaining, AddedUsd = (decimal)added };
+
+	Assert.Equal(expected, InferenceProvidersSection.GetLowCreditLine(balance));
+}
+
+private static void AddInferenceComponentServices(BunitContext context, IInferenceProviderService providerService, FakeInferenceService? inferenceService = null)
 {
 	context.Services.AddSingleton(providerService);
-	context.Services.AddSingleton<IInferenceService>(new FakeInferenceService());
+	context.Services.AddSingleton<IInferenceService>(inferenceService ?? new FakeInferenceService());
 	context.Services.AddSingleton<NotificationService>();
 	context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 }
@@ -546,6 +714,13 @@ private sealed class FakeInferenceService : IInferenceService
 {
 public InferenceRequest? LastRequest { get; private set; }
 public InferenceResponse GenerateResponse { get; set; } = new() { Success = true, Response = "OK" };
+public InferenceBalanceResult Balance { get; set; } = new();
+public int BalanceRequests { get; private set; }
+public Task<InferenceBalanceResult> GetBalanceAsync(Guid providerId, CancellationToken ct = default)
+{
+	BalanceRequests++;
+	return Task.FromResult(Balance);
+}
 public Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default) => Task.FromResult(new InferenceHealthResult());
 public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => Task.FromResult(new InferenceHealthResult());
 public Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => Task.FromResult(new List<DiscoveredModel>());
@@ -581,6 +756,7 @@ public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = 
 	IdeaImplementationPromptTemplate = PromptBuilder.DefaultIdeaImplementationPromptTemplate,
 	ApprovedIdeaImplementationPromptTemplate = PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate
 });
+public Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");
 }

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR.Client;
+using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 
@@ -21,7 +22,6 @@ public partial class ProjectDetail
 	{
 		await LoadData();
 
-		_ = LoadGitInfoSafe();
 		_ = InitializeSignalRSafe();
 		StartAutoRefresh();
 	}
@@ -41,6 +41,8 @@ public partial class ProjectDetail
 		{
 			await InvokeAsync(StateHasChanged);
 		}
+
+		await LoadRemoteSyncStatusAsync();
 	}
 
 	private async Task InitializeSignalRSafe()
@@ -67,8 +69,7 @@ public partial class ProjectDetail
 	{
 		_hubConnection = new HubConnectionBuilder()
 		.WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
-		.WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
-TimeSpan.FromSeconds(10) })
+		.WithAutomaticReconnect(new KeepReconnectingPolicy())
 		.Build();
 
 		RegisterSignalRHandlers();
@@ -107,6 +108,8 @@ TimeSpan.FromSeconds(10) })
 					if (_disposed) return;
 					await RefreshJobs();
 					await LoadIdeas();
+					if (IsAutoPilotRunning)
+						await RefreshAutoPilotAsync();
 					StateHasChanged();
 				});
 			}
@@ -124,6 +127,8 @@ TimeSpan.FromSeconds(10) })
 					if (_disposed) return;
 					await RefreshJobs();
 					await LoadIdeas();
+					if (IsAutoPilotRunning && projectId == ProjectId.ToString())
+						await RefreshAutoPilotAsync();
 					StateHasChanged();
 				});
 			}
@@ -184,7 +189,12 @@ TimeSpan.FromSeconds(10) })
 					await RefreshJobs();
 					await LoadIdeas();
 					await RefreshUncommittedChangesStatus();
+					_ = LoadRemoteSyncStatusAsync();
 					ProcessingIdeaIds.Clear();
+					if (IsAutoPilotRunning)
+						await RefreshAutoPilotAsync();
+					if (_releaseTab != null)
+						await _releaseTab.RefreshAsync();
 
 					if (success && (_activeTab == "changes" || _hasUncommittedChangesHeader))
 					{
@@ -356,9 +366,7 @@ TimeSpan.FromSeconds(10) })
 					if (_disposed) return;
 					if (projectId == ProjectId.ToString())
 					{
-						try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { }
-						if (_autoPilotPanel != null)
-							await _autoPilotPanel.RefreshAsync();
+						await RefreshAutoPilotAsync();
 						StateHasChanged();
 					}
 				});
@@ -366,6 +374,25 @@ TimeSpan.FromSeconds(10) })
 			catch (ObjectDisposedException) { }
 			catch (Exception) { }
 		});
+	}
+
+	/// <summary>
+	/// Reloads the auto-pilot status for the header card and the Auto-Pilot tab. The loop announces
+	/// its job when it queues it, so the job's own events refresh it too: otherwise the tab says
+	/// Queued for as long as the job runs.
+	/// </summary>
+	private async Task RefreshAutoPilotAsync()
+	{
+		try
+		{
+			_autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId);
+		}
+		catch
+		{
+			return;
+		}
+
+		_autoPilotPanel?.ShowStatus(_autoPilotStatus);
 	}
 
 	private async Task SubscribeToSignalRGroups()
@@ -389,7 +416,7 @@ TimeSpan.FromSeconds(10) })
 			if (_disposed) return;
 			try
 			{
-				if (HasActiveJobs || IsIdeasProcessingActive)
+				if (HasActiveJobs || IsIdeasProcessingActive || IsAutoPilotRunning)
 				{
 					if (IsSignalRConnected)
 					{
@@ -403,6 +430,8 @@ TimeSpan.FromSeconds(10) })
 						if (_disposed) return;
 						await RefreshJobs();
 						await LoadIdeas();
+						if (IsAutoPilotRunning)
+							await RefreshAutoPilotAsync();
 						StateHasChanged();
 					});
 				}
@@ -433,6 +462,9 @@ TimeSpan.FromSeconds(10) })
 		{
 			Project = await ProjectService.GetByIdAsync(ProjectId);
 			if (Project == null) return;
+
+			// Git runs alongside the rest so the header doesn't wait for jobs, ideas and providers.
+			_ = LoadGitInfoSafe();
 
 			IsLoading = false;
 			_isLoadingJobs = true;

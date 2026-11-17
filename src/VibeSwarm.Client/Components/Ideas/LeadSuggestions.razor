@@ -1,0 +1,191 @@
+@* The project Lead's suggestions, waiting for the owner's tap. Approving one moves it into the
+   Ideas queue; nothing the Lead suggests runs before that. *@
+@implements IDisposable
+@inject ILeadService LeadService
+@inject NotificationService NotificationService
+
+@if (_status is { } status && (status.IsConfigured || status.Suggestions.Count > 0))
+{
+	<section class="d-flex flex-column gap-3" aria-label="Suggested by Lead">
+		<SectionHeader Title="Suggested by Lead" Subtitle="@StatusLine">
+			<Actions>
+				@if (status.IsRunning)
+				{
+					<button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="CancelAsync">Stop</button>
+				}
+				else if (status.IsConfigured)
+				{
+					<button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="StartAsync" disabled="@_isBusy">Review now</button>
+				}
+			</Actions>
+		</SectionHeader>
+
+		@if (status.Suggestions.Count > 0 || status.LatestReview?.Content is { Length: > 0 })
+		{
+			<div class="list-group rounded-9">
+				@foreach (var idea in status.Suggestions)
+				{
+					<ListRow @key="idea.Id" Icon="compass" Title="@idea.Description" Subtitle="@SecondLine(idea)">
+						<ChildContent>
+							@if (!string.IsNullOrWhiteSpace(idea.ExpandedDescription))
+							{
+								<div class="small white-space-pre-wrap text-break">@idea.ExpandedDescription</div>
+							}
+							<div class="d-flex align-items-center gap-3">
+								<button type="button" class="btn-sm btn-solid theme-primary" @onclick="() => ApproveAsync(idea)" disabled="@_isBusy">
+									<i class="bi bi-check-lg"></i>Approve
+								</button>
+								<button type="button" class="btn-sm btn-link fg-1 text-decoration-none px-0 ms-auto" @onclick="() => DismissAsync(idea)" disabled="@_isBusy">
+									Dismiss
+								</button>
+							</div>
+						</ChildContent>
+					</ListRow>
+				}
+				@if (status.LatestReview is { Content.Length: > 0 } review)
+				{
+					<ListRow Icon="journal-text" IconClass="fg-1" Title="The Lead's report" Subtitle="@review.CreatedAt.FormatShortAge()">
+						<ChildContent>
+							<div class="small white-space-pre-wrap text-break">@review.Content</div>
+						</ChildContent>
+					</ListRow>
+				}
+			</div>
+		}
+	</section>
+}
+
+@code {
+	private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
+
+	[Parameter, EditorRequired]
+	public Guid ProjectId { get; set; }
+
+	/// <summary>Raised when an approved suggestion joined the Ideas queue.</summary>
+	[Parameter]
+	public EventCallback OnIdeaApproved { get; set; }
+
+	private LeadStatus? _status;
+	private Guid _loadedProjectId;
+	private bool _isBusy;
+	private Timer? _poll;
+
+	private string? StatusLine => _status switch
+	{
+		{ IsRunning: true } => "Reviewing the project. This can take a few minutes.",
+		{ LatestReview: { Status: LeadReviewStatus.Failed } review } => $"The last review didn't finish: {review.Error}",
+		{ LatestReview: { Status: LeadReviewStatus.Completed } review } when _status.Suggestions.Count == 0
+			=> $"Nothing waiting. Last review {review.CreatedAt.FormatShortAge()}.",
+		{ LatestReview: null, Suggestions.Count: 0 } => "Ask the Lead what to build next.",
+		_ => null
+	};
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (ProjectId != _loadedProjectId)
+		{
+			_loadedProjectId = ProjectId;
+			await LoadAsync();
+		}
+	}
+
+	private async Task LoadAsync()
+	{
+		try
+		{
+			var wasRunning = _status?.IsRunning == true;
+			_status = await LeadService.GetStatusAsync(ProjectId);
+			SchedulePoll(_status.IsRunning);
+			if (wasRunning && !_status.IsRunning && _status.Suggestions.Count > 0)
+			{
+				NotificationService.ShowSuccess($"The Lead suggested {_status.Suggestions.Count} idea{(_status.Suggestions.Count == 1 ? "" : "s")}.");
+			}
+		}
+		catch (Exception)
+		{
+			_status ??= new LeadStatus();
+		}
+	}
+
+	private void SchedulePoll(bool running)
+	{
+		if (!running)
+		{
+			_poll?.Dispose();
+			_poll = null;
+			return;
+		}
+
+		_poll ??= new Timer(_ => InvokeAsync(async () =>
+		{
+			await LoadAsync();
+			StateHasChanged();
+		}), null, PollInterval, PollInterval);
+	}
+
+	private string? SecondLine(Idea idea)
+	{
+		var why = idea.ExpandedDescription?
+			.Split('\n')
+			.Select(line => line.Trim())
+			.FirstOrDefault(line => line.StartsWith("Why:", StringComparison.OrdinalIgnoreCase));
+		return why == null ? null : why[4..].Trim();
+	}
+
+	private async Task StartAsync()
+	{
+		await RunAsync(async () =>
+		{
+			await LeadService.StartReviewAsync(ProjectId);
+			await LoadAsync();
+		});
+	}
+
+	private async Task CancelAsync()
+	{
+		await RunAsync(async () =>
+		{
+			await LeadService.CancelReviewAsync(ProjectId);
+			await Task.Delay(500);
+			await LoadAsync();
+		});
+	}
+
+	private async Task ApproveAsync(Idea idea)
+	{
+		await RunAsync(async () =>
+		{
+			await LeadService.ApproveSuggestionAsync(idea.Id);
+			_status?.Suggestions.Remove(idea);
+			await OnIdeaApproved.InvokeAsync();
+		});
+	}
+
+	private async Task DismissAsync(Idea idea)
+	{
+		await RunAsync(async () =>
+		{
+			await LeadService.DismissSuggestionAsync(idea.Id);
+			_status?.Suggestions.Remove(idea);
+		});
+	}
+
+	private async Task RunAsync(Func<Task> action)
+	{
+		_isBusy = true;
+		try
+		{
+			await action();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError(ex.Message);
+		}
+		finally
+		{
+			_isBusy = false;
+		}
+	}
+
+	public void Dispose() => _poll?.Dispose();
+}

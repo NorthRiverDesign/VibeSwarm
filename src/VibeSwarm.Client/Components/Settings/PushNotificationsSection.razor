@@ -1,0 +1,278 @@
+@* Push notifications for this device: one switch signs the browser up with its push service, then
+   a switch per job event and a test. The push service is resolved lazily so pages rendered without
+   it (tests) still render. Needs HTTPS and the service worker; on iPhone, the Home Screen app. *@
+@inject IServiceProvider Services
+@inject IJSRuntime JSRuntime
+@inject NotificationService NotificationService
+@implements IAsyncDisposable
+
+<section class="d-flex flex-column gap-3" aria-label="Notifications">
+	<SectionHeader Title="Notifications" />
+	<div class="list-group rounded-9">
+		<SwitchRow Id="pushNotifications" Icon="bell" Title="Push notifications"
+				   Subtitle="@Subtitle" AttentionLine="@AttentionLine"
+				   Value="@IsOn" ValueChanged="SetEnabledAsync" Disabled="@(!CanToggle)" />
+		@if (_device != null)
+		{
+			<SwitchRow Id="pushOnCompleted" Icon="check-circle" Title="Job finished" Subtitle="When a job completes"
+					   Value="@_device.NotifyOnCompleted" Disabled="@_isBusy"
+					   ValueChanged="value => SavePreferencesAsync(completed: value)" />
+			<SwitchRow Id="pushOnFailed" Icon="x-circle" Title="Job failed" Subtitle="When a job fails or stalls"
+					   Value="@_device.NotifyOnFailed" Disabled="@_isBusy"
+					   ValueChanged="value => SavePreferencesAsync(failed: value)" />
+			<SwitchRow Id="pushOnInputRequired" Icon="question-circle" Title="Job needs input"
+					   Subtitle="When a job waits on a question only you can answer"
+					   Value="@_device.NotifyOnInputRequired" Disabled="@_isBusy"
+					   ValueChanged="value => SavePreferencesAsync(inputRequired: value)" />
+			<ListRow Icon="send" Title="Send a test notification" Subtitle="Check that this device gets them" OnClick="SendTestAsync" />
+		}
+	</div>
+</section>
+
+@code {
+	public const string ModulePath = "./js/push-notifications.js";
+
+	private IJSObjectReference? _module;
+	private IPushNotificationService? _pushService;
+	private BrowserPushState? _state;
+	private PushDeviceSettings? _device;
+	private string? _publicKey;
+	private bool _isBusy;
+
+	private bool IsOn => _device != null;
+
+	private bool CanToggle => _state != null && !_isBusy && (IsOn || BlockedReason == null);
+
+	private string? Subtitle => _state == null
+		? "Checking this device..."
+		: IsOn ? "On for this device" : "Get told on this device when jobs finish, fail or need input";
+
+	private string? AttentionLine => IsOn && _state?.UpdateWaiting != true ? null : BlockedReason;
+
+	/// <summary>Why this device can't turn notifications on yet, or null when it can.</summary>
+	private string? BlockedReason => _state switch
+	{
+		null => null,
+		{ Https: false } => "Needs the https:// address: turn on Also serve over HTTPS",
+		{ Supported: false, NeedsHomeScreen: true } => "Add VibeSwarm to your Home Screen and turn this on there",
+		{ Supported: false } => "This browser can't receive push notifications",
+		{ HasWorker: false } => "Reload the app to finish setting up, then turn this on",
+		{ UpdateWaiting: true } => "Reload with the app update first",
+		{ Permission: "denied" } => "Notifications are blocked for this site in the browser's settings",
+		_ when string.IsNullOrEmpty(_publicKey) => "Couldn't reach the server for its push key",
+		_ => null
+	};
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (!firstRender)
+		{
+			return;
+		}
+
+		_pushService = Services.GetService<IPushNotificationService>();
+		if (_pushService == null)
+		{
+			return;
+		}
+
+		try
+		{
+			_module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", ModulePath);
+			if (_module == null)
+			{
+				return;
+			}
+
+			var state = await _module.InvokeAsync<BrowserPushState>("getState");
+			if (state == null)
+			{
+				return;
+			}
+
+			if (state.Https && state.Supported)
+			{
+				_publicKey = await _pushService.GetPublicKeyAsync();
+				if (state.Subscription != null)
+				{
+					_device = await _pushService.GetDeviceAsync(state.Subscription.Endpoint);
+				}
+			}
+			_state = state;
+		}
+		catch (Exception ex) when (ex is JSException or HttpRequestException or InvalidOperationException)
+		{
+			_state ??= new BrowserPushState { Https = true, Supported = false };
+		}
+
+		StateHasChanged();
+	}
+
+	private async Task SetEnabledAsync(bool enable)
+	{
+		if (_module == null || _pushService == null || _state == null || _isBusy)
+		{
+			return;
+		}
+
+		_isBusy = true;
+		try
+		{
+			if (enable)
+			{
+				await TurnOnAsync();
+			}
+			else
+			{
+				var endpoint = await _module.InvokeAsync<string?>("unsubscribe") ?? _device?.Endpoint;
+				if (!string.IsNullOrEmpty(endpoint))
+				{
+					await _pushService.DeleteDeviceAsync(endpoint);
+				}
+				_device = null;
+				_state.Subscription = null;
+			}
+		}
+		catch (Exception ex) when (ex is JSException or HttpRequestException)
+		{
+			NotificationService.ShowError(ex.Message, "Push notifications");
+		}
+		finally
+		{
+			_isBusy = false;
+		}
+	}
+
+	private async Task TurnOnAsync()
+	{
+		// The permission prompt must come straight from the tap, so nothing is awaited before it.
+		var result = await _module!.InvokeAsync<SubscribeResult>("subscribe", _publicKey);
+		if (result?.Subscription == null)
+		{
+			switch (result?.Error)
+			{
+				case "denied":
+					_state!.Permission = "denied";
+					break;
+				case "dismissed":
+					break;
+				default:
+					NotificationService.ShowError(result?.Error ?? "The browser didn't sign up for notifications.", "Push notifications");
+					break;
+			}
+			return;
+		}
+
+		_state!.Permission = "granted";
+		_state.Subscription = result.Subscription;
+		_device = await _pushService!.SaveDeviceAsync(new PushSubscriptionRequest
+		{
+			Endpoint = result.Subscription.Endpoint,
+			P256dh = result.Subscription.P256dh,
+			Auth = result.Subscription.Auth,
+			DeviceName = _state.DeviceName
+		});
+	}
+
+	private async Task SavePreferencesAsync(bool? completed = null, bool? failed = null, bool? inputRequired = null)
+	{
+		if (_pushService == null || _device == null || _state?.Subscription == null || _isBusy)
+		{
+			return;
+		}
+
+		_isBusy = true;
+		try
+		{
+			_device = await _pushService.SaveDeviceAsync(new PushSubscriptionRequest
+			{
+				Endpoint = _state.Subscription.Endpoint,
+				P256dh = _state.Subscription.P256dh,
+				Auth = _state.Subscription.Auth,
+				NotifyOnCompleted = completed ?? _device.NotifyOnCompleted,
+				NotifyOnFailed = failed ?? _device.NotifyOnFailed,
+				NotifyOnInputRequired = inputRequired ?? _device.NotifyOnInputRequired
+			});
+		}
+		catch (HttpRequestException ex)
+		{
+			NotificationService.ShowError(ex.Message, "Push notifications");
+		}
+		finally
+		{
+			_isBusy = false;
+		}
+	}
+
+	private async Task SendTestAsync()
+	{
+		if (_pushService == null || _device == null || _isBusy)
+		{
+			return;
+		}
+
+		_isBusy = true;
+		try
+		{
+			var result = await _pushService.SendTestAsync(_device.Endpoint);
+			if (result.Success)
+			{
+				NotificationService.ShowSuccess("Sent. It should arrive on this device in a moment.", "Push notifications");
+			}
+			else
+			{
+				NotificationService.ShowError(result.Error ?? "The test notification wasn't sent.", "Push notifications");
+				_device = await _pushService.GetDeviceAsync(_device.Endpoint);
+			}
+		}
+		catch (HttpRequestException ex)
+		{
+			NotificationService.ShowError(ex.Message, "Push notifications");
+		}
+		finally
+		{
+			_isBusy = false;
+		}
+	}
+
+	public async ValueTask DisposeAsync()
+	{
+		if (_module == null)
+		{
+			return;
+		}
+
+		try
+		{
+			await _module.DisposeAsync();
+		}
+		catch (JSDisconnectedException)
+		{
+		}
+	}
+
+	public sealed class BrowserPushState
+	{
+		public bool Https { get; set; }
+		public bool Supported { get; set; }
+		public bool NeedsHomeScreen { get; set; }
+		public string Permission { get; set; } = "default";
+		public bool HasWorker { get; set; }
+		public bool UpdateWaiting { get; set; }
+		public BrowserPushSubscription? Subscription { get; set; }
+		public string? DeviceName { get; set; }
+	}
+
+	public sealed class BrowserPushSubscription
+	{
+		public string Endpoint { get; set; } = string.Empty;
+		public string P256dh { get; set; } = string.Empty;
+		public string Auth { get; set; } = string.Empty;
+	}
+
+	public sealed class SubscribeResult
+	{
+		public BrowserPushSubscription? Subscription { get; set; }
+		public string? Error { get; set; }
+	}
+}

@@ -70,6 +70,22 @@ public class Provider
     [Range(SessionLimitPolicy.MinPauseThresholdPercent, SessionLimitPolicy.MaxPauseThresholdPercent)]
     public int? SessionLimitPauseThresholdPercent { get; set; }
 
+    /// <summary>
+    /// Usage (percent) of a daily, weekly or monthly limit at which new jobs wait for it to reset,
+    /// so unattended jobs never use the whole allowance. Null uses
+    /// <see cref="SessionLimitPolicy.DefaultPauseThresholdPercent"/>.
+    /// </summary>
+    [Range(SessionLimitPolicy.MinPauseThresholdPercent, SessionLimitPolicy.MaxPauseThresholdPercent)]
+    public int? WeeklyLimitPauseThresholdPercent { get; set; }
+
+    /// <summary>
+    /// How many jobs this provider runs at once, each in a separate session and a different
+    /// project, for plans large enough to take them. Only admins change it, through
+    /// <see cref="ProviderUsageLimits.MaxConcurrentJobs"/>; the provider form leaves it alone.
+    /// </summary>
+    [Range(JobConcurrency.MinJobs, JobConcurrency.MaxJobs)]
+    public int MaxConcurrentJobs { get; set; } = JobConcurrency.DefaultJobsPerProvider;
+
 	/// <summary>
 	/// Override for stall detection timeout in seconds.
 	/// When null, the system uses provider-aware defaults:
@@ -88,4 +104,12 @@ public class Provider
 	/// </summary>
 	[StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
 	public string? DefaultReasoningEffort { get; set; }
+
+	/// <summary>
+	/// Claude Code only: the model the agent consults through the advisor tool (<c>--advisor</c>),
+	/// such as <c>opus</c> or <c>fable</c>. <c>off</c> turns the advisor off; null leaves it to
+	/// Claude Code's own <c>advisorModel</c> setting.
+	/// </summary>
+	[StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ProviderAdvisorModelMaxLength)]
+	public string? AdvisorModel { get; set; }
 }

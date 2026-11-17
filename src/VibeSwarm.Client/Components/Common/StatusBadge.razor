@@ -3,7 +3,7 @@
 <span class="badge @GetStatusClass()">
 	@if (ShowSpinner && IsActiveStatus())
 	{
-		<span class="spinner-border spinner-border-sm me-1" style="width: 0.6rem; height: 0.6rem;" role="status"></span>
+		<span class="spinner-border spinner-sm me-1" style="width: 0.6rem; height: 0.6rem;" role="status"></span>
 	}
 	@DisplayText
 </span>
@@ -31,16 +31,16 @@
 		var status = Status.ToLowerInvariant();
 		return status switch
 		{
-			"new" => "bg-secondary",
-			"pending" => "bg-warning text-dark",
-			"started" or "planning" or "processing" => "bg-info",
-			"completed" => "bg-success",
-			"failed" => "bg-danger",
-			"cancelled" => "bg-secondary",
-			"cancelling" => "bg-warning text-dark",
-			"active" => "bg-success",
-			"disabled" or "off" => "bg-secondary",
-			_ => "bg-secondary"
+			"new" => "theme-secondary",
+			"pending" => "theme-warning",
+			"started" or "planning" or "processing" => "theme-info",
+			"completed" => "theme-success",
+			"failed" => "theme-danger",
+			"cancelled" => "theme-secondary",
+			"cancelling" => "theme-warning",
+			"active" => "theme-success",
+			"disabled" or "off" => "theme-secondary",
+			_ => "theme-secondary"
 		};
 	}
 }

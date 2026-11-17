@@ -6,12 +6,12 @@
 }
 else
 {
-	<div class="d-flex flex-column gap-4">
+	<div class="d-flex flex-column gap-7">
 		@foreach (var (heading, users) in GetGroups())
 		{
-			<section class="d-flex flex-column gap-2" aria-label="@heading">
+			<section class="d-flex flex-column gap-3" aria-label="@heading">
 				<h2 class="text-eyebrow mb-0 px-1">@heading</h2>
-				<div class="list-group rounded-4">
+				<div class="list-group rounded-9">
 					@foreach (var user in users)
 					{
 						<UserRow @key="user.Id"

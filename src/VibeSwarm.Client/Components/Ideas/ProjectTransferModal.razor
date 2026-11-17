@@ -3,16 +3,16 @@
 <ModalDialog @bind-IsVisible="IsVisible" Title="@ModalTitle" Icon="@ModalIcon" Size="ModalDialog.ModalSize.Default"
 	OnClose="HandleClose">
 	<ChildContent>
-		<p class="text-body-secondary mb-3">Select a project to @ActionVerb this idea to:</p>
-		<div class="mb-3">
+		<p class="fg-1 mb-5">Select a project to @ActionVerb this idea to:</p>
+		<div class="mb-5">
 			<label class="form-label fw-semibold">Idea</label>
-			<div class="p-2 bg-body-tertiary rounded text-break" style="white-space: pre-wrap;">
+			<div class="p-3 bg-2 rounded text-break" style="white-space: pre-wrap;">
 				@IdeaDescription
 			</div>
 		</div>
-		<div class="mb-3">
+		<div class="mb-5">
 			<label class="form-label fw-semibold">Target Project</label>
-			<select class="form-select" @bind="SelectedProjectId">
+			<select class="form-control" @bind="SelectedProjectId">
 				<option value="">Select a project...</option>
 				@foreach (var project in AvailableProjects.Where(p => p.Id != ExcludeProjectId))
 				{
@@ -22,18 +22,18 @@
 		</div>
 		@if (IsMove)
 		{
-			<Alert Type="Alert.AlertType.Warning" Class="py-2 mb-0">
+			<Alert Type="Alert.AlertType.Warning" Class="py-3 mb-0">
 				This will remove the idea from the current project.
 			</Alert>
 		}
 	</ChildContent>
 	<FooterContent>
-		<button type="button" class="btn btn-secondary" @onclick="HandleClose">Cancel</button>
-		<button type="button" class="btn @(IsMove ? "btn-warning" : "btn-primary")" @onclick="HandleConfirm"
+		<button type="button" class="btn-solid theme-secondary" @onclick="HandleClose">Cancel</button>
+		<button type="button" class="btn @(IsMove ? "btn-solid theme-warning" : "btn-solid theme-primary")" @onclick="HandleConfirm"
 			disabled="@(SelectedProjectId == Guid.Empty || IsProcessing)">
 			@if (IsProcessing)
 			{
-				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+				<span class="spinner-border spinner-sm me-1" role="status"></span>
 			}
 			@ButtonText
 		</button>

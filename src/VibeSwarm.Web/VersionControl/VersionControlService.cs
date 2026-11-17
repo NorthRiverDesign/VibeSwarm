@@ -102,6 +102,19 @@ public sealed partial class VersionControlService : IVersionControlService
 			{
 				return result.Output.Trim();
 			}
+
+			// A branch with no commits yet (a repository cloned while it was still empty) has no
+			// HEAD revision for rev-parse, but HEAD still names the branch.
+			var unbornResult = await _commandExecutor.ExecuteAsync(
+				"symbolic-ref --short -q HEAD",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 10);
+
+			if (unbornResult.Success && !string.IsNullOrWhiteSpace(unbornResult.Output))
+			{
+				return unbornResult.Output.Trim();
+			}
 		}
 		catch (Exception ex)
 		{

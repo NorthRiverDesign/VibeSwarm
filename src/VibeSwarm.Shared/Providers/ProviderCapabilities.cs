@@ -148,12 +148,60 @@ public static class ProviderCapabilities
 	public static bool SupportsCliUpdate(ProviderConnectionMode mode) => mode == ProviderConnectionMode.CLI;
 
 	/// <summary>
+	/// Whether the provider's CLI on the host can be signed in from the web UI. Claude Code prints a
+	/// sign-in link and takes the code the page shows; Copilot uses GitHub's device code flow.
+	/// </summary>
+	public static bool SupportsHostSignIn(ProviderType providerType)
+		=> providerType is ProviderType.Claude or ProviderType.Copilot;
+
+	/// <summary>
 	/// Whether the provider can be asked for its current usage on demand. Only CLI connections
 	/// can be probed; SDK connections go through the API, which does not report subscription windows.
 	/// </summary>
 	public static bool SupportsUsageRefresh(Provider provider)
 		=> provider.ConnectionMode == ProviderConnectionMode.CLI
-			&& provider.Type is ProviderType.Claude;
+			&& provider.Type is ProviderType.Claude or ProviderType.Copilot;
+
+	/// <summary>
+	/// Whether reading the provider's usage on demand costs nothing. Copilot reads the account's
+	/// quota from its runtime without a model request; Claude Code has to spend one tiny request.
+	/// </summary>
+	public static bool IsUsageRefreshFree(Provider provider)
+		=> provider.ConnectionMode == ProviderConnectionMode.CLI
+			&& provider.Type == ProviderType.Copilot;
+
+	/// <summary>Advisor setting that turns Claude Code's advisor off for a provider's runs.</summary>
+	public const string AdvisorOff = "off";
+
+	/// <summary>
+	/// Advisor models offered for a Claude Code provider. Each is an alias that follows the newest
+	/// model of its line. The advisor must be at least as capable as the job's model, so Sonnet and
+	/// Haiku are left out: they could advise only a weaker job model.
+	/// </summary>
+	public static readonly IReadOnlyList<string> AdvisorModels = ["opus", "fable"];
+
+	/// <summary>
+	/// Whether the provider can pick an advisor model: a model the agent consults at hard moments
+	/// through Claude Code's server-side advisor tool.
+	/// </summary>
+	public static bool SupportsAdvisor(Provider provider)
+		=> provider.Type == ProviderType.Claude && provider.ConnectionMode == ProviderConnectionMode.CLI;
+
+	/// <summary>
+	/// Trims an advisor setting. Blank (and any value on a provider without an advisor) means
+	/// "leave it to Claude Code's own setting", <see cref="AdvisorOff"/> turns it off, and anything
+	/// else is the advisor's model alias or ID.
+	/// </summary>
+	public static string? NormalizeAdvisorModel(Provider provider, string? advisorModel)
+	{
+		if (!SupportsAdvisor(provider) || string.IsNullOrWhiteSpace(advisorModel))
+		{
+			return null;
+		}
+
+		var trimmed = advisorModel.Trim();
+		return string.Equals(trimmed, AdvisorOff, StringComparison.OrdinalIgnoreCase) ? AdvisorOff : trimmed;
+	}
 
 	/// <summary>
 	/// Validates provider configuration and returns validation errors.

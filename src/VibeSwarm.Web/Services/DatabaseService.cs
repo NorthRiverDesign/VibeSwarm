@@ -70,8 +70,12 @@ public class DatabaseService : IDatabaseService
 				InjectRepoMap = settings.InjectRepoMap,
 				InjectEfficiencyRules = settings.InjectEfficiencyRules,
 				EnableCommitAttribution = settings.EnableCommitAttribution,
+				EnableHttps = settings.EnableHttps,
+				EnableBrowserTools = settings.EnableBrowserTools,
+				InferenceAnswersAgentQuestions = settings.InferenceAnswersAgentQuestions,
 				CriticalErrorLogRetentionDays = settings.CriticalErrorLogRetentionDays,
 				CriticalErrorLogMaxEntries = settings.CriticalErrorLogMaxEntries,
+				MaxConcurrentJobs = settings.MaxConcurrentJobs,
 			},
 			Projects = projects.Select(p => new ProjectExportDto
 			{
@@ -82,6 +86,8 @@ public class DatabaseService : IDatabaseService
 				AutoCommitMode = p.AutoCommitMode,
 				GitChangeDeliveryMode = p.GitChangeDeliveryMode,
 				DefaultTargetBranch = p.DefaultTargetBranch,
+				DevelopmentBranch = p.DevelopmentBranch,
+				ReleaseBranch = p.ReleaseBranch,
 				PlanningEnabled = p.PlanningEnabled,
 				PromptContext = p.PromptContext,
 				IdeasAutoCommit = p.IdeasAutoCommit,
@@ -289,6 +295,8 @@ public class DatabaseService : IDatabaseService
 				AutoCommitMode = projectDto.AutoCommitMode,
 				GitChangeDeliveryMode = projectDto.GitChangeDeliveryMode,
 				DefaultTargetBranch = projectDto.DefaultTargetBranch,
+				DevelopmentBranch = projectDto.DevelopmentBranch,
+				ReleaseBranch = projectDto.ReleaseBranch,
 				PlanningEnabled = projectDto.PlanningEnabled,
 				PromptContext = projectDto.PromptContext,
 				IdeasAutoCommit = projectDto.IdeasAutoCommit,
@@ -412,8 +420,12 @@ public class DatabaseService : IDatabaseService
 					InjectRepoMap = export.Settings.InjectRepoMap,
 					InjectEfficiencyRules = export.Settings.InjectEfficiencyRules,
 					EnableCommitAttribution = export.Settings.EnableCommitAttribution,
+					EnableHttps = export.Settings.EnableHttps,
+					EnableBrowserTools = export.Settings.EnableBrowserTools,
+					InferenceAnswersAgentQuestions = export.Settings.InferenceAnswersAgentQuestions,
 					CriticalErrorLogRetentionDays = export.Settings.CriticalErrorLogRetentionDays,
 					CriticalErrorLogMaxEntries = export.Settings.CriticalErrorLogMaxEntries,
+					MaxConcurrentJobs = JobConcurrency.Normalize(export.Settings.MaxConcurrentJobs),
 					UpdatedAt = DateTime.UtcNow,
 				});
 				await _db.SaveChangesAsync(ct);

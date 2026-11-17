@@ -1,32 +1,51 @@
 @* Reusable breadcrumb navigation component *@
 
-<nav aria-label="breadcrumb" class="mb-3">
-	<ol class="breadcrumb mb-0">
+@{
+	// Phones get one back link to the page above, as an iOS navigation bar does: the whole
+	// trail wraps onto extra lines there, and its last step repeats the title beneath it.
+	var parent = Items.LastOrDefault(item => !string.IsNullOrEmpty(item.Href));
+}
+
+@if (parent != null)
+{
+	<div class="md:d-none mb-1">
+		<a href="@parent.Href" class="small fg-1 text-decoration-none d-inline-flex align-items-center gap-1">
+			<i class="bi bi-chevron-left"></i>@parent.Text
+		</a>
+	</div>
+}
+
+<nav aria-label="breadcrumb" class="mb-5 @(parent != null ? "d-none md:d-block" : null)">
+	<ol class="breadcrumb">
 		@foreach (var (item, index) in Items.Select((item, i) => (item, i)))
 		{
 			var isLast = index == Items.Count - 1;
-			@if (isLast)
+			@if (index > 0)
 			{
-				<li class="breadcrumb-item active" aria-current="page">
-					@if (!string.IsNullOrEmpty(item.Icon))
-					{
-						<i class="bi bi-@item.Icon me-1"></i>
-					}
-					@item.Text
-				</li>
+				<li class="breadcrumb-divider" aria-hidden="true"></li>
 			}
-			else
-			{
-				<li class="breadcrumb-item">
-					<a href="@item.Href" class="text-decoration-none">
+			<li class="breadcrumb-item">
+				@if (isLast)
+				{
+					<span class="breadcrumb-link active gap-1" aria-current="page">
 						@if (!string.IsNullOrEmpty(item.Icon))
 						{
-							<i class="bi bi-@item.Icon me-1"></i>
+							<i class="bi bi-@item.Icon"></i>
+						}
+						@item.Text
+					</span>
+				}
+				else
+				{
+					<a href="@item.Href" class="breadcrumb-link gap-1">
+						@if (!string.IsNullOrEmpty(item.Icon))
+						{
+							<i class="bi bi-@item.Icon"></i>
 						}
 						@item.Text
 					</a>
-				</li>
-			}
+				}
+			</li>
 		}
 	</ol>
 </nav>

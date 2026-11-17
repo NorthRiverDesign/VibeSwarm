@@ -46,7 +46,7 @@ public sealed class JobChangeSetsCardTests
 		var file = Assert.Single(runs[0].QuerySelectorAll("li"));
 		Assert.Contains("src/App.cs", file.TextContent);
 		Assert.Contains("+2", file.TextContent);
-		Assert.Contains("1", file.QuerySelector(".text-danger")!.TextContent);
+		Assert.Contains("1", file.QuerySelector(".fg-danger")!.TextContent);
 		Assert.Empty(runs[1].QuerySelectorAll("li"));
 	}
 }

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Data;
@@ -54,6 +55,28 @@ public class AppSettings
 	/// </summary>
 	public bool EnableCommitAttribution { get; set; } = true;
 
+	/// <summary>
+	/// Whether to serve the app over HTTPS with its self-signed certificate as well as HTTP.
+	/// Off by default, so browsers on the LAN or a VPN open it without a certificate warning.
+	/// Read once at startup, so a change applies after the app restarts.
+	/// </summary>
+	public bool EnableHttps { get; set; }
+
+	/// <summary>
+	/// Whether every job gets Playwright MCP with the host's Chromium, whichever provider runs it, so
+	/// agents can open and screenshot the web app they build. Projects with a web environment get it
+	/// either way. Jobs only get it while Node.js and a Chromium are installed.
+	/// </summary>
+	public bool EnableBrowserTools { get; set; } = true;
+
+	/// <summary>
+	/// Whether an inference model answers an agent's question, so the job carries on instead of
+	/// waiting for the user: one the agent stops to ask mid-run, or one it ends its run with ("Should
+	/// I also…?"), which continues the same session. Needs an enabled inference provider; questions
+	/// asking for credentials, or that the model judges only the user can answer, still wait.
+	/// </summary>
+	public bool InferenceAnswersAgentQuestions { get; set; } = true;
+
 	[Range(MinCriticalErrorLogRetentionDays, MaxCriticalErrorLogRetentionDays)]
 	public int CriticalErrorLogRetentionDays { get; set; } = DefaultCriticalErrorLogRetentionDays;
 
@@ -84,6 +107,15 @@ public class AppSettings
 	public DateTime? JobQueuePausedAt { get; set; }
 
 	/// <summary>
+	/// How many jobs run at once across all projects. Each project still runs one job at a time,
+	/// and each provider at most its own <see cref="Providers.Provider.MaxConcurrentJobs"/>.
+	/// Only admins change it (<c>PUT api/settings/max-concurrent-jobs</c>);
+	/// <see cref="Services.ISettingsService.UpdateSettingsAsync"/> leaves it alone.
+	/// </summary>
+	[Range(JobConcurrency.MinJobs, JobConcurrency.MaxJobs)]
+	public int MaxConcurrentJobs { get; set; } = JobConcurrency.DefaultTotalJobs;
+
+	/// <summary>
 	/// Optional GitHub personal access token used when querying the skills marketplace.
 	/// Anonymous requests are limited to 60/hour; an unscoped read-only token raises that
 	/// to 5000/hour. The token is only used for outbound requests to <c>api.github.com</c>
@@ -91,4 +123,16 @@ public class AppSettings
 	/// </summary>
 	[StringLength(200)]
 	public string? GitHubToken { get; set; }
+
+	/// <summary>
+	/// The VAPID key pair push notifications are signed with, base64url, made the first time a
+	/// device turns notifications on. Replacing it silently breaks every device's subscription.
+	/// </summary>
+	[StringLength(200)]
+	public string? WebPushPublicKey { get; set; }
+
+	/// <summary>Never leaves the server: the settings API would otherwise hand it to the browser.</summary>
+	[JsonIgnore]
+	[StringLength(200)]
+	public string? WebPushPrivateKey { get; set; }
 }

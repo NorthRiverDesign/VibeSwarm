@@ -40,6 +40,9 @@ public class HttpProjectService : IProjectService
     public async Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken ct = default)
         => await _http.GetJsonAsync("/api/projects/github-repositories", new GitHubRepositoryBrowserResult(), ct);
 
+    public async Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken ct = default)
+        => await _http.GetJsonAsync("/api/projects/github-accounts", new GitHubAccountsResult(), ct);
+
     public async Task<Project> UpdateAsync(Project project, CancellationToken ct = default)
     {
         var response = await _http.PutAsJsonAsync($"/api/projects/{project.Id}", project, ct);
@@ -61,5 +64,40 @@ public class HttpProjectService : IProjectService
 
 	public async Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken ct = default)
 		=> await _http.GetJsonAsync("/api/projects/dashboard-running-jobs", new List<DashboardRunningJobInfo>(), ct);
+
+	public async Task SetLinkedProjectsAsync(Guid projectId, IEnumerable<Guid> linkedProjectIds, CancellationToken ct = default)
+	{
+		var response = await _http.PutAsJsonAsync($"/api/projects/{projectId}/links", linkedProjectIds.ToList(), ct);
+		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct, "Project not found.");
+	}
+
+	public async Task<IEnumerable<ProjectFolder>> GetFoldersAsync(CancellationToken ct = default)
+		=> await _http.GetJsonAsync("/api/projects/folders", new List<ProjectFolder>(), ct);
+
+	public async Task<ProjectFolder> CreateFolderAsync(ProjectFolder folder, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsJsonAsync("/api/projects/folders", folder, ct);
+		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct, "Folder not found.");
+		return await response.ReadJsonAsync(folder, ct);
+	}
+
+	public async Task<ProjectFolder> UpdateFolderAsync(ProjectFolder folder, CancellationToken ct = default)
+	{
+		var response = await _http.PutAsJsonAsync($"/api/projects/folders/{folder.Id}", folder, ct);
+		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct, "Folder not found.");
+		return await response.ReadJsonAsync(folder, ct);
+	}
+
+	public async Task MoveToFolderAsync(Guid projectId, Guid? folderId, CancellationToken ct = default)
+	{
+		var response = await _http.PutAsJsonAsync($"/api/projects/{projectId}/folder", new ProjectFolderMoveRequest { FolderId = folderId }, ct);
+		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct, "Project not found.");
+	}
+
+	public async Task DeleteFolderAsync(Guid id, CancellationToken ct = default)
+	{
+		var response = await _http.DeleteAsync($"/api/projects/folders/{id}", ct);
+		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct, "Folder not found.");
+	}
 
 }

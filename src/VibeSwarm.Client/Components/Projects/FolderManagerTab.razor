@@ -1,0 +1,324 @@
+@using VibeSwarm.Shared.Validation
+@inject IFolderManagerService ManagerService
+@inject IInferenceProviderService InferenceProviderService
+@inject NotificationService NotificationService
+
+@* A folder's Manager tab: inference reads every project in the folder and writes a report on where
+   things stand. Reports are kept, and a run can build on an earlier one. *@
+
+<div class="d-flex flex-column gap-7">
+	<div class="d-flex flex-column gap-5">
+		<p class="small fg-1 mb-0">
+			The manager reads each project's queued ideas, running and recent jobs, and recent commits, then
+			writes a report on where things stand and what to do next.
+		</p>
+
+		@if (!_isLoadingModel && _model == null)
+		{
+			<div class="alert theme-warning mb-0" role="alert">
+				<span>No inference model is set up. Add a provider on the <a href="/inference">Inference</a> page to run the manager.</span>
+			</div>
+		}
+
+		<div class="form-field">
+			<label for="folder-manager-notes" class="form-label">Anything to look at? <span class="fg-2">(optional)</span></label>
+			<textarea id="folder-manager-notes" class="form-control textarea-autogrow" rows="3"
+					  maxlength="@ValidationLimits.FolderManagerNotesMaxLength" placeholder="e.g. Are we ready to release?"
+					  @bind="_notes" @bind:event="oninput" disabled="@_isRunning"></textarea>
+		</div>
+
+		@if (_reports.Count > 0)
+		{
+			<div class="form-field">
+				<label for="folder-manager-continue" class="form-label">Build on</label>
+				<select id="folder-manager-continue" class="form-control" @bind="ContinueFromValue" disabled="@_isRunning">
+					<option value="">Nothing, start fresh</option>
+					@foreach (var report in _reports)
+					{
+						<option value="@report.Id">Report from @report.CreatedAt.FormatDateTimeShort()</option>
+					}
+				</select>
+			</div>
+		}
+
+		@if (!string.IsNullOrEmpty(_error))
+		{
+			<Alert Type="Alert.AlertType.Danger" Message="@_error" Class="mb-0" />
+		}
+
+		<div class="d-flex flex-wrap align-items-center gap-3">
+			<ActionButton Icon="clipboard-data" Text="@(_isRunning ? "Writing report…" : "Run manager")" Style="ActionButton.ButtonStyle.Primary"
+						  IsLoading="@_isRunning" Disabled="@(ProjectCount == 0 || _model == null)" OnClick="RunAsync" />
+			@if (_model != null)
+			{
+				<span id="folder-manager-model" class="small fg-2 min-w-0 text-truncate">Uses @_model</span>
+			}
+		</div>
+	</div>
+
+	<section class="d-flex flex-column gap-3">
+		<SectionHeader Title="Reports" />
+		@if (_isLoadingReports)
+		{
+			<LoadingSpinner Text="Loading reports..." />
+		}
+		else
+		{
+			<div class="list-group rounded-9">
+				@foreach (var (report, index) in _reports.Select((report, index) => (report, index)))
+				{
+					<ListRow @key="report.Id" Icon="clipboard-data" Title="@report.CreatedAt.FormatDateTimeShort()"
+							 Subtitle="@ReportSubtitle(report)" InitiallyExpanded="@(index == 0)">
+						<div class="white-space-pre-wrap text-break">@report.Content</div>
+						<dl class="small mb-0 d-flex flex-column gap-1">
+							@if (!string.IsNullOrWhiteSpace(report.Notes))
+							{
+								<div class="d-flex justify-content-between gap-5">
+									<dt class="fw-normal fg-1 flex-shrink-0">Asked</dt>
+									<dd class="mb-0 text-end text-break">@report.Notes</dd>
+								</div>
+							}
+							@if (report.PreviousReportId.HasValue)
+							{
+								<div class="d-flex justify-content-between gap-5">
+									<dt class="fw-normal fg-1 flex-shrink-0">Built on</dt>
+									<dd class="mb-0 text-end">@PreviousReportLabel(report.PreviousReportId.Value)</dd>
+								</div>
+							}
+							@if (!string.IsNullOrWhiteSpace(report.ProjectNames))
+							{
+								<div class="d-flex justify-content-between gap-5">
+									<dt class="fw-normal fg-1 flex-shrink-0">Projects</dt>
+									<dd class="mb-0 text-end text-break">@report.ProjectNames</dd>
+								</div>
+							}
+							@if (!string.IsNullOrWhiteSpace(report.ModelId))
+							{
+								<div class="d-flex justify-content-between gap-5">
+									<dt class="fw-normal fg-1 flex-shrink-0">Model</dt>
+									<dd class="mb-0 text-end text-break">@report.ModelId on @report.ProviderName</dd>
+								</div>
+							}
+							@if (ReportTokens(report) is { } tokens)
+							{
+								<div class="d-flex justify-content-between gap-5">
+									<dt class="fw-normal fg-1 flex-shrink-0">Tokens</dt>
+									<dd class="mb-0 text-end">@tokens</dd>
+								</div>
+							}
+							@if (report.DurationMs is { } durationMs)
+							{
+								<div class="d-flex justify-content-between gap-5">
+									<dt class="fw-normal fg-1 flex-shrink-0">Time</dt>
+									<dd class="mb-0 text-end">@TokenHelper.FormatDuration(TimeSpan.FromMilliseconds(durationMs))</dd>
+								</div>
+							}
+							@if (ReportCost(report) is { } cost)
+							{
+								<div class="d-flex justify-content-between gap-5">
+									<dt class="fw-normal fg-1 flex-shrink-0">Cost</dt>
+									<dd class="mb-0 text-end">@cost</dd>
+								</div>
+							}
+						</dl>
+						<div class="d-flex flex-wrap align-items-center gap-5">
+							<button type="button" class="btn-outline theme-secondary btn-sm" disabled="@_isRunning"
+									@onclick="() => BuildOn(report)">Build on this report</button>
+							<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 ms-auto"
+									@onclick="() => ConfirmDelete(report)">Delete</button>
+						</div>
+					</ListRow>
+				}
+				@if (_reports.Count == 0)
+				{
+					<div class="list-group-item small fg-1 py-5">
+						@(ProjectCount == 0
+							? "No reports yet. Add projects to this folder, then run the manager."
+							: "No reports yet. Run the manager to write the first one.")
+					</div>
+				}
+			</div>
+		}
+	</section>
+</div>
+
+<ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete report"
+				   Message="@($"Delete the report from {_reportBeingDeleted?.CreatedAt.FormatDateTimeShort()}?")"
+				   SubMessage="Reports built on it keep their text."
+				   ConfirmText="Delete" IsProcessing="_isDeleting" ErrorMessage="@_deleteError"
+				   OnConfirm="DeleteAsync" OnCancel="() => _showDeleteModal = false" />
+
+@code {
+	[Parameter, EditorRequired]
+	public Guid FolderId { get; set; }
+
+	/// <summary>Projects in the folder; the manager can't run on an empty one.</summary>
+	[Parameter]
+	public int ProjectCount { get; set; }
+
+	private List<FolderManagerReport> _reports = new();
+	private bool _isLoadingReports = true;
+	private bool _isLoadingModel = true;
+	private string? _model;
+	private string? _notes;
+	private Guid? _continueFromReportId;
+	private bool _isRunning;
+	private string? _error;
+
+	private bool _showDeleteModal;
+	private FolderManagerReport? _reportBeingDeleted;
+	private bool _isDeleting;
+	private string? _deleteError;
+
+	private string ContinueFromValue
+	{
+		get => _continueFromReportId?.ToString() ?? string.Empty;
+		set => _continueFromReportId = Guid.TryParse(value, out var id) ? id : null;
+	}
+
+	protected override async Task OnInitializedAsync()
+	{
+		await Task.WhenAll(LoadReportsAsync(), LoadModelAsync());
+		// Each run builds on the latest report unless the user picks otherwise.
+		_continueFromReportId = _reports.FirstOrDefault()?.Id;
+	}
+
+	private async Task LoadReportsAsync()
+	{
+		try
+		{
+			_reports = (await ManagerService.GetReportsAsync(FolderId)).ToList();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load reports: {ex.Message}");
+		}
+		finally
+		{
+			_isLoadingReports = false;
+		}
+	}
+
+	private async Task LoadModelAsync()
+	{
+		try
+		{
+			var providers = await InferenceProviderService.GetAllAsync();
+			var (provider, model) = InferenceTaskModels.Candidates(providers, InferenceTaskModels.ProjectManager).FirstOrDefault();
+			_model = provider == null ? null : $"{model.ModelId} on {provider.Name}";
+		}
+		catch
+		{
+			// Let the run say whether a provider replies.
+			_model = "the first inference provider that replies";
+		}
+		finally
+		{
+			_isLoadingModel = false;
+		}
+	}
+
+	private async Task RunAsync()
+	{
+		if (_isRunning)
+		{
+			return;
+		}
+
+		_isRunning = true;
+		_error = null;
+		try
+		{
+			var result = await ManagerService.RunAsync(FolderId, new FolderManagerRunRequest
+			{
+				Notes = _notes,
+				ContinueFromReportId = _continueFromReportId
+			});
+			if (result.Report == null)
+			{
+				_error = result.Error ?? "The manager didn't write a report.";
+				return;
+			}
+
+			_reports.Insert(0, result.Report);
+			_continueFromReportId = result.Report.Id;
+			_notes = null;
+			NotificationService.ShowSuccess("Report written.");
+		}
+		catch (Exception ex)
+		{
+			_error = $"Could not run the manager: {ex.Message}";
+		}
+		finally
+		{
+			_isRunning = false;
+		}
+	}
+
+	private void BuildOn(FolderManagerReport report)
+	{
+		_continueFromReportId = report.Id;
+		NotificationService.ShowInfo($"The next run builds on the report from {report.CreatedAt.FormatDateTimeShort()}.");
+	}
+
+	private void ConfirmDelete(FolderManagerReport report)
+	{
+		_reportBeingDeleted = report;
+		_deleteError = null;
+		_showDeleteModal = true;
+	}
+
+	private async Task DeleteAsync()
+	{
+		if (_reportBeingDeleted is not { } report)
+		{
+			return;
+		}
+
+		_isDeleting = true;
+		_deleteError = null;
+		try
+		{
+			await ManagerService.DeleteReportAsync(report.Id);
+			_reports.Remove(report);
+			foreach (var continuation in _reports.Where(r => r.PreviousReportId == report.Id))
+			{
+				continuation.PreviousReportId = null;
+			}
+			if (_continueFromReportId == report.Id)
+			{
+				_continueFromReportId = _reports.FirstOrDefault()?.Id;
+			}
+			_showDeleteModal = false;
+			_reportBeingDeleted = null;
+		}
+		catch (Exception ex)
+		{
+			_deleteError = ex.Message;
+		}
+		finally
+		{
+			_isDeleting = false;
+		}
+	}
+
+	// What the user asked for, else which projects the report covered.
+	private static string? ReportSubtitle(FolderManagerReport report)
+		=> string.IsNullOrWhiteSpace(report.Notes) ? report.ProjectNames : report.Notes;
+
+	private string PreviousReportLabel(Guid previousReportId)
+		=> _reports.FirstOrDefault(r => r.Id == previousReportId) is { } previous
+			? $"Report from {previous.CreatedAt.FormatDateTimeShort()}"
+			: "An earlier report";
+
+	private static string? ReportTokens(FolderManagerReport report)
+		=> report.PromptTokens is null && report.CompletionTokens is null
+			? null
+			: $"{TokenHelper.FormatTokenCount(report.PromptTokens ?? 0)} in · {TokenHelper.FormatTokenCount(report.CompletionTokens ?? 0)} out";
+
+	// A reported cost, or free for a self-hosted Ollama model; null when the provider reports none.
+	private static string? ReportCost(FolderManagerReport report)
+		=> report.CostUsd is { } cost ? TokenHelper.FormatCost(cost)
+			: report.ProviderType == InferenceProviderType.Ollama ? "Free (self-hosted)"
+			: null;
+}

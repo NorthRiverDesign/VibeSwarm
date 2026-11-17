@@ -49,8 +49,8 @@ public class JobQueueManager
 			using var scope = _scopeFactory.CreateScope();
 			var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
 
-			// Get projects that already have an in-flight job. Swarm members get no exception:
-			// they share the project's checkout, so they take turns like any other job.
+			// Get projects that already have an in-flight job. Members of one swarm run side by
+			// side, each in a worktree of its own; anything else takes its turn (ProjectJobSlots).
 			var runningJobInfo = await dbContext.Jobs
 				.Where(j => j.Status == JobStatus.Pending
 					|| j.Status == JobStatus.Started
@@ -58,15 +58,16 @@ public class JobQueueManager
 					|| j.Status == JobStatus.Processing
 					|| j.Status == JobStatus.Paused
 					|| j.Status == JobStatus.Stalled)
-				.Select(j => new { j.ProjectId, j.ProviderId })
+				.Select(j => new { j.ProjectId, j.ProviderId, j.SwarmId })
 				.ToListAsync(cancellationToken);
 
-			var projectsWithRunningJobs = runningJobInfo.Select(j => j.ProjectId).Distinct().ToList();
-			var providersWithRunningJobs = runningJobInfo
-				.Select(j => j.ProviderId)
-				.Where(id => id != Guid.Empty)
-				.Distinct()
-				.ToList();
+			var checkouts = await ProjectCheckouts.LoadAsync(dbContext, cancellationToken);
+			var projectSlots = new ProjectJobSlots(runningJobInfo.Select(j => (j.ProjectId, j.SwarmId)), checkouts);
+			var closedProjects = projectSlots.ClosedProjectIds;
+			var providerSlots = new ProviderJobSlots(
+				runningJobInfo.Select(j => j.ProviderId),
+				await ProviderJobSlots.LoadLimitsAsync(dbContext, cancellationToken));
+			var fullProviders = providerSlots.FullProviderIds;
 
 			// Get all pending jobs that aren't blocked
 			var now = DateTime.UtcNow;
@@ -83,8 +84,8 @@ public class JobQueueManager
 								.ThenInclude(link => link.Skill)
 				.Include(j => j.Provider)
 				.Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
-				.Where(j => !projectsWithRunningJobs.Contains(j.ProjectId))
-				.Where(j => j.ProviderId == Guid.Empty || !providersWithRunningJobs.Contains(j.ProviderId))
+				.Where(j => !closedProjects.Contains(j.ProjectId))
+				.Where(j => j.ProviderId == Guid.Empty || !fullProviders.Contains(j.ProviderId))
 				.Where(j => j.NotBeforeUtc == null || j.NotBeforeUtc <= now)
 				.OrderByDescending(j => j.Priority)
 				.ThenBy(j => j.CreatedAt)
@@ -101,7 +102,7 @@ public class JobQueueManager
 			eligibleJobs = FilterByDependencies(eligibleJobs, dbContext);
 
 			// Apply fair distribution across projects (one job per project)
-			var result = ApplyFairDistribution(eligibleJobs, maxJobs);
+			var result = ApplyFairDistribution(eligibleJobs, maxJobs, projectSlots, providerSlots, checkouts);
 
 			// Track dequeued jobs
 			foreach (var job in result)
@@ -110,7 +111,7 @@ public class JobQueueManager
 			}
 
 			_logger?.LogDebug("Returning {Count} pending jobs from queue (total pending: {Total}, projects with running jobs: {RunningProjects})",
-				result.Count, pendingJobs.Count, projectsWithRunningJobs.Count);
+				result.Count, pendingJobs.Count, runningJobInfo.Select(j => j.ProjectId).Distinct().Count());
 
 			return result;
 		}
@@ -229,36 +230,39 @@ public class JobQueueManager
 	/// <summary>
 	/// Applies fair distribution to prevent a single project from hogging resources.
 	/// </summary>
-	private List<Job> ApplyFairDistribution(List<Job> jobs, int maxJobs)
+	private List<Job> ApplyFairDistribution(List<Job> jobs, int maxJobs, ProjectJobSlots projectSlots, ProviderJobSlots providerSlots, ProjectCheckouts checkouts)
 	{
 		var result = new List<Job>();
+		// Counted per checkout, so projects sharing a folder take turns like one project.
 		var jobCountByProject = new Dictionary<Guid, int>();
-		var providerIds = new HashSet<Guid>();
+		var batchSlots = new ProjectJobSlots([], checkouts);
 
 		foreach (var job in jobs)
 		{
 			if (result.Count >= maxJobs)
 				break;
 
-			if (job.ProviderId != Guid.Empty && !providerIds.Add(job.ProviderId))
+			if (!providerSlots.CanStart(job.ProviderId))
 			{
 				continue;
 			}
 
 			var projectId = job.ProjectId;
-			if (!jobCountByProject.TryGetValue(projectId, out var count))
+			var checkout = checkouts.CheckoutOf(projectId);
+			if (!jobCountByProject.TryGetValue(checkout, out var count))
 			{
 				count = 0;
 			}
 
-			if (count < MaxJobsPerProject)
+			// A project busy with a swarm only takes more members of that swarm, and members of
+			// one swarm can all start in the same batch.
+			if (projectSlots.CanStart(projectId, job.SwarmId)
+				&& (count < MaxJobsPerProject || batchSlots.CanStart(projectId, job.SwarmId)))
 			{
 				result.Add(job);
-				jobCountByProject[projectId] = count + 1;
-			}
-			else if (job.ProviderId != Guid.Empty)
-			{
-				providerIds.Remove(job.ProviderId);
+				jobCountByProject[checkout] = count + 1;
+				batchSlots.Take(projectId, job.SwarmId);
+				providerSlots.Take(job.ProviderId);
 			}
 		}
 

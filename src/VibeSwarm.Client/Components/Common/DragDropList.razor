@@ -8,7 +8,7 @@
     @for (var i = 0; i < Items.Count; i++)
     {
         var index = i;
-        <div class="d-flex align-items-start gap-2 drag-drop-item @(_dragIndex == index ? "opacity-50" : "") @(_dragOverIndex == index && _dragIndex != index ? "drag-drop-over" : "")"
+        <div class="d-flex align-items-start gap-3 drag-drop-item @(_dragIndex == index ? "opacity-50" : "") @(_dragOverIndex == index && _dragIndex != index ? "drag-drop-over" : "")"
              data-drag-index="@index"
              draggable="true"
              @ondragstart="() => HandleDragStart(index)"
@@ -16,10 +16,10 @@
              @ondragover="() => HandleDragOver(index)"
              @ondrop="() => HandleDrop(index)"
              @ondragend="HandleDragEnd">
-            <div class="flex-shrink-0 cursor-grab text-body-secondary d-flex align-items-center" style="padding-top: 0.75rem;" title="Drag to reorder" data-drag-handle>
-                <i class="bi bi-grip-vertical fs-5"></i>
+            <div class="flex-shrink-0 cursor-grab fg-1 d-flex align-items-center" style="padding-top: 0.75rem;" title="Drag to reorder" data-drag-handle>
+                <i class="bi bi-grip-vertical fs-lg"></i>
             </div>
-            <div class="flex-grow-1 min-width-0">
+            <div class="flex-grow-1 min-w-0">
                 @ItemTemplate(Items[index])
             </div>
         </div>

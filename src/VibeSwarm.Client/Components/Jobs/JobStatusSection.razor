@@ -14,58 +14,82 @@
 
 @if (isTerminal || isActive)
 {
-    @* Equal columns, disc above label, so all four steps fit one row on a phone. Each column
-       draws its own half of the connector on either side of the disc. *@
-    <div class="card mb-3">
-        <div class="card-body py-3 px-1 d-flex">
-            @foreach (var (step, i) in steps.Select((s, i) => (s, i)))
-            {
-                var isFirst = i == 0;
-                var isLast = i == steps.Count - 1;
-                <div class="col min-width-0 d-flex flex-column align-items-center gap-1 text-center">
-                    <div class="d-flex align-items-center w-100">
-                        <span class="flex-grow-1 @(isFirst ? string.Empty : ConnectorClass(steps[i - 1]))"></span>
-                        <span class="d-inline-flex align-items-center justify-content-center flex-shrink-0 rounded-circle status-disc-md mx-1 @step.BadgeClass">
-                            <i class="bi @step.Icon d-flex"></i>
-                        </span>
-                        <span class="flex-grow-1 @(isLast ? string.Empty : ConnectorClass(step))"></span>
-                    </div>
-                    <span class="small fw-medium lh-sm text-truncate mw-100 px-1">@step.Name</span>
-                    @if (!string.IsNullOrEmpty(step.Sub))
-                    {
-                        <span class="text-caption text-muted text-truncate mw-100 px-1 @(step.Mono ? "font-monospace" : "")">@step.Sub</span>
-                    }
-                </div>
-            }
+    @* Bootstrap's stepper: equal columns, marker above label, so all four steps fit one row on
+       a phone. A step's colour comes from its theme; the connector after it takes that colour
+       while the next step is reached too. *@
+    <div class="card mb-5">
+        <div class="card-body py-5 px-1">
+            <ol class="stepper stepper-horizontal w-100 mb-0">
+                @foreach (var step in steps)
+                {
+                    <li class="stepper-item @step.ItemClass" aria-current="@(step.State == State.Current ? "step" : null)">
+                        <div class="d-flex flex-column gap-1 min-w-0 w-100">
+                            <span class="small fw-medium lh-sm text-truncate px-1">@step.Name</span>
+                            @if (!string.IsNullOrEmpty(step.Sub))
+                            {
+                                <span class="text-xs fg-1 text-truncate px-1 @(step.Mono ? "font-monospace" : "")">@step.Sub</span>
+                            }
+                        </div>
+                    </li>
+                }
+            </ol>
         </div>
     </div>
 }
 
 @if (isTerminal)
 {
-    <div class="alert alert-@variant d-flex align-items-start gap-3 mb-3">
-        <i class="bi @BannerIcon fs-5"></i>
-        <div class="flex-grow-1 min-width-0">
+    <div class="alert theme-@variant gap-5 mb-5">
+        <i class="bi @BannerIcon fs-lg"></i>
+        <div class="flex-grow-1 min-w-0">
             <div class="fw-semibold">@BannerHeadline</div>
             <div class="small">@BannerBody</div>
-            <div class="d-flex flex-wrap gap-2 align-items-center pt-2">
+            @if (SignInHref is { } signInHref)
+            {
+                <div class="pt-3">
+                    <a class="btn-solid theme-danger btn-sm" href="@signInHref"><i class="bi bi-box-arrow-in-right"></i>Sign in again</a>
+                </div>
+            }
+            @if (ChecksFailed && !string.IsNullOrWhiteSpace(Job.BuildOutput))
+            {
+                <details class="pt-3">
+                    <summary class="small fw-medium cursor-pointer user-select-none">Check output</summary>
+                    <pre class="mb-0 mt-3 p-3 bg-2 rounded small font-monospace white-space-pre-wrap text-break overflow-y-auto max-height-50dvh">@CheckOutputTail</pre>
+                </details>
+            }
+            <div class="d-flex flex-wrap gap-3 align-items-center pt-3">
                 @if (Job.ChangedFilesCount > 0)
                 {
-                    <span class="badge text-bg-secondary"><i class="bi bi-file-earmark-diff"></i> @Job.ChangedFilesCount files</span>
+                    <span class="badge theme-secondary"><i class="bi bi-file-earmark-diff"></i> @Job.ChangedFilesCount files</span>
                 }
                 @if (shortSha is not null)
                 {
-                    <span class="badge text-bg-secondary font-monospace"><i class="bi bi-git"></i> @shortSha</span>
+                    <span class="badge theme-secondary font-monospace"><i class="bi bi-git"></i> @shortSha</span>
                 }
                 @if (IsPushed)
                 {
-                    <span class="badge text-bg-success"><i class="bi bi-cloud-check"></i> Pushed</span>
+                    <span class="badge theme-success"><i class="bi bi-cloud-check"></i> Pushed</span>
                 }
                 @if (Job.Project?.BuildVerificationEnabled == true && Job.BuildVerified == true)
                 {
-                    <span class="badge text-bg-success"><i class="bi bi-shield-check"></i> Verified</span>
+                    <span class="badge theme-success"><i class="bi bi-shield-check"></i> Verified</span>
+                }
+                @if (Job.ReviewStatus == JobReviewStatus.Approved)
+                {
+                    <span class="badge theme-success"><i class="bi bi-eye"></i> Reviewed</span>
                 }
             </div>
+            @if (ReviewLine is { } review)
+            {
+                <div class="small @review.CssClass mt-3">@review.Text</div>
+                @if (Job.ReviewStatus == JobReviewStatus.Unresolved && !string.IsNullOrWhiteSpace(Job.ReviewNotes))
+                {
+                    <details class="mt-1">
+                        <summary class="small fg-1 cursor-pointer">Last findings</summary>
+                        <div class="small white-space-pre-wrap text-break mt-1">@Job.ReviewNotes</div>
+                    </details>
+                }
+            }
         </div>
     </div>
 }
@@ -75,8 +99,51 @@
     [Parameter] public bool IsPushed { get; set; }
     [Parameter] public string? BranchName { get; set; }
 
+    // The run finished, but the project's build or test command failed afterwards, so VibeSwarm
+    // left the changes uncommitted instead of committing broken code.
+    private bool ChecksFailed => Job is { Status: JobStatus.Completed, BuildVerified: false }
+        && string.IsNullOrEmpty(Job.GitCommitHash);
+
+    // One quiet line saying what the project's reviewer made of the work.
+    private (string Text, string CssClass)? ReviewLine
+    {
+        get
+        {
+            if (Job == null)
+            {
+                return null;
+            }
+
+            var reviewer = string.IsNullOrWhiteSpace(Job.ReviewProviderName) ? "the reviewer" : Job.ReviewProviderName;
+            var fixes = Job.ReviewRounds == 1 ? "1 fix" : $"{Job.ReviewRounds} fixes";
+            return Job.ReviewStatus switch
+            {
+                JobReviewStatus.Approved when Job.ReviewRounds == 0 => ($"Reviewed by {reviewer}: nothing to fix", "fg-1"),
+                JobReviewStatus.Approved => ($"Reviewed by {reviewer}: approved after {fixes}", "fg-1"),
+                JobReviewStatus.Unresolved => ($"Reviewed by {reviewer}: {fixes}, the last findings weren't re-checked", "fg-warning"),
+                JobReviewStatus.Skipped => ($"Review skipped: {Job.ReviewNotes ?? "the reviewer couldn't run"}", "fg-1"),
+                _ => null
+            };
+        }
+    }
+
+    private const int CheckOutputTailLines = 80;
+
+    // The failing build step or test summary is at the end of the output.
+    private string CheckOutputTail
+    {
+        get
+        {
+            var lines = (Job?.BuildOutput ?? string.Empty).TrimEnd().Split('\n');
+            return lines.Length <= CheckOutputTailLines
+                ? string.Join('\n', lines)
+                : string.Join('\n', lines[^CheckOutputTailLines..]);
+        }
+    }
+
     private string BannerVariant => Job?.Status switch
     {
+        JobStatus.Completed when ChecksFailed => "warning",
         JobStatus.Completed => "success",
         JobStatus.Failed => "danger",
         JobStatus.Cancelled or JobStatus.Stalled or JobStatus.Paused => "warning",
@@ -85,6 +152,7 @@
 
     private string BannerIcon => Job?.Status switch
     {
+        JobStatus.Completed when ChecksFailed => "bi-shield-exclamation",
         JobStatus.Completed => "bi-cloud-check",
         JobStatus.Failed => "bi-x-octagon",
         JobStatus.Cancelled => "bi-slash-circle",
@@ -95,6 +163,7 @@
 
     private string BannerHeadline => Job?.Status switch
     {
+        JobStatus.Completed when ChecksFailed => "Checks failed, not committed",
         JobStatus.Completed => "Job completed",
         JobStatus.Failed => "Job failed",
         JobStatus.Cancelled => "Job cancelled",
@@ -103,8 +172,19 @@
         _ => "Running"
     };
 
+    /// <summary>
+    /// The run failed because the provider's login expired or was rejected: link to its host row on
+    /// the Providers page, opened on signing in again.
+    /// </summary>
+    private string? SignInHref => Job is { Status: JobStatus.Failed } && ProviderFailureClassifier.IsSignInFailure(Job.ErrorMessage)
+        ? Job.Provider is { } provider && ProviderCapabilities.SupportsHostSignIn(provider.Type)
+            ? $"/providers?signin={provider.Type}"
+            : "/providers"
+        : null;
+
     private string BannerBody => Job?.Status switch
     {
+        JobStatus.Completed when ChecksFailed => "The run finished, but the project's build or tests failed afterwards, so its changes were left uncommitted. Send a follow-up to fix them, or review and commit them from the project page.",
         JobStatus.Completed when IsPushed => "Run completed successfully. Branch is updated and ready for review.",
         JobStatus.Completed when !string.IsNullOrEmpty(Job.GitCommitHash) => "Changes committed locally. Push to share.",
         JobStatus.Completed => "Run completed successfully.",
@@ -129,31 +209,26 @@
             new("Queued", Job.CreatedAt.ToLocalTime().ToString("h:mm tt"), State.Done),
             new("Running", Job.StartedAt?.ToLocalTime().ToString("h:mm tt"),
                 hasCommit || completed ? State.Done : active ? State.Current : failed ? State.Failed : State.Pending),
-            new("Committed", shortSha, hasCommit ? State.Done : completed ? State.Current : State.Pending, Mono: hasCommit),
+            ChecksFailed
+                ? new("Committed", "Checks failed", State.Failed)
+                : new("Committed", shortSha, hasCommit ? State.Done : completed ? State.Current : State.Pending, Mono: hasCommit),
             new("Pushed", IsPushed ? $"to {BranchName ?? "remote"}" : null,
                 IsPushed ? State.Done : hasCommit && completed ? State.Current : State.Pending)
         };
     }
 
     private enum State { Pending, Current, Done, Failed }
-    private static string ConnectorClass(Step from) => from.Done ? "border-top border-success" : "border-top";
 
     private record Step(string Name, string? Sub, State State, bool Mono = false)
     {
-        public bool Done => State == State.Done;
-        public string BadgeClass => State switch
+        // A reached step is "active" in its theme colour; site.css swaps the step number in
+        // its marker for a status glyph.
+        public string ItemClass => State switch
         {
-            State.Done => "text-bg-success",
-            State.Current => "text-bg-primary",
-            State.Failed => "text-bg-danger",
-            _ => "bg-body-tertiary text-body-tertiary border"
-        };
-        public string Icon => State switch
-        {
-            State.Done => "bi-check-lg",
-            State.Current => "bi-hourglass-split",
-            State.Failed => "bi-x-lg",
-            _ => "bi-dot"
+            State.Done => "active theme-success stepper-item-done",
+            State.Current => "active theme-primary stepper-item-current",
+            State.Failed => "active theme-danger stepper-item-failed",
+            _ => string.Empty
         };
     }
 }

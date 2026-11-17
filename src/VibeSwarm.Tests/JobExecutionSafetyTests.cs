@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
@@ -525,6 +526,86 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.Contains("session is 93% used", persistedJob.ErrorMessage ?? string.Empty);
 	}
 
+	[Fact]
+	public async Task ProcessJobAsync_WaitsForTheWeekToResetWhenWeeklyUsageIsOverItsThreshold()
+	{
+		var projectId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
+		var jobId = Guid.NewGuid();
+		var sessionReset = DateTime.UtcNow.AddHours(2);
+		var weekReset = DateTime.UtcNow.AddDays(3);
+
+		await using (var setupContext = CreateDbContext())
+		{
+			setupContext.Projects.Add(new Project
+			{
+				Id = projectId,
+				Name = "Session Project",
+				WorkingPath = "/tmp/session-project"
+			});
+			setupContext.Providers.Add(new Provider
+			{
+				Id = providerId,
+				Name = "Claude",
+				Type = ProviderType.Claude,
+				IsEnabled = true,
+				ExecutablePath = "missing-claude",
+				WeeklyLimitPauseThresholdPercent = 80
+			});
+			setupContext.ProviderUsageSummaries.Add(new ProviderUsageSummary
+			{
+				ProviderId = providerId,
+				LimitsRefreshedAt = DateTime.UtcNow,
+				LimitWindows =
+				[
+					SessionWindow(10, sessionReset),
+					new UsageLimitWindow { Scope = UsageLimitWindowScope.Weekly, LimitType = UsageLimitType.RateLimit, Label = "Weekly", CurrentUsage = 84, MaxUsage = 100, ResetTime = weekReset }
+				]
+			});
+			setupContext.Jobs.Add(new Job
+			{
+				Id = jobId,
+				ProjectId = projectId,
+				ProviderId = providerId,
+				GoalPrompt = "Wait for the week to reset",
+				Status = JobStatus.New
+			});
+
+			await setupContext.SaveChangesAsync();
+		}
+
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		var serviceProvider = services.BuildServiceProvider();
+
+		var processingService = new JobProcessingService(
+			serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NoOpVersionControlService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+
+		await using var executionContext = CreateDbContext();
+		var job = await executionContext.Jobs
+			.Include(j => j.Project)
+			.Include(j => j.Provider)
+			.SingleAsync(j => j.Id == jobId);
+
+		await InvokeProcessJobAsync(
+			processingService,
+			job,
+			new StubJobService(isCancellationRequested: false),
+			new StubProviderService(),
+			executionContext);
+
+		await using var verificationContext = CreateDbContext();
+		var persistedJob = await verificationContext.Jobs.SingleAsync(j => j.Id == jobId);
+
+		Assert.Equal(JobStatus.New, persistedJob.Status);
+		Assert.NotNull(persistedJob.NotBeforeUtc);
+		Assert.Equal(weekReset, persistedJob.NotBeforeUtc!.Value, TimeSpan.FromSeconds(1));
+		Assert.Contains("weekly limit is 84% used", persistedJob.ErrorMessage ?? string.Empty);
+	}
+
 	[Theory]
 	[InlineData(true)]
 	[InlineData(false)]
@@ -582,6 +663,224 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.Equal(JobStatus.Failed, persistedJob.Status);
 		Assert.True(JobTimeLimit.IsStopMessage(persistedJob.ErrorMessage), persistedJob.ErrorMessage);
 		Assert.Null(persistedJob.ResumeFromStatus);
+	}
+
+	[Fact]
+	public async Task ProcessJobAsync_InferenceAnswersTheAgentsQuestion_AndTheJobCarriesOn()
+	{
+		var workingPath = Directory.CreateTempSubdirectory("vibeswarm-question-").FullName;
+		var jobId = Guid.NewGuid();
+		Provider providerConfig;
+		await using (var setupContext = CreateDbContext())
+		{
+			var project = new Project { Id = Guid.NewGuid(), Name = "Question Project", WorkingPath = workingPath };
+			providerConfig = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+			var inferenceProvider = new InferenceProvider { Name = "Desktop", Endpoint = "http://desktop:11434" };
+			inferenceProvider.Models.Add(new InferenceModel { ModelId = "qwen3", TaskType = "default", IsDefault = true });
+			setupContext.AddRange(project, providerConfig, inferenceProvider, new Job
+			{
+				Id = jobId,
+				ProjectId = project.Id,
+				ProviderId = providerConfig.Id,
+				GoalPrompt = "Add a settings page",
+				Status = JobStatus.New
+			});
+			await setupContext.SaveChangesAsync();
+		}
+
+		var agent = new QuestionAskingProvider(providerConfig, "Would you like me to also update the docs?");
+		var jobService = new InteractionJobService();
+		var inference = new ReplyingInferenceService("Yes, update the docs too.");
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		services.AddSingleton<IProjectMemoryService, NoOpProjectMemoryService>();
+		services.AddSingleton<IJobService>(jobService);
+		services.AddSingleton<IProviderService>(new StubProviderService());
+		services.AddSingleton<IInferenceService>(inference);
+		services.AddLogging();
+		services.AddScoped<AgentQuestionAnswerer>();
+		var processingService = new JobProcessingService(
+			services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NotARepositoryVersionControlService(),
+			interactionResponseService: new InMemoryInteractionResponseService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService())
+		{
+			ProviderFactoryOverride = _ => agent
+		};
+
+		try
+		{
+			await using var executionContext = CreateDbContext();
+			var job = await executionContext.Jobs.Include(j => j.Project).Include(j => j.Provider).SingleAsync(j => j.Id == jobId);
+			await InvokeProcessJobAsync(processingService, job, jobService, new StubProviderService(), executionContext, withJobCancellation: true)
+				.WaitAsync(TimeSpan.FromSeconds(60));
+		}
+		finally
+		{
+			Directory.Delete(workingPath, recursive: true);
+		}
+
+		Assert.Equal(2, agent.Prompts.Count);
+		Assert.Contains("Yes, update the docs too.", agent.Prompts[1]);
+		Assert.Contains("without asking again", agent.Prompts[1]);
+		Assert.True(jobService.Paused);
+		Assert.True(jobService.Resumed);
+		var reply = Assert.Single(jobService.Messages, m => m.Role == MessageRole.User);
+		Assert.StartsWith("Yes, update the docs too.", reply.Content);
+		Assert.Contains("Would you like me to also update the docs?", inference.LastRequest?.Prompt);
+	}
+
+	[Theory]
+	[InlineData("Yes, update the docs too.", 2)]
+	[InlineData("NO_FOLLOW_UP", 1)]
+	public async Task ProcessJobAsync_InferenceAnswersTheQuestionAnAgentEndsWith_AndTheSessionContinues(string reply, int expectedRuns)
+	{
+		var workingPath = Directory.CreateTempSubdirectory("vibeswarm-closing-question-").FullName;
+		var jobId = Guid.NewGuid();
+		Provider providerConfig;
+		await using (var setupContext = CreateDbContext())
+		{
+			var project = new Project { Id = Guid.NewGuid(), Name = "Closing Question Project", WorkingPath = workingPath };
+			providerConfig = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+			var inferenceProvider = new InferenceProvider { Name = "Desktop", Endpoint = "http://desktop:11434" };
+			inferenceProvider.Models.Add(new InferenceModel { ModelId = "qwen3", TaskType = "default", IsDefault = true });
+			setupContext.AddRange(project, providerConfig, inferenceProvider, new Job
+			{
+				Id = jobId,
+				ProjectId = project.Id,
+				ProviderId = providerConfig.Id,
+				GoalPrompt = "Add a settings page",
+				Status = JobStatus.New
+			});
+			await setupContext.SaveChangesAsync();
+		}
+
+		var agent = new ClosingQuestionProvider(providerConfig, "Built the page.\n\nShould I also update the docs?");
+		var jobService = new InteractionJobService();
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		services.AddSingleton<IProjectMemoryService, NoOpProjectMemoryService>();
+		services.AddSingleton<IJobService>(jobService);
+		services.AddSingleton<IProviderService>(new StubProviderService());
+		services.AddSingleton<IInferenceService>(new ReplyingInferenceService(reply));
+		services.AddLogging();
+		services.AddScoped<AgentQuestionAnswerer>();
+		var processingService = new JobProcessingService(
+			services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NotARepositoryVersionControlService(),
+			interactionResponseService: new InMemoryInteractionResponseService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService())
+		{
+			ProviderFactoryOverride = _ => agent
+		};
+
+		try
+		{
+			await using var executionContext = CreateDbContext();
+			var job = await executionContext.Jobs.Include(j => j.Project).Include(j => j.Provider).SingleAsync(j => j.Id == jobId);
+			await InvokeProcessJobAsync(processingService, job, jobService, new StubProviderService(), executionContext, withJobCancellation: true)
+				.WaitAsync(TimeSpan.FromSeconds(60));
+		}
+		finally
+		{
+			Directory.Delete(workingPath, recursive: true);
+		}
+
+		Assert.Equal(expectedRuns, agent.Runs.Count);
+		if (expectedRuns == 2)
+		{
+			Assert.StartsWith("Yes, update the docs too.", agent.Runs[1].Prompt);
+			Assert.Equal("session-1", agent.Runs[1].SessionId);
+			Assert.Contains(jobService.Messages, m => m.Role == MessageRole.Assistant && m.Content.Contains("Should I also update the docs?"));
+			Assert.Contains(jobService.Messages, m => m.Role == MessageRole.User && m.Content.StartsWith("Yes, update the docs too."));
+		}
+	}
+
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public async Task ProcessJobAsync_AMessageFromTheUserStopsTheTurn_AndTheSessionCarriesOnWithIt(bool throwsWhenCancelled)
+	{
+		var turnStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+		var agent = new ScriptedProvider(async (run, cancellationToken) =>
+		{
+			if (run > 1)
+			{
+				return new ExecutionResult { Success = true, SessionId = "session-1", Output = "Switched to tabs." };
+			}
+
+			turnStarted.TrySetResult();
+			try
+			{
+				await Task.Delay(Timeout.Infinite, cancellationToken);
+				return new ExecutionResult { Success = true };
+			}
+			catch (OperationCanceledException) when (!throwsWhenCancelled)
+			{
+				return new ExecutionResult { Success = false, ErrorMessage = "Execution was cancelled." };
+			}
+		});
+
+		var (jobId, jobService, processingService) = await RunScriptedJobAsync(agent, async processing =>
+		{
+			Assert.False(processing.TrySendUserMessage(Guid.NewGuid(), "Not a running job"));
+			await turnStarted.Task.WaitAsync(TimeSpan.FromSeconds(30));
+			Assert.True(processing.TrySendUserMessage(processing.RunningJobId, "Use tabs, not spaces."));
+		});
+
+		Assert.Equal(2, agent.Runs.Count);
+		Assert.Equal("session-1", agent.Runs[1].SessionId);
+		Assert.StartsWith("<user_messages>", agent.Runs[1].Prompt);
+		Assert.Contains("Your last step was stopped", agent.Runs[1].Prompt);
+		Assert.Contains("Use tabs, not spaces.", agent.Runs[1].Prompt);
+		Assert.Contains(jobService.Messages, m => m.Role == MessageRole.User && m.Content == "Use tabs, not spaces.");
+
+		await using var verifyContext = CreateDbContext();
+		Assert.Equal(JobStatus.Completed, (await verifyContext.Jobs.SingleAsync(j => j.Id == jobId)).Status);
+		Assert.False(processingService.TrySendUserMessage(jobId, "Too late"));
+		var finishedJobService = new JobService(verifyContext, new ServiceCollection().BuildServiceProvider(), jobProcessingService: processingService);
+		Assert.False(await finishedJobService.SendMessageToAgentAsync(jobId, "Too late"));
+		Assert.False(await finishedJobService.SendMessageToAgentAsync(jobId, "   "));
+	}
+
+	[Fact]
+	public async Task ProcessJobAsync_AMessageSentAsTheAgentFinishes_KeepsTheSessionGoing()
+	{
+		JobProcessingService? processingService = null;
+		Guid jobId = default;
+		var agent = new ScriptedProvider((run, _) =>
+		{
+			if (run == 1)
+			{
+				// Arrives after the agent's last word, before the run wraps up.
+				Assert.True(processingService!.TrySendUserMessage(jobId, "Also update the README."));
+			}
+
+			var text = run == 1 ? "Built the page." : "Updated the README.";
+			return Task.FromResult(new ExecutionResult
+			{
+				Success = true,
+				SessionId = "session-1",
+				Output = text,
+				Messages = [new ExecutionMessage { Role = "assistant", Content = text }]
+			});
+		});
+
+		var (_, jobService, _) = await RunScriptedJobAsync(agent, processing =>
+		{
+			processingService = processing.Service;
+			jobId = processing.RunningJobId;
+			return Task.CompletedTask;
+		}, startBeforeRunning: true);
+
+		Assert.Equal(2, agent.Runs.Count);
+		Assert.Equal("session-1", agent.Runs[1].SessionId);
+		Assert.DoesNotContain("Your last step was stopped", agent.Runs[1].Prompt);
+		Assert.Contains("Also update the README.", agent.Runs[1].Prompt);
+		Assert.Contains(jobService.Messages, m => m.Role == MessageRole.Assistant && m.Content == "Built the page.");
+		Assert.Contains(jobService.Messages, m => m.Role == MessageRole.User && m.Content == "Also update the README.");
 	}
 
 	[Fact]
@@ -832,6 +1131,82 @@ public sealed class JobExecutionSafetyTests : IDisposable
 
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
 
+	private sealed record ScriptedJobRun(JobProcessingService Service, Guid RunningJobId)
+	{
+		public bool TrySendUserMessage(Guid jobId, string message) => Service.TrySendUserMessage(jobId, message);
+	}
+
+	/// <summary>
+	/// Runs a job on <paramref name="agent"/>. <paramref name="whileRunning"/> runs alongside the job,
+	/// or before it starts when <paramref name="startBeforeRunning"/> is set.
+	/// </summary>
+	private async Task<(Guid JobId, InteractionJobService JobService, JobProcessingService ProcessingService)> RunScriptedJobAsync(
+		ScriptedProvider agent,
+		Func<ScriptedJobRun, Task> whileRunning,
+		bool startBeforeRunning = false)
+	{
+		var workingPath = Directory.CreateTempSubdirectory("vibeswarm-user-message-").FullName;
+		var jobId = Guid.NewGuid();
+		await using (var setupContext = CreateDbContext())
+		{
+			var project = new Project { Id = Guid.NewGuid(), Name = "Steered Project", WorkingPath = workingPath };
+			var providerConfig = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+			setupContext.AddRange(project, providerConfig, new Job
+			{
+				Id = jobId,
+				ProjectId = project.Id,
+				ProviderId = providerConfig.Id,
+				GoalPrompt = "Add a settings page",
+				Status = JobStatus.New,
+				// Known before the run: reporting it through progress would also write a heartbeat
+				// on another thread, and the tests' one SQLite connection can't take both.
+				SessionId = "session-1"
+			});
+			await setupContext.SaveChangesAsync();
+		}
+
+		var jobService = new InteractionJobService();
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		services.AddSingleton<IProjectMemoryService, NoOpProjectMemoryService>();
+		services.AddSingleton<IJobService>(jobService);
+		services.AddSingleton<IProviderService>(new StubProviderService());
+		var processingService = new JobProcessingService(
+			services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NotARepositoryVersionControlService(),
+			interactionResponseService: new InMemoryInteractionResponseService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService())
+		{
+			ProviderFactoryOverride = _ => agent
+		};
+
+		try
+		{
+			var run = new ScriptedJobRun(processingService, jobId);
+			if (startBeforeRunning)
+			{
+				await whileRunning(run);
+			}
+
+			await using var executionContext = CreateDbContext();
+			var job = await executionContext.Jobs.Include(j => j.Project).Include(j => j.Provider).SingleAsync(j => j.Id == jobId);
+			var processing = InvokeProcessJobAsync(processingService, job, jobService, new StubProviderService(), executionContext, withJobCancellation: true);
+			if (!startBeforeRunning)
+			{
+				await whileRunning(run);
+			}
+
+			await processing.WaitAsync(TimeSpan.FromSeconds(60));
+		}
+		finally
+		{
+			Directory.Delete(workingPath, recursive: true);
+		}
+
+		return (jobId, jobService, processingService);
+	}
+
 	private static async Task<bool> InvokeClaimJobAsync(JobProcessingService service, Guid jobId, VibeSwarmDbContext dbContext)
 	{
 		var method = typeof(JobProcessingService).GetMethod("ClaimJobAsync", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -950,6 +1325,165 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	private sealed class NotARepositoryVersionControlService : FakeVersionControlServiceBase
 	{
 		public override Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(false);
+	}
+
+	/// <summary>
+	/// An agent that stops to ask a question on its first run, and finishes when run again.
+	/// </summary>
+	private sealed class QuestionAskingProvider(Provider config, string question) : SdkProviderBase(config)
+	{
+		public List<string> Prompts { get; } = [];
+
+		public override ProviderType Type => ProviderType.Claude;
+		public override Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+		public override Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default) => Task.FromResult(string.Empty);
+
+		public override async Task<ExecutionResult> ExecuteWithSessionAsync(
+			string prompt,
+			string? sessionId = null,
+			string? workingDirectory = null,
+			IProgress<ExecutionProgress>? progress = null,
+			CancellationToken cancellationToken = default)
+		{
+			Prompts.Add(prompt);
+			if (Prompts.Count > 1)
+			{
+				return new ExecutionResult { Success = true, Output = "Done." };
+			}
+
+			progress?.Report(new ExecutionProgress { OutputLine = question });
+			await Task.Delay(Timeout.Infinite, cancellationToken);
+			return new ExecutionResult { Success = true };
+		}
+
+		public override Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default) => Task.FromResult(new ProviderInfo());
+		public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new UsageLimits());
+		public override Task<SessionSummary> GetSessionSummaryAsync(string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => Task.FromResult(new SessionSummary());
+		public override Task<PromptResponse> GetPromptResponseAsync(string prompt, string? workingDirectory = null, CancellationToken cancellationToken = default) => Task.FromResult(PromptResponse.Fail("not used"));
+		public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+	}
+
+	/// <summary>
+	/// An agent whose first run ends by asking a question, and whose later runs just finish.
+	/// </summary>
+	private sealed class ClosingQuestionProvider(Provider config, string finalMessage) : SdkProviderBase(config)
+	{
+		public List<(string Prompt, string? SessionId)> Runs { get; } = [];
+
+		public override ProviderType Type => ProviderType.Claude;
+		public override Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+		public override Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default) => Task.FromResult(string.Empty);
+
+		public override Task<ExecutionResult> ExecuteWithSessionAsync(
+			string prompt,
+			string? sessionId = null,
+			string? workingDirectory = null,
+			IProgress<ExecutionProgress>? progress = null,
+			CancellationToken cancellationToken = default)
+		{
+			Runs.Add((prompt, sessionId));
+			var text = Runs.Count == 1 ? finalMessage : "Updated the docs.";
+			return Task.FromResult(new ExecutionResult
+			{
+				Success = true,
+				SessionId = "session-1",
+				Output = text,
+				Messages = [new ExecutionMessage { Role = "assistant", Content = text }]
+			});
+		}
+
+		public override Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default) => Task.FromResult(new ProviderInfo());
+		public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new UsageLimits());
+		public override Task<SessionSummary> GetSessionSummaryAsync(string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => Task.FromResult(new SessionSummary());
+		public override Task<PromptResponse> GetPromptResponseAsync(string prompt, string? workingDirectory = null, CancellationToken cancellationToken = default) => Task.FromResult(PromptResponse.Fail("not used"));
+		public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+	}
+
+	private sealed class InteractionJobService : FakeJobServiceBase
+	{
+		public bool Paused { get; private set; }
+		public bool Resumed { get; private set; }
+		public List<JobMessage> Messages { get; } = [];
+
+		public override Task<bool> IsCancellationRequestedAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public override Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<JobChangeSet>());
+
+		public override Task<bool> PauseForInteractionAsync(Guid id, string interactionPrompt, string interactionType, string? choices = null, CancellationToken cancellationToken = default)
+		{
+			Paused = true;
+			return Task.FromResult(true);
+		}
+
+		public override Task AddMessageAsync(Guid jobId, JobMessage message, CancellationToken cancellationToken = default)
+		{
+			lock (Messages)
+			{
+				Messages.Add(message);
+			}
+			return Task.CompletedTask;
+		}
+
+		public override Task AddMessagesAsync(Guid jobId, IEnumerable<JobMessage> messages, CancellationToken cancellationToken = default)
+		{
+			lock (Messages)
+			{
+				Messages.AddRange(messages);
+			}
+			return Task.CompletedTask;
+		}
+
+		public override Task<bool> ResumeJobAsync(Guid id, CancellationToken cancellationToken = default)
+		{
+			Resumed = true;
+			return Task.FromResult(true);
+		}
+	}
+
+	private sealed class ReplyingInferenceService(string reply) : IInferenceService
+	{
+		public InferenceRequest? LastRequest { get; private set; }
+
+		public Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default)
+		{
+			LastRequest = request;
+			return Task.FromResult(new InferenceResponse { Success = true, Response = reply });
+		}
+
+		public Task<InferenceHealthResult> ProbeAsync(InferenceProbeRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<InferenceResponse> GenerateForTaskAsync(string taskType, string prompt, string? systemPrompt = null, CancellationToken ct = default) => throw new NotSupportedException();
+	}
+
+	/// <summary>
+	/// An agent whose turns follow a script: given the turn number (from 1) and the turn's
+	/// cancellation token, the script returns how the turn ended.
+	/// </summary>
+	private sealed class ScriptedProvider(Func<int, CancellationToken, Task<ExecutionResult>> runTurn)
+		: SdkProviderBase(new Provider { Name = "Claude", Type = ProviderType.Claude })
+	{
+		public List<(string Prompt, string? SessionId)> Runs { get; } = [];
+
+		public override ProviderType Type => ProviderType.Claude;
+		public override Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+		public override Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default) => Task.FromResult(string.Empty);
+
+		public override Task<ExecutionResult> ExecuteWithSessionAsync(
+			string prompt,
+			string? sessionId = null,
+			string? workingDirectory = null,
+			IProgress<ExecutionProgress>? progress = null,
+			CancellationToken cancellationToken = default)
+		{
+			Runs.Add((prompt, sessionId));
+			return runTurn(Runs.Count, cancellationToken);
+		}
+
+		public override Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default) => Task.FromResult(new ProviderInfo());
+		public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new UsageLimits());
+		public override Task<SessionSummary> GetSessionSummaryAsync(string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => Task.FromResult(new SessionSummary());
+		public override Task<PromptResponse> GetPromptResponseAsync(string prompt, string? workingDirectory = null, CancellationToken cancellationToken = default) => Task.FromResult(PromptResponse.Fail("not used"));
+		public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
 	}
 
 	/// <summary>

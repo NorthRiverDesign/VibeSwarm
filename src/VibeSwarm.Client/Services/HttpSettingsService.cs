@@ -19,6 +19,13 @@ public class HttpSettingsService : ISettingsService
         return await response.ReadJsonAsync(settings, ct);
     }
 
+    public async Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken ct = default)
+    {
+        var response = await _http.PutAsJsonAsync("/api/settings/max-concurrent-jobs", maxConcurrentJobs, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.ReadJsonAsync(new AppSettings(), ct);
+    }
+
     public async Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken ct = default)
     {
         var settings = await GetSettingsAsync(ct);

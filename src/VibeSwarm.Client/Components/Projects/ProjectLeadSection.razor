@@ -1,0 +1,128 @@
+@inject IProviderService ProviderService
+
+@if (Project != null)
+{
+	<div class="form-text mb-5">
+		The Lead reads the latest code, the project memory and how recent jobs went, then suggests the next
+		ideas with a goal and acceptance criteria. Nothing runs until you approve it.
+	</div>
+
+	@if (!AvailableProviders.Any())
+	{
+		<Alert Type="Alert.AlertType.Warning" Class="py-3 px-5 small mb-0">
+			<span>The Lead needs an enabled Claude or Copilot provider.</span>
+		</Alert>
+	}
+	else
+	{
+		<div class="mb-5">
+			<label for="modal-leadProvider" class="form-label">Lead</label>
+			<select id="modal-leadProvider" class="form-control" value="@(Project.LeadProviderId?.ToString() ?? string.Empty)"
+					@onchange="HandleProviderChanged">
+				<option value="">Off</option>
+				@foreach (var provider in AvailableProviders)
+				{
+					<option value="@provider.Id">@provider.Name</option>
+				}
+			</select>
+			<div class="form-text">A strong model works best here; it runs only when you ask, or when auto-pilot runs out of approved ideas.</div>
+		</div>
+
+		@if (Project.LeadProviderId.HasValue)
+		{
+			<div class="row g-5 mb-5">
+				<div class="col-12 sm:col-6">
+					<label for="modal-leadModel" class="form-label">
+						Model <span class="fg-1 fw-normal">(optional)</span>
+					</label>
+					<InputSelect id="modal-leadModel" @bind-Value="Project.LeadModelId" class="form-control" disabled="@(!_models.Any())">
+						<option value="">Provider default</option>
+						@foreach (var model in _models)
+						{
+							<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
+						}
+					</InputSelect>
+				</div>
+				<div class="col-12 sm:col-6">
+					<label for="modal-leadReasoning" class="form-label">
+						Reasoning <span class="fg-1 fw-normal">(optional)</span>
+					</label>
+					<InputSelect id="modal-leadReasoning" @bind-Value="Project.LeadReasoningEffort" class="form-control"
+								 disabled="@(!ReasoningOptions.Any())">
+						<option value="">Provider default</option>
+						@foreach (var reasoning in ReasoningOptions)
+						{
+							<option value="@reasoning">@reasoning</option>
+						}
+					</InputSelect>
+				</div>
+			</div>
+
+			<label for="modal-leadDirection" class="form-label">
+				Direction <span class="fg-1 fw-normal">(optional)</span>
+			</label>
+			<InputTextArea id="modal-leadDirection" @bind-Value="Project.LeadDirection" class="form-control" rows="5"
+						   maxlength="@LeadReviewLimits.DirectionMaxLength"
+						   placeholder="Where should this project go next? What matters most, and what should the Lead leave alone?" />
+			<div class="form-text">The Lead steers its suggestions by this instead of you writing each idea.</div>
+		}
+	}
+}
+
+@code {
+	[Parameter, EditorRequired]
+	public ProjectModalFormModel Project { get; set; } = default!;
+
+	[Parameter]
+	public IReadOnlyList<Provider> AvailableProviders { get; set; } = [];
+
+	private List<ProviderModel> _models = [];
+	private Guid? _loadedFor;
+
+	private IReadOnlyList<string> ReasoningOptions => Project.LeadProviderId.HasValue
+		? AvailableProviders
+			.Where(provider => provider.Id == Project.LeadProviderId.Value)
+			.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
+			.Distinct(StringComparer.Ordinal)
+			.ToList()
+		: [];
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (Project != null && Project.LeadProviderId != _loadedFor)
+		{
+			await LoadModelsAsync();
+		}
+	}
+
+	private async Task HandleProviderChanged(ChangeEventArgs args)
+	{
+		Project.LeadProviderId = Guid.TryParse(args.Value?.ToString(), out var id) ? id : null;
+		Project.LeadModelId = null;
+		Project.LeadReasoningEffort = null;
+		await LoadModelsAsync();
+	}
+
+	private async Task LoadModelsAsync()
+	{
+		_loadedFor = Project.LeadProviderId;
+		_models = [];
+		if (Project.LeadProviderId is not Guid providerId)
+		{
+			return;
+		}
+
+		try
+		{
+			_models = (await ProviderService.GetModelsAsync(providerId))
+				.Where(model => model.IsAvailable)
+				.OrderByDescending(model => model.IsDefault)
+				.ThenBy(model => model.DisplayName ?? model.ModelId)
+				.ToList();
+		}
+		catch
+		{
+			_models = [];
+		}
+	}
+}

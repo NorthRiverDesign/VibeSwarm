@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using VibeSwarm.Shared.Data;
 
 namespace VibeSwarm.Shared.Services;
@@ -8,8 +9,18 @@ namespace VibeSwarm.Shared.Services;
 public class AutoPilotConfig
 {
 	/// <summary>
-	/// Inference provider for idea generation (e.g., Grok, Ollama).
-	/// Null = fall back to coding provider or project default.
+	/// Whether ideas come from inference rather than the coding provider. With no
+	/// <see cref="InferenceProviderId"/>, the first enabled inference provider that answers is used.
+	/// </summary>
+	public bool UseInferenceForIdeas { get; set; }
+
+	/// <summary>Whether the loop comes up with its own ideas or runs only the ones the owner approved.</summary>
+	public AutoPilotIdeaSource IdeaSource { get; set; }
+
+	/// <summary>
+	/// Inference provider for idea generation (e.g., Grok, Ollama). Setting it also means ideas
+	/// come from inference. Null = any inference provider, or the coding provider when
+	/// <see cref="UseInferenceForIdeas"/> is off.
 	/// </summary>
 	public Guid? InferenceProviderId { get; set; }
 
@@ -26,28 +37,42 @@ public class AutoPilotConfig
 	/// </summary>
 	public string? ModelId { get; set; }
 
+	public const int MaxIterationsLimit = 1000;
+	public const int MaxConsecutiveFailuresLimit = 20;
+	public const int MinCooldownSeconds = 10;
+	public const int MaxCooldownSeconds = 3600;
+	public const int MaxPolishEveryIterations = 100;
+
 	/// <summary>
 	/// Maximum iterations before the loop stops. 0 = unlimited.
 	/// </summary>
+	[Range(0, MaxIterationsLimit)]
 	public int MaxIterations { get; set; } = 50;
 
 	/// <summary>
 	/// Maximum total cost in USD. Null = no cost limit.
 	/// </summary>
+	[Range(0, 1_000_000)]
 	public decimal? MaxTotalCostUsd { get; set; }
 
 	/// <summary>
 	/// Number of consecutive failures before the loop stops.
 	/// </summary>
+	[Range(1, MaxConsecutiveFailuresLimit)]
 	public int MaxConsecutiveFailures { get; set; } = 3;
 
+	[Range(MinCooldownSeconds, MaxCooldownSeconds)]
 	public int CooldownSeconds { get; set; } = 60;
 
 	/// <summary>
-	/// Whether to auto-commit changes after each successful job.
+	/// After this many successful changes, run a polish pass over them. 0 = never.
 	/// </summary>
-	public bool AutoCommit { get; set; } = true;
+	[Range(0, MaxPolishEveryIterations)]
+	public int PolishEveryIterations { get; set; } = 5;
 
+	/// <summary>
+	/// Whether to push each change after it is committed.
+	/// </summary>
 	public bool AutoPush { get; set; }
 }
 

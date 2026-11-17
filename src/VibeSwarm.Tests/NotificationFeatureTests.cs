@@ -102,7 +102,7 @@ public sealed class NotificationFeatureTests
 	}
 
 	[Fact]
-	public void NotificationsPanelOverlay_ClickingJobNotification_NavigatesToJob()
+	public void NotificationsPanel_ClickingJobNotification_NavigatesToJob()
 	{
 		using var context = new BunitContext();
 		var notificationService = new NotificationService();
@@ -113,15 +113,33 @@ public sealed class NotificationFeatureTests
 		context.Services.AddSingleton<NavigationManager>(navigationManager);
 
 		notificationService.ShowJobCompleted(jobId, success: true, projectName: "Demo Project");
-		notificationService.OpenPanel();
 
-		var cut = context.Render<NotificationsPanelOverlay>();
-		var historyItem = cut.Find(".notification-history-item");
+		var cut = context.Render<NotificationsPanel>();
+		cut.Find("button[title='Notifications']").Click();
+		Assert.Equal(0, notificationService.UnreadCount);
 
-		historyItem.Click();
+		cut.Find(".notification-history-item").Click();
 
 		Assert.Equal($"http://localhost/jobs/view/{jobId}", navigationManager.Uri);
-		Assert.False(notificationService.IsPanelOpen);
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void NotificationsPanel_Menu_SlidesInFromItsToggleWithAShadow(bool openUpward)
+	{
+		using var context = new BunitContext();
+		context.Services.AddSingleton(new NotificationService());
+		context.Services.AddSingleton<NavigationManager>(new TestNavigationManager());
+
+		var cut = context.Render<NotificationsPanel>(parameters => parameters
+			.Add(component => component.OpenUpward, openUpward));
+
+		var menu = cut.Find("div.menu");
+
+		Assert.Contains("menu-panel", menu.ClassList);
+		Assert.Equal(openUpward, menu.ClassList.Contains("menu-panel-up"));
+		Assert.Contains("shadow-xl", menu.ClassList);
 	}
 
 	[Fact]
@@ -137,18 +155,6 @@ public sealed class NotificationFeatureTests
 		Assert.Equal("View Job", notification.ActionLabel);
 		Assert.Equal("/jobs/view/123", notification.ActionUrl);
 		Assert.Equal(1, notificationService.UnreadCount);
-	}
-
-	[Fact]
-	public void AddHistory_DoesNotIncrementUnread_WhenPanelIsOpen()
-	{
-		var notificationService = new NotificationService();
-		notificationService.OpenPanel();
-
-		notificationService.AddHistory("Job stopped responding.", "Job Stalled", NotificationType.Error);
-
-		Assert.Equal(0, notificationService.UnreadCount);
-		Assert.Single(notificationService.NotificationHistory);
 	}
 
 	private sealed class NoOpJsRuntime : IJSRuntime

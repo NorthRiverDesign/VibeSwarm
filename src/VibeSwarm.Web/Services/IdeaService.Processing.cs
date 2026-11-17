@@ -177,9 +177,9 @@ public partial class IdeaService
 			return false;
 		}
 
-		// Resolve the provider this project would use and ensure it has no active jobs.
-		// This limits each provider to one idea job at a time, preventing rate-limit overload
-		// when multiple projects target the same provider.
+		// Resolve the provider this project would use and ensure it has room for another job.
+		// This keeps each provider to as many jobs as it runs at once (one unless an admin raised
+		// its limit), preventing rate-limit overload when multiple projects target the same provider.
 		var processingOptions = new IdeaProcessingOptions
 		{
 			AutoCommitMode = project.IdeasAutoCommit ? AutoCommitMode.CommitOnly : AutoCommitMode.Off,
@@ -190,17 +190,17 @@ public partial class IdeaService
 		var targetProvider = await ResolveJobProviderAsync(projectId, processingOptions, cancellationToken);
 		if (targetProvider != null)
 		{
-			var providerHasActiveJob = await _dbContext.Jobs
+			var providerActiveJobs = await _dbContext.Jobs
 				.AsNoTracking()
-				.AnyAsync(j => j.ProviderId == targetProvider.Id
+				.CountAsync(j => j.ProviderId == targetProvider.Id
 					&& j.Status != JobStatus.Completed
 					&& j.Status != JobStatus.Failed
 					&& j.Status != JobStatus.Cancelled,
 					cancellationToken);
 
-			if (providerHasActiveJob)
+			if (providerActiveJobs >= JobConcurrency.Normalize(targetProvider.MaxConcurrentJobs))
 			{
-				_logger.LogDebug("Provider {ProviderId} already has an active job, deferring ideas for project {ProjectId}", targetProvider.Id, projectId);
+				_logger.LogDebug("Provider {ProviderId} already has as many active jobs as it runs at once, deferring ideas for project {ProjectId}", targetProvider.Id, projectId);
 				return false;
 			}
 		}

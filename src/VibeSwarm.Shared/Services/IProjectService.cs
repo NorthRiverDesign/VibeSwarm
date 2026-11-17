@@ -98,6 +98,11 @@ public interface IProjectService
 		{
 			ErrorMessage = "GitHub repository browsing is not available."
 		});
+	Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken cancellationToken = default)
+		=> Task.FromResult(new GitHubAccountsResult
+		{
+			ErrorMessage = "GitHub accounts are not available."
+		});
 
     /// <summary>
     /// Get all projects with their aggregated job statistics
@@ -118,4 +123,25 @@ public interface IProjectService
 	/// Get one currently running job per active project for the dashboard.
 	/// </summary>
 	Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Replace the projects linked to a project. Links go both ways, so the linked projects
+	/// gain (or lose) a link back to this one.
+	/// </summary>
+	Task SetLinkedProjectsAsync(Guid projectId, IEnumerable<Guid> linkedProjectIds, CancellationToken cancellationToken = default);
+
+	Task<IEnumerable<ProjectFolder>> GetFoldersAsync(CancellationToken cancellationToken = default);
+	Task<ProjectFolder> CreateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default);
+	Task<ProjectFolder> UpdateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Move a project into a folder, or out of every folder when <paramref name="folderId"/> is null.
+	/// Only the project's folder changes.
+	/// </summary>
+	Task MoveToFolderAsync(Guid projectId, Guid? folderId, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Delete a folder. Its projects stay, outside any folder.
+	/// </summary>
+	Task DeleteFolderAsync(Guid id, CancellationToken cancellationToken = default);
 }

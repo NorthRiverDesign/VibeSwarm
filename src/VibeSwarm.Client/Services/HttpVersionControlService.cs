@@ -197,7 +197,8 @@ public class HttpVersionControlService : IVersionControlService
         Action<string>? progressCallback = null,
         CancellationToken ct = default,
         bool pushAfterMerge = true,
-        IReadOnlyList<MergeConflictResolution>? conflictResolutions = null)
+        IReadOnlyList<MergeConflictResolution>? conflictResolutions = null,
+        bool preferRemoteSource = false)
     {
         var response = await _http.PostAsJsonAsync("/api/git/merge-branch", new
         {
@@ -206,7 +207,8 @@ public class HttpVersionControlService : IVersionControlService
             TargetBranch = targetBranch,
             Remote = remoteName,
             PushAfterMerge = pushAfterMerge,
-            ConflictResolutions = conflictResolutions
+            ConflictResolutions = conflictResolutions,
+            PreferRemoteSource = preferRemoteSource
         }, ct);
         return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }
@@ -218,6 +220,18 @@ public class HttpVersionControlService : IVersionControlService
     {
         var response = await _http.PostAsJsonAsync("/api/git/fetch", new { Path = workingDirectory, Remote = remoteName, Prune = prune }, ct);
         return await response.ReadJsonAsync(new GitOperationResult { Success = false }, ct);
+    }
+
+    public async Task<GitRemoteSyncStatus> GetRemoteSyncStatusAsync(string workingDirectory, string remoteName = "origin", CancellationToken ct = default)
+    {
+        try
+        {
+            return await _http.GetJsonAsync($"/api/git/remote-sync-status?path={Enc(workingDirectory)}&remote={Uri.EscapeDataString(remoteName)}", new GitRemoteSyncStatus(), ct);
+        }
+        catch
+        {
+            return new GitRemoteSyncStatus();
+        }
     }
 
     public async Task<GitOperationResult> HardCheckoutBranchAsync(string workingDirectory, string branchName, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken ct = default)

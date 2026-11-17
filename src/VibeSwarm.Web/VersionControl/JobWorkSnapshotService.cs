@@ -100,6 +100,30 @@ public sealed partial class JobWorkSnapshotService
 	}
 
 	/// <summary>
+	/// The git tree of the working directory as it stands, tracked and untracked files alike (minus
+	/// ignored ones), without changing the files. Equal hashes mean nothing changed in between.
+	/// </summary>
+	public async Task<string?> HashWorkingTreeAsync(string workingDirectory, CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var add = await _git.ExecuteAsync("add -A", workingDirectory, cancellationToken, timeoutSeconds: 120);
+			if (!add.Success)
+			{
+				return null;
+			}
+
+			var writeTree = await _git.ExecuteAsync("write-tree", workingDirectory, cancellationToken, timeoutSeconds: 60);
+			var tree = writeTree.Success ? writeTree.Output.Trim() : null;
+			return IsCommitHash(tree) ? tree : null;
+		}
+		finally
+		{
+			await _git.ExecuteAsync("reset -q", workingDirectory, CancellationToken.None, timeoutSeconds: 60);
+		}
+	}
+
+	/// <summary>
 	/// Whether <paramref name="commit"/> is part of the checked-out branch's history.
 	/// </summary>
 	public async Task<bool> IsInHeadAsync(string workingDirectory, string commit, CancellationToken cancellationToken = default)

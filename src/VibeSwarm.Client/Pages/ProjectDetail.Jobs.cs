@@ -70,7 +70,7 @@ public partial class ProjectDetail
 
         // Reset the form for a new job
         NewJob = new Job();
-        NewJob.Branch = CurrentBranch;
+        NewJob.Branch = string.IsNullOrWhiteSpace(Project?.DevelopmentBranch) ? CurrentBranch : Project.DevelopmentBranch;
         NewJob.GitChangeDeliveryMode = Project?.GitChangeDeliveryMode ?? GitChangeDeliveryMode.CommitToBranch;
         NewJob.TargetBranch = Project?.DefaultTargetBranch ?? CurrentBranch;
         SelectedModelId = string.Empty;
@@ -811,6 +811,33 @@ public partial class ProjectDetail
     }
 
     /// <summary>
+    /// Asks before queuing local setup: confirming starts a job straight away.
+    /// </summary>
+    private void ShowLocalSetupConfirmation()
+    {
+        if (Project == null || _isStartingLocalSetup) return;
+
+        if (GetPreferredJobProvider() == null)
+        {
+            _environmentError = "Enable a provider for this project to set up a local environment.";
+            return;
+        }
+
+        _environmentError = null;
+        _showLocalSetupConfirmation = true;
+    }
+
+    private string GetLocalSetupConfirmationMessage() =>
+        $"Start a job now to get {Project?.Name} running on this machine?";
+
+    private string GetLocalSetupConfirmationSubMessage()
+    {
+        var providerName = GetPreferredJobProvider()?.Name;
+        var agent = string.IsNullOrWhiteSpace(providerName) ? "The agent" : providerName;
+        return $"{agent} sets up config, a database and a mail trap, then saves where the app runs as the Local environment.";
+    }
+
+    /// <summary>
     /// Queues a job that gets the project running on this machine, then opens it. When it
     /// succeeds, the server records where the app runs as the project's Local environment.
     /// </summary>
@@ -822,6 +849,7 @@ public partial class ProjectDetail
         if (provider == null)
         {
             _environmentError = "Enable a provider for this project to set up a local environment.";
+            _showLocalSetupConfirmation = false;
             return;
         }
 
@@ -838,6 +866,7 @@ public partial class ProjectDetail
         {
             _environmentError = $"Couldn't start local setup: {ex.Message}";
             _isStartingLocalSetup = false;
+            _showLocalSetupConfirmation = false;
         }
     }
 
@@ -1046,9 +1075,12 @@ public partial class ProjectDetail
             return string.Empty;
 
         var iterations = _autoPilotStatus.CompletedIterations;
-        return iterations > 0
-            ? $"{_autoPilotStatus.Status} · {iterations} iteration{(iterations == 1 ? "" : "s")} done"
+        var summary = iterations > 0
+            ? $"{_autoPilotStatus.Status} · {iterations} change{(iterations == 1 ? "" : "s")}"
             : _autoPilotStatus.Status.ToString();
+        return string.IsNullOrWhiteSpace(_autoPilotStatus.StatusMessage) || _autoPilotStatus.CurrentJobId.HasValue
+            ? summary
+            : $"{summary} · {_autoPilotStatus.StatusMessage}";
     }
 
     private async Task StopActiveJob()
@@ -1072,9 +1104,7 @@ public partial class ProjectDetail
         try
         {
             try { await AutoPilotService.StopAsync(ProjectId); } catch { }
-            try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { }
-            if (_autoPilotPanel != null)
-                await _autoPilotPanel.RefreshAsync();
+            await RefreshAutoPilotAsync();
         }
         finally
         {

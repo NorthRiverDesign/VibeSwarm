@@ -9,17 +9,17 @@
 @inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
-Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "folder-plus")"
-Size="ModalDialog.ModalSize.Large" DialogClass="vs-modal-dialog-wide-lg" OnClose="HandleClose"
-BodyClass="vs-project-modal-body">
+Title="@DialogTitle" Icon="@(IsEdit ? "pencil" : "folder-plus")"
+Size="ModalDialog.ModalSize.Large" DialogClass="vs-dialog-wide-lg" OnClose="HandleClose"
+BodyClass="vs-project-dialog-body">
 <ChildContent>
 @* No overflow-x-hidden here: it would make the form its own scroll container and
    the sticky action bar below would have nothing to stick to. The modal body and
    content already clip horizontally. *@
 <EditForm Model="@FormModel" OnValidSubmit="HandleValidSubmit" OnInvalidSubmit="HandleInvalidSubmit"
-class="mw-100">
+class="max-w-100">
 <DataAnnotationsValidator />
-<ValidationSummary class="text-danger mb-3" />
+<ValidationSummary class="fg-danger mb-5" />
 
 <ProjectWorkspaceSection FormModel="@FormModel" FormState="@_formState" IsEdit="@IsEdit"
 WorkingPathPlaceholder="@_formState.WorkingPathPlaceholder"
@@ -34,7 +34,7 @@ OnWorkspaceInspected="HandleWorkspaceInspected" />
 
 @* Everything below has a working default. It stays collapsed so a new project needs
    nothing more than a folder and a name. *@
-<div class="accordion mb-4">
+<div class="accordion mb-7">
 @if (!IsEdit && FormModel.CreationMode == ProjectCreationMode.CreateGitHubRepository)
 {
 <AccordionSection Title="Repository options" Icon="github"
@@ -66,7 +66,7 @@ OnRemove="RemoveProviderSelection" OnAdd="AddProviderSelection"
 OnPreferredModelChanged="HandlePreferredModelChanged"
 OnModelsRefreshed="LoadProviderModelsAsync" />
 
-<hr class="my-4" />
+<hr class="my-7" />
 
 <ProjectAgentsSection Project="@FormModel" AvailableAgents="@_availableAgents"
 AvailableProviders="@_availableProviders" ResolveAgent="ResolveAgent"
@@ -80,14 +80,14 @@ OnModelsRefreshed="LoadProviderModelsAsync" />
 <AccordionSection Title="Ideas and planning" Icon="lightbulb"
 Summary="How improvement ideas and plans are generated"
 Badge="@(FormModel.PlanningEnabled ? "Planning on" : null)"
-BadgeClass="text-bg-primary" @bind-IsOpen="_openIdeas">
+BadgeClass="theme-primary" @bind-IsOpen="_openIdeas">
 <ProjectIdeaGenerationSection Project="@FormModel"
 AvailableInferenceProviders="@_availableInferenceProviders"
 InferenceModels="@_ideaInferenceModels"
 OnProviderChanged="HandleIdeaInferenceProviderChanged"
 OnModelsRefreshed="LoadIdeaInferenceModelsAsync" />
 
-<hr class="my-4" />
+<hr class="my-7" />
 
 <ProjectPlanningSection Project="@FormModel" AvailableProviders="@GetPlanningProviders().ToList()"
 PlanningModels="@_planningModels"
@@ -102,34 +102,55 @@ Badge="@(HasInstructions ? "Set" : null)" @bind-IsOpen="_openInstructions">
 <ProjectInstructionsSection Project="@FormModel" />
 </AccordionSection>
 
+<AccordionSection Title="Folder and linked projects" Icon="link-45deg"
+Summary="Group this project and link related repositories"
+Badge="@LinksSummary" @bind-IsOpen="_openLinks">
+<ProjectLinksSection Project="@FormModel" Folders="@_folders" AllProjects="@_allProjects" />
+</AccordionSection>
+
+<AccordionSection Title="Lead" Icon="compass"
+Summary="Looks over the project and suggests what to build next"
+Badge="@(FormModel.LeadProviderId.HasValue ? "On" : null)"
+BadgeClass="theme-primary" @bind-IsOpen="_openLead">
+<ProjectLeadSection Project="@FormModel" AvailableProviders="@GetPlanningProviders().ToList()" />
+</AccordionSection>
+
+<AccordionSection Title="Review" Icon="eye"
+Summary="A second model checks each job before it is delivered"
+Badge="@(FormModel.ReviewEnabled ? "On" : null)"
+BadgeClass="theme-success" @bind-IsOpen="_openReview">
+<ProjectReviewSection Project="@FormModel" AvailableProviders="@GetPlanningProviders().ToList()"
+AvailableInferenceProviders="@_availableInferenceProviders" />
+</AccordionSection>
+
 <AccordionSection Title="Build verification" Icon="shield-check"
 Summary="Run build and tests before committing"
 Badge="@(FormModel.BuildVerificationEnabled ? "On" : null)"
-BadgeClass="text-bg-success" @bind-IsOpen="_openBuildVerification">
+BadgeClass="theme-success" @bind-IsOpen="_openBuildVerification">
 <ProjectBuildVerificationSection Project="@FormModel" DetectedStack="@_detectedStack" />
 </AccordionSection>
 </div>
 
 @if (!string.IsNullOrEmpty(_cloneProgressMessage))
 {
-<Alert Type="Alert.AlertType.Info" Message="@_cloneProgressMessage" Class="mb-3" />
+<Alert Type="Alert.AlertType.Info" Message="@_cloneProgressMessage" Class="mb-5" />
 }
 
 @if (!string.IsNullOrEmpty(ErrorMessage))
 {
-<div class="text-danger small mb-3">
+<div class="fg-danger small mb-5">
 <i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
 </div>
 }
 
 @* Pinned to the bottom of the scrolling body: the form is long on a phone and
    Create should never be a scroll away. *@
-<div class="d-flex gap-2 justify-content-sm-end position-sticky pt-3 border-top vs-modal-sticky-actions">
-<button type="button" class="btn btn-secondary flex-shrink-0" @onclick="HandleCancel">Cancel</button>
-<button type="submit" class="btn btn-primary flex-grow-1 flex-sm-grow-0" disabled="@IsSaving">
+<div class="d-flex gap-3 sm:justify-content-end position-sticky pt-5 border-top vs-dialog-sticky-actions">
+<button type="button" class="btn-solid theme-secondary flex-shrink-0" @onclick="HandleCancel">Cancel</button>
+<button type="submit" class="btn-solid theme-primary flex-grow-1 sm:flex-grow-0" disabled="@IsSaving">
 @if (IsSaving)
 {
-<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+<span class="spinner-border spinner-sm me-1" role="status"></span>
 }
 @if (IsSaving && !string.IsNullOrEmpty(_cloneProgressMessage))
 {
@@ -156,6 +177,7 @@ OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
 <GitHubRepositoryBrowserModal IsVisible="@_showGitHubRepositoryBrowser"
 IsVisibleChanged="HandleGitHubRepositoryBrowserVisibilityChanged"
 SelectedRepository="@FormModel.GetNormalizedGitHubRepository()"
+ExistingRepositories="@_existingGitHubRepositories"
 OnRepositorySelected="HandleGitHubRepositorySelected" />
 }
 
@@ -178,13 +200,30 @@ public EventCallback OnCancelled { get; set; }
 [Parameter]
 public EventCallback OnClosed { get; set; }
 
+/// <summary>A new project starts in this folder, such as one cloned from a folder's Add dialog.</summary>
+[Parameter]
+public Guid? InitialFolderId { get; set; }
+
+/// <summary>Where a new project starts from; the user can still pick another source.</summary>
+[Parameter]
+public ProjectCreationMode InitialCreationMode { get; set; } = ProjectCreationMode.ExistingDirectory;
+
 private bool IsEdit => EditProject != null;
+
+/// <summary>A new project says which folder it lands in, so cloning from a folder reads as such.</summary>
+private string DialogTitle => IsEdit
+? "Edit Project"
+: _folders.FirstOrDefault(folder => folder.Id == FormModel.FolderId)?.Name is { } folderName
+	? $"New Project in {folderName}"
+	: "New Project";
+
 private bool IsSaving { get; set; }
 private string? ErrorMessage { get; set; }
 private bool _previousIsVisible;
 private string? _cloneProgressMessage;
 private bool _showDirectoryBrowser;
 private bool _showGitHubRepositoryBrowser;
+private bool _gitHubAccountsRequested;
 private DirectoryBrowser? _directoryBrowser;
 private string? _defaultProjectsDirectory;
 private List<Provider> _availableProviders = [];
@@ -196,6 +235,7 @@ private List<InferenceModel> _commitSummaryInferenceModels = [];
 private readonly Dictionary<Guid, List<ProviderModel>> _providerModelsByProviderId = [];
 private readonly ProjectModalState _formState = new();
 private Dictionary<string, string> _existingProjectPaths = new(StringComparer.OrdinalIgnoreCase);
+private Dictionary<string, string> _existingGitHubRepositories = new(StringComparer.OrdinalIgnoreCase);
 private string? _detectedStack;
 private bool _openRepositoryOptions;
 private bool _openAutomation;
@@ -203,6 +243,12 @@ private bool _openExecution;
 private bool _openIdeas;
 private bool _openInstructions;
 private bool _openBuildVerification;
+private bool _openReview;
+private bool _openLead;
+private bool _openLinks;
+private List<ProjectFolder> _folders = [];
+private List<Project> _allProjects = [];
+private HashSet<Guid> _initialLinkedProjectIds = [];
 private ProjectModalFormModel FormModel { get; set; } = new();
 
 protected override async Task OnInitializedAsync()
@@ -221,11 +267,13 @@ await LoadProvidersAsync();
 await LoadAgentsAsync();
 ResetState();
 await LoadExistingProjectPathsAsync();
+await LoadFoldersAsync();
 
 if (EditProject != null)
 {
 var editableProject = await ProjectService.GetByIdAsync(EditProject.Id) ?? EditProject;
 FormModel = ProjectModalFormModel.FromProject(CloneProjectForEditing(editableProject));
+_initialLinkedProjectIds = FormModel.LinkedProjectIds.ToHashSet();
 _formState.LoadFromProject(FormModel);
 EnsurePlanningProviderSelection();
 await LoadPlanningModelsAsync();
@@ -235,8 +283,8 @@ await LoadCommitSummaryInferenceModelsAsync();
 }
 else
 {
-FormModel = new ProjectModalFormModel();
-_formState.SelectSourceMode(FormModel, ProjectCreationMode.ExistingDirectory);
+FormModel = new ProjectModalFormModel { FolderId = InitialFolderId };
+await SelectSourceMode(InitialCreationMode);
 await SeedDefaultProviderSelectionAsync();
 EnsurePlanningProviderSelection();
 await LoadProviderSelectionModelsAsync();
@@ -263,10 +311,39 @@ private void OnGitHubRepositoryChanged(string? repositoryInput)
 _formState.UpdateGitHubRepositoryInput(FormModel, repositoryInput);
 }
 
-private void SelectSourceMode(ProjectCreationMode mode)
+private async Task SelectSourceMode(ProjectCreationMode mode)
 {
 ErrorMessage = null;
 _formState.SelectSourceMode(FormModel, mode);
+
+// Loaded once per opening, and only for a new repository; the form stays usable meanwhile.
+if (mode == ProjectCreationMode.CreateGitHubRepository && !_gitHubAccountsRequested)
+{
+_gitHubAccountsRequested = true;
+await LoadGitHubAccountsAsync();
+}
+}
+
+private async Task LoadGitHubAccountsAsync()
+{
+var formModel = FormModel;
+_formState.IsLoadingGitHubAccounts = true;
+GitHubAccountsResult accounts;
+try
+{
+accounts = await ProjectService.GetGitHubAccountsAsync();
+}
+catch (Exception ex)
+{
+// Without accounts the owner picker stays hidden and owner/repo can still be typed.
+accounts = new GitHubAccountsResult { ErrorMessage = ex.Message };
+}
+
+// The modal may have been closed or reopened while the GitHub CLI answered.
+if (ReferenceEquals(formModel, FormModel))
+{
+_formState.SetGitHubAccounts(FormModel, accounts);
+}
 }
 
 private async Task HandleValidSubmit()
@@ -283,6 +360,10 @@ Guid? newProjectId = null;
 if (IsEdit)
 {
 await ProjectService.UpdateAsync(FormModel.ToProject());
+if (!FormModel.LinkedProjectIds.SetEquals(_initialLinkedProjectIds))
+{
+await ProjectService.SetLinkedProjectsAsync(FormModel.Id, FormModel.LinkedProjectIds);
+}
 NotificationService.ShowProjectSuccess(notificationProjectName, "Project updated successfully.");
 }
 else
@@ -293,6 +374,18 @@ StateHasChanged();
 var created = await ProjectService.CreateProjectAsync(_formState.BuildProjectCreationRequest(FormModel));
 newProjectId = created.Id;
 NotificationService.ShowProjectSuccess(notificationProjectName, _formState.GetSuccessMessage(FormModel));
+if (FormModel.LinkedProjectIds.Count > 0)
+{
+// The project exists by now, so a failed link must not read as a failed create.
+try
+{
+await ProjectService.SetLinkedProjectsAsync(created.Id, FormModel.LinkedProjectIds);
+}
+catch (Exception ex)
+{
+NotificationService.ShowError($"The project was created, but its links weren't saved: {ex.Message}");
+}
+}
 }
 
 await OnSaved.InvokeAsync(newProjectId);
@@ -340,6 +433,8 @@ ResetState();
 	private void ResetState()
 	{
 		FormModel = new ProjectModalFormModel();
+		_formState.Reset();
+		_gitHubAccountsRequested = false;
 		ErrorMessage = null;
 		IsSaving = false;
 		_detectedStack = null;
@@ -349,6 +444,10 @@ ResetState();
 		_openIdeas = false;
 		_openInstructions = false;
 		_openBuildVerification = false;
+		_openReview = false;
+		_openLead = false;
+		_openLinks = false;
+		_initialLinkedProjectIds = [];
 		_cloneProgressMessage = null;
 		_showGitHubRepositoryBrowser = false;
 		_planningModels = [];
@@ -878,10 +977,21 @@ GitHubRepository = source.GitHubRepository,
 AutoCommitMode = source.AutoCommitMode,
 GitChangeDeliveryMode = source.GitChangeDeliveryMode,
 DefaultTargetBranch = source.DefaultTargetBranch,
+DevelopmentBranch = source.DevelopmentBranch,
+ReleaseBranch = source.ReleaseBranch,
 PlanningEnabled = source.PlanningEnabled,
 PlanningProviderId = source.PlanningProviderId,
 PlanningModelId = source.PlanningModelId,
 PlanningReasoningEffort = source.PlanningReasoningEffort,
+ReviewEnabled = source.ReviewEnabled,
+ReviewProviderId = source.ReviewProviderId,
+ReviewInferenceProviderId = source.ReviewInferenceProviderId,
+ReviewModelId = source.ReviewModelId,
+ReviewReasoningEffort = source.ReviewReasoningEffort,
+LeadProviderId = source.LeadProviderId,
+LeadModelId = source.LeadModelId,
+LeadReasoningEffort = source.LeadReasoningEffort,
+LeadDirection = source.LeadDirection,
 PromptContext = source.PromptContext,
 Memory = source.Memory,
 BuildVerificationEnabled = source.BuildVerificationEnabled,
@@ -892,6 +1002,15 @@ BuildVerificationEnabled = source.BuildVerificationEnabled,
 	CommitSummaryInferenceProviderId = source.CommitSummaryInferenceProviderId,
 	CommitSummaryInferenceModelId = source.CommitSummaryInferenceModelId,
 	IsActive = source.IsActive,
+	FolderId = source.FolderId,
+	Links = (source.Links ?? [])
+	.Select(link => new ProjectLink
+	{
+		ProjectId = link.ProjectId,
+		LinkedProjectId = link.LinkedProjectId,
+		CreatedAt = link.CreatedAt
+	})
+	.ToList(),
 CreatedAt = source.CreatedAt,
 	UpdatedAt = source.UpdatedAt,
 	ProviderSelections = source.ProviderSelections
@@ -993,30 +1112,67 @@ UpdatedAt = environment.UpdatedAt
 	{
 		try
 		{
-			var projects = await ProjectService.GetAllAsync();
+			var projects = (await ProjectService.GetAllAsync()).ToList();
+			_allProjects = projects;
 			_existingProjectPaths = projects
 				.Where(project => !string.IsNullOrWhiteSpace(project.WorkingPath) && project.Id != FormModel.Id)
 				.GroupBy(project => project.WorkingPath.TrimEnd('/', '\\'), StringComparer.OrdinalIgnoreCase)
 				.ToDictionary(group => group.Key, group => group.First().Name, StringComparer.OrdinalIgnoreCase);
+			_existingGitHubRepositories = projects
+				.Where(project => !string.IsNullOrWhiteSpace(project.GitHubRepository) && project.Id != FormModel.Id)
+				.GroupBy(project => NormalizeExistingGitHubRepository(project.GitHubRepository!), StringComparer.OrdinalIgnoreCase)
+				.ToDictionary(group => group.Key, group => group.First().Name, StringComparer.OrdinalIgnoreCase);
 		}
 		catch
 		{
+			_allProjects = [];
 			_existingProjectPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+			_existingGitHubRepositories = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		}
+	}
+
+	/// <summary>Saved repositories are <c>owner/repo</c>; tolerate a stray <c>.git</c> or slash.</summary>
+	private static string NormalizeExistingGitHubRepository(string repository)
+	{
+		var normalized = repository.Trim().Trim('/');
+		return normalized.EndsWith(".git", StringComparison.OrdinalIgnoreCase) ? normalized[..^4] : normalized;
+	}
+
+	private async Task LoadFoldersAsync()
+	{
+		try
+		{
+			_folders = (await ProjectService.GetFoldersAsync()).ToList();
+		}
+		catch
+		{
+			_folders = [];
+		}
+	}
+
+	private string? LinksSummary
+	{
+		get
+		{
+			var linkedCount = FormModel.LinkedProjectIds.Count;
+			if (linkedCount > 0)
+			{
+				return $"{linkedCount} linked";
+			}
+
+			return _folders.FirstOrDefault(folder => folder.Id == FormModel.FolderId)?.Name;
 		}
 	}
 
 	/// <summary>
 	/// Applies everything VibeSwarm worked out about the chosen folder so the user does not
-	/// have to retype it. Only blank fields are filled, so nothing typed is ever overwritten.
+	/// have to retype it. Only blank or auto-filled fields are filled, so nothing typed is ever overwritten.
 	/// </summary>
 	private void HandleWorkspaceInspected(WorkspaceInspection inspection)
 	{
 		_detectedStack = inspection.DetectedStack;
 
-		if (string.IsNullOrWhiteSpace(FormModel.Name) && !string.IsNullOrWhiteSpace(inspection.SuggestedName))
-		{
-			FormModel.Name = inspection.SuggestedName;
-		}
+		_formState.SuggestName(FormModel, inspection.SuggestedName);
 
 		if (!string.IsNullOrWhiteSpace(inspection.GitHubRepository))
 		{

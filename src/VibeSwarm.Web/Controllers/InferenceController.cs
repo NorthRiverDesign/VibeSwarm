@@ -85,6 +85,15 @@ public class InferenceController : ControllerBase
 		return Ok();
 	}
 
+	[HttpGet("providers/{id:guid}/balance")]
+	public async Task<IActionResult> GetBalance(Guid id, CancellationToken ct)
+	{
+		var provider = await _providerService.GetByIdAsync(id, ct);
+		if (provider == null) return NotFound();
+
+		return Ok(await _inferenceService.GetBalanceAsync(id, ct));
+	}
+
 	// ---- Health & Generation ----
 
 	[HttpGet("health")]

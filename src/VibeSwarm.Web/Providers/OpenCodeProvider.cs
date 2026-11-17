@@ -16,7 +16,9 @@ public class OpenCodeProvider : CliProviderBase
     private static readonly Version VariantVersion = new(1, 3, 0);
     private static readonly Version ForkSessionVersion = new(1, 2, 6);
     private static readonly Version SkipPermissionsVersion = new(1, 4, 0);
+    private static readonly Version AutoApproveVersion = new(1, 17, 12);
     private static readonly Version ThinkingVersion = new(1, 4, 0);
+    private static readonly Version OpenCode2Version = new(2, 0, 0);
 
     private readonly string? _apiEndpoint;
     private readonly string? _apiKey;
@@ -38,6 +40,16 @@ public class OpenCodeProvider : CliProviderBase
     {
         _apiEndpoint = config.ApiEndpoint;
         _apiKey = config.ApiKey;
+
+        // OpenCode 2 imports auth.json once, when it first migrates v1 credentials, and ignores it
+        // after that. Both majors read the OpenCode Zen key from OPENCODE_API_KEY.
+        if (ConnectionMode == ProviderConnectionMode.CLI && !string.IsNullOrWhiteSpace(_apiKey))
+        {
+            BaseEnvironmentVariables = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["OPENCODE_API_KEY"] = _apiKey
+            };
+        }
 
         if (ConnectionMode == ProviderConnectionMode.REST && !string.IsNullOrEmpty(_apiEndpoint))
         {
@@ -160,7 +172,9 @@ public class OpenCodeProvider : CliProviderBase
         }
         else
         {
-            return await ExecuteRestWithSessionAsync(prompt, sessionId, progress, cancellationToken);
+            return await ExecuteRestWithSessionAsync(
+                FoldSystemPromptIntoPrompt(prompt, CurrentSystemPrompt, CurrentAppendSystemPrompt),
+                sessionId, progress, cancellationToken);
         }
     }
 
@@ -182,13 +196,29 @@ public class OpenCodeProvider : CliProviderBase
     /// --port          Port for the local server
     /// --dir           Working directory for the session (v1.2.0+)
     /// --variant       Provider-specific model variant / reasoning preset (v1.3.0+)
+    ///
+    /// OpenCode 2 (npm package @opencode/cli) rewrote the CLI and rejects --dir and --variant.
+    /// It takes the variant as provider/model#variant and adds --standalone.
+    ///
+    /// <paramref name="defaultOutputFormat"/> applies when the caller set no OutputFormat.
     /// </summary>
-    internal List<string> BuildRunCommandArgs(string prompt, string? sessionId)
+    internal List<string> BuildRunCommandArgs(string prompt, string? sessionId, string? defaultOutputFormat = null)
     {
         var args = new List<string> { "run" };
-        var supportsDirectory = SupportsCliVersion(DirectoryVersion);
-        var supportsVariant = SupportsCliVersion(VariantVersion);
+        var isOpenCode2 = SupportsCliVersion(OpenCode2Version);
+        var supportsDirectory = SupportsCliVersion(DirectoryVersion) && !isOpenCode2;
+        var supportsVariant = SupportsCliVersion(VariantVersion) && !isOpenCode2;
         var supportsForkSession = SupportsCliVersion(ForkSessionVersion);
+
+        // OpenCode 2 runs through a shared background service by default. It outlives the job and
+        // keeps the environment of whichever run started it, so this run's OPENCODE_CONFIG (MCP
+        // servers) and API key would be ignored. A private server per run exits with it.
+        if (isOpenCode2)
+        {
+            args.Add("--standalone");
+        }
+
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "minimal", "low", "medium", "high", "xhigh", "max");
 
         // Session continuation options (--session takes precedence over --continue)
         var isContinuingSession = !string.IsNullOrEmpty(sessionId) || CurrentContinueLastSession;
@@ -210,6 +240,13 @@ public class OpenCodeProvider : CliProviderBase
         }
         if (!string.IsNullOrEmpty(model))
         {
+            // OpenCode 2 has no --variant; the variant rides on the model. Without a model there is
+            // nothing to attach it to, so the CLI's default variant applies.
+            if (isOpenCode2 && !string.IsNullOrEmpty(reasoningEffort) && !model.Contains('#'))
+            {
+                model = $"{model}#{reasoningEffort}";
+            }
+
             args.AddRange(new[] { "--model", model });
         }
 
@@ -225,7 +262,8 @@ public class OpenCodeProvider : CliProviderBase
             args.AddRange(new[] { "--title", CurrentTitle });
         }
 
-        // Working directory override (v1.2.0+)
+        // Working directory override (v1.2.0+). OpenCode 2 opens the session in the process's
+        // working directory instead.
         if (supportsDirectory
             && CurrentAdditionalDirectories != null
             && CurrentAdditionalDirectories.Count > 0)
@@ -235,9 +273,10 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         // Output format (default or json)
-        if (!string.IsNullOrEmpty(CurrentOutputFormat))
+        var outputFormat = string.IsNullOrEmpty(CurrentOutputFormat) ? defaultOutputFormat : CurrentOutputFormat;
+        if (!string.IsNullOrEmpty(outputFormat))
         {
-            args.AddRange(new[] { "--format", CurrentOutputFormat });
+            args.AddRange(new[] { "--format", outputFormat });
         }
 
         // File attachments
@@ -255,20 +294,24 @@ public class OpenCodeProvider : CliProviderBase
             args.Add("--fork");
         }
 
-        // Reasoning effort / model variant — current opencode run accepts only --variant (v1.3.0+).
+        // Reasoning effort / model variant — opencode 1.x run accepts only --variant (v1.3.0+).
         // The legacy --reasoning flag was renamed at v1.3.0; passing it on current CLIs is rejected.
-        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "minimal", "low", "medium", "high", "xhigh", "max");
         if (supportsVariant && !string.IsNullOrEmpty(reasoningEffort))
         {
             args.AddRange(new[] { "--variant", reasoningEffort });
         }
 
         // Note: opencode run does not accept a --config / MCP config path flag.
-        // MCP servers are configured via opencode.json(c) in the working dir or ~/.config/opencode/.
+        // The generated MCP config reaches it through OPENCODE_CONFIG (ApplyMcpConfigEnvironmentVariable).
 
         // Skip permission prompts in `opencode run` (v1.4.0+). Brings OpenCode dispatch to parity with
         // Claude/Copilot headless modes so tool calls don't block for a TTY confirm.
-        if (CurrentSkipPermissions && SupportsCliVersion(SkipPermissionsVersion))
+        // v1.17.12 renamed it --auto and kept the old name only as a hidden alias.
+        if (CurrentSkipPermissions && SupportsCliVersion(AutoApproveVersion))
+        {
+            args.Add("--auto");
+        }
+        else if (CurrentSkipPermissions && SupportsCliVersion(SkipPermissionsVersion))
         {
             args.Add("--dangerously-skip-permissions");
         }
@@ -285,10 +328,29 @@ public class OpenCodeProvider : CliProviderBase
             args.AddRange(CurrentAdditionalArgs);
         }
 
-        // The prompt message must be the final argument
-        args.Add(prompt);
+        // The prompt message must be the final argument. `opencode run` has no system prompt
+        // flag, so the job rules travel in it.
+        args.Add(FoldSystemPromptIntoPrompt(prompt, CurrentSystemPrompt, CurrentAppendSystemPrompt));
 
         return args;
+    }
+
+    /// <summary>
+    /// Layers the job's generated MCP config (Playwright, the repo's .mcp.json servers) over the user's
+    /// own OpenCode config. OpenCode merges OPENCODE_CONFIG between the global and project configs.
+    /// </summary>
+    internal void ApplyMcpConfigEnvironmentVariable()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentMcpConfigPath))
+        {
+            return;
+        }
+
+        // Copy first so the setting stays with this run instead of leaking into the caller's dictionary.
+        CurrentEnvironmentVariables = CurrentEnvironmentVariables != null
+            ? new Dictionary<string, string>(CurrentEnvironmentVariables, StringComparer.Ordinal)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+        CurrentEnvironmentVariables["OPENCODE_CONFIG"] = CurrentMcpConfigPath;
     }
 
     public override async Task<CliUpdateResult> UpdateCliAsync(CancellationToken cancellationToken = default)
@@ -376,7 +438,10 @@ public class OpenCodeProvider : CliProviderBase
 
         // Build the full command using the centralized argument builder
         // Reference: https://opencode.ai/docs/cli#run
-        var args = BuildRunCommandArgs(prompt, sessionId);
+        // JSON events are the only output that carries the session ID (needed to resume a
+        // follow-up), tool calls, and token and cost totals.
+        var args = BuildRunCommandArgs(prompt, sessionId, defaultOutputFormat: "json");
+        ApplyMcpConfigEnvironmentVariable();
 
         var fullCommand = FormatCommandForDisplay(execPath, args);
 
@@ -414,6 +479,18 @@ public class OpenCodeProvider : CliProviderBase
                 hasReceivedMeaningfulOutput = true;
             }
 
+            // A JSON event embeds the agent's prose and tool output, so the plain-text error
+            // patterns below would misfire on it ("not found" in a reply, "error" in a build log).
+            if (TryProcessStreamLine(cleanedData, result, currentAssistantMessage, progress))
+            {
+                progress?.Report(new ExecutionProgress
+                {
+                    OutputLine = cleanedData,
+                    IsStreaming = true
+                });
+                return;
+            }
+
             // Check for early error patterns in the output
             // This allows us to detect errors like "model 'x' not found" immediately
             if (!earlyErrorDetected && IsCliErrorLine(cleanedData))
@@ -428,21 +505,6 @@ public class OpenCodeProvider : CliProviderBase
                     CurrentMessage = $"CLI Error: {cleanedData}"
                 });
                 return;
-            }
-
-            // Try to parse as JSON first
-            try
-            {
-                var jsonEvent = JsonSerializer.Deserialize<OpenCodeStreamEvent>(cleanedData, JsonOptions);
-                if (jsonEvent != null && !string.IsNullOrEmpty(jsonEvent.Type))
-                {
-                    ProcessStreamEvent(jsonEvent, result, currentAssistantMessage, progress);
-                    return;
-                }
-            }
-            catch
-            {
-                // Not JSON, continue with plain text handling
             }
 
             // Plain text output
@@ -564,15 +626,7 @@ public class OpenCodeProvider : CliProviderBase
 
         await WaitForOutputStreamsAsync(outputComplete, errorComplete);
 
-        if (currentAssistantMessage.Length > 0)
-        {
-            result.Messages.Add(new ExecutionMessage
-            {
-                Role = "assistant",
-                Content = currentAssistantMessage.ToString(),
-                Timestamp = DateTime.UtcNow
-            });
-        }
+        FlushAssistantMessage(result, currentAssistantMessage);
 
         if (process.ExitCode != 0)
         {
@@ -604,8 +658,12 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         // If exit code is 0 and no error patterns were found, ensure success is true
-        // even if there's content in stderr (likely just tool progress output)
-        if (process.ExitCode == 0 && string.IsNullOrWhiteSpace(errorFromOutput) && string.IsNullOrWhiteSpace(errorFromStderr))
+        // even if there's content in stderr (likely just tool progress output).
+        // An error event (which sets ErrorMessage) still fails the run.
+        if (process.ExitCode == 0
+            && string.IsNullOrWhiteSpace(errorFromOutput)
+            && string.IsNullOrWhiteSpace(errorFromStderr)
+            && string.IsNullOrWhiteSpace(result.ErrorMessage))
         {
             result.Success = true;
         }
@@ -784,107 +842,183 @@ public class OpenCodeProvider : CliProviderBase
         return null;
     }
 
-    private void ProcessStreamEvent(
+    /// <summary>
+    /// Handles one line of <c>--format json</c> output. Returns false for anything that isn't an
+    /// OpenCode event, so the caller can treat it as plain text.
+    /// </summary>
+    internal static bool TryProcessStreamLine(
+        string line,
+        ExecutionResult result,
+        System.Text.StringBuilder currentMessage,
+        IProgress<ExecutionProgress>? progress)
+    {
+        if (!line.StartsWith('{'))
+        {
+            return false;
+        }
+
+        OpenCodeStreamEvent? evt;
+        try
+        {
+            evt = JsonSerializer.Deserialize<OpenCodeStreamEvent>(line, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        if (evt == null || string.IsNullOrEmpty(evt.Type))
+        {
+            return false;
+        }
+
+        ProcessStreamEvent(evt, result, currentMessage, progress);
+        return true;
+    }
+
+    private static void ProcessStreamEvent(
         OpenCodeStreamEvent evt,
         ExecutionResult result,
         System.Text.StringBuilder currentMessage,
         IProgress<ExecutionProgress>? progress)
     {
+        // Every event carries the session ID; report it once.
+        if (!string.IsNullOrEmpty(evt.SessionId) && evt.SessionId != result.SessionId)
+        {
+            result.SessionId = evt.SessionId;
+            progress?.Report(new ExecutionProgress
+            {
+                SessionId = evt.SessionId,
+                IsStreaming = false
+            });
+        }
+
         switch (evt.Type)
         {
-            case "session":
-                if (!string.IsNullOrEmpty(evt.SessionId))
+            // A text part arrives once, when it is complete.
+            case "text":
+            {
+                var text = ReadString(evt.Part, "text")?.Trim();
+                if (!string.IsNullOrEmpty(text))
                 {
-                    result.SessionId = evt.SessionId;
+                    if (currentMessage.Length > 0)
+                    {
+                        currentMessage.AppendLine().AppendLine();
+                    }
+                    currentMessage.Append(text);
                     progress?.Report(new ExecutionProgress
                     {
-                        SessionId = evt.SessionId,
-                        IsStreaming = false
-                    });
-                }
-                break;
-
-            case "message":
-            case "assistant":
-                if (!string.IsNullOrEmpty(evt.Content))
-                {
-                    currentMessage.Append(evt.Content);
-                    progress?.Report(new ExecutionProgress
-                    {
-                        CurrentMessage = evt.Content,
+                        CurrentMessage = text.Length > 100 ? text[..100] + "..." : text,
                         IsStreaming = true
                     });
                 }
                 break;
+            }
 
-            case "tool_call":
-                if (currentMessage.Length > 0)
+            // Only sent with --thinking.
+            case "reasoning":
+            {
+                var text = ReadString(evt.Part, "text")?.Trim();
+                if (!string.IsNullOrEmpty(text))
                 {
+                    FlushAssistantMessage(result, currentMessage);
                     result.Messages.Add(new ExecutionMessage
                     {
-                        Role = "assistant",
-                        Content = currentMessage.ToString(),
+                        Role = "reasoning",
+                        Content = text,
                         Timestamp = DateTime.UtcNow
                     });
-                    currentMessage.Clear();
+                    progress?.Report(new ExecutionProgress
+                    {
+                        CurrentMessage = text.Length > 100 ? text[..100] + "..." : text,
+                        IsStreaming = true,
+                        IsThinkingContent = true,
+                        ContentCategory = "reasoning"
+                    });
                 }
+                break;
+            }
+
+            // Sent when a tool call finishes, with its input and its output or error.
+            case "tool_use":
+            {
+                FlushAssistantMessage(result, currentMessage);
+
+                var toolName = ReadString(evt.Part, "tool") ?? "unknown";
+                var state = evt.Part.ValueKind == JsonValueKind.Object
+                    && evt.Part.TryGetProperty("state", out var stateProp)
+                    && stateProp.ValueKind == JsonValueKind.Object
+                        ? stateProp
+                        : default;
+                var toolInput = state.ValueKind == JsonValueKind.Object
+                    && state.TryGetProperty("input", out var inputProp)
+                    && inputProp.ValueKind != JsonValueKind.Null
+                        ? inputProp.GetRawText()
+                        : null;
+                var failed = ReadString(state, "status") == "error";
+                var toolOutput = failed ? ReadString(state, "error") : ReadString(state, "output");
 
                 result.Messages.Add(new ExecutionMessage
                 {
                     Role = "tool_use",
-                    Content = evt.ToolName ?? "unknown",
-                    ToolName = evt.ToolName,
-                    ToolInput = evt.ToolInput,
+                    Content = toolName,
+                    ToolName = toolName,
+                    ToolInput = toolInput,
+                    Timestamp = DateTime.UtcNow
+                });
+                result.Messages.Add(new ExecutionMessage
+                {
+                    Role = failed ? "tool_error" : "tool_result",
+                    Content = toolOutput ?? string.Empty,
+                    ToolName = toolName,
+                    ToolOutput = toolOutput,
                     Timestamp = DateTime.UtcNow
                 });
                 progress?.Report(new ExecutionProgress
                 {
-                    ToolName = evt.ToolName,
+                    ToolName = toolName,
                     IsStreaming = false
                 });
                 break;
+            }
 
-            case "tool_result":
-                result.Messages.Add(new ExecutionMessage
+            // One per model call: tokens and cost for that step, summed over the run.
+            case "step_finish":
+            {
+                if (evt.Part.ValueKind != JsonValueKind.Object)
                 {
-                    Role = "tool_result",
-                    Content = evt.ToolOutput ?? "",
-                    ToolName = evt.ToolName,
-                    ToolOutput = evt.ToolOutput,
-                    Timestamp = DateTime.UtcNow
-                });
-                break;
+                    break;
+                }
 
-            case "done":
-            case "complete":
-                if (evt.InputTokens.HasValue)
+                if (evt.Part.TryGetProperty("tokens", out var tokens) && tokens.ValueKind == JsonValueKind.Object)
                 {
-                    result.InputTokens = evt.InputTokens;
+                    var input = ReadInt(tokens, "input");
+                    var output = ReadInt(tokens, "output") + ReadInt(tokens, "reasoning");
+                    result.InputTokens = (result.InputTokens ?? 0) + input;
+                    result.OutputTokens = (result.OutputTokens ?? 0) + output;
                 }
-                if (evt.OutputTokens.HasValue)
+
+                if (evt.Part.TryGetProperty("cost", out var cost)
+                    && cost.ValueKind == JsonValueKind.Number
+                    && cost.TryGetDecimal(out var stepCost))
                 {
-                    result.OutputTokens = evt.OutputTokens;
-                }
-                if (evt.CostUsd.HasValue)
-                {
-                    result.CostUsd = evt.CostUsd;
-                }
-                if (!string.IsNullOrEmpty(evt.Model))
-                {
-                    result.ModelUsed = evt.Model;
+                    result.CostUsd = (result.CostUsd ?? 0) + stepCost;
                 }
                 break;
+            }
 
             case "error":
-                var errorContent = evt.Error ?? evt.Message ?? evt.Content ?? "Unknown error";
+            {
+                var errorContent = ReadErrorMessage(evt.Error);
                 result.Success = false;
                 result.ErrorMessage = string.IsNullOrEmpty(result.ErrorMessage)
                     ? errorContent
                     : $"{result.ErrorMessage}\n{errorContent}";
 
+                FlushAssistantMessage(result, currentMessage);
                 result.Messages.Add(new ExecutionMessage
                 {
-                    Role = "error",
+                    Role = "system",
                     Content = errorContent,
                     Timestamp = DateTime.UtcNow
                 });
@@ -896,17 +1030,53 @@ public class OpenCodeProvider : CliProviderBase
                     IsErrorOutput = true
                 });
                 break;
-
-            default:
-                if (!string.IsNullOrEmpty(evt.Error))
-                {
-                    result.ErrorMessage = string.IsNullOrEmpty(result.ErrorMessage)
-                        ? evt.Error
-                        : $"{result.ErrorMessage}\n{evt.Error}";
-                }
-                break;
+            }
         }
     }
+
+    private static void FlushAssistantMessage(ExecutionResult result, System.Text.StringBuilder currentMessage)
+    {
+        if (currentMessage.Length == 0)
+        {
+            return;
+        }
+
+        result.Messages.Add(new ExecutionMessage
+        {
+            Role = "assistant",
+            Content = currentMessage.ToString(),
+            Timestamp = DateTime.UtcNow
+        });
+        currentMessage.Clear();
+    }
+
+    private static string ReadErrorMessage(JsonElement error)
+    {
+        return error.ValueKind switch
+        {
+            JsonValueKind.String => error.GetString() ?? "Unknown error",
+            JsonValueKind.Object =>
+                (error.TryGetProperty("data", out var data) ? ReadString(data, "message") : null)
+                    ?? ReadString(error, "message")
+                    ?? ReadString(error, "name")
+                    ?? error.GetRawText(),
+            _ => "Unknown error"
+        };
+    }
+
+    private static string? ReadString(JsonElement element, string propertyName)
+        => element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(propertyName, out var value)
+            && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+
+    private static int ReadInt(JsonElement element, string propertyName)
+        => element.TryGetProperty(propertyName, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var number)
+                ? number
+                : 0;
 
     private async Task<ExecutionResult> ExecuteRestWithSessionAsync(
         string prompt,
@@ -1085,6 +1255,7 @@ public class OpenCodeProvider : CliProviderBase
         if (ConnectionMode == ProviderConnectionMode.CLI)
         {
             var execPath = GetExecutablePath();
+            await EnsureCachedCliVersionAsync(cancellationToken);
 
             // Fetch available models dynamically
             try
@@ -1092,15 +1263,7 @@ public class OpenCodeProvider : CliProviderBase
                 using var modelsTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
                 using var modelsLinkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, modelsTimeoutCts.Token);
 
-                var modelsStartInfo = new ProcessStartInfo
-                {
-                    FileName = execPath,
-                    Arguments = "models --refresh"
-                };
-
-                PlatformHelper.ConfigureForCrossPlatform(modelsStartInfo);
-
-                using var modelsProcess = new Process { StartInfo = modelsStartInfo };
+                using var modelsProcess = CreateCliProcess(execPath, BuildModelsCommandArgs());
                 modelsProcess.Start();
 
                 try
@@ -1164,9 +1327,18 @@ public class OpenCodeProvider : CliProviderBase
             return null;
         }
 
-        var cleaned = versionString.TrimStart('v').Split('-')[0].Split('+')[0].Trim();
-        return Version.TryParse(cleaned, out var version) ? version : null;
+        // 1.x prints a bare "1.19.0"; OpenCode 2 prints "opencode v2.0.26".
+        return ProviderVersionReference.TryParseVersion(versionString, out var version) ? version : null;
     }
+
+    /// <summary>
+    /// Arguments for listing models. OpenCode 2 dropped --refresh and, like run, would otherwise
+    /// start the shared background service.
+    /// </summary>
+    internal List<string> BuildModelsCommandArgs()
+        => SupportsCliVersion(OpenCode2Version)
+            ? ["models", "--standalone"]
+            : ["models", "--refresh"];
 
     internal static OpenCodeUpdatePlan BuildUpdatePlan(string executablePath, string? homeDirectory = null)
     {
@@ -1243,16 +1415,9 @@ public class OpenCodeProvider : CliProviderBase
         return Task.FromResult(limits);
     }
 
-    protected override TimeSpan SessionSummaryTimeout => TimeSpan.FromSeconds(15);
-
-    protected internal override string? BuildSessionSummaryArgs(string sessionId)
-        => $"session show {sessionId} --format json";
-
-    protected internal override string? ExtractSessionSummary(string output)
-        => OpenCodeOutputParser.ParseSessionOutput(output);
-
-    protected override Task PrepareForSessionSummaryAsync(CancellationToken cancellationToken)
-        => EnsureCliAuthenticationReadyAsync(cancellationToken);
+    // Neither major has a command that summarizes a stored session (there is no
+    // "session show"; export dumps the whole transcript), so the summary comes from the job output.
+    protected internal override string? BuildSessionSummaryArgs(string sessionId) => null;
 
     public override async Task<PromptResponse> GetPromptResponseAsync(
         string prompt,
@@ -1262,6 +1427,7 @@ public class OpenCodeProvider : CliProviderBase
         if (ConnectionMode == ProviderConnectionMode.CLI)
         {
             await EnsureCliAuthenticationReadyAsync(cancellationToken);
+            await EnsureCachedCliVersionAsync(cancellationToken);
 
             var execPath = GetExecutablePath();
             if (string.IsNullOrEmpty(execPath))
@@ -1272,6 +1438,12 @@ public class OpenCodeProvider : CliProviderBase
             // Build arguments for simple prompt execution
             // Reference: https://opencode.ai/docs/cli#run
             var argsList = new List<string> { "run" };
+
+            // See BuildRunCommandArgs: keep OpenCode 2 off the shared background service.
+            if (SupportsCliVersion(OpenCode2Version))
+            {
+                argsList.Add("--standalone");
+            }
 
             // Add model if specified
             if (!string.IsNullOrEmpty(CurrentModel))

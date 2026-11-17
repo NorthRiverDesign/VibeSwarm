@@ -34,7 +34,7 @@ public sealed class ActionButtonTests
 
 		Assert.Contains("type=\"submit\"", html);
 		Assert.Contains("form=\"create-job-form\"", html);
-		Assert.Contains("btn btn-primary", html);
+		Assert.Contains("btn-solid theme-primary", html);
 		Assert.Contains("Creating...", html);
 		Assert.DoesNotContain("Create Job", html);
 	}

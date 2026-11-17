@@ -162,6 +162,25 @@ public class ProviderUsageSummary
 	public int? EffectiveMaxUsage => ConfiguredMaxUsage ?? MaxUsage;
 
 	/// <summary>
+	/// Whether the stored limit state is out of date at <paramref name="utcNow"/>: its window has
+	/// reset, and no other reached window, such as a weekly limit outlasting the session, is
+	/// still current. A limit that has reset no longer applies, even before a newer reading
+	/// replaces it.
+	/// </summary>
+	public bool HasLimitStateExpired(DateTime utcNow)
+	{
+		if (LimitResetTime is not DateTime resetTime || resetTime > utcNow)
+		{
+			return false;
+		}
+
+		return !LimitWindows.Any(window => window.IsLimitReached && !window.HasResetBy(utcNow));
+	}
+
+	/// <summary>Whether the limit is still reached at <paramref name="utcNow"/>.</summary>
+	public bool IsLimitReachedAt(DateTime utcNow) => IsLimitReached && !HasLimitStateExpired(utcNow);
+
+	/// <summary>
 	/// Gets the percentage of limit used (0-100, null if unknown).
 	/// Uses CurrentUsage against EffectiveMaxUsage.
 	/// </summary>

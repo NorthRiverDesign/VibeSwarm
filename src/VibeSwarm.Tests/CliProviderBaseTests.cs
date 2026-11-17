@@ -5,6 +5,16 @@ namespace VibeSwarm.Tests;
 
 public sealed class CliProviderBaseTests
 {
+	[Theory]
+	[InlineData("GitHub Copilot CLI 1.0.95.\nRun 'copilot update' to check for updates.\n", "GitHub Copilot CLI 1.0.95.")]
+	[InlineData("Update available\n2.1.4 (Claude Code)\n", "2.1.4 (Claude Code)")]
+	[InlineData("  1.14.2\r\n", "1.14.2")]
+	[InlineData("", "")]
+	public void FirstVersionLine_KeepsOnlyTheLineCarryingTheVersion(string output, string expected)
+	{
+		Assert.Equal(expected, CliProviderBase.FirstVersionLine(output));
+	}
+
 	[Fact]
 	public void ReportProcessStarted_TracksProcessWithoutStartupActivityMessage()
 	{

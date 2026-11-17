@@ -13,6 +13,12 @@ public interface IJobService
     Task<IEnumerable<JobSummary>> GetActiveJobsAsync(CancellationToken cancellationToken = default);
     Task<Job?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The running job's newest output lines after <paramref name="afterSequence"/> (0 for all kept
+    /// lines), or null when the job isn't running.
+    /// </summary>
+    Task<JobLiveOutput?> GetLiveOutputAsync(Guid id, long afterSequence = 0, CancellationToken cancellationToken = default);
     Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default);
     Task<Job> UpdateStatusAsync(Guid id, JobStatus status, string? output = null, string? errorMessage = null, CancellationToken cancellationToken = default);
     Task<Job> UpdateJobResultAsync(Guid id, JobStatus status, string? sessionId, string? output, string? errorMessage, int? inputTokens, int? outputTokens, decimal? costUsd, CancellationToken cancellationToken = default);
@@ -59,6 +65,19 @@ public interface IJobService
 	/// <param name="followUpPrompt">The follow-up instructions to send</param>
 	Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default);
 
+	/// <summary>
+	/// Sends a message to the agent of a running job to steer it: the agent's current step stops
+	/// and its session carries on with the message. False when the job's agent isn't working.
+	/// </summary>
+	Task<bool> SendMessageToAgentAsync(Guid id, string message, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Has inference write a follow-up message for a job whose run has ended, for the user to
+	/// confirm before it is sent with <see cref="ContinueJobAsync"/>.
+	/// </summary>
+	/// <param name="request">What the user typed in the follow-up box, if anything, and the actions they picked for the agent</param>
+	Task<FollowUpDraft> DraftFollowUpAsync(Guid id, FollowUpDraftRequest request, CancellationToken cancellationToken = default);
+
     Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -94,6 +113,15 @@ public interface IJobService
     Task<int> CancelSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default);
 
     Task<int> PrioritizeSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Moves a queued job ahead of every other queued job, so it is the next to start once its
+    /// project and provider are free. Returns false when the job is no longer queued.
+    /// </summary>
+    Task<bool> RunNextAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Why a queued job has not started yet; null once it is no longer queued.</summary>
+    Task<JobQueueStatus?> GetQueueStatusAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Bypasses the state machine and directly sets a non-terminal job to Failed.

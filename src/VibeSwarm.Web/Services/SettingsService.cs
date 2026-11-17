@@ -119,6 +119,56 @@ public class SettingsService : ISettingsService
 		</commit-summary>
 		""";
 
+	// The defaults before the job system prompt rules took over the closing <commit-summary> block.
+	private const string CommitSummaryDefaultIdeaImplementationPromptTemplate =
+		"""
+		You are a staff-level software engineer implementing a feature directly from a product idea.
+
+		## Feature Idea
+		{{idea}}
+
+		## Instructions
+		1. Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.
+		2. Fill in missing details from repository patterns and prefer the simplest solution that fully satisfies the idea.
+		3. Reuse existing patterns, helpers, and components before adding new ones.
+		4. Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
+		5. Keep changes scoped, preserve existing behavior unless the idea requires a change, and leave the repository in a working state.
+		6. Do not mention or attribute the work to any provider, model, or CLI tool.
+
+		Implement this feature now without first writing a separate specification.
+
+		When you are finished, end your response with a short summary in this exact format:
+		<commit-summary>
+		A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)
+		</commit-summary>
+		""";
+
+	private const string CommitSummaryDefaultApprovedIdeaImplementationPromptTemplate =
+		"""
+		You are a staff-level software engineer implementing an approved specification.
+
+		## Original Idea
+		{{idea}}
+
+		## Detailed Specification
+		{{specification}}
+
+		## Instructions
+		1. Use the approved specification as the source of truth, then fill in missing details from repository patterns.
+		2. Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.
+		3. Reuse existing patterns, helpers, and components before adding new ones.
+		4. Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
+		5. Keep changes scoped, preserve existing behavior unless the specification requires a change, and leave the repository in a working state.
+		6. Do not mention or attribute the work to any provider, model, or CLI tool.
+
+		Implement this feature now.
+
+		When you are finished, end your response with a short summary in this exact format:
+		<commit-summary>
+		A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)
+		</commit-summary>
+		""";
+
 	public SettingsService(VibeSwarmDbContext dbContext)
 	{
 		_dbContext = dbContext;
@@ -139,6 +189,7 @@ public class SettingsService : ISettingsService
 				EnableCommitAttribution = true,
 				CriticalErrorLogRetentionDays = AppSettings.DefaultCriticalErrorLogRetentionDays,
 				CriticalErrorLogMaxEntries = AppSettings.DefaultCriticalErrorLogMaxEntries,
+				MaxConcurrentJobs = JobConcurrency.DefaultTotalJobs,
 				IdeaExpansionPromptTemplate = PromptBuilder.DefaultIdeaExpansionPromptTemplate,
 				IdeaImplementationPromptTemplate = PromptBuilder.DefaultIdeaImplementationPromptTemplate,
 				ApprovedIdeaImplementationPromptTemplate = PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
@@ -153,6 +204,7 @@ public class SettingsService : ISettingsService
 			var normalizedTimeZoneId = NormalizeTimeZoneId(settings.TimeZoneId);
 			var normalizedRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			var normalizedMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
+			var normalizedMaxConcurrentJobs = JobConcurrency.Normalize(settings.MaxConcurrentJobs);
 			var normalizedIdeaExpansionPromptTemplate = NormalizePromptTemplate(
 				settings.IdeaExpansionPromptTemplate,
 				PromptBuilder.DefaultIdeaExpansionPromptTemplate,
@@ -161,16 +213,19 @@ public class SettingsService : ISettingsService
 				settings.IdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultIdeaImplementationPromptTemplate,
 				LegacyDefaultIdeaImplementationPromptTemplate,
-				PreviousDefaultIdeaImplementationPromptTemplate);
+				PreviousDefaultIdeaImplementationPromptTemplate,
+				CommitSummaryDefaultIdeaImplementationPromptTemplate);
 			var normalizedApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(
 				settings.ApprovedIdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
 				LegacyDefaultApprovedIdeaImplementationPromptTemplate,
-				PreviousDefaultApprovedIdeaImplementationPromptTemplate);
+				PreviousDefaultApprovedIdeaImplementationPromptTemplate,
+				CommitSummaryDefaultApprovedIdeaImplementationPromptTemplate);
 
 			if (!string.Equals(settings.TimeZoneId, normalizedTimeZoneId, StringComparison.Ordinal) ||
 				settings.CriticalErrorLogRetentionDays != normalizedRetentionDays ||
 				settings.CriticalErrorLogMaxEntries != normalizedMaxEntries ||
+				settings.MaxConcurrentJobs != normalizedMaxConcurrentJobs ||
 				!string.Equals(settings.IdeaExpansionPromptTemplate, normalizedIdeaExpansionPromptTemplate, StringComparison.Ordinal) ||
 				!string.Equals(settings.IdeaImplementationPromptTemplate, normalizedIdeaImplementationPromptTemplate, StringComparison.Ordinal) ||
 				!string.Equals(settings.ApprovedIdeaImplementationPromptTemplate, normalizedApprovedIdeaImplementationPromptTemplate, StringComparison.Ordinal))
@@ -178,6 +233,7 @@ public class SettingsService : ISettingsService
 				settings.TimeZoneId = normalizedTimeZoneId;
 				settings.CriticalErrorLogRetentionDays = normalizedRetentionDays;
 				settings.CriticalErrorLogMaxEntries = normalizedMaxEntries;
+				settings.MaxConcurrentJobs = normalizedMaxConcurrentJobs;
 				settings.IdeaExpansionPromptTemplate = normalizedIdeaExpansionPromptTemplate;
 				settings.IdeaImplementationPromptTemplate = normalizedIdeaImplementationPromptTemplate;
 				settings.ApprovedIdeaImplementationPromptTemplate = normalizedApprovedIdeaImplementationPromptTemplate;
@@ -200,6 +256,8 @@ public class SettingsService : ISettingsService
 			settings.TimeZoneId = NormalizeTimeZoneId(settings.TimeZoneId);
 			settings.CriticalErrorLogRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			settings.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
+			// Only admins change it, through UpdateMaxConcurrentJobsAsync.
+			settings.MaxConcurrentJobs = JobConcurrency.DefaultTotalJobs;
 			settings.IdeaExpansionPromptTemplate = NormalizePromptTemplate(
 				settings.IdeaExpansionPromptTemplate,
 				PromptBuilder.DefaultIdeaExpansionPromptTemplate,
@@ -208,12 +266,14 @@ public class SettingsService : ISettingsService
 				settings.IdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultIdeaImplementationPromptTemplate,
 				LegacyDefaultIdeaImplementationPromptTemplate,
-				PreviousDefaultIdeaImplementationPromptTemplate);
+				PreviousDefaultIdeaImplementationPromptTemplate,
+				CommitSummaryDefaultIdeaImplementationPromptTemplate);
 			settings.ApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(
 				settings.ApprovedIdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
 				LegacyDefaultApprovedIdeaImplementationPromptTemplate,
-				PreviousDefaultApprovedIdeaImplementationPromptTemplate);
+				PreviousDefaultApprovedIdeaImplementationPromptTemplate,
+				CommitSummaryDefaultApprovedIdeaImplementationPromptTemplate);
 			settings.GitHubToken = NormalizeGitHubToken(settings.GitHubToken);
 			settings.UpdatedAt = DateTime.UtcNow;
 			_dbContext.AppSettings.Add(settings);
@@ -227,6 +287,9 @@ public class SettingsService : ISettingsService
 			existing.InjectRepoMap = settings.InjectRepoMap;
 			existing.InjectEfficiencyRules = settings.InjectEfficiencyRules;
 			existing.EnableCommitAttribution = settings.EnableCommitAttribution;
+			existing.EnableHttps = settings.EnableHttps;
+			existing.EnableBrowserTools = settings.EnableBrowserTools;
+			existing.InferenceAnswersAgentQuestions = settings.InferenceAnswersAgentQuestions;
 			existing.CriticalErrorLogRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			existing.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
 			existing.IdeaExpansionPromptTemplate = NormalizePromptTemplate(
@@ -237,12 +300,14 @@ public class SettingsService : ISettingsService
 				settings.IdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultIdeaImplementationPromptTemplate,
 				LegacyDefaultIdeaImplementationPromptTemplate,
-				PreviousDefaultIdeaImplementationPromptTemplate);
+				PreviousDefaultIdeaImplementationPromptTemplate,
+				CommitSummaryDefaultIdeaImplementationPromptTemplate);
 			existing.ApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(
 				settings.ApprovedIdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
 				LegacyDefaultApprovedIdeaImplementationPromptTemplate,
-				PreviousDefaultApprovedIdeaImplementationPromptTemplate);
+				PreviousDefaultApprovedIdeaImplementationPromptTemplate,
+				CommitSummaryDefaultApprovedIdeaImplementationPromptTemplate);
 			existing.GitHubToken = NormalizeGitHubToken(settings.GitHubToken);
 			existing.UpdatedAt = DateTime.UtcNow;
 		}
@@ -250,6 +315,16 @@ public class SettingsService : ISettingsService
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
 		return existing ?? settings;
+	}
+
+	public async Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default)
+	{
+		var settings = await GetSettingsAsync(cancellationToken);
+		settings.MaxConcurrentJobs = JobConcurrency.Normalize(maxConcurrentJobs);
+		settings.UpdatedAt = DateTime.UtcNow;
+		await _dbContext.SaveChangesAsync(cancellationToken);
+
+		return settings;
 	}
 
 	public async Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default)

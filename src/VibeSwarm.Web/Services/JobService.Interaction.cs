@@ -2,7 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Validation;
 using VibeSwarm.Shared.VersionControl;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -248,6 +250,34 @@ public partial class JobService
         return true;
     }
 
+    public async Task<bool> SendMessageToAgentAsync(Guid id, string message, CancellationToken cancellationToken = default)
+    {
+        var trimmedMessage = message?.Trim();
+        if (string.IsNullOrEmpty(trimmedMessage)
+            || trimmedMessage.Length > ValidationLimits.JobAgentMessageMaxLength
+            || _jobProcessingService == null)
+        {
+            return false;
+        }
+
+        // Only a working agent takes messages; a job paused on a question gets its answer instead.
+        var status = await _dbContext.Jobs
+            .Where(j => j.Id == id)
+            .Select(j => (JobStatus?)j.Status)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return status == JobStatus.Processing
+            && _jobProcessingService.TrySendUserMessage(id, trimmedMessage);
+    }
+
+    public async Task<FollowUpDraft> DraftFollowUpAsync(Guid id, FollowUpDraftRequest request, CancellationToken cancellationToken = default)
+    {
+        var answerer = _serviceProvider.GetService<AgentQuestionAnswerer>();
+        return answerer == null
+            ? new FollowUpDraft { Error = "Inference isn't available on this server." }
+            : await answerer.DraftFollowUpAsync(id, request, cancellationToken);
+    }
+
     public async Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default)
     {
         return await _dbContext.Jobs
@@ -414,6 +444,7 @@ public partial class JobService
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;
+        JobReview.Reset(job);
         job.PlanningGeneratedAt = null;
         job.PlanningInputTokens = null;
         job.PlanningOutputTokens = null;

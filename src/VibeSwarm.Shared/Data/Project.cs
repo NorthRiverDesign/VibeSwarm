@@ -60,6 +60,18 @@ public class Project
 	public string? DefaultTargetBranch { get; set; }
 
 	/// <summary>
+	/// Branch jobs work on and push to. When empty, jobs use whatever branch the checkout is on.
+	/// </summary>
+	[StringLength(ValidationLimits.ProjectBranchMaxLength)]
+	public string? DevelopmentBranch { get; set; }
+
+	/// <summary>
+	/// Branch CI/CD releases from. Deploying merges the development branch into it.
+	/// </summary>
+	[StringLength(ValidationLimits.ProjectBranchMaxLength)]
+	public string? ReleaseBranch { get; set; }
+
+	/// <summary>
 	/// Whether idea expansion should use provider-native planning mode.
 	/// When enabled, idea expansion uses the configured planning provider/model to generate
 	/// a reviewed implementation plan before the idea is converted into a job.
@@ -87,6 +99,41 @@ public class Project
 	public string? PlanningReasoningEffort { get; set; }
 
 	/// <summary>
+	/// Whether a second model reviews each job's work before it is delivered. Problems it finds
+	/// go back to the job's agent, in the same session, for up to <see cref="JobReview.MaxRounds"/> fixes.
+	/// Review never holds back delivery: when the reviewer can't run, the work is delivered as it is.
+	/// </summary>
+	public bool ReviewEnabled { get; set; }
+
+	/// <summary>The coding provider (Claude or Copilot, run read-only) that reviews jobs.</summary>
+	public Guid? ReviewProviderId { get; set; }
+
+	/// <summary>The inference provider that reviews jobs from the diff alone, when no coding provider is set.</summary>
+	public Guid? ReviewInferenceProviderId { get; set; }
+
+	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
+	public string? ReviewModelId { get; set; }
+
+	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
+	public string? ReviewReasoningEffort { get; set; }
+
+	/// <summary>The coding provider (Claude or Copilot, run read-only) that acts as the project's Lead.</summary>
+	public Guid? LeadProviderId { get; set; }
+
+	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
+	public string? LeadModelId { get; set; }
+
+	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
+	public string? LeadReasoningEffort { get; set; }
+
+	/// <summary>
+	/// Where the owner wants the project to go: priorities, what matters most, what is off limits.
+	/// The Lead steers its suggestions by it.
+	/// </summary>
+	[StringLength(LeadReviewLimits.DirectionMaxLength)]
+	public string? LeadDirection { get; set; }
+
+	/// <summary>
 	/// Default inference provider for idea generation (e.g., Grok, Ollama).
 	/// Used as the default in Auto-Pilot and suggestion workflows.
 	/// </summary>
@@ -111,6 +158,11 @@ public class Project
 	[StringLength(200)]
 	public string? CommitSummaryInferenceModelId { get; set; }
 
+	/// <summary>
+	/// Optional folder the project is grouped under on the projects list.
+	/// </summary>
+	public Guid? FolderId { get; set; }
+
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? UpdatedAt { get; set; }
@@ -119,6 +171,11 @@ public class Project
     public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
     public ICollection<ProjectAgent> AgentAssignments { get; set; } = new List<ProjectAgent>();
     public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
+
+    /// <summary>
+    /// Other projects linked to this one. Jobs are told about them for context.
+    /// </summary>
+    public ICollection<ProjectLink> Links { get; set; } = new List<ProjectLink>();
 
     /// <summary>
     /// Optional per-project instructions injected into every job prompt.
@@ -173,8 +230,9 @@ public class Project
 	/// <summary>
 	/// When enabled and at least two team roles are configured, creating a job automatically
 	/// fans out into role-based jobs — one per enabled team role assignment.
-	/// Each role job runs its assigned provider with a role-specific system prompt, one at a
-	/// time, because they share the project's checkout.
+	/// Each role job runs its assigned provider with a role-specific system prompt in a git
+	/// worktree of its own, so they run at the same time (one job per provider); each one's
+	/// commits are replayed onto the project's branch as it finishes.
 	/// </summary>
 	public bool EnableTeamSwarm { get; set; }
 

@@ -24,26 +24,6 @@ public class NotificationService
 		get { lock (_lock) return _unreadCount; }
 	}
 
-	public bool IsPanelOpen { get; private set; }
-
-	public void OpenPanel()
-	{
-		IsPanelOpen = true;
-		MarkAllRead();
-	}
-
-	public void ClosePanel()
-	{
-		IsPanelOpen = false;
-		OnChange?.Invoke();
-	}
-
-	public void TogglePanel()
-	{
-		if (IsPanelOpen) ClosePanel();
-		else OpenPanel();
-	}
-
 	public void MarkAllRead()
 	{
 		lock (_lock) _unreadCount = 0;
@@ -167,10 +147,7 @@ public class NotificationService
 			while (_history.Count >= 50) _history.RemoveAt(0);
 			_history.Add(notification);
 
-			if (!IsPanelOpen)
-			{
-				_unreadCount++;
-			}
+			_unreadCount++;
 		}
 		OnChange?.Invoke();
 	}
@@ -190,6 +167,15 @@ public class ToastNotification
 	public string? ActionLabel { get; set; }
 	public string? ActionUrl { get; set; }
 	public bool HasAction => !string.IsNullOrWhiteSpace(ActionLabel) && !string.IsNullOrWhiteSpace(ActionUrl);
+
+	public string IconClass => Type switch
+	{
+		NotificationType.Success => "bi bi-check-circle-fill fg-success",
+		NotificationType.Error => "bi bi-x-circle-fill fg-danger",
+		NotificationType.Warning => "bi bi-exclamation-triangle-fill fg-warning",
+		NotificationType.Info => "bi bi-info-circle-fill fg-info",
+		_ => "bi bi-bell-fill"
+	};
 }
 
 public enum NotificationType

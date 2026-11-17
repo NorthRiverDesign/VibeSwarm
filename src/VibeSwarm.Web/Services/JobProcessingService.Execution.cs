@@ -188,22 +188,35 @@ public partial class JobProcessingService
                     var isGitRepo = await _versionControlService.IsGitRepositoryAsync(workingDirectory, cancellationToken);
                     if (isGitRepo)
                     {
-                        var checkpointBaseBranch = await PreserveWorkingTreeBeforeBranchPreparationAsync(
-                            job,
-                            workingDirectory,
-                            dbContext,
-                            captureJobDiff: false,
-                            reason: "Protected local changes before preparing the job branch.",
-                            cancellationToken: cancellationToken);
+                        // Members of a swarm start side by side; one at a time gets the checkout ready.
+                        using (KeepJobAlive(job.Id))
+                        using (await LockCheckoutAsync(job.ProjectId, cancellationToken))
+                        {
+                            await SweepSwarmWorktreesAsync(job, workingDirectory, dbContext, cancellationToken);
 
-                        var branchActivity = string.IsNullOrWhiteSpace(job.Branch)
-                            ? "Syncing working branch..."
-                            : $"Preparing branch '{job.Branch}'...";
-                        await UpdateHeartbeatAsync(job.Id, branchActivity, dbContext, cancellationToken);
-                        await NotifyJobActivityAsync(job.Id, branchActivity, DateTime.UtcNow);
+                            var checkpointBaseBranch = await PreserveWorkingTreeBeforeBranchPreparationAsync(
+                                job,
+                                workingDirectory,
+                                dbContext,
+                                captureJobDiff: false,
+                                reason: "Protected local changes before preparing the job branch.",
+                                cancellationToken: cancellationToken);
 
-                        await PrepareWorkingBranchAsync(job, workingDirectory, checkpointBaseBranch, cancellationToken);
+                            var branchActivity = string.IsNullOrWhiteSpace(job.Branch)
+                                ? "Syncing working branch..."
+                                : $"Preparing branch '{job.Branch}'...";
+                            await UpdateHeartbeatAsync(job.Id, branchActivity, dbContext, cancellationToken);
+                            await NotifyJobActivityAsync(job.Id, branchActivity, DateTime.UtcNow);
+
+                            await PrepareWorkingBranchAsync(job, workingDirectory, checkpointBaseBranch, cancellationToken);
+                            if (RunsInSwarmWorktree(job))
+                            {
+                                workingDirectory = await OpenSwarmWorktreeAsync(job, workingDirectory, executionContext, dbContext, cancellationToken);
+                            }
+                        }
+
                         executionContext.PriorWorkRestore = await RestorePriorRunWorkAsync(job, workingDirectory, dbContext, cancellationToken);
+                        executionContext.BranchMerge = await StartBranchMergeAsync(job, workingDirectory, dbContext, cancellationToken);
                         if (_workSnapshots != null)
                         {
                             executionContext.WorktreesBefore = await _workSnapshots.ListWorktreesAsync(workingDirectory, cancellationToken);
@@ -377,6 +390,10 @@ public partial class JobProcessingService
                     }
 
                     executionContext.ActiveExecutionCancellationTokenSource?.Cancel();
+                    if (executionContext.InferenceAnswerCount < AgentQuestionAnswerer.MaxAnswersPerJob)
+                    {
+                        _ = Task.Run(() => AnswerWithInferenceAsync(interactionRequest), CancellationToken.None);
+                    }
                     return true;
                 }
                 catch (Exception ex)
@@ -384,6 +401,99 @@ public partial class JobProcessingService
                     _logger.LogError(ex, "Failed to pause job {JobId} for interaction", job.Id);
                     ResetInteractionState(cancelPendingWait: true);
                     return false;
+                }
+            }
+
+            // Lets inference reply in the user's place. The user can still answer first; whichever
+            // response arrives first resumes the job.
+            async Task AnswerWithInferenceAsync(InteractionDetector.InteractionRequest interactionRequest)
+            {
+                try
+                {
+                    using var answerScope = _scopeFactory.CreateScope();
+                    var answerer = answerScope.ServiceProvider.GetRequiredService<AgentQuestionAnswerer>();
+                    var answer = await answerer.TryAnswerAsync(
+                        new AgentQuestion(
+                            job.GoalPrompt,
+                            job.Project?.Name,
+                            interactionRequest.Prompt ?? interactionRequest.RawOutput ?? "Interaction required",
+                            interactionRequest.Type,
+                            interactionRequest.Choices,
+                            executionContext.GetRecentOutputLines().ToList()),
+                        cancellationToken);
+                    if (answer == null || _interactionResponseService?.HasPendingWait(job.Id) != true)
+                    {
+                        return;
+                    }
+
+                    if (_interactionResponseService.SubmitResponse(job.Id, AgentQuestionAnswerer.FormatForAgent(answer)))
+                    {
+                        executionContext.InferenceAnswerCount++;
+                        _logger.LogInformation(
+                            "Inference model {ModelId} on {ProviderName} answered the question job {JobId} paused on",
+                            answer.ModelId, answer.ProviderName, job.Id);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Inference could not answer the question job {JobId} paused on", job.Id);
+                }
+            }
+
+            // The follow-up prompt answering the question the agent ended its run with, or null
+            // when it asked nothing, inference couldn't answer, or nothing is left to do.
+            async Task<string?> TryAnswerClosingQuestionAsync(ExecutionResult runResult)
+            {
+                if (executionContext.InferenceAnswerCount >= AgentQuestionAnswerer.MaxAnswersPerJob
+                    || string.IsNullOrEmpty(sessionId))
+                {
+                    return null;
+                }
+
+                var finalMessage = AgentQuestionAnswerer.FindFinalMessage(runResult.Messages, runResult.Output);
+                var question = AgentQuestionAnswerer.FindClosingQuestion(finalMessage);
+                if (question == null)
+                {
+                    return null;
+                }
+
+                try
+                {
+                    using var answerScope = _scopeFactory.CreateScope();
+                    var answerer = answerScope.ServiceProvider.GetService<AgentQuestionAnswerer>();
+                    if (answerer == null)
+                    {
+                        return null;
+                    }
+
+                    var answer = await answerer.TryAnswerAsync(
+                        new AgentQuestion(
+                            job.GoalPrompt,
+                            job.Project?.Name,
+                            question,
+                            InteractionDetector.InteractionType.Unknown,
+                            null,
+                            AgentQuestionAnswerer.TailOfFinalMessage(finalMessage!),
+                            RunFinished: true),
+                        cancellationToken);
+                    if (answer == null)
+                    {
+                        return null;
+                    }
+
+                    executionContext.InferenceAnswerCount++;
+                    _logger.LogInformation(
+                        "Inference model {ModelId} on {ProviderName} answered the question job {JobId} ended its run with",
+                        answer.ModelId, answer.ProviderName, job.Id);
+                    return AgentQuestionAnswerer.FormatForAgent(answer);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex, "Inference could not answer the question job {JobId} ended its run with", job.Id);
+                    return null;
                 }
             }
 
@@ -451,9 +561,10 @@ public partial class JobProcessingService
                 return (true, resumePrompt, null);
             }
 
-            // Progress<T> doesn't properly handle async callbacks, so we use a synchronous handler
-            // that fires updates in the background with proper scoping to avoid DbContext disposal issues
-            var progress = new Progress<ExecutionProgress>(p =>
+            // A synchronous handler that fires updates in the background with proper scoping to avoid
+            // DbContext disposal issues. It runs inline: Progress<T> would post each report to the thread
+            // pool, where output lines get appended and broadcast out of order.
+            var progress = new InlineProgress<ExecutionProgress>(p =>
             {
                 // Capture and store process ID and command as soon as they're reported
                 if (p.ProcessId.HasValue && executionContext.ProcessId != p.ProcessId.Value)
@@ -525,20 +636,11 @@ public partial class JobProcessingService
                 // Stream output lines to UI in real-time AND accumulate in buffer for storage
                 if (!string.IsNullOrEmpty(p.OutputLine))
                 {
-                    // Accumulate output for database storage
-                    executionContext.AppendOutput(p.OutputLine, p.IsErrorOutput);
-
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            if (_jobUpdateService != null)
-                            {
-                                await _jobUpdateService.NotifyJobOutput(job.Id, p.OutputLine, p.IsErrorOutput, DateTime.UtcNow);
-                            }
-                        }
-                        catch { }
-                    });
+                    // Accumulate output for database storage, and send it to live pages in order
+                    var jobUpdateService = _jobUpdateService;
+                    executionContext.AppendOutput(p.OutputLine, p.IsErrorOutput, jobUpdateService == null
+                        ? null
+                        : line => jobUpdateService.NotifyJobOutput(job.Id, line.Content, line.IsError, line.Timestamp, line.Sequence));
 
                     // Detect if the CLI is requesting user interaction
                     if (!executionContext.IsPausedForInteraction)
@@ -640,7 +742,12 @@ public partial class JobProcessingService
             // Snapshot which environments and Playwright access were exposed to this job
             var environmentSnapshots = JobEnvironmentSnapshot.FromProject(job.Project);
             var hasWebEnvironment = environmentSnapshots.Any(e => e.Type == EnvironmentType.Web);
-            job.PlaywrightEnabled = hasWebEnvironment;
+            // Browser for agents (Settings): every job gets Playwright MCP on the host's Chromium. Projects
+            // with a web environment always had Playwright, so they get the located Chromium either way.
+            var browserExecutablePath = (appSettings?.EnableBrowserTools ?? true) || hasWebEnvironment
+                ? BrowserToolsLocator.FindChromiumForJobs()
+                : null;
+            job.PlaywrightEnabled = hasWebEnvironment || browserExecutablePath != null;
             job.EnvironmentCount = environmentSnapshots.Count;
             if (environmentSnapshots.Count > 0)
             {
@@ -675,31 +782,19 @@ public partial class JobProcessingService
                 requireCodeChange: !isLocalEnvironmentSetup);
             projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
             var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
-            if (!string.IsNullOrWhiteSpace(projectMemoryRules))
-            {
-                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
-                    ? projectMemoryRules
-                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
-            }
 
+            string? localSetupRules = null;
             if (isLocalEnvironmentSetup && !string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
             {
-                var localSetupRules = PromptBuilder.BuildLocalEnvironmentSetupRules(
+                localSetupRules = PromptBuilder.BuildLocalEnvironmentSetupRules(
                     LocalEnvironmentSetupService.PrepareResultFile(workingDirectory));
-                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
-                    ? localSetupRules
-                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{localSetupRules}";
             }
 
             var priorWorkRules = PromptBuilder.BuildPriorWorkRules(executionContext.PriorWorkRestore);
-            if (!string.IsNullOrWhiteSpace(priorWorkRules))
-            {
-                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
-                    ? priorWorkRules
-                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{priorWorkRules}";
-            }
+            var branchMergeRules = PromptBuilder.BuildBranchMergeRules(job.MergeFromBranch, executionContext.BranchMerge?.Outcome, executionContext.BranchMerge?.ConflictedFiles);
 
             // Inject role-specific system prompt context for team swarm jobs
+            string? roleContext = null;
             if (job.AgentId.HasValue)
             {
                 try
@@ -715,13 +810,16 @@ public partial class JobProcessingService
                         var swarmSize = job.SwarmId.HasValue
                             ? await dbContext.Jobs.CountAsync(j => j.SwarmId == job.SwarmId, cancellationToken)
                             : 1;
-                        var roleContext = PromptBuilder.BuildRoleSystemPromptContext(agent, swarmSize);
-                        if (!string.IsNullOrWhiteSpace(roleContext))
-                        {
-                            systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
-                                ? roleContext
-                                : $"{roleContext}{Environment.NewLine}{Environment.NewLine}{systemPromptRules}";
-                        }
+                        var teammates = job.SwarmId.HasValue
+                            ? (await dbContext.Jobs
+                                .AsNoTracking()
+                                .Where(j => j.SwarmId == job.SwarmId && j.Id != job.Id && j.Agent != null)
+                                .Select(j => new { j.Agent!.Name, j.Agent.Description })
+                                .ToListAsync(cancellationToken))
+                                .Select(teammate => new Agent { Name = teammate.Name, Description = teammate.Description })
+                                .ToList()
+                            : [];
+                        roleContext = PromptBuilder.BuildRoleSystemPromptContext(agent, swarmSize, teammates);
                     }
                 }
                 catch (Exception ex)
@@ -729,6 +827,12 @@ public partial class JobProcessingService
                     _logger.LogWarning(ex, "Failed to load team role context for job {JobId}, continuing without it", job.Id);
                 }
             }
+
+            systemPromptRules = PromptBuilder.JoinRuleSections(
+                roleContext, systemPromptRules, projectMemoryRules, localSetupRules, priorWorkRules, branchMergeRules);
+            // The read-only planner can't build, edit or commit, so it skips those rules.
+            var planningSystemPromptRules = PromptBuilder.JoinRuleSections(
+                roleContext, PromptBuilder.BuildPlanningSystemPromptRules(job.Project, projectMemoryFilePath, injectRepoMap), priorWorkRules);
 
             var planningOutput = job.PlanningOutput;
             if (ShouldUsePlanningStage(job.Project) && string.IsNullOrWhiteSpace(planningOutput))
@@ -776,7 +880,7 @@ public partial class JobProcessingService
                 ExecutionResult? planningResult = null;
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, cancellationToken);
+                    var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, browserExecutablePath, cancellationToken);
                     executionContext.ActivePrompt = planningPrompt;
                     executionContext.LatestActivity = planningActivity;
                     await PersistExecutionCheckpointAsync(job.Id, JobStatus.Planning, executionContext, cancellationToken);
@@ -799,7 +903,7 @@ public partial class JobProcessingService
                                 Model = job.Project.PlanningModelId,
                                 ReasoningEffort = job.Project.PlanningReasoningEffort,
                                 Title = job.Title,
-                                AppendSystemPrompt = systemPromptRules,
+                                AppendSystemPrompt = planningSystemPromptRules,
                                 EnvironmentVariables = jobEnvironmentVariables,
                                 DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools,
                                 StrictMcpConfig = true,
@@ -898,11 +1002,18 @@ public partial class JobProcessingService
             }
 
             await EnsureProjectSkillsMaterializedAsync(job.Project, skillStorage, cancellationToken);
+            await LoadLinkedProjectsAsync(job.Project, dbContext, cancellationToken);
             var currentPrompt = PromptBuilder.BuildExecutionPrompt(job, planningOutput, enableStructuring);
             var shouldRunRecoveryFlow = JobRecoveryHelper.IsResumeCandidate(job);
             executionContext.ActivePrompt = currentPrompt;
             var attachedFiles = DeserializeAttachedFiles(job.AttachedFilesJson);
             var cycleComplete = false;
+            // From here until the agent is done, the user can steer it with messages.
+            var executionPrompt = currentPrompt;
+            IReadOnlyList<string>? nextTurnUserMessages = null;
+            var turnInterruptedByUserMessage = false;
+            executionContext.UserMessages.Open();
+            _messageInboxes[job.Id] = executionContext.UserMessages;
             await UpdateJobStatusAsync(job.Id, JobStatus.Processing, dbContext, cancellationToken);
             await NotifyStatusChangedAsync(job.Id, JobStatus.Processing);
 
@@ -941,17 +1052,32 @@ public partial class JobProcessingService
 
             async Task<ExecutionResult> ExecuteCurrentCycleAsync(string promptToExecute, string? requestedSessionId)
             {
-                var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, cancellationToken);
+                var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, browserExecutablePath, cancellationToken);
                 var wantsOneHourCache = provider.Type == ProviderType.Claude
                     && (job.CycleMode != CycleMode.SingleCycle || job.SwarmId != null);
                 var hasMcp = !string.IsNullOrEmpty(mcpOptions.McpConfigPath);
                 var preassignedSessionId = await TryPreassignSessionIdAsync(requestedSessionId);
                 using var executionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 executionContext.ActiveExecutionCancellationTokenSource = executionCts;
+                turnInterruptedByUserMessage = false;
+
+                // Messages sent since the last turn ended go with this one; any sent from now on stop it.
+                var lateUserMessages = executionContext.UserMessages.BeginTurn(executionCts);
+                var savingLateUserMessages = Task.CompletedTask;
+                if (lateUserMessages.Count > 0)
+                {
+                    promptToExecute = $"{promptToExecute.TrimEnd()}\n\n{PromptBuilder.BuildUserMessagesPrompt(lateUserMessages, interruptedTurn: false)}";
+                    savingLateUserMessages = SaveUserMessagesAsync(lateUserMessages);
+                }
+
+                bool StoppedByUserMessage() => executionCts.IsCancellationRequested
+                    && !cancellationToken.IsCancellationRequested
+                    && !executionContext.IsPausedForInteraction
+                    && executionContext.UserMessages.HasPending;
 
                 try
                 {
-                    return await provider.ExecuteWithOptionsAsync(
+                    var turnResult = await provider.ExecuteWithOptionsAsync(
                         promptToExecute,
                         new ExecutionOptions
                         {
@@ -982,6 +1108,10 @@ public partial class JobProcessingService
                         },
                         progress,
                         executionCts.Token);
+
+                    // Some providers report a stopped run as a failed result rather than throwing.
+                    turnInterruptedByUserMessage = !turnResult.Success && StoppedByUserMessage();
+                    return turnResult;
                 }
                 catch (OperationCanceledException) when (executionContext.IsPausedForInteraction && !cancellationToken.IsCancellationRequested)
                 {
@@ -1002,16 +1132,133 @@ public partial class JobProcessingService
                             }
                     };
                 }
+                catch (OperationCanceledException) when (StoppedByUserMessage())
+                {
+                    turnInterruptedByUserMessage = true;
+                    return new ExecutionResult
+                    {
+                        Success = false,
+                        SessionId = executionContext.SessionId,
+                        ErrorMessage = "Stopped to deliver a message from the user."
+                    };
+                }
                 finally
                 {
+                    executionContext.UserMessages.EndTurn(executionCts);
                     if (ReferenceEquals(executionContext.ActiveExecutionCancellationTokenSource, executionCts))
                     {
                         executionContext.ActiveExecutionCancellationTokenSource = null;
                     }
 
                     CleanupMcpExecutionResources(mcpOptions.Resources);
+                    await savingLateUserMessages;
                 }
             }
+
+            // Records messages the user sent the agent in the job's conversation, as they were typed.
+            async Task SaveUserMessagesAsync(IReadOnlyList<string> userMessages)
+            {
+                try
+                {
+                    using var messageScope = _scopeFactory.CreateScope();
+                    var messageJobService = messageScope.ServiceProvider.GetRequiredService<IJobService>();
+                    var savedAt = DateTime.UtcNow;
+                    await messageJobService.AddMessagesAsync(
+                        job.Id,
+                        userMessages.Select((message, index) => new JobMessage
+                        {
+                            Role = MessageRole.User,
+                            Content = message,
+                            CreatedAt = savedAt.AddMilliseconds(index)
+                        }).ToList(),
+                        CancellationToken.None);
+                    await NotifyJobMessageAddedAsync(job.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to save the user's messages to job {JobId}", job.Id);
+                }
+            }
+
+            // The run carries on in the same session with the user's messages as its next prompt.
+            async Task ContinueWithUserMessagesAsync(ExecutionResult turnResult, IReadOnlyList<string> userMessages)
+            {
+                _logger.LogInformation("Job {JobId} continues with {Count} message(s) from the user", job.Id, userMessages.Count);
+                if (turnResult.Messages.Count > 0)
+                {
+                    using var turnScope = _scopeFactory.CreateScope();
+                    await SaveRunMessagesAsync(turnScope.ServiceProvider.GetRequiredService<IJobService>(), job.Id, turnResult);
+                }
+
+                await SaveUserMessagesAsync(userMessages);
+
+                // The recovery prompt has been delivered; the messages now say what comes next.
+                if (shouldRunRecoveryFlow)
+                {
+                    JobRecoveryHelper.ClearRecoveryState(job);
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    shouldRunRecoveryFlow = false;
+                }
+
+                nextTurnUserMessages = userMessages;
+                currentPrompt = PromptBuilder.BuildUserMessagesPrompt(userMessages, turnInterruptedByUserMessage);
+                executionContext.ActivePrompt = currentPrompt;
+                executionContext.LatestActivity = "Continuing with the user's message...";
+                await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
+            }
+
+            // Called as the agent finishes: messages sent since its last turn ended keep it going,
+            // and with none waiting the inbox closes, so later ones are refused rather than lost.
+            async Task<bool> ContinueWithLateUserMessagesAsync(ExecutionResult turnResult)
+            {
+                var userMessages = executionContext.UserMessages.TakeOrClose();
+                if (userMessages.Count == 0)
+                {
+                    return false;
+                }
+
+                await ContinueWithUserMessagesAsync(turnResult, userMessages);
+                return true;
+            }
+
+            // Called as the agent finishes: a second model checks the work and anything it finds
+            // goes back to the agent in the same session, a bounded number of times.
+            async Task<bool> ContinueWithReviewFeedbackAsync(ExecutionResult runResult, IJobService jobService)
+            {
+                // Past the time limit there is no turn left for fixes.
+                if (executionContext.TimeLimit?.Reached == true)
+                {
+                    return false;
+                }
+
+                var feedback = await TryGetReviewFeedbackAsync(
+                    job,
+                    workingDirectory,
+                    executionContext.GitCommitBefore,
+                    sessionId,
+                    canSkipFinalBuild: executionContext.PriorWorkRestore is not { ConflictedFiles.Count: > 0 }
+                        && executionContext.BranchMerge is not { ConflictedFiles.Count: > 0 },
+                    cancellationToken);
+                if (feedback == null)
+                {
+                    return false;
+                }
+
+                await SaveRunMessagesAsync(jobService, job.Id, runResult);
+                await jobService.AddMessageAsync(job.Id, new JobMessage { Role = MessageRole.User, Content = feedback }, CancellationToken.None);
+                await NotifyJobMessageAddedAsync(job.Id);
+                currentPrompt = feedback;
+                executionContext.ActivePrompt = currentPrompt;
+                executionContext.LatestActivity = "Fixing what the review found...";
+                await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
+                return true;
+            }
+
+            string BuildUserMessagesFreshSessionPrompt(IReadOnlyList<string> userMessages)
+                => PromptBuilder.BuildUserMessagesFreshSessionPrompt(
+                    executionPrompt,
+                    userMessages,
+                    JobRecoveryHelper.TrimTail(executionContext.GetConsoleOutput(), JobRecoveryHelper.MaxRecoveryConsoleOutputLength));
 
             while (currentCycle <= effectiveMaxCycles && !cycleComplete && !cancellationToken.IsCancellationRequested)
             {
@@ -1037,13 +1284,17 @@ public partial class JobProcessingService
                     }
                 }
 
+                // A turn carrying the user's messages continues the session they interrupted.
+                var turnUserMessages = nextTurnUserMessages;
+                nextTurnUserMessages = null;
+
                 // Determine session ID for this cycle. Recovery runs always attempt the persisted
                 // provider session first, regardless of normal cycle session policy.
-                var cycleSessionId = shouldRunRecoveryFlow
+                var cycleSessionId = shouldRunRecoveryFlow || turnUserMessages != null
                     ? sessionId
                     : job.CycleSessionMode == CycleSessionMode.ContinueSession ? sessionId : null;
 
-                if (currentCycle == job.CurrentCycle)
+                if (currentCycle == job.CurrentCycle && turnUserMessages == null)
                 {
                     await RecordProviderAttemptAsync(
                         job.Id,
@@ -1072,6 +1323,11 @@ public partial class JobProcessingService
                     {
                         cycleSessionId = null;
                     }
+                }
+
+                if (turnUserMessages != null && string.IsNullOrWhiteSpace(cycleSessionId))
+                {
+                    promptToExecute = BuildUserMessagesFreshSessionPrompt(turnUserMessages);
                 }
 
                 executionContext.ActivePrompt = promptToExecute;
@@ -1113,6 +1369,27 @@ public partial class JobProcessingService
 
                     result = await ExecuteCurrentCycleAsync(freshRecoveryPrompt, null);
                 }
+                else if (turnUserMessages != null && !string.IsNullOrWhiteSpace(cycleSessionId) && IsSessionResumeFailure(result))
+                {
+                    _logger.LogWarning(
+                        "Job {JobId} could not resume its session for the user's message. Continuing in a fresh session. Error: {Error}",
+                        job.Id,
+                        result.ErrorMessage);
+                    if (result.InputTokens.HasValue)
+                        executionInputTokens = (executionInputTokens ?? 0) + result.InputTokens.Value;
+                    if (result.OutputTokens.HasValue)
+                        executionOutputTokens = (executionOutputTokens ?? 0) + result.OutputTokens.Value;
+                    if (result.CostUsd.HasValue)
+                        executionCostUsd = (executionCostUsd ?? 0) + result.CostUsd.Value;
+
+                    sessionId = null;
+                    executionContext.SessionId = null;
+                    var freshPrompt = BuildUserMessagesFreshSessionPrompt(turnUserMessages);
+                    executionContext.ActivePrompt = freshPrompt;
+                    await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
+
+                    result = await ExecuteCurrentCycleAsync(freshPrompt, null);
+                }
 
                 // Store last result and accumulate tokens/cost
                 lastResult = result;
@@ -1132,7 +1409,9 @@ public partial class JobProcessingService
 
                 if (result.IsPaused && executionContext.IsPausedForInteraction && executionContext.CurrentInteractionRequest != null)
                 {
-                    var interactionResume = await WaitForInteractionResponseAndBuildPromptAsync(promptToExecute);
+                    // The answer starts a fresh session, which needs the task, not just the user's messages.
+                    var interactionResume = await WaitForInteractionResponseAndBuildPromptAsync(
+                        turnUserMessages != null ? BuildUserMessagesFreshSessionPrompt(turnUserMessages) : promptToExecute);
                     if (!interactionResume.Success || string.IsNullOrWhiteSpace(interactionResume.ResumePrompt))
                     {
                         lastResult = new ExecutionResult
@@ -1152,6 +1431,18 @@ public partial class JobProcessingService
                     executionContext.LatestActivity = "Resuming after user input...";
                     await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
                     continue;
+                }
+
+                // The user's messages come before whatever the run would do next. A turn they
+                // stopped ended early, not in failure.
+                if (result.Success || turnInterruptedByUserMessage)
+                {
+                    var userMessages = executionContext.UserMessages.Take();
+                    if (userMessages.Count > 0)
+                    {
+                        await ContinueWithUserMessagesAsync(result, userMessages);
+                        continue;
+                    }
                 }
 
                 // Check for cycle completion conditions
@@ -1183,6 +1474,31 @@ public partial class JobProcessingService
                 // Determine if we should continue cycling
                 if (job.CycleMode == CycleMode.SingleCycle || currentCycle >= effectiveMaxCycles)
                 {
+                    // An agent that ended its run with a question gets an answer and carries on
+                    // in the same session, rather than leaving the work for the user to pick up.
+                    var followUp = await TryAnswerClosingQuestionAsync(result);
+                    if (followUp != null)
+                    {
+                        await SaveRunMessagesAsync(cancelCheckService, job.Id, result);
+                        await cancelCheckService.AddMessageAsync(job.Id, new JobMessage { Role = MessageRole.User, Content = followUp }, CancellationToken.None);
+                        await NotifyJobMessageAddedAsync(job.Id);
+                        currentPrompt = followUp;
+                        executionContext.ActivePrompt = currentPrompt;
+                        executionContext.LatestActivity = "Continuing after inference answered the agent's question...";
+                        await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
+                        continue;
+                    }
+
+                    if (await ContinueWithLateUserMessagesAsync(result))
+                    {
+                        continue;
+                    }
+
+                    if (await ContinueWithReviewFeedbackAsync(result, cancelCheckService))
+                    {
+                        continue;
+                    }
+
                     cycleComplete = true;
                 }
                 else if (job.CycleMode == CycleMode.Autonomous)
@@ -1192,6 +1508,16 @@ public partial class JobProcessingService
                     {
                         _logger.LogInformation("Job {JobId} completed autonomously at cycle {Current}",
                             job.Id, currentCycle);
+                        if (await ContinueWithLateUserMessagesAsync(result))
+                        {
+                            continue;
+                        }
+
+                        if (await ContinueWithReviewFeedbackAsync(result, cancelCheckService))
+                        {
+                            continue;
+                        }
+
                         cycleComplete = true;
                     }
                     else
@@ -1212,6 +1538,9 @@ public partial class JobProcessingService
                     currentCycle++;
                 }
             }
+
+            // No agent is left to read messages sent from here on.
+            CloseUserMessages(job.Id, executionContext);
 
             // The agent is done, or was stopped: the checks and delivery that follow must not trip
             // the time limit.
@@ -1523,7 +1852,9 @@ public partial class JobProcessingService
         }
         finally
         {
+            CloseUserMessages(job.Id, executionContext);
             executionContext.TimeLimit?.Dispose();
+            await ReleaseSwarmWorktreeAfterRunAsync(job.Id, executionContext);
 
             if (!string.IsNullOrWhiteSpace(projectMemoryFilePath))
             {
@@ -1593,6 +1924,26 @@ public partial class JobProcessingService
     /// been materialized to disk so <see cref="PromptBuilder.BuildSkillSection"/> can surface
     /// its absolute SKILL.md path to the agent. Idempotent for already-materialized skills.
     /// </summary>
+    /// <summary>
+    /// Loads the projects linked to the job's project so the prompt can tell the agent about them.
+    /// </summary>
+    private static async Task LoadLinkedProjectsAsync(
+        Project? project,
+        VibeSwarmDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (project == null)
+        {
+            return;
+        }
+
+        await dbContext.Entry(project)
+            .Collection(p => p.Links)
+            .Query()
+            .Include(link => link.LinkedProject)
+            .LoadAsync(cancellationToken);
+    }
+
     private async Task EnsureProjectSkillsMaterializedAsync(
         Project? project,
         ISkillStorageService skillStorage,

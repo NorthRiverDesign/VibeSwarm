@@ -30,48 +30,50 @@
             style="background-image: url('/img/login_bg.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
             <div class="position-absolute top-0 start-0 w-100 h-100" style="background-color: rgba(0, 0, 0, 0.5);">
             </div>
-            <div class="login-content position-relative w-100 px-3" style="z-index: 1; max-width: 100%;">
+            <div class="login-content position-relative w-100 px-5" style="z-index: 1; max-width: 100%;">
                 <div class="container-fluid">
                     <div class="row justify-content-center">
-                        <div class="col-12 col-sm-10 col-md-8 col-lg-5 col-xl-4">
-                            <div class="text-center mb-4">
+                        <div class="col-12 sm:col-10 md:col-8 lg:col-5 xl:col-4">
+                            <div class="text-center mb-7">
                                 <img src="/img/logo_color.png" alt="VibeSwarm Logo" class="img-fluid"
                                     style="max-width: 200px;" />
                             </div>
                             <div class="card shadow">
                                 <div class="card-body">
-                                    <h3 class="card-title text-center mb-4">VibeSwarm Login</h3>
+                                    <h3 class="text-center mb-7">VibeSwarm Login</h3>
 
                                     @if (!string.IsNullOrEmpty(Model.ErrorMessage))
                                     {
-                                        <div class="alert alert-danger" role="alert">
-                                            @Model.ErrorMessage
+                                        <div class="alert theme-danger" role="alert">
+                                            <div class="flex-grow-1 min-w-0">
+                                                @Model.ErrorMessage
+                                            </div>
                                         </div>
                                     }
 
                                     <form method="post">
-                                        <div class="mb-3">
+                                        <div class="mb-5">
                                             <label for="username" class="form-label">Username</label>
                                             <input type="text" id="username" name="Username" class="form-control"
                                                 placeholder="Enter username" required />
                                         </div>
 
-                                        <div class="mb-3">
+                                        <div class="mb-5">
                                             <label for="password" class="form-label">Password</label>
                                             <input type="password" id="password" name="Password" class="form-control"
                                                 placeholder="Enter password" required />
                                         </div>
 
-                                        <div class="mb-3 form-check">
+                                        <div class="mb-5 form-field">
                                             <input type="checkbox" id="rememberMe" name="RememberMe"
-                                                class="form-check-input" value="true" />
-                                            <label class="form-check-label" for="rememberMe">
+                                                class="check" value="true" />
+                                            <label for="rememberMe">
                                                 Remember me
                                             </label>
                                         </div>
 
                                         <div class="d-grid">
-                                            <button type="submit" class="btn btn-primary">
+                                            <button type="submit" class="btn-solid theme-primary">
                                                 Login
                                             </button>
                                         </div>

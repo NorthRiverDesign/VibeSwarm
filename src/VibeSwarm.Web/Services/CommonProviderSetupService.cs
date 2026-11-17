@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using GitHub.Copilot;
 using Microsoft.EntityFrameworkCore;
@@ -12,11 +13,16 @@ namespace VibeSwarm.Web.Services;
 public class CommonProviderSetupService(
 	VibeSwarmDbContext dbContext,
 	ProviderCliDetectionService providerCliDetectionService,
-	AgentDetectionService agentDetectionService) : ICommonProviderSetupService
+	AgentDetectionService agentDetectionService,
+	IProviderSignInService? providerSignInService = null) : ICommonProviderSetupService
 {
+	/// <summary>Claude Code warns this long before a stored sign-in ends; the host row does too.</summary>
+	private static readonly TimeSpan ClaudeLoginEndingWarning = TimeSpan.FromDays(10);
+
 	private readonly VibeSwarmDbContext _dbContext = dbContext;
 	private readonly ProviderCliDetectionService _providerCliDetectionService = providerCliDetectionService;
 	private readonly AgentDetectionService _agentDetectionService = agentDetectionService;
+	private readonly IProviderSignInService? _providerSignInService = providerSignInService;
 
 	public async Task<IReadOnlyList<CommonProviderSetupStatus>> GetStatusesAsync(CancellationToken cancellationToken = default)
 	{
@@ -52,6 +58,7 @@ public class CommonProviderSetupService(
 				preferredCliProvider?.ExecutablePath ?? installStatus.ResolvedExecutablePath,
 				cancellationToken);
 			var authConnectionMode = preferredAuthProvider?.ConnectionMode ?? ProviderCapabilities.GetDefaultMode(providerType);
+			var signIn = _providerSignInService == null ? null : await _providerSignInService.GetAsync(providerType, cancellationToken);
 
 			statuses.Add(new CommonProviderSetupStatus
 			{
@@ -76,6 +83,7 @@ public class CommonProviderSetupService(
 				AuthenticationTypeLabel = authStatus.TypeLabel,
 				IsAuthenticated = authStatus.IsAuthenticated,
 				AuthenticationStatus = authStatus.Message,
+				ActiveSignIn = signIn is { IsActive: true } ? signIn : null,
 				HostTools = hostTools,
 				ConfiguredProviders = providersForType
 					.Select(provider => new CommonProviderSetupConfiguredProvider
@@ -302,7 +310,7 @@ public class CommonProviderSetupService(
 		_ => providerType.ToString()
 	};
 
-	private static InstallSpec GetInstallSpec(ProviderType providerType)
+	internal static InstallSpec GetInstallSpec(ProviderType providerType)
 	{
 		var isWindows = OperatingSystem.IsWindows();
 		return providerType switch
@@ -374,6 +382,14 @@ public class CommonProviderSetupService(
 			}
 		}
 
+		if (providerType == ProviderType.Claude &&
+			connectionMode == ProviderConnectionMode.CLI &&
+			File.Exists(Path.Combine(GetUserHomeDirectory(), ".claude.json")) &&
+			await TryReadClaudeLoginAsync(executablePath, cancellationToken) is { } claudeLogin)
+		{
+			return DescribeClaudeLogin(claudeLogin, DateTime.UtcNow);
+		}
+
 		return (providerType, connectionMode) switch
 		{
 			(ProviderType.Claude, ProviderConnectionMode.CLI) when File.Exists(Path.Combine(GetUserHomeDirectory(), ".claude.json"))
@@ -381,19 +397,128 @@ public class CommonProviderSetupService(
 			(ProviderType.OpenCode, ProviderConnectionMode.CLI) when TryReadOpenCodeAuthStatus()
 				=> new AuthenticationState(true, "OpenCode auth.json detected on host for this CLI connection.", "API Key"),
 			(ProviderType.Claude, ProviderConnectionMode.CLI)
-				=> new AuthenticationState(false, "Save an Anthropic API key or complete Claude's browser login on the host for this CLI connection.", "Browser Login"),
+				=> new AuthenticationState(false, "Sign in, or save an Anthropic API key, for this CLI connection.", "Browser Login"),
 			(ProviderType.Claude, ProviderConnectionMode.SDK)
 				=> new AuthenticationState(false, "Save an Anthropic API key for this SDK connection.", "API Key"),
 			(ProviderType.Copilot, ProviderConnectionMode.CLI)
-				=> new AuthenticationState(false, "Sign in with 'copilot login' or save a GitHub token for this CLI connection.", "Logged-in User"),
+				=> new AuthenticationState(false, "Sign in, or save a GitHub token, for this CLI connection.", "Logged-in User"),
 			(ProviderType.Copilot, ProviderConnectionMode.SDK)
-				=> new AuthenticationState(false, "Save a GitHub token or sign in with 'copilot login' so this SDK connection can use the Copilot CLI session.", "Logged-in User"),
+				=> new AuthenticationState(false, "Sign in, or save a GitHub token, so this SDK connection can use the Copilot CLI session.", "Logged-in User"),
 			(ProviderType.OpenCode, ProviderConnectionMode.CLI)
 				=> new AuthenticationState(false, "Save an OpenCode API key to populate the host auth.json for this CLI connection.", "API Key"),
 			(ProviderType.OpenCode, ProviderConnectionMode.REST)
 				=> new AuthenticationState(false, "Save an OpenCode API key for this REST connection.", "API Key"),
 			_ => new AuthenticationState(false, null, null)
 		};
+	}
+
+	/// <summary>
+	/// Asks Claude Code whether it is signed in. The <c>.claude.json</c> file outlives an expired
+	/// login, so it alone can't tell. Null when the CLI can't say (an older version, a timeout).
+	/// Its output names the account, so it is never logged.
+	/// </summary>
+	private static async Task<ClaudeLoginStatus?> TryReadClaudeLoginAsync(string? executablePath, CancellationToken cancellationToken)
+	{
+		if (string.IsNullOrWhiteSpace(executablePath))
+		{
+			return null;
+		}
+
+		try
+		{
+			var startInfo = new ProcessStartInfo { FileName = executablePath };
+			foreach (var argument in new[] { "auth", "status", "--json" })
+			{
+				startInfo.ArgumentList.Add(argument);
+			}
+
+			PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+			using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+			timeout.CancelAfter(TimeSpan.FromSeconds(10));
+
+			using var process = new Process { StartInfo = startInfo };
+			process.Start();
+			process.StandardInput.Close();
+			var outputTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
+			var errorTask = process.StandardError.ReadToEndAsync(timeout.Token);
+			try
+			{
+				await process.WaitForExitAsync(timeout.Token);
+				await Task.WhenAll(outputTask, errorTask);
+			}
+			catch (OperationCanceledException)
+			{
+				try
+				{
+					process.Kill(entireProcessTree: true);
+				}
+				catch
+				{
+					// Best effort.
+				}
+
+				return null;
+			}
+
+			// Signed out, it exits non-zero but still prints the JSON.
+			return ParseClaudeAuthStatus(outputTask.Result);
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			return null;
+		}
+	}
+
+	internal static ClaudeLoginStatus? ParseClaudeAuthStatus(string? json)
+	{
+		if (string.IsNullOrWhiteSpace(json))
+		{
+			return null;
+		}
+
+		try
+		{
+			using var document = JsonDocument.Parse(json);
+			var root = document.RootElement;
+			if (root.ValueKind != JsonValueKind.Object ||
+				!root.TryGetProperty("loggedIn", out var loggedIn) ||
+				loggedIn.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+			{
+				return null;
+			}
+
+			DateTime? expiresAt = root.TryGetProperty("loginExpiresAt", out var expires) &&
+				expires.ValueKind == JsonValueKind.String &&
+				DateTimeOffset.TryParse(expires.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
+					? parsed.UtcDateTime
+					: null;
+			return new ClaudeLoginStatus(loggedIn.GetBoolean(), expiresAt);
+		}
+		catch (JsonException)
+		{
+			return null;
+		}
+	}
+
+	internal static AuthenticationState DescribeClaudeLogin(ClaudeLoginStatus login, DateTime utcNow)
+	{
+		if (!login.LoggedIn)
+		{
+			return new AuthenticationState(false, "Claude Code is signed out on this host. Sign in again, or save an Anthropic API key, to run jobs.", "Browser Login");
+		}
+
+		if (login.ExpiresAt is { } expiresAt && expiresAt <= utcNow)
+		{
+			return new AuthenticationState(false, "Claude Code's sign-in on this host has expired. Sign in again to run jobs.", "Browser Login");
+		}
+
+		if (login.ExpiresAt is { } endsAt && endsAt - utcNow <= ClaudeLoginEndingWarning)
+		{
+			return new AuthenticationState(true, $"Claude Code's sign-in on this host ends {endsAt.ToString("MMM d", CultureInfo.InvariantCulture)}. Sign in again before then so jobs keep running.", "Browser Login");
+		}
+
+		return new AuthenticationState(true, "Claude Code browser login detected on host for this CLI connection.", "Browser Login");
 	}
 
 	private static bool HasCopilotEnvironmentToken()
@@ -671,8 +796,9 @@ public class CommonProviderSetupService(
 		}, cancellationToken);
 	}
 
-	private sealed record InstallSpec(string ExecutableName, string Label, string Command, string VersionArguments);
-	private sealed record AuthenticationState(bool IsAuthenticated, string? Message, string? TypeLabel);
+	internal sealed record InstallSpec(string ExecutableName, string Label, string Command, string VersionArguments);
+	internal sealed record AuthenticationState(bool IsAuthenticated, string? Message, string? TypeLabel);
+	internal sealed record ClaudeLoginStatus(bool LoggedIn, DateTime? ExpiresAt);
 	private sealed record ProcessResult(bool Success, string? Output, string? ErrorMessage);
 	private sealed record ShellCommand(string FileName, IReadOnlyList<string> Arguments);
 }

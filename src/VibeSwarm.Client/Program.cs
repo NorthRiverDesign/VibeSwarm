@@ -37,14 +37,18 @@ builder.Services.AddScoped<IJobService, HttpJobService>();
 builder.Services.AddScoped<IJobScheduleService, HttpJobScheduleService>();
 builder.Services.AddScoped<IJobTemplateService, HttpJobTemplateService>();
 builder.Services.AddScoped<IProjectService, HttpProjectService>();
+builder.Services.AddScoped<IFolderManagerService, HttpFolderManagerService>();
+builder.Services.AddScoped<ILeadService, HttpLeadService>();
 builder.Services.AddScoped<HttpProviderService>();
 builder.Services.AddScoped<IProviderService>(sp => sp.GetRequiredService<HttpProviderService>());
 builder.Services.AddScoped<ICommonProviderSetupService, HttpCommonProviderSetupService>();
+builder.Services.AddScoped<IProviderSignInService, HttpProviderSignInService>();
 builder.Services.AddScoped<ISkillService, HttpSkillService>();
 builder.Services.AddScoped<HttpSkillInstallerService>();
 builder.Services.AddScoped<ISkillInstallerService>(sp => sp.GetRequiredService<HttpSkillInstallerService>());
 builder.Services.AddScoped<IAgentService, HttpAgentService>();
 builder.Services.AddScoped<ISettingsService, HttpSettingsService>();
+builder.Services.AddScoped<IPushNotificationService, HttpPushNotificationService>();
 builder.Services.AddScoped<IJobQueueControlService, HttpJobQueueControlService>();
 builder.Services.AddScoped<IDeveloperModeService, HttpDeveloperModeService>();
 builder.Services.AddScoped<ICriticalErrorLogService, HttpCriticalErrorLogService>();
@@ -56,6 +60,7 @@ builder.Services.AddScoped<HttpInferenceProviderService>();
 builder.Services.AddScoped<IInferenceProviderService>(sp => sp.GetRequiredService<HttpInferenceProviderService>());
 builder.Services.AddScoped<IInferenceService, HttpInferenceService>();
 builder.Services.AddScoped<IAutoPilotService, HttpAutoPilotService>();
+builder.Services.AddScoped<IProjectReleaseService, HttpProjectReleaseService>();
 builder.Services.AddScoped<IDatabaseService, HttpDatabaseService>();
 
 // Search service

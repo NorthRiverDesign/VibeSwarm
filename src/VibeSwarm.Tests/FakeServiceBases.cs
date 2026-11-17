@@ -24,6 +24,7 @@ internal abstract class FakeProviderServiceBase : IProviderService
 	public virtual Task<ConnectionTestResult> TestConnectionWithDetailsAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task SetDefaultAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<Provider> UpdateUsageLimitsAsync(Guid id, ProviderUsageLimits limits, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<SessionSummary> GetSessionSummaryAsync(Guid providerId, string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProviderModel>>([]);
 	public virtual Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -53,10 +54,22 @@ internal abstract class FakeProjectServiceBase : IProjectService
 			ErrorMessage = "GitHub repository browsing is not available."
 		});
 
+	public virtual Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken cancellationToken = default)
+		=> Task.FromResult(new GitHubAccountsResult
+		{
+			ErrorMessage = "GitHub accounts are not available."
+		});
+
 	public virtual Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task SetLinkedProjectsAsync(Guid projectId, IEnumerable<Guid> linkedProjectIds, CancellationToken cancellationToken = default) => Task.CompletedTask;
+	public virtual Task<IEnumerable<ProjectFolder>> GetFoldersAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectFolder>>([]);
+	public virtual Task<ProjectFolder> CreateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<ProjectFolder> UpdateFolderAsync(ProjectFolder folder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task DeleteFolderAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task MoveToFolderAsync(Guid projectId, Guid? folderId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 }
 
 internal abstract class FakeInferenceProviderServiceBase : IInferenceProviderService
@@ -103,9 +116,10 @@ internal abstract class FakeVersionControlServiceBase : IVersionControlService
 	public virtual Task<GitOperationResult> CommitAndPushAsync( string workingDirectory, string commitMessage, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GitOperationResult> CreatePullRequestAsync( string workingDirectory, string sourceBranch, string targetBranch, string title, string? body = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GitOperationResult> PreviewMergeBranchAsync( string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<GitOperationResult> MergeBranchAsync( string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true, IReadOnlyList<MergeConflictResolution>? conflictResolutions = null) => throw new NotSupportedException();
+	public virtual Task<GitOperationResult> MergeBranchAsync( string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true, IReadOnlyList<MergeConflictResolution>? conflictResolutions = null, bool preferRemoteSource = false) => throw new NotSupportedException();
 	public virtual Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync(string workingDirectory, bool includeRemote = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<GitRemoteSyncStatus> GetRemoteSyncStatusAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GitOperationResult> HardCheckoutBranchAsync( string workingDirectory, string branchName, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GitOperationResult> SwitchBranchAsync(string workingDirectory, string reference, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GitOperationResult> SyncWithOriginAsync( string workingDirectory, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -131,6 +145,12 @@ internal abstract class FakeVersionControlServiceBase : IVersionControlService
 		=> Task.FromResult(new GitHubRepositoryBrowserResult
 		{
 			ErrorMessage = "GitHub repository browsing is not available."
+		});
+
+	public virtual Task<GitHubAccountsResult> GetGitHubAccountsAsync(CancellationToken cancellationToken = default)
+		=> Task.FromResult(new GitHubAccountsResult
+		{
+			ErrorMessage = "GitHub accounts are not available."
 		});
 }
 internal abstract class FakeJobServiceBase : IJobService
@@ -161,6 +181,8 @@ internal abstract class FakeJobServiceBase : IJobService
 	public virtual Task<(string? Prompt, string? Type, string? Choices)?> GetPendingInteractionAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<bool> ResumeJobAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<bool> SendMessageToAgentAsync(Guid id, string message, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<FollowUpDraft> DraftFollowUpAsync(Guid id, FollowUpDraftRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -170,11 +192,14 @@ internal abstract class FakeJobServiceBase : IJobService
 	public virtual Task<int> RetrySelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<int> CancelSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<int> PrioritizeSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<bool> RunNextAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<JobQueueStatus?> GetQueueStatusAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<bool> ForceFailJobAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
 	public virtual Task<bool> TryFailOverToNextExecutionTargetAsync(Guid id, string? reason, CancellationToken cancellationToken = default) => Task.FromResult(false);
 	public virtual Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<JobLiveOutput?> GetLiveOutputAsync(Guid id, long afterSequence = 0, CancellationToken cancellationToken = default) => Task.FromResult<JobLiveOutput?>(null);
 }
 
 internal abstract class FakeIdeaServiceBase : IIdeaService

@@ -159,7 +159,8 @@ public class ProviderUsageService : IProviderUsageService
 			_context.ProviderUsageSummaries.Add(summary);
 		}
 
-		summary.CliVersion = version;
+		// Matches the column's max length, so an unexpected version string can't fail the save.
+		summary.CliVersion = version.Length > 50 ? version[..50] : version;
 		summary.VersionCheckedAt = DateTime.UtcNow;
 		summary.LastUpdatedAt = DateTime.UtcNow;
 
@@ -187,7 +188,7 @@ public class ProviderUsageService : IProviderUsageService
 
 		// A limit whose window has already reset no longer applies, even before a newer
 		// reading replaces it. Otherwise a job held until the reset would fail as exhausted.
-		if (HasLimitStateExpired(summary, DateTime.UtcNow))
+		if (summary.HasLimitStateExpired(DateTime.UtcNow))
 			return null;
 
 		// Get the effective max usage (user-configured or detected)
@@ -298,19 +299,6 @@ public class ProviderUsageService : IProviderUsageService
 			summary.LimitWindows.Count);
 
 		return summary;
-	}
-
-	private static bool HasLimitStateExpired(ProviderUsageSummary summary, DateTime utcNow)
-	{
-		if (summary.LimitResetTime is not DateTime resetTime || resetTime > utcNow)
-		{
-			return false;
-		}
-
-		// Another reached window that hasn't reset yet, such as a weekly limit outlasting the
-		// session, still applies.
-		return !summary.LimitWindows.Any(window => window.IsLimitReached
-			&& (window.ResetTime is not DateTime windowReset || windowReset > utcNow));
 	}
 
 	private void ApplyLimitSnapshot(ProviderUsageSummary summary, UsageLimits limits)

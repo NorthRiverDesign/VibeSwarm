@@ -6,11 +6,11 @@
 		<p>@Message</p>
 		@if (!string.IsNullOrEmpty(SubMessage))
 		{
-			<p class="text-body-secondary small mb-0">@SubMessage</p>
+			<p class="fg-1 small mb-0">@SubMessage</p>
 		}
 		@if (!string.IsNullOrEmpty(ErrorMessage))
 		{
-			<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mt-3 mb-0" />
+			<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mt-5 mb-0" />
 		}
 	</ChildContent>
 	<FooterContent>
@@ -43,7 +43,7 @@
 	public string ConfirmText { get; set; } = "Confirm";
 
 	[Parameter]
-	public string ButtonClass { get; set; } = "btn-danger";
+	public string ButtonClass { get; set; } = "btn-solid theme-danger";
 
 	[Parameter]
 	public bool IsProcessing { get; set; }
@@ -67,11 +67,11 @@
 
 	private ActionButton.ButtonStyle GetConfirmStyle() => ButtonClass switch
 	{
-		"btn-danger" => ActionButton.ButtonStyle.Danger,
-		"btn-success" => ActionButton.ButtonStyle.Success,
-		"btn-warning" => ActionButton.ButtonStyle.Warning,
-		"btn-info" => ActionButton.ButtonStyle.Info,
-		"btn-primary" => ActionButton.ButtonStyle.Primary,
+		"btn-solid theme-danger" => ActionButton.ButtonStyle.Danger,
+		"btn-solid theme-success" => ActionButton.ButtonStyle.Success,
+		"btn-solid theme-warning" => ActionButton.ButtonStyle.Warning,
+		"btn-solid theme-info" => ActionButton.ButtonStyle.Info,
+		"btn-solid theme-primary" => ActionButton.ButtonStyle.Primary,
 		_ => ActionButton.ButtonStyle.Danger
 	};
 }

@@ -40,6 +40,13 @@ public class InferenceProvider
 	public string? ApiKey { get; set; }
 
 	/// <summary>
+	/// Optional xAI management key (Grok only). It reads the team's prepaid credit balance, which
+	/// the regular API key can't see.
+	/// </summary>
+	[StringLength(200)]
+	public string? ManagementApiKey { get; set; }
+
+	/// <summary>
 	/// Whether this provider is enabled for use
 	/// </summary>
 	public bool IsEnabled { get; set; } = true;

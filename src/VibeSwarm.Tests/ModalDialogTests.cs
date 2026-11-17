@@ -10,7 +10,7 @@ namespace VibeSwarm.Tests;
 public sealed class ModalDialogTests
 {
 	[Fact]
-	public async Task RenderedModalDialog_AppliesCustomContainerDialogContentAndBodyClasses()
+	public async Task RenderedModalDialog_IsANativeDialogWithCustomDialogAndBodyClasses()
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
@@ -24,9 +24,7 @@ public sealed class ModalDialogTests
 			{
 				[nameof(ModalDialog.IsVisible)] = true,
 				[nameof(ModalDialog.Title)] = "Modal Test",
-				[nameof(ModalDialog.ContainerClass)] = "custom-container",
 				[nameof(ModalDialog.DialogClass)] = "custom-dialog",
-				[nameof(ModalDialog.ContentClass)] = "custom-content",
 				[nameof(ModalDialog.BodyClass)] = "custom-body",
 				[nameof(ModalDialog.ChildContent)] = (RenderFragment)(_ => _.AddContent(0, "Body"))
 			});
@@ -35,15 +33,12 @@ public sealed class ModalDialogTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("vs-modal-container", html);
-		Assert.Contains("custom-container", html);
-		Assert.Contains("vs-modal-dialog", html);
+		Assert.Contains("<dialog", html);
 		Assert.Contains("custom-dialog", html);
-		Assert.Contains("modal-dialog-scrollable", html);
-		Assert.Contains("vs-modal-content", html);
-		Assert.Contains("custom-content", html);
-		Assert.Contains("modal-body", html);
-		Assert.Contains("vs-modal-body", html);
+		Assert.Contains("dialog-scrollable", html);
+		Assert.Contains("sm-down:dialog-fullscreen", html);
+		Assert.Contains("dialog-body", html);
+		Assert.Contains("vs-dialog-body", html);
 		Assert.Contains("custom-body", html);
 		Assert.Contains("Modal Test", html);
 	}
@@ -53,10 +48,8 @@ public sealed class ModalDialogTests
 	{
 		var css = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "wwwroot", "css", "site.css"));
 
-		Assert.Contains("backdrop-filter: blur(40px);", css);
-		Assert.Contains("-webkit-backdrop-filter: blur(40px);", css);
-		Assert.Contains("backdrop-filter: blur(64px);", css);
-		Assert.Contains("-webkit-backdrop-filter: blur(64px);", css);
+		Assert.Contains("--bs-dialog-backdrop-blur: 40px;", css);
+		Assert.Contains("--bs-dialog-backdrop-blur: 64px;", css);
 	}
 
 	private static string GetRepositoryPath(params string[] segments)

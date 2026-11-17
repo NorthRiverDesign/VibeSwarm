@@ -1,0 +1,280 @@
+@inject IProviderService ProviderService
+@inject NotificationService NotificationService
+
+@* One provider in Settings' Usage limits: when its jobs stop so they never use a whole plan, how
+   much of each limit is used now, and how many of its jobs run at once. Opening the row edits
+   them; each saves on change. Only admins change the job limit. *@
+
+<ListRow Icon="speedometer2" IconClass="@(Provider.IsEnabled ? "fg-primary" : "fg-2")" Title="@Provider.Name"
+		 Subtitle="@Subtitle" AttentionLine="@AttentionLine">
+	<Trailing>
+		@if (!Provider.IsEnabled)
+		{
+			<span class="small fg-2 flex-shrink-0">Off</span>
+		}
+	</Trailing>
+	<ChildContent>
+		@if (UsageWindows.Count > 0)
+		{
+			<dl class="d-flex flex-column gap-3 small mb-0">
+				@foreach (var window in UsageWindows)
+				{
+					<div class="d-flex justify-content-between gap-5">
+						<dt class="fw-normal fg-1 flex-shrink-0">@DescribeWindow(window)</dt>
+						<dd class="mb-0 text-end">@DescribeUsage(window)</dd>
+					</div>
+				}
+			</dl>
+		}
+
+		@if (IsUnmetered)
+		{
+			<div class="small fg-1">
+				@Provider.Name has no plan of its own: the model's provider bills its usage, and models you host
+				yourself cost nothing. Set limits with that provider.
+			</div>
+		}
+		else
+		{
+			<div class="row g-5">
+				@if (IsMonthlyRequestPlan && ReportedMonthlyAllowance == null)
+				{
+					<div class="col-6">
+						<label for="@($"monthly-{Provider.Id}")" class="form-label small fg-1 mb-1">Requests a month</label>
+						<input id="@($"monthly-{Provider.Id}")" type="number" class="form-control" min="0" placeholder="300"
+							   @bind="_monthlyRequests" @bind:after="SaveAsync" />
+					</div>
+				}
+				@if (HasSession)
+				{
+					<div class="col-6">
+						<label for="@($"session-{Provider.Id}")" class="form-label small fg-1 mb-1">Session</label>
+						<div class="input-group">
+							<input id="@($"session-{Provider.Id}")" type="number" class="form-control"
+								   min="@SessionLimitPolicy.MinPauseThresholdPercent" max="@SessionLimitPolicy.MaxPauseThresholdPercent"
+								   @bind="_sessionPercent" @bind:after="SaveAsync" />
+							<span class="input-group-text">%</span>
+						</div>
+					</div>
+				}
+				<div class="col-6">
+					<label for="@($"long-{Provider.Id}")" class="form-label small fg-1 mb-1">@Capitalize(LongWindowName)</label>
+					<div class="input-group">
+						<input id="@($"long-{Provider.Id}")" type="number" class="form-control"
+							   min="@SessionLimitPolicy.MinPauseThresholdPercent" max="@SessionLimitPolicy.MaxPauseThresholdPercent"
+							   @bind="_longWindowPercent" @bind:after="SaveAsync" />
+						<span class="input-group-text">%</span>
+					</div>
+				</div>
+			</div>
+			<div class="form-text mt-0">
+				@ThresholdHelp
+			</div>
+		}
+
+		<div class="row g-5">
+			<div class="col-6">
+				<label for="@($"jobs-{Provider.Id}")" class="form-label small fg-1 mb-1">Jobs at once</label>
+				<input id="@($"jobs-{Provider.Id}")" type="number" class="form-control"
+					   min="@JobConcurrency.MinJobs" max="@JobConcurrency.MaxJobs" disabled="@(!CanEditJobLimit)"
+					   @bind="_maxConcurrentJobs" @bind:after="SaveAsync" />
+			</div>
+		</div>
+		<div class="form-text mt-0">
+			Each in its own session and a different project. Raise it if your plan takes several sessions at once.
+			@(CanEditJobLimit ? null : "Only an admin can change this.")
+		</div>
+
+		<div>
+			<a href="/providers" class="btn-link text-decoration-none px-0">More settings for @Provider.Name</a>
+		</div>
+	</ChildContent>
+</ListRow>
+
+@code {
+	[Parameter, EditorRequired]
+	public Provider Provider { get; set; } = new();
+
+	[Parameter]
+	public ProviderUsageSummary? Summary { get; set; }
+
+	/// <summary>Whether the signed-in user may change how many jobs the provider runs at once (admins).</summary>
+	[Parameter]
+	public bool CanEditJobLimit { get; set; }
+
+	private int? _sessionPercent;
+	private int? _maxConcurrentJobs;
+	private int? _longWindowPercent;
+	private int? _monthlyRequests;
+	private Guid _loadedProviderId;
+
+	private IReadOnlyList<UsageLimitWindow> Windows => Summary?.LimitWindows ?? [];
+
+	private bool HasSession => SessionLimitPolicy.HasSessionLimit(Provider.Type) || SessionLimitPolicy.HasSessionWindow(Windows);
+
+	private bool IsMonthlyRequestPlan => Provider.Type == ProviderType.Copilot;
+
+	// Copilot reports its plan's allowance, so the user only types one in when it hasn't.
+	private int? ReportedMonthlyAllowance => Windows
+		.Where(w => w.Scope == UsageLimitWindowScope.Monthly && w.MaxUsage is > 0
+			&& w.Message?.StartsWith("Tracked monthly premium requests", StringComparison.Ordinal) != true)
+		.Select(w => w.MaxUsage)
+		.FirstOrDefault();
+
+	private int? MonthlyAllowance => ReportedMonthlyAllowance ?? (Provider.ConfiguredUsageLimit is > 0 ? Provider.ConfiguredUsageLimit : null);
+
+	private bool IsUnmetered => Provider.Type == ProviderType.OpenCode
+		|| (Summary != null && ProviderMetering.IsUnmetered(Summary.LimitType));
+
+	private IReadOnlyList<UsageLimitWindow> UsageWindows => Windows
+		.Where(w => SessionLimitPolicy.IsGuardedScope(w.Scope) && w.PercentUsed.HasValue)
+		.OrderBy(w => w.Scope)
+		.ToList();
+
+	private UsageLimitWindowScope LongWindowScope => Windows
+		.Where(w => w.Scope is UsageLimitWindowScope.Daily or UsageLimitWindowScope.Weekly or UsageLimitWindowScope.Monthly)
+		.Select(w => (UsageLimitWindowScope?)w.Scope)
+		.FirstOrDefault()
+		?? (IsMonthlyRequestPlan ? UsageLimitWindowScope.Monthly : UsageLimitWindowScope.Weekly);
+
+	private string LongWindowName => LongWindowScope switch
+	{
+		UsageLimitWindowScope.Daily => "day",
+		UsageLimitWindowScope.Monthly => "month",
+		_ => "week"
+	};
+
+	private int SessionThreshold => SessionLimitPolicy.ResolvePauseThreshold(Provider.SessionLimitPauseThresholdPercent);
+
+	private int LongWindowThreshold => SessionLimitPolicy.ResolvePauseThreshold(Provider.WeeklyLimitPauseThresholdPercent);
+
+	private string? Subtitle => Provider.MaxConcurrentJobs > 1
+		? string.Join(" · ", new[] { LimitSubtitle, $"{Provider.MaxConcurrentJobs} jobs at once" }.Where(part => part != null))
+		: LimitSubtitle;
+
+	private string? LimitSubtitle
+	{
+		get
+		{
+			if (IsUnmetered)
+			{
+				return "Billed by its model's provider";
+			}
+
+			if (IsMonthlyRequestPlan)
+			{
+				return MonthlyAllowance is int limit
+					? $"Waits at {LongWindowThreshold}% of {limit:N0} requests a month"
+					: null;
+			}
+
+			if (!HasSession)
+			{
+				return $"Waits at {LongWindowThreshold}% of the {LongWindowName}";
+			}
+
+			return SessionThreshold == LongWindowThreshold
+				? $"Waits at {SessionThreshold}% of a session or the {LongWindowName}"
+				: $"Waits at {SessionThreshold}% a session, {LongWindowThreshold}% a {LongWindowName}";
+		}
+	}
+
+	private string? AttentionLine
+	{
+		get
+		{
+			if (IsUnmetered)
+			{
+				return null;
+			}
+
+			var hold = SessionLimitPolicy.Evaluate(Windows, SessionThreshold, null, DateTime.UtcNow, LongWindowThreshold);
+			if (hold != null)
+			{
+				var window = hold.Scope == UsageLimitWindowScope.Session ? "session" : LongWindowName;
+				return $"Waiting until {FormatReset(hold.Until)}: {hold.PercentUsed}% of the {window} used";
+			}
+
+			return IsMonthlyRequestPlan && MonthlyAllowance == null
+				? "Set its monthly request allowance"
+				: null;
+		}
+	}
+
+	protected override void OnParametersSet()
+	{
+		if (_loadedProviderId == Provider.Id)
+		{
+			return;
+		}
+
+		_loadedProviderId = Provider.Id;
+		_sessionPercent = SessionThreshold;
+		_longWindowPercent = LongWindowThreshold;
+		_monthlyRequests = Provider.ConfiguredUsageLimit;
+		_maxConcurrentJobs = Provider.MaxConcurrentJobs;
+	}
+
+	private async Task SaveAsync()
+	{
+		try
+		{
+			var saved = await ProviderService.UpdateUsageLimitsAsync(
+				Provider.Id,
+				new ProviderUsageLimits(
+					_sessionPercent,
+					_longWindowPercent,
+					IsMonthlyRequestPlan ? _monthlyRequests : Provider.ConfiguredUsageLimit,
+					CanEditJobLimit ? _maxConcurrentJobs : null));
+			Provider.SessionLimitPauseThresholdPercent = saved.SessionLimitPauseThresholdPercent;
+			Provider.WeeklyLimitPauseThresholdPercent = saved.WeeklyLimitPauseThresholdPercent;
+			Provider.ConfiguredUsageLimit = saved.ConfiguredUsageLimit;
+			Provider.MaxConcurrentJobs = saved.MaxConcurrentJobs;
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Couldn't save {Provider.Name}'s limits: {ex.Message}");
+		}
+
+		// Show what was kept: the server clamps thresholds to their allowed range.
+		_sessionPercent = SessionThreshold;
+		_longWindowPercent = LongWindowThreshold;
+		_monthlyRequests = Provider.ConfiguredUsageLimit;
+		_maxConcurrentJobs = Provider.MaxConcurrentJobs;
+	}
+
+	private string DescribeWindow(UsageLimitWindow window) => window.Scope switch
+	{
+		UsageLimitWindowScope.Session => "Session",
+		UsageLimitWindowScope.Daily => "Today",
+		UsageLimitWindowScope.Weekly => "This week",
+		UsageLimitWindowScope.Monthly => "This month",
+		_ => window.Label ?? "Usage"
+	};
+
+	private string ThresholdHelp => IsMonthlyRequestPlan
+		? "New jobs wait for next month once this much of the allowance is used. Running jobs finish."
+		: "New jobs wait for a limit to reset once this much of it is used. Running jobs finish.";
+
+	// A reset time that has passed belongs to a reading taken before it; the figure is stale.
+	private static string DescribeUsage(UsageLimitWindow window) => window.ResetTime is DateTime reset && reset > DateTime.UtcNow
+		? $"{window.PercentUsed}% used · resets {FormatReset(reset)}"
+		: $"{window.PercentUsed}% used";
+
+	/// <summary>"8:00 PM" today, "Tue 8:00 PM" this week, "Oct 30" after that.</summary>
+	private static string FormatReset(DateTime resetUtc)
+	{
+		var reset = resetUtc.ToConfiguredTime();
+		var today = DateTime.UtcNow.ToConfiguredTime().Date;
+		if (reset.Date == today)
+		{
+			return resetUtc.FormatTimeShort();
+		}
+
+		return reset.Date < today.AddDays(7)
+			? $"{reset.ToString("ddd", System.Globalization.CultureInfo.InvariantCulture)} {resetUtc.FormatTimeShort()}"
+			: resetUtc.FormatDateShort();
+	}
+
+	private static string Capitalize(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
+}

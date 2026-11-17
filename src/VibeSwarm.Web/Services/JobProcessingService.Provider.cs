@@ -98,8 +98,9 @@ public partial class JobProcessingService
             var summary = await dbContext.ProviderUsageSummaries
                 .AsNoTracking()
                 .FirstOrDefaultAsync(s => s.ProviderId == providerConfig.Id, cancellationToken);
-            var storedHold = await ProviderSessionLimitGuard.GetHoldAsync(dbContext, providerConfig.Id, now, cancellationToken);
-            if (!ProviderSessionLimitGuard.NeedsLiveReading(summary, storedHold, now))
+            var storedHold = await ProviderSessionLimitGuard.GetHoldAsync(dbContext, providerConfig.Id, now, cancellationToken, countRunningJobs: true);
+            var readingIsFree = ProviderCapabilities.IsUsageRefreshFree(providerConfig);
+            if (!ProviderSessionLimitGuard.NeedsLiveReading(summary, storedHold, now, readingIsFree))
             {
                 return;
             }
@@ -141,7 +142,7 @@ public partial class JobProcessingService
         VibeSwarmDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        var hold = await ProviderSessionLimitGuard.GetHoldAsync(dbContext, providerConfig.Id, DateTime.UtcNow, cancellationToken);
+        var hold = await ProviderSessionLimitGuard.GetHoldAsync(dbContext, providerConfig.Id, DateTime.UtcNow, cancellationToken, countRunningJobs: true);
         if (hold == null || hold.Until != cooldownUntil)
         {
             return null;

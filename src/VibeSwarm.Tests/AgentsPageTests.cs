@@ -18,10 +18,10 @@ public sealed class AgentsPageTests
 	{
 		var html = await RenderAgentsPageAsync([]);
 
-		Assert.Contains("btn btn-primary", html);
+		Assert.Contains("btn-solid theme-primary", html);
 		Assert.Contains("aria-label=\"Add an agent\"", html);
 		Assert.Contains(">Agents<", html);
-		Assert.Contains("justify-content-between gap-2 mb-4", html);
+		Assert.Contains("justify-content-between gap-3 mb-7", html);
 	}
 
 	[Fact]
@@ -62,7 +62,7 @@ public sealed class AgentsPageTests
 		var html = await RenderAgentsPageAsync([agent], [skill]);
 
 		// Rows start collapsed: the name and purpose show, the details wait for a tap.
-		Assert.Contains("list-group rounded-4", html);
+		Assert.Contains("list-group rounded-9", html);
 		Assert.Contains("Security Reviewer", html);
 		Assert.Contains("Focuses on threats and auth flaws.", html);
 		Assert.Contains("aria-expanded=\"false\"", html);

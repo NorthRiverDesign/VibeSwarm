@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Controllers;
@@ -54,6 +55,14 @@ public class JobsController : ControllerBase
     {
         var job = await _jobService.GetByIdWithMessagesAsync(id, ct);
         return job == null ? NotFound() : Ok(job);
+    }
+
+    /// <summary>The running job's newest output lines after <paramref name="after"/>; no content when it isn't running.</summary>
+    [HttpGet("{id:guid}/live-output")]
+    public async Task<IActionResult> GetLiveOutput(Guid id, [FromQuery] long after = 0, CancellationToken ct = default)
+    {
+        var output = await _jobService.GetLiveOutputAsync(id, after, ct);
+        return output == null ? NoContent() : Ok(output);
     }
 
     [HttpPost]
@@ -157,6 +166,14 @@ public class JobsController : ControllerBase
     public async Task<IActionResult> ContinueJob(Guid id, [FromBody] ContinueJobRequest req, CancellationToken ct)
         => await _jobService.ContinueJobAsync(id, req.FollowUpPrompt, ct) ? Ok() : BadRequest();
 
+    [HttpPost("{id:guid}/agent-message")]
+    public async Task<IActionResult> SendMessageToAgent(Guid id, [FromBody] AgentMessageRequest req, CancellationToken ct)
+        => await _jobService.SendMessageToAgentAsync(id, req.Message, ct) ? Ok() : BadRequest();
+
+    [HttpPost("{id:guid}/follow-up-draft")]
+    public async Task<IActionResult> DraftFollowUp(Guid id, [FromBody] FollowUpDraftRequest req, CancellationToken ct)
+        => Ok(await _jobService.DraftFollowUpAsync(id, req, ct));
+
     [HttpGet("last-model")]
     public async Task<IActionResult> GetLastUsedModel([FromQuery] Guid projectId, [FromQuery] Guid providerId, CancellationToken ct)
     {
@@ -214,6 +231,17 @@ public class JobsController : ControllerBase
         return Ok(new { Prioritized = count });
     }
 
+    [HttpPost("{id:guid}/run-next")]
+    public async Task<IActionResult> RunNext(Guid id, CancellationToken ct)
+        => await _jobService.RunNextAsync(id, ct) ? Ok() : Conflict("This job is no longer queued.");
+
+    [HttpGet("{id:guid}/queue-status")]
+    public async Task<IActionResult> GetQueueStatus(Guid id, CancellationToken ct)
+    {
+        var status = await _jobService.GetQueueStatusAsync(id, ct);
+        return status == null ? NoContent() : Ok(status);
+    }
+
     [HttpGet("{id:guid}/changesets")]
     public async Task<IActionResult> GetChangeSets(Guid id, CancellationToken ct)
         => Ok(await _jobService.GetChangeSetsAsync(id, ct));
@@ -227,6 +255,7 @@ public class JobsController : ControllerBase
     public record UpdateGitDeliveryRequest(string? CommitHash, int? PullRequestNumber, string? PullRequestUrl, DateTime? PullRequestCreatedAt, DateTime? MergedAt);
     public record PauseInteractionRequest(string InteractionPrompt, string InteractionType, string? Choices);
     public record ContinueJobRequest(string FollowUpPrompt);
+    public record AgentMessageRequest(string Message);
     public record RetryRequest(Guid? ProviderId, string? ModelId, string? ReasoningEffort);
     public record UpdatePromptRequest(string Prompt);
     public record SelectedJobsRequest(List<Guid> JobIds);

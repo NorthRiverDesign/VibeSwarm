@@ -321,8 +321,13 @@ public static partial class JobSummaryGenerator
 			case "result":
 				return GetStringProperty(root, "result");
 
+			// OpenCode text parts
+			case "text":
+				return root.TryGetProperty("part", out var part) && part.ValueKind == JsonValueKind.Object
+					? GetStringProperty(part, "text")
+					: null;
+
 			// Claude Code turns carry content blocks; only text blocks are prose, tool_use input is not.
-			// OpenCode message events carry the text directly.
 			case "assistant":
 			case "message":
 				if (root.TryGetProperty("message", out var message)

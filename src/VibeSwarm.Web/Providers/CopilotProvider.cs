@@ -6,6 +6,7 @@ using VibeSwarm.Shared.Providers.Claude;
 using VibeSwarm.Shared.Providers.Copilot;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
+using VibeSwarm.Web.Providers.Copilot;
 
 namespace VibeSwarm.Shared.Providers;
 
@@ -411,7 +412,7 @@ public class CopilotProvider : CliProviderBase
         // Copilot CLI does not support --system-prompt or --append-system-prompt flags.
         // Prepend any system prompt content into the main prompt using XML tags so the
         // agent still receives efficiency rules, build verification, and project memory.
-        var effectivePrompt = BuildEffectivePrompt(prompt, CurrentSystemPrompt, CurrentAppendSystemPrompt);
+        var effectivePrompt = FoldSystemPromptIntoPrompt(prompt, CurrentSystemPrompt, CurrentAppendSystemPrompt);
 
         // Build arguments for non-interactive execution
         // Reference: https://github.com/github/copilot-cli/blob/main/changelog.md
@@ -766,46 +767,6 @@ public class CopilotProvider : CliProviderBase
         }
 
         return names;
-    }
-
-    /// <summary>
-    /// Builds the effective prompt by prepending system prompt content into the main prompt.
-    /// Copilot CLI does not support --system-prompt or --append-system-prompt flags, so
-    /// these instructions are folded into the prompt text using XML tags.
-    /// </summary>
-    private static string BuildEffectivePrompt(string prompt, string? systemPrompt, string? appendSystemPrompt)
-    {
-        var hasSystemPrompt = !string.IsNullOrEmpty(systemPrompt);
-        var hasAppendSystemPrompt = !string.IsNullOrEmpty(appendSystemPrompt);
-
-        if (!hasSystemPrompt && !hasAppendSystemPrompt)
-        {
-            return prompt;
-        }
-
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("<system-instructions>");
-
-        if (hasSystemPrompt)
-        {
-            sb.AppendLine(systemPrompt);
-        }
-
-        if (hasSystemPrompt && hasAppendSystemPrompt)
-        {
-            sb.AppendLine();
-        }
-
-        if (hasAppendSystemPrompt)
-        {
-            sb.AppendLine(appendSystemPrompt);
-        }
-
-        sb.AppendLine("</system-instructions>");
-        sb.AppendLine();
-        sb.Append(prompt);
-
-        return sb.ToString();
     }
 
     private void EnsureBashEnvEnvironmentVariable()
@@ -1765,6 +1726,48 @@ public class CopilotProvider : CliProviderBase
         }
 
         return info;
+    }
+
+    /// <summary>
+    /// Reads the account's premium-request quota from the Copilot runtime. It makes no model
+    /// request, so it is free, and VibeSwarm reads it before each job: jobs then stop short of the
+    /// plan's allowance without the user entering it. Returns null when the quota can't be read or
+    /// the plan is unlimited.
+    /// </summary>
+    public override async Task<UsageLimits?> RefreshUsageLimitsAsync(CancellationToken cancellationToken = default)
+    {
+        CopilotClient? client = null;
+        try
+        {
+            client = new CopilotClient(BuildMetadataClientOptions());
+            await client.StartAsync(cancellationToken);
+#pragma warning disable GHCP001 // The account quota RPC is marked experimental in the SDK
+            var quota = await client.Rpc.Account.GetQuotaAsync(null!, null!, cancellationToken);
+            var limits = CopilotQuotaReader.ToUsageLimits(quota?.QuotaSnapshots, DateTime.UtcNow);
+#pragma warning restore GHCP001
+            if (limits != null)
+            {
+                _lastObservedUsageLimits = limits;
+            }
+
+            return limits;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            if (client != null)
+            {
+                try { await client.StopAsync(); } catch { }
+                try { await client.DisposeAsync(); } catch { }
+            }
+        }
     }
 
     public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)

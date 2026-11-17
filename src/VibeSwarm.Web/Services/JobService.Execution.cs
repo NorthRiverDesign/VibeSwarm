@@ -209,7 +209,7 @@ public partial class JobService
 
     private static string BuildContinuationPrompt(string previousGoalPrompt, string followUpPrompt)
     {
-        const int maxPromptLength = 2000;
+        const int maxPromptLength = ValidationLimits.JobGoalPromptMaxLength;
         const string templatePrefix = "Continue the previous job for this project.\nPrevious goal: ";
         const string templateMiddle = "\n\nFollow-up instructions:\n";
 
@@ -276,6 +276,7 @@ public partial class JobService
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;
+        JobReview.Reset(job);
         job.PlanningGeneratedAt = null;
         job.PlanningInputTokens = null;
         job.PlanningOutputTokens = null;
@@ -491,9 +492,9 @@ public partial class JobService
 				throw new InvalidOperationException("Goal prompt is required when the selected agent does not have saved instructions.");
 			}
 
-			if (agentInstructions.Length > ValidationLimits.JobTemplatePromptMaxLength)
+			if (agentInstructions.Length > ValidationLimits.JobGoalPromptMaxLength)
 			{
-				throw new InvalidOperationException($"Goal prompt is required when the selected agent instructions exceed {ValidationLimits.JobTemplatePromptMaxLength} characters.");
+				throw new InvalidOperationException($"Goal prompt is required when the selected agent instructions exceed {ValidationLimits.JobGoalPromptMaxLength} characters.");
 			}
 
 			job.GoalPrompt = agentInstructions;

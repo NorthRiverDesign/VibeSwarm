@@ -88,34 +88,36 @@
         <div id="app">
             <div class="d-flex align-items-center justify-content-center min-vh-100">
                 <div class="text-center">
-                    <div class="spinner-border text-primary mb-3" role="status">
+                    <div class="spinner-border fs-2xl fg-primary mb-5" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    <p class="text-muted" id="loading-message">Loading VibeSwarm...</p>
+                    <p class="fg-1" id="loading-message">Loading VibeSwarm...</p>
                 </div>
             </div>
         </div>
 
         <div id="blazor-error-ui"
-            style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bs-body-bg,#1a1d21);z-index:9999;padding:env(safe-area-inset-top,20px) env(safe-area-inset-right,20px) env(safe-area-inset-bottom,20px) env(safe-area-inset-left,20px);">
+            style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bs-bg-body,#1a1d21);z-index:9999;padding:env(safe-area-inset-top,20px) env(safe-area-inset-right,20px) env(safe-area-inset-bottom,20px) env(safe-area-inset-left,20px);">
             <div class="d-flex align-items-center justify-content-center min-vh-100">
-                <div class="text-center p-4" style="max-width:400px;">
-                    <div class="mb-4">
-                        <i class="bi bi-exclamation-triangle text-warning" style="font-size:3rem;"></i>
+                <div class="text-center p-7" style="max-width:400px;">
+                    <div class="mb-7">
+                        <i class="bi bi-exclamation-triangle fg-warning" style="font-size:3rem;"></i>
                     </div>
-                    <h4 class="text-body mb-3">Unable to Load Application</h4>
-                    <p class="text-muted mb-4">This may be due to a network issue or cached data. Try reloading or
+                    <h4 class="fg-body mb-5">Unable to Load Application</h4>
+                    <p class="fg-1 mb-7">This may be due to a network issue or cached data. Try reloading or
                         clearing the cache.</p>
-                    <div class="d-flex flex-column gap-2">
-                        <button type="button" onclick="location.reload()" class="btn btn-primary">Reload App</button>
-                        <button type="button" onclick="clearCacheAndReload()" class="btn btn-secondary">Clear Cache
+                    <div class="d-flex flex-column gap-3">
+                        <button type="button" onclick="location.reload()" class="btn-solid theme-primary">Reload App</button>
+                        <button type="button" onclick="clearCacheAndReload()" class="btn-solid theme-secondary">Clear Cache
                             &amp; Reload</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <script src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
+        <!-- Bootstrap 6 ships as an ES module; its data API (menus, dismiss buttons) starts on load.
+             Blazor components reach its JavaScript API through js/bootstrap-interop.js. -->
+        <script type="module" src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
 
         <!-- Error handling for iOS Safari and WebAssembly loading issues -->
         <script>
@@ -230,20 +232,6 @@
                     var extension = (contentType || 'image/png').split('/')[1] || 'png';
                     return 'pasted-image-' + new Date().toISOString().replace(/[:.]/g, '-') + '.' + extension;
                 },
-                consumeSelectedFiles: async function (inputId) {
-                    var input = document.getElementById(inputId);
-                    if (!input || !input.files || input.files.length === 0) {
-                        return [];
-                    }
-
-                    var files = Array.from(input.files);
-                    var uploads = await Promise.all(files.map(function (file) {
-                        return window.vibeSwarmIdeas.readAttachmentAsDataUrl(file, file.name);
-                    }));
-
-                    input.value = '';
-                    return uploads;
-                },
                 registerPasteTarget: function (targetId, element, dotNetRef) {
                     if (!element || !dotNetRef) {
                         return;
@@ -294,26 +282,6 @@
 
                     entry.element.removeEventListener('paste', entry.handler);
                     delete window.vibeSwarmIdeas._pasteTargets[targetId];
-                },
-                readImageFromClipboard: async function (targetId) {
-                    if (!navigator.clipboard || !navigator.clipboard.read) {
-                        throw new Error('Clipboard image paste is not supported by this browser.');
-                    }
-
-                    var items = await navigator.clipboard.read();
-                    for (var i = 0; i < items.length; i++) {
-                        var item = items[i];
-                        var imageType = item.types.find(function (type) { return type.indexOf('image/') === 0; });
-                        if (!imageType) {
-                            continue;
-                        }
-
-                        var blob = await item.getType(imageType);
-                        blob.name = window.vibeSwarmIdeas.createPastedImageFileName(imageType);
-                        return await window.vibeSwarmIdeas.readAttachmentAsDataUrl(blob, blob.name);
-                    }
-
-                    return null;
                 }
             };
 
@@ -384,41 +352,148 @@
         </script>
 
         <script>
+            // Keeps a live transcript on its newest message while the reader is at the bottom, and
+            // stops following once they scroll up. A transcript with its own scroller (wide screens)
+            // opens at the latest message; on phones it flows in the page, so the page scroller is
+            // followed instead, and only once the reader has reached the bottom themselves.
             window.vibeSwarmLiveOutput = {
                 isNearBottom: function (element) {
                     if (!element) {
                         return false;
                     }
 
-                    return element.scrollHeight - element.scrollTop - element.clientHeight <= 4;
+                    return element.scrollHeight - element.scrollTop - element.clientHeight <= 32;
+                },
+                scrollerFor: function (element) {
+                    var overflowY = getComputedStyle(element).overflowY;
+                    if (overflowY === 'auto' || overflowY === 'scroll') {
+                        return element;
+                    }
+
+                    return element.closest('.app-main') || document.scrollingElement;
+                },
+                showJumpButton: function (element, state) {
+                    var button = element.querySelector('.job-jump-latest');
+                    if (button) {
+                        button.hidden = state.stick || window.vibeSwarmLiveOutput.isNearBottom(state.scroller);
+                    }
+                },
+                jumpToLatest: function (button) {
+                    var element = button.closest('.job-transcript');
+                    var state = element && element._vsFollow;
+                    if (!state) {
+                        return;
+                    }
+
+                    state.stick = true;
+                    button.hidden = true;
+                    state.scroller.scrollTo({
+                        top: state.scroller.scrollHeight - state.scroller.clientHeight,
+                        behavior: 'smooth'
+                    });
                 },
                 sync: function (element) {
                     if (!element) {
                         return;
                     }
 
-                    var shouldStick = element.dataset.vsAutoscroll !== 'false';
-                    if (shouldStick) {
-                        element.scrollTo({
-                            top: element.scrollHeight,
+                    var live = window.vibeSwarmLiveOutput;
+                    var scroller = live.scrollerFor(element);
+                    var state = element._vsFollow;
+                    if (!state || state.scroller !== scroller) {
+                        if (state) {
+                            state.scroller.removeEventListener('scroll', state.onScroll);
+                        }
+
+                        state = {
+                            scroller: scroller,
+                            lastTop: scroller.scrollTop,
+                            stick: scroller === element || live.isNearBottom(scroller)
+                        };
+                        // Only a scroll up stops following, so a smooth scroll still under way
+                        // when the next message lands doesn't count as the reader leaving.
+                        state.onScroll = function () {
+                            if (!element.isConnected) {
+                                scroller.removeEventListener('scroll', state.onScroll);
+                                return;
+                            }
+
+                            var top = scroller.scrollTop;
+                            if (live.isNearBottom(scroller)) {
+                                state.stick = true;
+                            } else if (top < state.lastTop) {
+                                state.stick = false;
+                            }
+
+                            state.lastTop = top;
+                            live.showJumpButton(element, state);
+                        };
+                        scroller.addEventListener('scroll', state.onScroll, { passive: true });
+                        element._vsFollow = state;
+                    }
+
+                    // iOS can leave the scroller past its end when the transcript shrinks under it
+                    // (tool calls folding into one row), showing blank space below the last
+                    // message, so it goes back to the end at once before following.
+                    var end = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+                    if (scroller.scrollTop > end) {
+                        scroller.scrollTop = end;
+                    }
+
+                    if (state.stick) {
+                        scroller.scrollTo({
+                            top: end,
                             behavior: 'smooth'
                         });
                     }
 
-                    var updateAutoscrollState = function () {
-                        element.dataset.vsAutoscroll = window.vibeSwarmLiveOutput.isNearBottom(element)
-                            ? 'true'
-                            : 'false';
-                    };
-
-                    if (!element.dataset.vsAutoscrollInitialized) {
-                        element.dataset.vsAutoscrollInitialized = 'true';
-                        element.addEventListener('scroll', updateAutoscrollState, { passive: true });
-                    }
-
-                    updateAutoscrollState();
+                    live.showJumpButton(element, state);
                 }
             };
+        </script>
+
+        <script>
+            // Composer fields (.textarea-autogrow) grow with their text through CSS field-sizing.
+            // Browsers without it size them here: as the user types, and whenever Blazor sets the
+            // value (a restored draft, or the emptied field after sending).
+            (function () {
+                if (window.CSS && CSS.supports('field-sizing', 'content')) {
+                    return;
+                }
+
+                var isAutogrow = function (element) {
+                    return element instanceof HTMLTextAreaElement && element.classList.contains('textarea-autogrow');
+                };
+                var fit = function (textarea) {
+                    if (!textarea.isConnected) {
+                        return;
+                    }
+
+                    textarea.style.height = 'auto';
+                    textarea.style.height = (textarea.scrollHeight + textarea.offsetHeight - textarea.clientHeight) + 'px';
+                };
+                var fitTarget = function (e) {
+                    if (isAutogrow(e.target)) {
+                        fit(e.target);
+                    }
+                };
+
+                document.addEventListener('input', fitTarget, true);
+                document.addEventListener('focusin', fitTarget, true);
+
+                var value = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+                Object.defineProperty(HTMLTextAreaElement.prototype, 'value', {
+                    configurable: true,
+                    enumerable: value.enumerable,
+                    get: value.get,
+                    set: function (text) {
+                        value.set.call(this, text);
+                        if (isAutogrow(this)) {
+                            fit(this);
+                        }
+                    }
+                });
+            })();
         </script>
 
         <script>
@@ -566,7 +641,7 @@
                     start = isStandalone
                         && e.touches.length === 1
                         && touch.clientX <= 24
-                        && !document.body.classList.contains('vs-modal-open')
+                        && !document.documentElement.classList.contains('dialog-open')
                         && !isInsideHorizontalScroll(e.target)
                         ? { x: touch.clientX, y: touch.clientY }
                         : null;
@@ -636,6 +711,26 @@
                     details: reason && reason.stack ? reason.stack : String(reason)
                 });
             });
+
+            // A render crash only reaches the console before Blazor shows #blazor-error-ui, so report
+            // the first one; otherwise a crash on a phone leaves nothing to diagnose on the server.
+            (function () {
+                var consoleError = console.error;
+                var reported = false;
+                console.error = function () {
+                    consoleError.apply(console, arguments);
+                    var text = Array.prototype.join.call(arguments, ' ');
+                    if (reported || text.indexOf('Unhandled exception rendering component') === -1) return;
+
+                    reported = true;
+                    window.vibeSwarmDiagnostics.reportCriticalError({
+                        source: 'client',
+                        category: 'render-crash',
+                        message: text.split('\n')[0],
+                        details: text
+                    });
+                };
+            })();
         </script>
 
         <!-- PWA Install Prompt -->
@@ -795,6 +890,14 @@
                     navigator.serviceWorker.addEventListener('message', (event) => {
                         if (event.data && event.data.type === 'SW_UPDATE_WAITING') {
                             window.vibeSwarmUpdateAvailable = true;
+                        }
+                        // A tapped push notification opens its job in this window.
+                        if (event.data && event.data.type === 'OPEN_URL' && event.data.url) {
+                            if (window.Blazor && typeof window.Blazor.navigateTo === 'function') {
+                                window.Blazor.navigateTo(event.data.url);
+                            } else {
+                                window.location.assign(event.data.url);
+                            }
                         }
                     });
                 });

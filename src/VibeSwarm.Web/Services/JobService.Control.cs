@@ -195,6 +195,7 @@ public partial class JobService
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;
+        JobReview.Reset(job);
         job.PlanningGeneratedAt = null;
         job.PlanningInputTokens = null;
         job.PlanningOutputTokens = null;
@@ -335,6 +336,7 @@ public partial class JobService
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;
+        JobReview.Reset(job);
         job.PlanningGeneratedAt = null;
         job.PlanningInputTokens = null;
         job.PlanningOutputTokens = null;

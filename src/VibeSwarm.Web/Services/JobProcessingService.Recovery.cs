@@ -37,8 +37,18 @@ public partial class JobProcessingService
 		};
 
 		dbContext.ProviderUsageSummaries.Add(summary);
-		await dbContext.SaveChangesAsync(cancellationToken);
-		return summary;
+		try
+		{
+			await dbContext.SaveChangesAsync(cancellationToken);
+			return summary;
+		}
+		catch (DbUpdateException)
+		{
+			// Another job on the same provider created it first (one summary per provider).
+			dbContext.Entry(summary).State = EntityState.Detached;
+			return await dbContext.ProviderUsageSummaries
+				.FirstAsync(s => s.ProviderId == providerId, cancellationToken);
+		}
 	}
 
 	private async Task<DateTime?> GetProviderCooldownUntilAsync(
@@ -60,7 +70,7 @@ public partial class JobProcessingService
 				? rateLimitResetTime
 				: (DateTime?)null;
 
-		var sessionHold = await ProviderSessionLimitGuard.GetHoldAsync(dbContext, providerId, now, cancellationToken);
+		var sessionHold = await ProviderSessionLimitGuard.GetHoldAsync(dbContext, providerId, now, cancellationToken, countRunningJobs: true);
 
 		return GetLaterCooldown(GetLaterCooldown(persistedCooldownUntil, trackedCooldownUntil), sessionHold?.Until);
 	}
@@ -127,10 +137,22 @@ public partial class JobProcessingService
 
 			if (!nextAllowedStart.HasValue || nextAllowedStart.Value <= now)
 			{
-				summary.LastJobStartedAt = now;
-				summary.LastUpdatedAt = now;
-				await dbContext.SaveChangesAsync(cancellationToken);
-				return;
+				// Taken with one conditional update, so jobs starting together on a provider that
+				// runs several at once still start one spacing apart.
+				var latestEarlierStart = now - ProviderStartSpacing;
+				var reserved = await dbContext.ProviderUsageSummaries
+					.Where(s => s.Id == summary.Id && (s.LastJobStartedAt == null || s.LastJobStartedAt <= latestEarlierStart))
+					.ExecuteUpdateAsync(setters => setters
+						.SetProperty(s => s.LastJobStartedAt, now)
+						.SetProperty(s => s.LastUpdatedAt, now),
+						cancellationToken);
+				await dbContext.Entry(summary).ReloadAsync(cancellationToken);
+				if (reserved == 1 || dbContext.Entry(summary).State == EntityState.Detached)
+				{
+					return;
+				}
+
+				continue;
 			}
 
 			var delay = nextAllowedStart.Value - now;
