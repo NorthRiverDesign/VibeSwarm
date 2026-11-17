@@ -1,5 +1,6 @@
 using System.Reflection;
 using Bunit;
+using Bunit.TestDoubles;
 using Microsoft.Extensions.DependencyInjection;
 using VibeSwarm.Client.Components.Projects;
 using VibeSwarm.Client.Pages;
@@ -27,7 +28,7 @@ public sealed class AddProjectToFolderTests
 		var page = context.Render<ProjectFolderDetail>(parameters => parameters.Add(component => component.FolderId, _shop.Id));
 		page.Find("button[aria-label='Add a project']").Click();
 
-		var rows = page.FindAll("dialog .list-group-item-action");
+		var rows = page.FindAll("#add-to-folder-projects .list-group-item-action");
 		Assert.Equal(["Api", "Docs"], rows.Select(row => row.QuerySelector(".fw-medium")!.TextContent));
 		Assert.Contains("No folder", rows[0].TextContent);
 		Assert.Contains("In Tools", rows[1].TextContent);
@@ -104,7 +105,7 @@ public sealed class AddProjectToFolderTests
 		toolsSection.QuerySelectorAll("button.btn-link").Single(button => button.TextContent == "Add").Click();
 
 		Assert.Equal("Add to Tools", view.Find("dialog h2").TextContent.Trim());
-		var rows = view.FindAll("dialog .list-group-item-action");
+		var rows = view.FindAll("#add-to-folder-projects .list-group-item-action");
 		Assert.Equal(["Api", "Web"], rows.Select(row => row.QuerySelector(".fw-medium")!.TextContent));
 
 		rows[0].Click();
@@ -113,6 +114,101 @@ public sealed class AddProjectToFolderTests
 		view.WaitForAssertion(() => Assert.Empty(view.FindAll("dialog")));
 		var refreshedTools = view.FindAll("section").Single(section => section.QuerySelector("h2")!.TextContent == "Tools");
 		Assert.Contains("Api", refreshedTools.TextContent);
+	}
+
+	[Fact]
+	public void AddModal_OffersClone_EvenWithNothingToMove_AndHandsTheFolderOverOnceClosed()
+	{
+		var api = new Project { Id = Guid.NewGuid(), Name = "Api", FolderId = _shop.Id };
+		using var context = CreateContext(new FakeProjectService([_shop], api));
+		var requested = new List<ProjectFolder>();
+		var visible = true;
+
+		var modal = context.Render<AddProjectToFolderModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.IsVisibleChanged, value => visible = value)
+			.Add(component => component.Folder, _shop)
+			.Add(component => component.Projects, [api])
+			.Add(component => component.Folders, [_shop])
+			.Add(component => component.OnCloneRequested, folder => requested.Add(folder)));
+
+		Assert.Contains("Every project is already in this folder.", modal.Markup);
+		var clone = modal.Find("#add-to-folder-new .list-group-item-action");
+		Assert.Contains("Clone a repository", clone.TextContent);
+
+		clone.Click();
+
+		Assert.False(visible);
+		Assert.Equal([_shop], requested);
+	}
+
+	[Fact]
+	public void AddModal_HidesClone_WhenNobodyHandlesIt()
+	{
+		var api = new Project { Id = Guid.NewGuid(), Name = "Api" };
+		using var context = CreateContext(new FakeProjectService([_shop], api));
+
+		var modal = context.Render<AddProjectToFolderModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.Folder, _shop)
+			.Add(component => component.Projects, [api])
+			.Add(component => component.Folders, [_shop]));
+
+		Assert.Empty(modal.FindAll("#add-to-folder-new"));
+		Assert.StartsWith("Choose a project", modal.Find("dialog p").TextContent);
+	}
+
+	[Fact]
+	public void FolderPage_Clone_OpensTheNewProjectFormPresetToCloneIntoTheFolder_AndListsTheNewProject()
+	{
+		var api = new Project { Id = Guid.NewGuid(), Name = "Api" };
+		using var context = CreateContext(new FakeProjectService([_shop], api));
+		context.ComponentFactories.AddStub<ProjectModal>();
+
+		var page = context.Render<ProjectFolderDetail>(parameters => parameters.Add(component => component.FolderId, _shop.Id));
+		Assert.Empty(page.FindComponents<Stub<ProjectModal>>());
+		page.Find("button[aria-label='Add a project']").Click();
+		page.Find("#add-to-folder-new .list-group-item-action").Click();
+
+		var form = page.FindComponent<Stub<ProjectModal>>();
+		Assert.True(form.Instance.Parameters.Get(component => component.IsVisible));
+		Assert.Equal(_shop.Id, form.Instance.Parameters.Get(component => component.InitialFolderId));
+		Assert.Equal(ProjectCreationMode.CloneGitHubRepository, form.Instance.Parameters.Get(component => component.InitialCreationMode));
+
+		// The form created the project in the folder; the page shows it and lets the form go.
+		api.FolderId = _shop.Id;
+		page.InvokeAsync(() => form.Instance.Parameters.Get(component => component.OnSaved).InvokeAsync(api.Id));
+
+		page.WaitForAssertion(() => Assert.Empty(page.FindComponents<Stub<ProjectModal>>()));
+		Assert.Contains("Api", page.Find(".list-group").TextContent);
+	}
+
+	[Fact]
+	public void ProjectsList_FolderSectionAdd_ClonesIntoThatFolder_AndNewProjectStartsBlankAfterwards()
+	{
+		var api = new Project { Id = Guid.NewGuid(), Name = "Api", IsActive = true };
+		using var context = CreateContext(new FakeProjectService([_shop, _tools], api));
+		context.Services.AddSingleton(DispatchProxy.Create<IFileSystemService, UnusedService>());
+		context.Services.AddSingleton(DispatchProxy.Create<ISettingsService, UnusedService>());
+		context.ComponentFactories.AddStub<ProjectModal>();
+
+		var view = context.Render<ProjectsView>();
+		var toolsSection = view.FindAll("section").Single(section => section.QuerySelector("h2")!.TextContent == "Tools");
+		toolsSection.QuerySelectorAll("button.btn-link").Single(button => button.TextContent == "Add").Click();
+		view.Find("#add-to-folder-new .list-group-item-action").Click();
+
+		var form = view.FindComponent<Stub<ProjectModal>>();
+		Assert.True(form.Instance.Parameters.Get(component => component.IsVisible));
+		Assert.Equal(_tools.Id, form.Instance.Parameters.Get(component => component.InitialFolderId));
+		Assert.Equal(ProjectCreationMode.CloneGitHubRepository, form.Instance.Parameters.Get(component => component.InitialCreationMode));
+
+		view.InvokeAsync(() => form.Instance.Parameters.Get(component => component.OnClosed).InvokeAsync());
+		view.FindAll("button.menu-item").Single(button => button.TextContent.Trim() == "New project").Click();
+
+		form = view.FindComponent<Stub<ProjectModal>>();
+		Assert.True(form.Instance.Parameters.Get(component => component.IsVisible));
+		Assert.Null(form.Instance.Parameters.Get(component => component.InitialFolderId));
+		Assert.Equal(ProjectCreationMode.ExistingDirectory, form.Instance.Parameters.Get(component => component.InitialCreationMode));
 	}
 
 	private static BunitContext CreateContext(FakeProjectService projects)

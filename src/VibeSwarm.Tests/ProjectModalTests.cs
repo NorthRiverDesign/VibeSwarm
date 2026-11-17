@@ -436,6 +436,31 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 	}
 
 	[Fact]
+	public void OpenedToCloneIntoAFolder_StartsInCloneMode_AndCreatesTheProjectInThatFolder()
+	{
+		var shop = new ProjectFolder { Id = Guid.NewGuid(), Name = "Shop" };
+		var projectService = new FakeProjectService { Folders = [shop] };
+		using var context = CreateBunitContext(projectService);
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.InitialFolderId, shop.Id)
+			.Add(component => component.InitialCreationMode, ProjectCreationMode.CloneGitHubRepository));
+
+		Assert.Equal("New Project in Shop", cut.Find("dialog h2").TextContent.Trim());
+		Assert.True(cut.Find($"#project-source-{ProjectCreationMode.CloneGitHubRepository}").HasAttribute("checked"));
+
+		cut.Find("#modal-githubRepo").Input("octocat/hello-world");
+		cut.Find("form").Submit();
+
+		cut.WaitForAssertion(() => Assert.NotNull(projectService.LastCreationRequest), WaitTimeout);
+		var request = projectService.LastCreationRequest!;
+		Assert.Equal(ProjectCreationMode.CloneGitHubRepository, request.Mode);
+		Assert.Equal("octocat/hello-world", request.GitHub!.Repository);
+		Assert.Equal(shop.Id, request.Project.FolderId);
+	}
+
+	[Fact]
 	public void CreateRepository_WithoutGitHubAccounts_HidesTheOwnerPicker()
 	{
 		using var context = CreateBunitContext();

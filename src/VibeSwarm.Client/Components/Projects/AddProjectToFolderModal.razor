@@ -1,20 +1,28 @@
 @inject IProjectService ProjectService
 @inject NotificationService NotificationService
 
-@* Picks a project to move into a folder. Projects outside any folder come first; one in another
-   folder moves out of it, since a project sits in one folder at a time. *@
+@* Adds a project to a folder: clones a new one straight into it, or moves one in. Projects outside
+   any folder come first; one in another folder moves out of it, since a project sits in one folder
+   at a time. *@
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged"
 			 Title="@($"Add to {Folder?.Name}")" Icon="folder-plus">
 	<ChildContent>
 		<div class="d-flex flex-column gap-5">
+			@if (OnCloneRequested.HasDelegate)
+			{
+				<div id="add-to-folder-new" class="list-group rounded-9">
+					<ListRow Icon="github" Title="Clone a repository" Subtitle="A new project from GitHub, straight into this folder"
+							 OnClick="RequestCloneAsync" />
+				</div>
+			}
 			@if (Candidates.Count == 0)
 			{
 				<p class="small fg-1 mb-0">Every project is already in this folder.</p>
 			}
 			else
 			{
-				<p class="small fg-1 mb-0">Choose a project to move into this folder. A project in another folder moves out of it.</p>
+				<p class="small fg-1 mb-0">@(OnCloneRequested.HasDelegate ? "Or choose" : "Choose") a project to move into this folder. A project in another folder moves out of it.</p>
 				<div class="position-relative" role="search">
 					<i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-5 fg-2 pe-none"></i>
 					<input id="add-to-folder-search" type="search" class="form-control rounded-pill bg-2 border-0 ps-12"
@@ -25,7 +33,7 @@
 				{
 					<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mb-0" />
 				}
-				<div class="list-group rounded-9">
+				<div id="add-to-folder-projects" class="list-group rounded-9">
 					@foreach (var project in FilteredCandidates)
 					{
 						<button type="button" @key="project.Id" class="list-group-item list-group-item-action d-flex align-items-center gap-5"
@@ -70,6 +78,10 @@
 
 	/// <summary>Raised after a project moves into the folder, before the dialog closes.</summary>
 	[Parameter] public EventCallback<Project> OnMoved { get; set; }
+
+	/// <summary>Raised after the dialog closes when the user picks Clone a repository; the owner opens
+	/// the new-project form preset to clone into <see cref="Folder"/>. Without it the option is hidden.</summary>
+	[Parameter] public EventCallback<ProjectFolder> OnCloneRequested { get; set; }
 
 	private string _searchQuery = string.Empty;
 	private string? _errorMessage;
@@ -143,6 +155,17 @@
 		{
 			_movingProjectId = null;
 		}
+	}
+
+	private async Task RequestCloneAsync()
+	{
+		if (Folder is not { } folder || _movingProjectId.HasValue)
+		{
+			return;
+		}
+
+		await CloseAsync();
+		await OnCloneRequested.InvokeAsync(folder);
 	}
 
 	private async Task HandleVisibilityChanged(bool visible)

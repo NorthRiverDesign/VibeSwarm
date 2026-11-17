@@ -119,7 +119,7 @@
 					}
 					@if (group.Projects.Count == 0)
 					{
-						<div class="list-group-item small fg-1 py-5">No projects yet. Use Add to move one in.</div>
+						<div class="list-group-item small fg-1 py-5">No projects yet. Use Add to clone or move one in.</div>
 					}
 				</div>
 			</section>
@@ -131,7 +131,7 @@
 
 <AddProjectToFolderModal @bind-IsVisible="_showAddToFolderModal" Folder="@_folderAddingTo"
 						 Projects="@ProjectsWithInfo.Select(info => info.Project).ToList()" Folders="@Folders"
-						 OnMoved="HandleProjectMoved" />
+						 OnMoved="HandleProjectMoved" OnCloneRequested="ShowCloneIntoFolderModal" />
 
 <ConfirmationModal @bind-IsVisible="_showDeleteFolderModal" Title="Delete folder"
 				   Message="@($"Delete the folder \"{_folderBeingDeleted?.Name}\"?")"
@@ -148,7 +148,8 @@
 <ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="HandleProjectsImported" />
 
 <ProjectModal @bind-IsVisible="ShowProjectModal" OnSaved="HandleProjectSaved"
-			  OnCancelled="HandleProjectModalClosed" OnClosed="HandleProjectModalClosed" />
+			  OnCancelled="HandleProjectModalClosed" OnClosed="HandleProjectModalClosed"
+			  InitialFolderId="@_newProjectFolderId" InitialCreationMode="@_newProjectMode" />
 
 @code {
 	private List<ProjectInfoWithStats> ProjectsWithInfo { get; set; } = new();
@@ -178,6 +179,9 @@
 	private string? _syncAllProgress;
 	private string? _syncAllError;
 	private bool ShowProjectModal { get; set; }
+	// Set only while the form opens from a folder's Add dialog, so New project starts blank.
+	private Guid? _newProjectFolderId;
+	private ProjectCreationMode _newProjectMode = ProjectCreationMode.ExistingDirectory;
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -584,7 +588,21 @@
 
 	private void ShowAddModal()
 	{
+		ClearNewProjectPreset();
 		ShowProjectModal = true;
+	}
+
+	private void ShowCloneIntoFolderModal(ProjectFolder folder)
+	{
+		_newProjectFolderId = folder.Id;
+		_newProjectMode = ProjectCreationMode.CloneGitHubRepository;
+		ShowProjectModal = true;
+	}
+
+	private void ClearNewProjectPreset()
+	{
+		_newProjectFolderId = null;
+		_newProjectMode = ProjectCreationMode.ExistingDirectory;
 	}
 
 	private async Task ShowScanModal()
@@ -604,12 +622,14 @@
 	private async Task HandleProjectSaved(Guid? newProjectId)
 	{
 		ShowProjectModal = false;
+		ClearNewProjectPreset();
 		await LoadProjects();
 	}
 
 	private void HandleProjectModalClosed()
 	{
 		ShowProjectModal = false;
+		ClearNewProjectPreset();
 	}
 
 	public void Dispose()

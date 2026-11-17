@@ -52,14 +52,21 @@ else
 				}
 				@if (_projects.Count == 0)
 				{
-					<div class="list-group-item small fg-1 py-5">No projects yet. Use + to move one in.</div>
+					<div class="list-group-item small fg-1 py-5">No projects yet. Use + to clone or move one in.</div>
 				}
 			</div>
 		}
 	</div>
 
 	<AddProjectToFolderModal @bind-IsVisible="_showAddModal" Folder="@_folder" Projects="@_allProjects" Folders="@_folders"
-							 OnMoved="HandleProjectMoved" />
+							 OnMoved="HandleProjectMoved" OnCloneRequested="() => _showCloneModal = true" />
+
+	@* Rendered only while open: the form loads providers, agents and models as it starts. *@
+	@if (_showCloneModal)
+	{
+		<ProjectModal @bind-IsVisible="_showCloneModal" OnSaved="HandleProjectCloned"
+					  InitialFolderId="@_folder.Id" InitialCreationMode="ProjectCreationMode.CloneGitHubRepository" />
+	}
 }
 
 @code {
@@ -78,6 +85,7 @@ else
 	private List<ProjectWithStats> _projects = new();
 	private List<Project> _allProjects = new();
 	private bool _showAddModal;
+	private bool _showCloneModal;
 	private List<JobSummary> _activeJobs = new();
 	private bool _isLoading = true;
 	private string _activeTab = ProjectsTab;
@@ -123,7 +131,15 @@ else
 			.ToList();
 	}
 
-	private async Task HandleProjectMoved(Project project)
+	private Task HandleProjectMoved(Project project) => ReloadProjectsAsync();
+
+	private Task HandleProjectCloned(Guid? projectId)
+	{
+		_showCloneModal = false;
+		return ReloadProjectsAsync();
+	}
+
+	private async Task ReloadProjectsAsync()
 	{
 		try
 		{

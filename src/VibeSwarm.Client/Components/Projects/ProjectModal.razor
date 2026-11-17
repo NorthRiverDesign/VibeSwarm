@@ -9,7 +9,7 @@
 @inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
-Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "folder-plus")"
+Title="@DialogTitle" Icon="@(IsEdit ? "pencil" : "folder-plus")"
 Size="ModalDialog.ModalSize.Large" DialogClass="vs-dialog-wide-lg" OnClose="HandleClose"
 BodyClass="vs-project-dialog-body">
 <ChildContent>
@@ -200,7 +200,23 @@ public EventCallback OnCancelled { get; set; }
 [Parameter]
 public EventCallback OnClosed { get; set; }
 
+/// <summary>A new project starts in this folder, such as one cloned from a folder's Add dialog.</summary>
+[Parameter]
+public Guid? InitialFolderId { get; set; }
+
+/// <summary>Where a new project starts from; the user can still pick another source.</summary>
+[Parameter]
+public ProjectCreationMode InitialCreationMode { get; set; } = ProjectCreationMode.ExistingDirectory;
+
 private bool IsEdit => EditProject != null;
+
+/// <summary>A new project says which folder it lands in, so cloning from a folder reads as such.</summary>
+private string DialogTitle => IsEdit
+? "Edit Project"
+: _folders.FirstOrDefault(folder => folder.Id == FormModel.FolderId)?.Name is { } folderName
+	? $"New Project in {folderName}"
+	: "New Project";
+
 private bool IsSaving { get; set; }
 private string? ErrorMessage { get; set; }
 private bool _previousIsVisible;
@@ -267,8 +283,8 @@ await LoadCommitSummaryInferenceModelsAsync();
 }
 else
 {
-FormModel = new ProjectModalFormModel();
-_formState.SelectSourceMode(FormModel, ProjectCreationMode.ExistingDirectory);
+FormModel = new ProjectModalFormModel { FolderId = InitialFolderId };
+await SelectSourceMode(InitialCreationMode);
 await SeedDefaultProviderSelectionAsync();
 EnsurePlanningProviderSelection();
 await LoadProviderSelectionModelsAsync();
