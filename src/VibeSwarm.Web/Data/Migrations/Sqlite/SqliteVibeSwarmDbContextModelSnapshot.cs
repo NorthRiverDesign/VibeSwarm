@@ -2410,7 +2410,7 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<int>("MaxConcurrentJobs")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER")
-                        .HasDefaultValue(1);
+                        .HasDefaultValue(5);
 
                     b.Property<int?>("MaxExecutionMinutes")
                         .HasColumnType("INTEGER");

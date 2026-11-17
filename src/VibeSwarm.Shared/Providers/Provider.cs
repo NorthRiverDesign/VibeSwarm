@@ -80,7 +80,7 @@ public class Provider
 
     /// <summary>
     /// How many jobs this provider runs at once, each in a separate session and a different
-    /// project, for plans large enough to take them. Only admins change it, through
+    /// project; lowered for plans that can't take several sessions. Only admins change it, through
     /// <see cref="ProviderUsageLimits.MaxConcurrentJobs"/>; the provider form leaves it alone.
     /// </summary>
     [Range(JobConcurrency.MinJobs, JobConcurrency.MaxJobs)]

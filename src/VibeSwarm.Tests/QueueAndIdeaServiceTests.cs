@@ -202,6 +202,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	{
 		await using var dbContext = CreateDbContext();
 		var (project, firstProvider, _) = await SeedSwarmProjectAsync(dbContext);
+		firstProvider.MaxConcurrentJobs = 1;
 		var swarmId = Guid.NewGuid();
 		dbContext.Jobs.AddRange(
 			CreateSwarmJob(project.Id, firstProvider.Id, swarmId, "Running swarm member", JobStatus.Processing, DateTime.UtcNow.AddMinutes(-2)),
@@ -463,6 +464,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			Name = "Copilot",
 			Type = ProviderType.Copilot,
+			MaxConcurrentJobs = 1,
 			IsEnabled = true,
 			IsDefault = true
 		};
@@ -471,6 +473,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			Name = "Claude",
 			Type = ProviderType.Claude,
+			MaxConcurrentJobs = 1,
 			IsEnabled = true
 		};
 
@@ -550,6 +553,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			Name = "Copilot",
 			Type = ProviderType.Copilot,
+			MaxConcurrentJobs = 1,
 			IsEnabled = true,
 			IsDefault = true
 		};
@@ -558,6 +562,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			Name = "Claude",
 			Type = ProviderType.Claude,
+			MaxConcurrentJobs = 1,
 			IsEnabled = true
 		};
 

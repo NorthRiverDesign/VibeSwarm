@@ -65,6 +65,8 @@ public sealed class ProjectQueueHoldTests : IDisposable
 	{
 		await using var dbContext = CreateDbContext();
 		var provider = AddProvider(dbContext);
+		// One job at a time, so a held job taking the provider's slot would block the other project.
+		provider.MaxConcurrentJobs = 1;
 		var heldProject = AddProject(dbContext, "Held");
 		var otherProject = AddProject(dbContext, "Other");
 		AddJob(dbContext, heldProject, provider, JobStatus.New, "Held job", createdMinutesAgo: 5);

@@ -70,7 +70,7 @@ public partial class JobService
 				j.ProjectId,
 				j.ProviderId,
 				ProviderName = j.Provider != null ? j.Provider.Name : null,
-				ProviderLimit = j.Provider != null ? j.Provider.MaxConcurrentJobs : JobConcurrency.DefaultJobsPerProvider,
+				ProviderLimit = j.Provider != null ? j.Provider.MaxConcurrentJobs : JobConcurrency.MinJobs,
 				j.SwarmId,
 				j.Priority,
 				j.CreatedAt,

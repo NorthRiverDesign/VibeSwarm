@@ -16,7 +16,8 @@ public sealed class JobQueueOrderTests : IDisposable
 	private readonly DbContextOptions<VibeSwarmDbContext> _dbOptions;
 	private readonly Project _projectA = new() { Id = Guid.NewGuid(), Name = "Alpha", WorkingPath = "/tmp/alpha" };
 	private readonly Project _projectB = new() { Id = Guid.NewGuid(), Name = "Beta", WorkingPath = "/tmp/beta" };
-	private readonly Provider _claude = new() { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true, IsDefault = true };
+	// One job at a time, so a job in another project can hold the provider.
+	private readonly Provider _claude = new() { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true, IsDefault = true, MaxConcurrentJobs = 1 };
 	private readonly Provider _copilot = new() { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true };
 
 	public JobQueueOrderTests()
