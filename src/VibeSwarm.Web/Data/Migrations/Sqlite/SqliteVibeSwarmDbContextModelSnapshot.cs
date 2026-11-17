@@ -15,7 +15,7 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.20");
+            modelBuilder.HasAnnotation("ProductVersion", "9.0.23");
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", b =>
                 {
@@ -302,6 +302,11 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<string>("JobQueuePausedReason")
                         .HasMaxLength(300)
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("MaxConcurrentJobs")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(5);
 
                     b.Property<string>("TimeZoneId")
                         .IsRequired()
@@ -2401,6 +2406,11 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<DateTime?>("LastModelsRefreshAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("MaxConcurrentJobs")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
 
                     b.Property<int?>("MaxExecutionMinutes")
                         .HasColumnType("INTEGER");

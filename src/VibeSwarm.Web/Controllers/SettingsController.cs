@@ -19,4 +19,10 @@ public class SettingsController : ControllerBase
 
     [HttpPut]
     public async Task<IActionResult> Update([FromBody] AppSettings settings, CancellationToken ct) => Ok(await _settingsService.UpdateSettingsAsync(settings, ct));
+
+    /// <summary>How many jobs run at once across projects; admins only.</summary>
+    [HttpPut("max-concurrent-jobs")]
+    [Authorize(Roles = UserRoles.Admin)]
+    public async Task<IActionResult> UpdateMaxConcurrentJobs([FromBody] int maxConcurrentJobs, CancellationToken ct)
+        => Ok(await _settingsService.UpdateMaxConcurrentJobsAsync(maxConcurrentJobs, ct));
 }

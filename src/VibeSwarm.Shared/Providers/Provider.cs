@@ -78,6 +78,14 @@ public class Provider
     [Range(SessionLimitPolicy.MinPauseThresholdPercent, SessionLimitPolicy.MaxPauseThresholdPercent)]
     public int? WeeklyLimitPauseThresholdPercent { get; set; }
 
+    /// <summary>
+    /// How many jobs this provider runs at once, each in a separate session and a different
+    /// project, for plans large enough to take them. Only admins change it, through
+    /// <see cref="ProviderUsageLimits.MaxConcurrentJobs"/>; the provider form leaves it alone.
+    /// </summary>
+    [Range(JobConcurrency.MinJobs, JobConcurrency.MaxJobs)]
+    public int MaxConcurrentJobs { get; set; } = JobConcurrency.DefaultJobsPerProvider;
+
 	/// <summary>
 	/// Override for stall detection timeout in seconds.
 	/// When null, the system uses provider-aware defaults:

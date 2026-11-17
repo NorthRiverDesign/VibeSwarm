@@ -21,11 +21,16 @@ public static class ProviderSessionLimitGuard
 	/// </summary>
 	public static readonly TimeSpan LiveReadingFreshness = TimeSpan.FromMinutes(2);
 
+	/// <param name="countRunningJobs">
+	/// Whether jobs already running on the provider count toward the projection, for deciding
+	/// whether another job may start beside them. Every pre-start check passes it, so they agree.
+	/// </param>
 	public static async Task<SessionLimitHold?> GetHoldAsync(
 		VibeSwarmDbContext dbContext,
 		Guid providerId,
 		DateTime utcNow,
-		CancellationToken cancellationToken)
+		CancellationToken cancellationToken,
+		bool countRunningJobs = false)
 	{
 		var summary = await dbContext.ProviderUsageSummaries
 			.AsNoTracking()
@@ -54,12 +59,21 @@ public static class ProviderSessionLimitGuard
 		var expectedJobUsage = SessionLimitPolicy.EstimateJobUsagePercent(
 			recentJobRecords.Select(r => (IReadOnlyCollection<UsageLimitWindow>)r.DetectedLimitWindows));
 
+		// A provider allowed more than one job at a time has others drawing on the same session.
+		// A job about to start is still Pending, so it never counts itself.
+		var runningJobs = countRunningJobs && expectedJobUsage is > 0
+			? await dbContext.Jobs.CountAsync(j => j.ProviderId == providerId
+				&& (j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing),
+				cancellationToken)
+			: 0;
+
 		return SessionLimitPolicy.Evaluate(
 			summary.LimitWindows,
 			SessionLimitPolicy.ResolvePauseThreshold(configuredThresholds?.Session),
 			expectedJobUsage,
 			utcNow,
-			SessionLimitPolicy.ResolvePauseThreshold(configuredThresholds?.Weekly));
+			SessionLimitPolicy.ResolvePauseThreshold(configuredThresholds?.Weekly),
+			runningJobs);
 	}
 
 	/// <summary>

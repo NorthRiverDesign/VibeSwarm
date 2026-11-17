@@ -294,7 +294,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			new Job { Id = Guid.NewGuid(), ProjectId = projectId, GoalPrompt = "Plain job" }
 		};
 
-		var jobsToStart = JobProcessingService.SelectJobsToStart(pendingJobs, [(projectId, swarmId)], availableSlots: 5);
+		var jobsToStart = JobProcessingService.SelectJobsToStart(pendingJobs, [(projectId, swarmId, Guid.Empty)], availableSlots: 5);
 
 		var jobToStart = Assert.Single(jobsToStart);
 		Assert.Equal("Sibling", jobToStart.GoalPrompt);
@@ -312,7 +312,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			new Job { Id = Guid.NewGuid(), ProjectId = idleProjectId, GoalPrompt = "Idle project second job" }
 		};
 
-		var jobsToStart = JobProcessingService.SelectJobsToStart(pendingJobs, [(busyProjectId, null)], availableSlots: 5);
+		var jobsToStart = JobProcessingService.SelectJobsToStart(pendingJobs, [(busyProjectId, null, Guid.Empty)], availableSlots: 5);
 
 		var jobToStart = Assert.Single(jobsToStart);
 		Assert.Equal("Idle project first job", jobToStart.GoalPrompt);

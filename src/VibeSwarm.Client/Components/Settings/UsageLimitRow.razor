@@ -1,8 +1,9 @@
 @inject IProviderService ProviderService
 @inject NotificationService NotificationService
 
-@* One provider in Settings' Usage limits: when its jobs stop so they never use a whole plan, and
-   how much of each limit is used now. Opening the row edits the thresholds; each saves on change. *@
+@* One provider in Settings' Usage limits: when its jobs stop so they never use a whole plan, how
+   much of each limit is used now, and how many of its jobs run at once. Opening the row edits
+   them; each saves on change. Only admins change the job limit. *@
 
 <ListRow Icon="speedometer2" IconClass="@(Provider.IsEnabled ? "fg-primary" : "fg-2")" Title="@Provider.Name"
 		 Subtitle="@Subtitle" AttentionLine="@AttentionLine">
@@ -71,6 +72,19 @@
 			</div>
 		}
 
+		<div class="row g-5">
+			<div class="col-6">
+				<label for="@($"jobs-{Provider.Id}")" class="form-label small fg-1 mb-1">Jobs at once</label>
+				<input id="@($"jobs-{Provider.Id}")" type="number" class="form-control"
+					   min="@JobConcurrency.MinJobs" max="@JobConcurrency.MaxJobs" disabled="@(!CanEditJobLimit)"
+					   @bind="_maxConcurrentJobs" @bind:after="SaveAsync" />
+			</div>
+		</div>
+		<div class="form-text mt-0">
+			Each in its own session and a different project. Raise it if your plan takes several sessions at once.
+			@(CanEditJobLimit ? null : "Only an admin can change this.")
+		</div>
+
 		<div>
 			<a href="/providers" class="btn-link text-decoration-none px-0">More settings for @Provider.Name</a>
 		</div>
@@ -84,7 +98,12 @@
 	[Parameter]
 	public ProviderUsageSummary? Summary { get; set; }
 
+	/// <summary>Whether the signed-in user may change how many jobs the provider runs at once (admins).</summary>
+	[Parameter]
+	public bool CanEditJobLimit { get; set; }
+
 	private int? _sessionPercent;
+	private int? _maxConcurrentJobs;
 	private int? _longWindowPercent;
 	private int? _monthlyRequests;
 	private Guid _loadedProviderId;
@@ -129,7 +148,11 @@
 
 	private int LongWindowThreshold => SessionLimitPolicy.ResolvePauseThreshold(Provider.WeeklyLimitPauseThresholdPercent);
 
-	private string? Subtitle
+	private string? Subtitle => Provider.MaxConcurrentJobs > 1
+		? string.Join(" · ", new[] { LimitSubtitle, $"{Provider.MaxConcurrentJobs} jobs at once" }.Where(part => part != null))
+		: LimitSubtitle;
+
+	private string? LimitSubtitle
 	{
 		get
 		{
@@ -189,6 +212,7 @@
 		_sessionPercent = SessionThreshold;
 		_longWindowPercent = LongWindowThreshold;
 		_monthlyRequests = Provider.ConfiguredUsageLimit;
+		_maxConcurrentJobs = Provider.MaxConcurrentJobs;
 	}
 
 	private async Task SaveAsync()
@@ -197,10 +221,15 @@
 		{
 			var saved = await ProviderService.UpdateUsageLimitsAsync(
 				Provider.Id,
-				new ProviderUsageLimits(_sessionPercent, _longWindowPercent, IsMonthlyRequestPlan ? _monthlyRequests : Provider.ConfiguredUsageLimit));
+				new ProviderUsageLimits(
+					_sessionPercent,
+					_longWindowPercent,
+					IsMonthlyRequestPlan ? _monthlyRequests : Provider.ConfiguredUsageLimit,
+					CanEditJobLimit ? _maxConcurrentJobs : null));
 			Provider.SessionLimitPauseThresholdPercent = saved.SessionLimitPauseThresholdPercent;
 			Provider.WeeklyLimitPauseThresholdPercent = saved.WeeklyLimitPauseThresholdPercent;
 			Provider.ConfiguredUsageLimit = saved.ConfiguredUsageLimit;
+			Provider.MaxConcurrentJobs = saved.MaxConcurrentJobs;
 		}
 		catch (Exception ex)
 		{
@@ -211,6 +240,7 @@
 		_sessionPercent = SessionThreshold;
 		_longWindowPercent = LongWindowThreshold;
 		_monthlyRequests = Provider.ConfiguredUsageLimit;
+		_maxConcurrentJobs = Provider.MaxConcurrentJobs;
 	}
 
 	private string DescribeWindow(UsageLimitWindow window) => window.Scope switch

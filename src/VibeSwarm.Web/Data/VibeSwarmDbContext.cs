@@ -83,6 +83,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.DefaultReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.AdvisorModel).HasMaxLength(ValidationLimits.ProviderAdvisorModelMaxLength);
 			entity.Property(e => e.ConfiguredLimitType).HasConversion<string>();
+			entity.Property(e => e.MaxConcurrentJobs).HasDefaultValue(JobConcurrency.DefaultJobsPerProvider);
 			entity.HasIndex(e => e.Name).IsUnique();
 		});
 
@@ -552,6 +553,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.JobQueuePausedReason).HasMaxLength(ValidationLimits.JobQueuePausedReasonMaxLength);
 			entity.Property(e => e.CriticalErrorLogRetentionDays).HasDefaultValue(global::VibeSwarm.Shared.Data.AppSettings.DefaultCriticalErrorLogRetentionDays);
 			entity.Property(e => e.CriticalErrorLogMaxEntries).HasDefaultValue(global::VibeSwarm.Shared.Data.AppSettings.DefaultCriticalErrorLogMaxEntries);
+			entity.Property(e => e.MaxConcurrentJobs).HasDefaultValue(JobConcurrency.DefaultTotalJobs);
 			entity.Property(e => e.IdeaExpansionPromptTemplate).HasMaxLength(ValidationLimits.IdeaPromptTemplateMaxLength);
 			entity.Property(e => e.IdeaImplementationPromptTemplate).HasMaxLength(ValidationLimits.IdeaPromptTemplateMaxLength);
 			entity.Property(e => e.ApprovedIdeaImplementationPromptTemplate).HasMaxLength(ValidationLimits.IdeaPromptTemplateMaxLength);

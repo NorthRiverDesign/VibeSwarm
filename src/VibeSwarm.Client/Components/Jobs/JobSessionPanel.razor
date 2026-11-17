@@ -773,6 +773,8 @@
                 _ => " completes."
             }),
             JobQueueWaitReason.WaitingOnDependency => ("Waiting for an earlier job to complete.", string.Empty),
+            JobQueueWaitReason.ProjectBusy when hasBlocker && status.BlockingProjectSharesFolder => ("Waiting for ",
+                $" in {status.BlockingProjectName ?? "another project"}{blockerState ?? " to finish"}. That project works in the same folder, so they take turns."),
             JobQueueWaitReason.ProjectBusy when hasBlocker => ("Waiting for ", blockerState != null
                 ? $" in this project{blockerState}."
                 : " to finish in this project."),
@@ -781,6 +783,9 @@
                 (string.IsNullOrWhiteSpace(status.BlockingProjectName) ? string.Empty : $" in {status.BlockingProjectName}")
                     + (blockerState ?? string.Empty) + "."),
             JobQueueWaitReason.ProviderBusy => ($"Waiting for {provider} to finish another job.", string.Empty),
+            JobQueueWaitReason.AllSlotsBusy => (status.MaxConcurrentJobs is int limit
+                ? $"Waiting for a free slot: {limit} {(limit == 1 ? "job is" : "jobs are")} running, as many as Settings allows at once."
+                : "Waiting for a free slot: as many jobs are running as Settings allows at once.", string.Empty),
             _ when status.JobsAhead > 0 => ("Waiting for the jobs ahead of it to start.", string.Empty),
             _ => ("Starting shortly.", string.Empty)
         };

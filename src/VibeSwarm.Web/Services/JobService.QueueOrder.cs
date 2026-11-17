@@ -10,7 +10,7 @@ namespace VibeSwarm.Shared.Services;
 /// <summary>
 /// A queued job's place in the queue: why it has not started yet, and moving it to the front.
 /// The queue starts jobs by priority (highest first), then oldest first, one at a time per
-/// project and per provider (see <see cref="GetPendingJobsAsync"/>).
+/// project, up to each provider's job limit and the total limit (see <see cref="GetPendingJobsAsync"/>).
 /// </summary>
 public partial class JobService
 {
@@ -70,6 +70,7 @@ public partial class JobService
 				j.ProjectId,
 				j.ProviderId,
 				ProviderName = j.Provider != null ? j.Provider.Name : null,
+				ProviderLimit = j.Provider != null ? j.Provider.MaxConcurrentJobs : JobConcurrency.DefaultJobsPerProvider,
 				j.SwarmId,
 				j.Priority,
 				j.CreatedAt,
@@ -95,11 +96,12 @@ public partial class JobService
 				|| (hasProvider && j.ProviderId == job.ProviderId))
 			.CountAsync(cancellationToken);
 
-		var queuePaused = await _dbContext.AppSettings
+		var queueSettings = await _dbContext.AppSettings
 			.AsNoTracking()
-			.Select(settings => (bool?)settings.JobQueuePaused)
-			.FirstOrDefaultAsync(cancellationToken) ?? false;
-		if (queuePaused)
+			.OrderBy(settings => settings.Id)
+			.Select(settings => new { settings.JobQueuePaused, settings.MaxConcurrentJobs })
+			.FirstOrDefaultAsync(cancellationToken);
+		if (queueSettings?.JobQueuePaused == true)
 		{
 			status.Reason = JobQueueWaitReason.QueuePaused;
 			return status;
@@ -130,44 +132,65 @@ public partial class JobService
 			return status;
 		}
 
+		// Projects sharing this one's folder take turns with it as if they were one project.
+		var checkoutProjects = (await ProjectCheckouts.LoadAsync(_dbContext, cancellationToken)).ProjectsSharing(job.ProjectId);
 		var slotHolders = _dbContext.Jobs.Where(HoldsSlot).Where(j => j.Id != id);
 		var projectHolders = await slotHolders
-			.Where(j => j.ProjectId == job.ProjectId)
+			.Where(j => checkoutProjects.Contains(j.ProjectId))
 			.Select(j => new { j.SwarmId })
 			.ToListAsync(cancellationToken);
 		var projectSlots = new ProjectJobSlots(projectHolders.Select(holder => (job.ProjectId, holder.SwarmId)));
 		if (!projectSlots.CanStart(job.ProjectId, job.SwarmId))
 		{
 			status.Reason = JobQueueWaitReason.ProjectBusy;
-			ApplyBlocker(status, await GetQueueBlockerAsync(
-				slotHolders.Where(j => j.ProjectId == job.ProjectId && (job.SwarmId == null || j.SwarmId != job.SwarmId)),
-				cancellationToken));
+			var projectBlocker = await GetQueueBlockerAsync(
+				slotHolders.Where(j => checkoutProjects.Contains(j.ProjectId) && (job.SwarmId == null || j.SwarmId != job.SwarmId)),
+				cancellationToken);
+			ApplyBlocker(status, projectBlocker);
+			status.BlockingProjectSharesFolder = projectBlocker != null && projectBlocker.ProjectId != job.ProjectId;
 			return status;
 		}
 
 		if (hasProvider)
 		{
-			var providerBlocker = await GetQueueBlockerAsync(slotHolders.Where(j => j.ProviderId == job.ProviderId), cancellationToken);
-			if (providerBlocker != null)
+			var providerHolders = slotHolders.Where(j => j.ProviderId == job.ProviderId);
+			if (await providerHolders.CountAsync(cancellationToken) >= JobConcurrency.Normalize(job.ProviderLimit))
 			{
 				status.Reason = JobQueueWaitReason.ProviderBusy;
-				ApplyBlocker(status, providerBlocker);
+				ApplyBlocker(status, await GetQueueBlockerAsync(providerHolders, cancellationToken));
 				return status;
 			}
+		}
+
+		// The worker counts the jobs it has a task for, including one waiting for a reply; a
+		// stalled job holds its project and provider, but no longer one of these slots.
+		var maxConcurrentJobs = JobConcurrency.Normalize(queueSettings?.MaxConcurrentJobs ?? JobConcurrency.DefaultTotalJobs);
+		var runningJobs = await _dbContext.Jobs
+			.Where(j => j.Id != id)
+			.CountAsync(j => j.Status == JobStatus.Pending
+				|| j.Status == JobStatus.Started
+				|| j.Status == JobStatus.Planning
+				|| j.Status == JobStatus.Processing
+				|| j.Status == JobStatus.Paused, cancellationToken);
+		if (runningJobs >= maxConcurrentJobs)
+		{
+			status.Reason = JobQueueWaitReason.AllSlotsBusy;
+			status.MaxConcurrentJobs = maxConcurrentJobs;
+			return status;
 		}
 
 		status.Reason = JobQueueWaitReason.StartingSoon;
 		return status;
 	}
 
-	private sealed record QueueBlocker(Guid Id, string? Title, string GoalPrompt, string? ProjectName, JobStatus Status);
+	private sealed record QueueBlocker(Guid Id, Guid ProjectId, string? Title, string GoalPrompt, string? ProjectName, JobStatus Status);
 
 	private static async Task<QueueBlocker?> GetQueueBlockerAsync(IQueryable<Job> candidates, CancellationToken cancellationToken)
 	{
 		return await candidates
 			.AsNoTracking()
 			.OrderBy(j => j.StartedAt ?? j.CreatedAt)
-			.Select(j => new QueueBlocker(j.Id, j.Title, j.GoalPrompt, j.Project != null ? j.Project.Name : null, j.Status))
+			.Select(j => new QueueBlocker(j.Id, j.ProjectId, j.Title, j.GoalPrompt, j.Project != null ? j.Project.Name : null, j.Status))
 			.FirstOrDefaultAsync(cancellationToken);
 	}
 

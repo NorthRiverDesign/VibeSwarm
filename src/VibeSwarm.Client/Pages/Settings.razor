@@ -98,6 +98,19 @@ else
 		<section class="d-flex flex-column gap-3" aria-label="Unattended jobs">
 			<SectionHeader Title="Unattended jobs" />
 			<div class="list-group rounded-9">
+				<ListRow Icon="stack" Title="Jobs at once" Subtitle="@JobsAtOnceSubtitle">
+					<div>
+						<label for="maxConcurrentJobs" class="form-label">Jobs that run at the same time, across projects</label>
+						<input type="number" id="maxConcurrentJobs" class="form-control"
+							   min="@JobConcurrency.MinJobs" max="@JobConcurrency.MaxJobs" disabled="@(!_isAdmin)"
+							   @bind="_maxConcurrentJobs" @bind:after="SaveMaxConcurrentJobsAsync" />
+						<div class="form-text">
+							A project still runs one job at a time, so two sessions never work in the same checkout.
+							Each provider also has its own limit, under Usage limits.
+							@(_isAdmin ? null : "Only an admin can change these.")
+						</div>
+					</div>
+				</ListRow>
 				<SwitchRow Id="inferenceAnswersAgentQuestions" Icon="chat-left-dots" Title="Answer agents' questions"
 						   Subtitle="@AgentAnswerSubtitle" AttentionLine="@AgentAnswerAttention"
 						   @bind-Value="_settings.InferenceAnswersAgentQuestions" @bind-Value:after="SaveAsync" />
@@ -138,7 +151,8 @@ else
 				{
 					@foreach (var provider in _providers)
 					{
-						<UsageLimitRow @key="provider.Id" Provider="provider" Summary="@_usageSummaries.GetValueOrDefault(provider.Id)" />
+						<UsageLimitRow @key="provider.Id" Provider="provider" Summary="@_usageSummaries.GetValueOrDefault(provider.Id)"
+									   CanEditJobLimit="_isAdmin" />
 					}
 				}
 			</div>
@@ -262,8 +276,14 @@ else
 <ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="OnProjectsImported" />
 
 @code {
+	[CascadingParameter]
+	private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
 	private AppSettings _settings = new();
 	private bool _isLoading = true;
+	private bool _isAdmin;
+	// Kept apart from _settings so a value out of range never rides along with other saves.
+	private int? _maxConcurrentJobs;
 	private IReadOnlyList<TimeZoneOption> _timeZoneOptions = [];
 	private IReadOnlyList<(InferenceProvider Provider, InferenceModel Model)> _answerCandidates = [];
 	private List<Provider>? _providers;
@@ -303,6 +323,10 @@ else
 		}
 	}
 
+	private string JobsAtOnceSubtitle => _settings.MaxConcurrentJobs == 1
+		? "One job at a time"
+		: $"Up to {_settings.MaxConcurrentJobs} projects at a time";
+
 	private string? AgentAnswerAttention => _settings.InferenceAnswersAgentQuestions && _answerCandidates.Count == 0
 		? "Needs an inference provider with a default model"
 		: null;
@@ -331,6 +355,8 @@ else
 	{
 		_timeZoneOptions = AppTimeZoneService.GetTimeZoneOptions();
 		await AppTimeZoneService.EnsureInitializedAsync();
+		_isAdmin = AuthenticationStateTask != null
+			&& (await AuthenticationStateTask).User.IsInRole(UserRoles.Admin);
 		await LoadSettingsAsync();
 		_isLoading = false;
 		await LoadSummariesAsync();
@@ -342,6 +368,7 @@ else
 		{
 			_settings = await SettingsService.GetSettingsAsync();
 			_settings.TimeZoneId = DateTimeHelper.ResolveTimeZone(_settings.TimeZoneId).Id;
+			_maxConcurrentJobs = _settings.MaxConcurrentJobs;
 			_timeZoneOptions = AppTimeZoneService.GetTimeZoneOptions(_settings.TimeZoneId);
 			_developerModeStatus = await DeveloperModeService.GetStatusAsync();
 			await CheckDirectoryExists();
@@ -413,6 +440,25 @@ else
 			await LoadSettingsAsync();
 			StateHasChanged();
 		}
+	}
+
+	private async Task SaveMaxConcurrentJobsAsync()
+	{
+		if (_maxConcurrentJobs is int maxConcurrentJobs && maxConcurrentJobs != _settings.MaxConcurrentJobs)
+		{
+			try
+			{
+				var saved = await SettingsService.UpdateMaxConcurrentJobsAsync(maxConcurrentJobs);
+				_settings.MaxConcurrentJobs = saved.MaxConcurrentJobs;
+			}
+			catch (Exception ex)
+			{
+				NotificationService.ShowError($"Couldn't change how many jobs run at once: {ex.Message}");
+			}
+		}
+
+		// Show what was kept: the server clamps it to the allowed range.
+		_maxConcurrentJobs = _settings.MaxConcurrentJobs;
 	}
 
 	private async Task SaveProjectsDirectoryAsync()

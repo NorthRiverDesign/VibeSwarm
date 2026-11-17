@@ -17,7 +17,7 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.20")
+                .HasAnnotation("ProductVersion", "9.0.23")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
@@ -311,6 +311,11 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<string>("JobQueuePausedReason")
                         .HasMaxLength(300)
                         .HasColumnType("varchar(300)");
+
+                    b.Property<int>("MaxConcurrentJobs")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(5);
 
                     b.Property<string>("TimeZoneId")
                         .IsRequired()
@@ -2410,6 +2415,11 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
                     b.Property<DateTime?>("LastModelsRefreshAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<int>("MaxConcurrentJobs")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
 
                     b.Property<int?>("MaxExecutionMinutes")
                         .HasColumnType("int");

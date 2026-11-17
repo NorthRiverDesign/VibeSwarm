@@ -10,9 +10,16 @@ public interface ISettingsService
 	Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default);
 
 	/// <summary>
-	/// Updates the application settings.
+	/// Updates the application settings, except <see cref="AppSettings.MaxConcurrentJobs"/>, which
+	/// only admins change through <see cref="UpdateMaxConcurrentJobsAsync"/>.
 	/// </summary>
 	Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Sets how many jobs run at once across all projects, clamped to
+	/// <see cref="JobConcurrency.MinJobs"/>–<see cref="JobConcurrency.MaxJobs"/>. Admins only.
+	/// </summary>
+	Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default);
 
 	/// <summary>
 	/// Gets the default projects directory, if configured.

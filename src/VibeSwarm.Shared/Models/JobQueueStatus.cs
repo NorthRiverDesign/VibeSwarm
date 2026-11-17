@@ -16,6 +16,12 @@ public sealed class JobQueueStatus
 
 	public string? BlockingProjectName { get; set; }
 
+	/// <summary>
+	/// The blocking job is in another project that works in the same folder as this one (or one
+	/// inside it), so the two take turns.
+	/// </summary>
+	public bool BlockingProjectSharesFolder { get; set; }
+
 	public JobStatus? BlockingJobStatus { get; set; }
 
 	/// <summary>The provider this job will run on.</summary>
@@ -23,6 +29,9 @@ public sealed class JobQueueStatus
 
 	/// <summary>When a timed hold or an edit hold lapses.</summary>
 	public DateTime? WaitUntilUtc { get; set; }
+
+	/// <summary>How many jobs may run at once, when that is what the job waits on.</summary>
+	public int? MaxConcurrentJobs { get; set; }
 
 	/// <summary>
 	/// Queued jobs that will start before this one because they share its project or provider
@@ -48,6 +57,13 @@ public enum JobQueueWaitReason
 	ProjectEditHold,
 	/// <summary>Another job is using the project's checkout.</summary>
 	ProjectBusy,
-	/// <summary>The provider is busy with a job, usually in another project.</summary>
-	ProviderBusy
+	/// <summary>
+	/// The provider is running as many jobs as it may (one, unless an admin raised its limit),
+	/// usually in other projects.
+	/// </summary>
+	ProviderBusy,
+	/// <summary>
+	/// As many jobs are running as Settings allows at once (<see cref="JobQueueStatus.MaxConcurrentJobs"/>).
+	/// </summary>
+	AllSlotsBusy
 }

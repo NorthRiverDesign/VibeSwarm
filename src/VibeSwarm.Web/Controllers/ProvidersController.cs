@@ -78,6 +78,12 @@ public class ProvidersController : ControllerBase
     [HttpPut("{id:guid}/usage-limits")]
     public async Task<IActionResult> UpdateUsageLimits(Guid id, [FromBody] ProviderUsageLimits limits, CancellationToken ct)
     {
+        // How many jobs a provider runs at once is an admin's call; the thresholds are anyone's.
+        if (limits.MaxConcurrentJobs.HasValue && !User.IsInRole(UserRoles.Admin))
+        {
+            return Forbid();
+        }
+
         try
         {
             return Ok(await _providerService.UpdateUsageLimitsAsync(id, limits, ct));

@@ -215,6 +215,7 @@ public sealed class AutoPilotPanelTests
 		public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) =>
 			Task.FromResult(new AppSettings { InferenceAnswersAgentQuestions = inferenceAnswersQuestions });
 
+		public Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}

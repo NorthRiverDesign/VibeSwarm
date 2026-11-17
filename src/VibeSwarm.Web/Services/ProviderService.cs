@@ -50,6 +50,8 @@ public class ProviderService : IProviderService
     {
         NormalizeProvider(provider);
         provider.Id = Guid.NewGuid();
+        // Only admins raise it, through UpdateUsageLimitsAsync.
+        provider.MaxConcurrentJobs = JobConcurrency.DefaultJobsPerProvider;
         provider.CreatedAt = DateTime.UtcNow;
 
         _dbContext.Providers.Add(provider);
@@ -98,6 +100,10 @@ public class ProviderService : IProviderService
         existing.SessionLimitPauseThresholdPercent = NormalizePauseThreshold(limits.SessionPausePercent);
         existing.WeeklyLimitPauseThresholdPercent = NormalizePauseThreshold(limits.WeeklyPausePercent);
         existing.ConfiguredUsageLimit = limits.ConfiguredUsageLimit is > 0 ? limits.ConfiguredUsageLimit : null;
+        if (limits.MaxConcurrentJobs is int maxConcurrentJobs)
+        {
+            existing.MaxConcurrentJobs = JobConcurrency.Normalize(maxConcurrentJobs);
+        }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 

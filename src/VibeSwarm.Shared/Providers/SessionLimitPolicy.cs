@@ -51,15 +51,19 @@ public static class SessionLimitPolicy
 	/// A session holds jobs once its usage reaches <paramref name="pauseThresholdPercent"/>, or
 	/// earlier (from half used) when one more typical job would use up what is left. A daily,
 	/// weekly or monthly limit holds them once it reaches <paramref name="longWindowPauseThresholdPercent"/>.
-	/// When several windows hold, jobs wait for the one that resets last.
+	/// When several windows hold, jobs wait for the one that resets last. Jobs already running on
+	/// the provider (<paramref name="otherRunningJobs"/>) keep drawing on the same session while
+	/// the next one runs, so each counts as one more typical job.
 	/// </summary>
 	public static SessionLimitHold? Evaluate(
 		IEnumerable<UsageLimitWindow>? windows,
 		int pauseThresholdPercent,
 		int? expectedJobUsagePercent,
 		DateTime utcNow,
-		int longWindowPauseThresholdPercent = DefaultPauseThresholdPercent)
+		int longWindowPauseThresholdPercent = DefaultPauseThresholdPercent,
+		int otherRunningJobs = 0)
 	{
+		var jobsDrawing = Math.Max(otherRunningJobs, 0) + 1;
 		SessionLimitHold? hold = null;
 		foreach (var window in windows ?? [])
 		{
@@ -101,7 +105,7 @@ public static class SessionLimitPolicy
 			var nextJobWouldReachLimit = expectedJobUsagePercent is int expected
 				&& expected > 0
 				&& used >= MinPauseThresholdPercent
-				&& used + expected >= 100;
+				&& used + expected * jobsDrawing >= 100;
 			if (used < pauseThresholdPercent && !nextJobWouldReachLimit)
 			{
 				continue;
@@ -109,7 +113,7 @@ public static class SessionLimitPolicy
 
 			if (hold == null || resetTime > hold.Until)
 			{
-				hold = new SessionLimitHold(resetTime, used, pauseThresholdPercent, expectedJobUsagePercent);
+				hold = new SessionLimitHold(resetTime, used, pauseThresholdPercent, expectedJobUsagePercent, OtherRunningJobs: jobsDrawing - 1);
 			}
 		}
 
@@ -179,7 +183,8 @@ public sealed record SessionLimitHold(
 	int PercentUsed,
 	int PauseThresholdPercent,
 	int? ExpectedJobUsagePercent,
-	UsageLimitWindowScope Scope = UsageLimitWindowScope.Session)
+	UsageLimitWindowScope Scope = UsageLimitWindowScope.Session,
+	int OtherRunningJobs = 0)
 {
 	public bool NextJobWouldReachLimit => PercentUsed < PauseThresholdPercent;
 
@@ -194,6 +199,7 @@ public sealed record SessionLimitHold(
 		};
 		var reason = NextJobWouldReachLimit
 			? $"{providerName}'s {window} is {PercentUsed}% used and a job typically uses about {ExpectedJobUsagePercent}%"
+				+ (OtherRunningJobs > 0 ? $", with {OtherRunningJobs} more running" : string.Empty)
 			: $"{providerName}'s {window} is {PercentUsed}% used (pause threshold {PauseThresholdPercent}%)";
 
 		return $"{reason}. Waiting for the {window} to reset at {Until:u}.";
@@ -201,8 +207,9 @@ public sealed record SessionLimitHold(
 }
 
 /// <summary>
-/// When jobs on a provider stop to protect its usage. A null threshold uses
-/// <see cref="SessionLimitPolicy.DefaultPauseThresholdPercent"/>; a null or zero
-/// <see cref="ConfiguredUsageLimit"/> sets no monthly request limit.
+/// When jobs on a provider stop to protect its usage, and how many it runs at once. A null
+/// threshold uses <see cref="SessionLimitPolicy.DefaultPauseThresholdPercent"/>; a null or zero
+/// <see cref="ConfiguredUsageLimit"/> sets no monthly request limit. A null
+/// <see cref="MaxConcurrentJobs"/> leaves the provider's job limit as it is; only admins may set it.
 /// </summary>
-public sealed record ProviderUsageLimits(int? SessionPausePercent, int? WeeklyPausePercent, int? ConfiguredUsageLimit);
+public sealed record ProviderUsageLimits(int? SessionPausePercent, int? WeeklyPausePercent, int? ConfiguredUsageLimit, int? MaxConcurrentJobs = null);

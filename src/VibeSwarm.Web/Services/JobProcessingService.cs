@@ -53,7 +53,9 @@ public partial class JobProcessingService : BackgroundService
     private readonly ReleaseBranchGit? _releaseGit;
     private readonly SwarmWorktrees? _swarmWorktrees;
     private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(3); // Poll less frequently, SignalR handles real-time updates
-    private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
+    // Jobs running at once across projects (AppSettings.MaxConcurrentJobs), read on every
+    // dispatch; this keeps the last value read for when the database can't be reached.
+    private int _maxConcurrentJobs = JobConcurrency.DefaultTotalJobs;
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
     // Read by job pages without _jobsLock, which is held while jobs are being started.
     private readonly ConcurrentDictionary<Guid, JobLiveOutputTail> _liveOutputs = new();
@@ -472,16 +474,22 @@ public partial class JobProcessingService : BackgroundService
     /// <summary>Set once while paused so a stopped queue does not fill the log.</summary>
     private bool _queuePauseLogged;
 
-    private static async Task<bool> IsQueuePausedAsync(IServiceProvider services, CancellationToken cancellationToken)
+    /// <summary>
+    /// Reads the queue's stop switch, and refreshes <see cref="_maxConcurrentJobs"/> so a change
+    /// in Settings applies on the next dispatch.
+    /// </summary>
+    private async Task<bool> ReadQueueSettingsAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
         try
         {
             var dbContext = services.GetRequiredService<VibeSwarmDbContext>();
             var settings = await dbContext.AppSettings
                 .AsNoTracking()
-                .Select(appSettings => new { appSettings.JobQueuePaused })
+                .OrderBy(appSettings => appSettings.Id)
+                .Select(appSettings => new { appSettings.JobQueuePaused, appSettings.MaxConcurrentJobs })
                 .FirstOrDefaultAsync(cancellationToken);
 
+            _maxConcurrentJobs = JobConcurrency.Normalize(settings?.MaxConcurrentJobs ?? JobConcurrency.DefaultTotalJobs);
             return settings?.JobQueuePaused ?? false;
         }
         catch
@@ -497,6 +505,12 @@ public partial class JobProcessingService : BackgroundService
         await _jobsLock.WaitAsync(stoppingToken);
         try
         {
+            using var scope = _scopeFactory.CreateScope();
+
+            // The stop switch and the job limit. Checked on every dispatch rather than cached,
+            // so pausing from a phone takes effect on the next poll instead of the next restart.
+            var queuePaused = await ReadQueueSettingsAsync(scope.ServiceProvider, stoppingToken);
+
             // Check how many slots are available
             var availableSlots = _maxConcurrentJobs - _runningJobs.Count;
             if (availableSlots <= 0)
@@ -504,11 +518,7 @@ public partial class JobProcessingService : BackgroundService
                 return; // All slots are filled
             }
 
-            using var scope = _scopeFactory.CreateScope();
-
-            // The stop switch. Checked on every dispatch rather than cached, so pausing
-            // from a phone takes effect on the next poll instead of the next restart.
-            if (await IsQueuePausedAsync(scope.ServiceProvider, stoppingToken))
+            if (queuePaused)
             {
                 if (!_queuePauseLogged)
                 {
@@ -534,15 +544,24 @@ public partial class JobProcessingService : BackgroundService
 
             var runningJobs = _runningJobs.Values
                 .Where(running => !running.Task.IsCompleted)
-                .Select(running => (running.ProjectId, running.SwarmId));
-            var jobsToStart = SelectJobsToStart(pendingJobs, runningJobs, availableSlots);
+                .Select(running => (running.ProjectId, running.SwarmId, running.ProviderId));
+            var checkouts = await ProjectCheckouts.LoadAsync(scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>(), stoppingToken);
+            var jobsToStart = SelectJobsToStart(pendingJobs, runningJobs, availableSlots, checkouts);
             foreach (var job in jobsToStart)
             {
                 if (stoppingToken.IsCancellationRequested)
                     break;
 
                 var jobCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                var context = new JobExecutionContext { CancellationTokenSource = jobCts, ProjectId = job.ProjectId, SwarmId = job.SwarmId };
+                // The provider is set now, not when the task claims the job, so the next dispatch
+                // already counts this job against its provider's limit.
+                var context = new JobExecutionContext
+                {
+                    CancellationTokenSource = jobCts,
+                    ProjectId = job.ProjectId,
+                    SwarmId = job.SwarmId,
+                    ProviderId = job.ProviderId
+                };
                 _liveOutputs[job.Id] = context.LiveOutput;
 
                 // Start job processing in background
@@ -569,25 +588,34 @@ public partial class JobProcessingService : BackgroundService
     }
 
     /// <summary>
-    /// Picks which pending jobs to launch, at most one per project (members of one swarm excepted),
-    /// skipping projects this worker still has a job task running for. The database lags the task
-    /// at both ends: a dispatched job only shows as running once its task claims it, and a cancel
-    /// can mark it finished while the task is still in the checkout. The live tasks are the authority.
+    /// Picks which pending jobs to launch, at most one per project or shared checkout (members of
+    /// one swarm excepted) and no more per provider than its job limit, counting the job tasks this worker still has
+    /// running. The database lags the task at both ends: a dispatched job only shows as running
+    /// once its task claims it, and a cancel can mark it finished while the task is still in the
+    /// checkout. The live tasks are the authority.
     /// </summary>
-    internal static List<Job> SelectJobsToStart(IEnumerable<Job> pendingJobs, IEnumerable<(Guid ProjectId, Guid? SwarmId)> runningJobs, int availableSlots)
+    internal static List<Job> SelectJobsToStart(
+        IEnumerable<Job> pendingJobs,
+        IEnumerable<(Guid ProjectId, Guid? SwarmId, Guid ProviderId)> runningJobs,
+        int availableSlots,
+        ProjectCheckouts? checkouts = null)
     {
-        var projectSlots = new ProjectJobSlots(runningJobs);
+        var candidates = pendingJobs.ToList();
+        var running = runningJobs.ToList();
+        var projectSlots = new ProjectJobSlots(running.Select(job => (job.ProjectId, job.SwarmId)), checkouts);
+        var providerSlots = new ProviderJobSlots(running.Select(job => job.ProviderId), ProviderJobSlots.LimitsOf(candidates));
         var jobsToStart = new List<Job>();
-        foreach (var job in pendingJobs)
+        foreach (var job in candidates)
         {
             if (jobsToStart.Count >= availableSlots)
             {
                 break;
             }
 
-            if (projectSlots.CanStart(job.ProjectId, job.SwarmId))
+            if (projectSlots.CanStart(job.ProjectId, job.SwarmId) && providerSlots.CanStart(job.ProviderId))
             {
                 projectSlots.Take(job.ProjectId, job.SwarmId);
+                providerSlots.Take(job.ProviderId);
                 jobsToStart.Add(job);
             }
         }

@@ -107,6 +107,15 @@ public class AppSettings
 	public DateTime? JobQueuePausedAt { get; set; }
 
 	/// <summary>
+	/// How many jobs run at once across all projects. Each project still runs one job at a time,
+	/// and each provider at most its own <see cref="Providers.Provider.MaxConcurrentJobs"/>.
+	/// Only admins change it (<c>PUT api/settings/max-concurrent-jobs</c>);
+	/// <see cref="Services.ISettingsService.UpdateSettingsAsync"/> leaves it alone.
+	/// </summary>
+	[Range(JobConcurrency.MinJobs, JobConcurrency.MaxJobs)]
+	public int MaxConcurrentJobs { get; set; } = JobConcurrency.DefaultTotalJobs;
+
+	/// <summary>
 	/// Optional GitHub personal access token used when querying the skills marketplace.
 	/// Anonymous requests are limited to 60/hour; an unscoped read-only token raises that
 	/// to 5000/hour. The token is only used for outbound requests to <c>api.github.com</c>

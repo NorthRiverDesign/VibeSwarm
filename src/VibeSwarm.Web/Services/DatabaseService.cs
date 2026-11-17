@@ -75,6 +75,7 @@ public class DatabaseService : IDatabaseService
 				InferenceAnswersAgentQuestions = settings.InferenceAnswersAgentQuestions,
 				CriticalErrorLogRetentionDays = settings.CriticalErrorLogRetentionDays,
 				CriticalErrorLogMaxEntries = settings.CriticalErrorLogMaxEntries,
+				MaxConcurrentJobs = settings.MaxConcurrentJobs,
 			},
 			Projects = projects.Select(p => new ProjectExportDto
 			{
@@ -424,6 +425,7 @@ public class DatabaseService : IDatabaseService
 					InferenceAnswersAgentQuestions = export.Settings.InferenceAnswersAgentQuestions,
 					CriticalErrorLogRetentionDays = export.Settings.CriticalErrorLogRetentionDays,
 					CriticalErrorLogMaxEntries = export.Settings.CriticalErrorLogMaxEntries,
+					MaxConcurrentJobs = JobConcurrency.Normalize(export.Settings.MaxConcurrentJobs),
 					UpdatedAt = DateTime.UtcNow,
 				});
 				await _db.SaveChangesAsync(ct);

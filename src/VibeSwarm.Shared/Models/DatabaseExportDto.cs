@@ -26,6 +26,7 @@ public class AppSettingsExportDto
 	public bool InferenceAnswersAgentQuestions { get; set; } = true;
 	public int CriticalErrorLogRetentionDays { get; set; } = AppSettings.DefaultCriticalErrorLogRetentionDays;
 	public int CriticalErrorLogMaxEntries { get; set; } = AppSettings.DefaultCriticalErrorLogMaxEntries;
+	public int MaxConcurrentJobs { get; set; } = JobConcurrency.DefaultTotalJobs;
 }
 
 public class ProjectExportDto

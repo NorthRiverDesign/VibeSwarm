@@ -189,6 +189,7 @@ public class SettingsService : ISettingsService
 				EnableCommitAttribution = true,
 				CriticalErrorLogRetentionDays = AppSettings.DefaultCriticalErrorLogRetentionDays,
 				CriticalErrorLogMaxEntries = AppSettings.DefaultCriticalErrorLogMaxEntries,
+				MaxConcurrentJobs = JobConcurrency.DefaultTotalJobs,
 				IdeaExpansionPromptTemplate = PromptBuilder.DefaultIdeaExpansionPromptTemplate,
 				IdeaImplementationPromptTemplate = PromptBuilder.DefaultIdeaImplementationPromptTemplate,
 				ApprovedIdeaImplementationPromptTemplate = PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
@@ -203,6 +204,7 @@ public class SettingsService : ISettingsService
 			var normalizedTimeZoneId = NormalizeTimeZoneId(settings.TimeZoneId);
 			var normalizedRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			var normalizedMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
+			var normalizedMaxConcurrentJobs = JobConcurrency.Normalize(settings.MaxConcurrentJobs);
 			var normalizedIdeaExpansionPromptTemplate = NormalizePromptTemplate(
 				settings.IdeaExpansionPromptTemplate,
 				PromptBuilder.DefaultIdeaExpansionPromptTemplate,
@@ -223,6 +225,7 @@ public class SettingsService : ISettingsService
 			if (!string.Equals(settings.TimeZoneId, normalizedTimeZoneId, StringComparison.Ordinal) ||
 				settings.CriticalErrorLogRetentionDays != normalizedRetentionDays ||
 				settings.CriticalErrorLogMaxEntries != normalizedMaxEntries ||
+				settings.MaxConcurrentJobs != normalizedMaxConcurrentJobs ||
 				!string.Equals(settings.IdeaExpansionPromptTemplate, normalizedIdeaExpansionPromptTemplate, StringComparison.Ordinal) ||
 				!string.Equals(settings.IdeaImplementationPromptTemplate, normalizedIdeaImplementationPromptTemplate, StringComparison.Ordinal) ||
 				!string.Equals(settings.ApprovedIdeaImplementationPromptTemplate, normalizedApprovedIdeaImplementationPromptTemplate, StringComparison.Ordinal))
@@ -230,6 +233,7 @@ public class SettingsService : ISettingsService
 				settings.TimeZoneId = normalizedTimeZoneId;
 				settings.CriticalErrorLogRetentionDays = normalizedRetentionDays;
 				settings.CriticalErrorLogMaxEntries = normalizedMaxEntries;
+				settings.MaxConcurrentJobs = normalizedMaxConcurrentJobs;
 				settings.IdeaExpansionPromptTemplate = normalizedIdeaExpansionPromptTemplate;
 				settings.IdeaImplementationPromptTemplate = normalizedIdeaImplementationPromptTemplate;
 				settings.ApprovedIdeaImplementationPromptTemplate = normalizedApprovedIdeaImplementationPromptTemplate;
@@ -252,6 +256,8 @@ public class SettingsService : ISettingsService
 			settings.TimeZoneId = NormalizeTimeZoneId(settings.TimeZoneId);
 			settings.CriticalErrorLogRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			settings.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
+			// Only admins change it, through UpdateMaxConcurrentJobsAsync.
+			settings.MaxConcurrentJobs = JobConcurrency.DefaultTotalJobs;
 			settings.IdeaExpansionPromptTemplate = NormalizePromptTemplate(
 				settings.IdeaExpansionPromptTemplate,
 				PromptBuilder.DefaultIdeaExpansionPromptTemplate,
@@ -309,6 +315,16 @@ public class SettingsService : ISettingsService
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
 		return existing ?? settings;
+	}
+
+	public async Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default)
+	{
+		var settings = await GetSettingsAsync(cancellationToken);
+		settings.MaxConcurrentJobs = JobConcurrency.Normalize(maxConcurrentJobs);
+		settings.UpdatedAt = DateTime.UtcNow;
+		await _dbContext.SaveChangesAsync(cancellationToken);
+
+		return settings;
 	}
 
 	public async Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default)
