@@ -1,0 +1,345 @@
+@* The installed version and the newest release on GitHub, with one-click install for copies set up by
+   install.sh. Installing waits for running jobs, restarts through the launcher (which rolls back a
+   version that fails to start), then reloads the page into the new version. The update service is
+   resolved lazily so pages rendered without it (tests) still render. *@
+@inject IServiceProvider Services
+@inject NotificationService NotificationService
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@if (_updates != null && _status != null)
+{
+	<section class="d-flex flex-column gap-3" aria-label="Updates">
+		<SectionHeader Title="Updates" />
+		<div class="list-group rounded-9">
+			<ListRow Icon="arrow-up-circle" Title="Software update" Subtitle="@Subtitle" AttentionLine="@AttentionLine"
+					 InitiallyExpanded="@(_status.IsBusy || _status.Stage == AppUpdateStage.Failed)">
+				<Trailing>
+					@if (_status.IsBusy || _isChecking)
+					{
+						<span class="spinner-border spinner-sm fg-2 flex-shrink-0" role="status" aria-label="Working"></span>
+					}
+					else if (_status.IsUpdateAvailable)
+					{
+						<span class="badge theme-primary flex-shrink-0">New</span>
+					}
+				</Trailing>
+				<ChildContent>
+					<dl class="d-flex flex-column gap-3 small mb-0">
+						<div class="d-flex justify-content-between gap-5">
+							<dt class="fw-normal fg-1 flex-shrink-0">Installed</dt>
+							<dd class="mb-0 text-end min-w-0 text-break">@InstalledLabel</dd>
+						</div>
+						@if (_status.LatestRelease is { } latest)
+						{
+							<div class="d-flex justify-content-between gap-5">
+								<dt class="fw-normal fg-1 flex-shrink-0">Newest release</dt>
+								<dd class="mb-0 text-end min-w-0 text-break">
+									@if (!string.IsNullOrWhiteSpace(latest.HtmlUrl))
+									{
+										<a href="@latest.HtmlUrl" target="_blank" rel="noopener noreferrer">@latest.Version</a>
+									}
+									else
+									{
+										@latest.Version
+									}
+									@if (latest.IsPrerelease)
+									{
+										<span class="badge badge-subtle theme-warning ms-1">Pre-release</span>
+									}
+								</dd>
+							</div>
+						}
+						<div class="d-flex justify-content-between gap-5">
+							<dt class="fw-normal fg-1 flex-shrink-0">Checked</dt>
+							<dd class="mb-0 text-end min-w-0">@(_status.LastCheckedAtUtc?.FormatRelativeToNow() ?? "Not yet")</dd>
+						</div>
+						<div class="d-flex justify-content-between gap-5">
+							<dt class="fw-normal fg-1 flex-shrink-0">Installed by</dt>
+							<dd class="mb-0 text-end min-w-0">@(_status.InstallKind == AppInstallKind.Managed ? "Installer, one-click updates" : "Hand, updates by hand")</dd>
+						</div>
+					</dl>
+
+					@if (_status.LastResult is { } result)
+					{
+						<div class="small @(result.Succeeded ? "fg-1" : "fg-emphasis-warning")">
+							<i class="bi @(result.Succeeded ? "bi-check-circle fg-success" : "bi-arrow-counterclockwise") me-1"></i>@result.Message
+							@if (result.AtUtc is DateTime at)
+							{
+								<span class="fg-2"> · @at.FormatRelativeToNow()</span>
+							}
+						</div>
+					}
+
+					@if (_status.IsBusy)
+					{
+						<div class="d-flex flex-column gap-3" role="status">
+							<div class="small fw-medium">@_status.StageMessage</div>
+							@if (_status.Stage == AppUpdateStage.Downloading)
+							{
+								<div class="progress progress-sm" role="progressbar" aria-label="Download" aria-valuenow="@(_status.ProgressPercent ?? 0)"
+									 aria-valuemin="0" aria-valuemax="100">
+									<div class="progress-bar" style="width: @(_status.ProgressPercent ?? 0)%"></div>
+								</div>
+							}
+							@if (_status.Stage == AppUpdateStage.Restarting)
+							{
+								<div class="small fg-1">The page reloads once the new version is serving. If it doesn't start, the launcher puts this version back.</div>
+							}
+						</div>
+					}
+					else if (_status.Stage == AppUpdateStage.Failed && !string.IsNullOrWhiteSpace(_status.StageMessage))
+					{
+						<div class="small fg-danger">@_status.StageMessage</div>
+					}
+
+					@if (!string.IsNullOrWhiteSpace(_status.CheckMessage))
+					{
+						<div class="small fg-1">@_status.CheckMessage</div>
+					}
+
+					@if (_status.InstallKind == AppInstallKind.Managed)
+					{
+						<div class="small fg-1">
+							Updating pauses the queue and waits for running jobs to finish. Settings and the database are kept@(_status.DatabaseBackedUp ? ", the database is backed up first," : string.Empty)
+							and if the new version doesn't start, the previous one comes back by itself.
+						</div>
+						@if (!_status.DatabaseBackedUp)
+						{
+							<div class="small fg-emphasis-warning">
+								Back up your MySQL database before updating: a rollback restores the app, not the database.
+							</div>
+						}
+					}
+					else if (!string.IsNullOrWhiteSpace(_status.InstallUnavailableReason))
+					{
+						<div class="small fg-1">
+							@_status.InstallUnavailableReason
+							<a href="@ReleasesUrl" target="_blank" rel="noopener noreferrer">Releases</a>
+						</div>
+					}
+
+					<div class="d-flex flex-column sm:flex-row gap-3">
+						@if (_status.IsBusy && _status.Stage != AppUpdateStage.Restarting)
+						{
+							<button type="button" class="btn-outline theme-secondary" @onclick="CancelAsync">Cancel update</button>
+						}
+						else if (!_status.IsBusy)
+						{
+							<button type="button" class="btn-solid theme-secondary" @onclick="CheckAsync" disabled="@_isChecking">
+								<i class="bi bi-arrow-clockwise"></i>Check now
+							</button>
+							@if (_status.CanInstall && _status.LatestRelease is { } release)
+							{
+								<button type="button" class="btn-solid theme-primary" @onclick="() => _showConfirm = true">
+									<i class="bi bi-download"></i>Update to @release.Version
+								</button>
+							}
+						}
+					</div>
+				</ChildContent>
+			</ListRow>
+		</div>
+	</section>
+
+	<ConfirmationModal @bind-IsVisible="_showConfirm" Title="@($"Update to {_status.LatestRelease?.Version}?")"
+					   Message="@($"{AppBranding.Name} pauses the queue, waits for running jobs to finish, then restarts into the new version.")"
+					   SubMessage="If it doesn't start, the current version and its database come back by themselves."
+					   ConfirmText="Update" ButtonClass="btn-solid theme-primary" IsProcessing="_isStarting"
+					   OnConfirm="StartAsync" OnCancel="() => _showConfirm = false" />
+}
+
+@code {
+	private IAppUpdateService? _updates;
+	private AppUpdateStatus? _status;
+	private bool _isChecking;
+	private bool _isStarting;
+	private bool _showConfirm;
+	private string? _instanceAtStart;
+	private CancellationTokenSource? _polling;
+
+	private string ReleasesUrl => $"https://github.com/{(_status?.Repository is { Length: > 0 } repo ? repo : AppBranding.ReleaseRepository)}/releases";
+
+	private string InstalledLabel => _status!.IsReleaseBuild
+		? _status.CurrentVersion
+		: "Built from source";
+
+	private string? Subtitle
+	{
+		get
+		{
+			var status = _status!;
+			if (status.IsBusy) return status.StageMessage;
+			if (status.IsUpdateAvailable) return null;
+			if (!status.IsReleaseBuild)
+			{
+				return status.LatestRelease is { } latest
+					? $"Built from source · newest release {latest.Version}"
+					: "Built from source";
+			}
+
+			if (status.LatestRelease != null) return $"{status.CurrentVersion} · up to date";
+			return status.CheckMessage is { Length: > 0 } message ? $"{status.CurrentVersion} · {message}" : status.CurrentVersion;
+		}
+	}
+
+	private string? AttentionLine
+	{
+		get
+		{
+			var status = _status!;
+			if (status.IsBusy) return null;
+			if (status.Stage == AppUpdateStage.Failed) return "The update stopped";
+			if (status.LastResult is { Succeeded: false } result && result.AtUtc > DateTime.UtcNow.AddDays(-1)) return $"{result.ToVersion} didn't start, so {result.FromVersion} was restored";
+			return status.IsUpdateAvailable ? $"{status.LatestRelease!.Version} is available" : null;
+		}
+	}
+
+	protected override async Task OnInitializedAsync()
+	{
+		_updates = Services.GetService<IAppUpdateService>();
+		if (_updates == null)
+		{
+			return;
+		}
+
+		try
+		{
+			_status = await _updates.GetStatusAsync();
+		}
+		catch
+		{
+			_updates = null;
+			return;
+		}
+
+		if (_status.IsBusy)
+		{
+			StartPolling();
+		}
+		else if (_status.LastCheckedAtUtc == null)
+		{
+			_ = CheckAsync();
+		}
+	}
+
+	private async Task CheckAsync()
+	{
+		if (_updates == null || _isChecking) return;
+		_isChecking = true;
+		StateHasChanged();
+		try
+		{
+			_status = await _updates.CheckNowAsync();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Couldn't check for updates: {ex.Message}");
+		}
+		finally
+		{
+			_isChecking = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task StartAsync()
+	{
+		if (_updates == null) return;
+		_isStarting = true;
+		try
+		{
+			_status = await _updates.StartUpdateAsync();
+			_showConfirm = false;
+			if (_status.Stage == AppUpdateStage.Failed && !string.IsNullOrWhiteSpace(_status.StageMessage))
+			{
+				NotificationService.ShowError(_status.StageMessage);
+			}
+			else
+			{
+				StartPolling();
+			}
+		}
+		catch (Exception ex)
+		{
+			_showConfirm = false;
+			NotificationService.ShowError($"Couldn't start the update: {ex.Message}");
+		}
+		finally
+		{
+			_isStarting = false;
+		}
+	}
+
+	private async Task CancelAsync()
+	{
+		if (_updates == null) return;
+		try
+		{
+			_status = await _updates.CancelUpdateAsync();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Couldn't cancel the update: {ex.Message}");
+		}
+	}
+
+	private void StartPolling()
+	{
+		if (_polling != null) return;
+		// The server restarts straight after it reports Restarting, so a poll can miss that stage:
+		// any other instance answering means the restart happened.
+		_instanceAtStart ??= _status?.ServerInstanceId;
+		_polling = new CancellationTokenSource();
+		_ = PollAsync(_polling.Token);
+	}
+
+	// Polls while the update runs and through the restart: requests fail while the app is down, and
+	// a new instance id means the app restarted (into the new version, or rolled back), so the page
+	// reloads to load that version's client.
+	private async Task PollAsync(CancellationToken cancellationToken)
+	{
+		try
+		{
+			while (!cancellationToken.IsCancellationRequested)
+			{
+				await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+				AppUpdateStatus next;
+				try
+				{
+					next = await _updates!.GetStatusAsync(cancellationToken);
+				}
+				catch (Exception ex) when (ex is not OperationCanceledException)
+				{
+					continue;
+				}
+
+				if (!string.IsNullOrEmpty(_instanceAtStart) && next.ServerInstanceId != _instanceAtStart)
+				{
+					Navigation.Refresh(forceReload: true);
+					return;
+				}
+
+				_status = next;
+				await InvokeAsync(StateHasChanged);
+				if (!next.IsBusy)
+				{
+					break;
+				}
+			}
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		finally
+		{
+			_polling?.Dispose();
+			_polling = null;
+		}
+	}
+
+	public void Dispose()
+	{
+		_polling?.Cancel();
+	}
+}

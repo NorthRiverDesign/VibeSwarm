@@ -13,9 +13,35 @@
 			</span>
 		</div>
 		<div class="list-group-item d-flex justify-content-between gap-5 small">
+			<span class="fg-1 flex-shrink-0">Version</span>
+			<span class="text-end text-break">@VersionLabel</span>
+		</div>
+		<div class="list-group-item d-flex justify-content-between gap-5 small">
 			<span class="fg-1 flex-shrink-0">Runtime</span>
 			<span class="text-end text-break">@System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription</span>
 		</div>
 	</div>
 	<ToolDetectionCard />
 </div>
+
+@code {
+	// The client is built with the server, so its stamped version is the app's: "1.4.0+3f2a9c1" for a
+	// release, "0.0.0-dev+3f2a9c1" for a build from source.
+	private static string VersionLabel
+	{
+		get
+		{
+			var informational = typeof(App).Assembly
+				.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+				.OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+				.FirstOrDefault()?.InformationalVersion ?? "unknown";
+			var plus = informational.IndexOf('+');
+			var version = plus >= 0 ? informational[..plus] : informational;
+			var commit = plus >= 0 ? informational[(plus + 1)..] : null;
+			if (commit is { Length: > 7 }) commit = commit[..7];
+			return version.EndsWith("-dev", StringComparison.Ordinal)
+				? commit is null ? "Built from source" : $"Built from source ({commit})"
+				: version;
+		}
+	}
+}

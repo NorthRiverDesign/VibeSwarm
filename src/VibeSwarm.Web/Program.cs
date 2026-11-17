@@ -12,6 +12,7 @@ using VibeSwarm.Web.Endpoints;
 using VibeSwarm.Web.Hubs;
 using VibeSwarm.Web.Middleware;
 using VibeSwarm.Web.Services;
+using VibeSwarm.Web.Services.Updates;
 
 // Load environment variables from .env file (if it exists)
 // Walk up from the current directory and base directory to find .env at the repo root
@@ -43,8 +44,11 @@ var builder = WebApplication.CreateBuilder(args);
 var runtimeDatabaseConfigurationStore = new DatabaseRuntimeConfigurationStore();
 var runtimeDatabaseConfiguration = runtimeDatabaseConfigurationStore.Load();
 
-// Self-signed certificate for HTTPS, generated only when HTTPS is turned on in Settings
-var certPath = Path.Combine(AppContext.BaseDirectory, "vibeswarm.pfx");
+// Self-signed certificate for HTTPS, generated only when HTTPS is turned on in Settings. An install
+// made by install.sh keeps it in its data folder, so updates (a new app folder each) don't replace it.
+var installDataDirectory = InstallLayout.TryResolve(
+    builder.Configuration["Updates:InstallRoot"], AppContext.BaseDirectory, out _)?.DataDirectory;
+var certPath = Path.Combine(installDataDirectory ?? AppContext.BaseDirectory, "vibeswarm.pfx");
 var certPassword = "vibeswarm-dev-cert";
 
 // Configure Kestrel HTTPS defaults with the self-signed certificate.
@@ -161,6 +165,19 @@ builder.Services.AddWorkerServices();
 builder.Services.AddVibeSwarmData(connectionString, databaseProvider);
 builder.Services.AddSingleton<ISystemCommandRunner, SystemCommandRunner>();
 builder.Services.AddSingleton<IDeveloperModeService, DeveloperUpdateService>();
+builder.Services.Configure<UpdateOptions>(
+    builder.Configuration.GetSection(UpdateOptions.SectionName));
+builder.Services.AddHttpClient(GitHubReleaseClient.HttpClientName, (sp, client) =>
+{
+    client.BaseAddress = new Uri(sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<UpdateOptions>>().Value.ApiBaseUrl);
+    GitHubReleaseClient.ConfigureClient(client);
+});
+builder.Services.AddSingleton<IGitHubReleaseClient, GitHubReleaseClient>();
+builder.Services.AddSingleton<IInstalledRuntimeProvider, DotnetInstalledRuntimeProvider>();
+builder.Services.AddSingleton<IReleasePackageStager, ReleasePackageStager>();
+builder.Services.AddSingleton(sp => ActivatorUtilities.CreateInstance<AppUpdateService>(sp));
+builder.Services.AddSingleton<IAppUpdateService>(sp => sp.GetRequiredService<AppUpdateService>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<AppUpdateService>());
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
 {

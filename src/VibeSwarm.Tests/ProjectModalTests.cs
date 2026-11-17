@@ -396,8 +396,13 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 			cut.Find("#modal-githubRepo").Input(repository[..length]);
 		}
 
-		Assert.Equal("hello-world", cut.Find("#modal-name").GetAttribute("value"));
-		Assert.Equal("/tmp/projects/hello-world", cut.Find("#modal-workingPath").GetAttribute("value"));
+		// A synchronous Input() only queues the event while the renderer is busy (such as with a
+		// folder inspection after its debounce), so wait for the last keystroke to be handled.
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Equal("hello-world", cut.Find("#modal-name").GetAttribute("value"));
+			Assert.Equal("/tmp/projects/hello-world", cut.Find("#modal-workingPath").GetAttribute("value"));
+		}, WaitTimeout);
 	}
 
 	[Fact]

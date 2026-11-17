@@ -51,6 +51,7 @@ builder.Services.AddScoped<ISettingsService, HttpSettingsService>();
 builder.Services.AddScoped<IPushNotificationService, HttpPushNotificationService>();
 builder.Services.AddScoped<IJobQueueControlService, HttpJobQueueControlService>();
 builder.Services.AddScoped<IDeveloperModeService, HttpDeveloperModeService>();
+builder.Services.AddScoped<IAppUpdateService, HttpAppUpdateService>();
 builder.Services.AddScoped<ICriticalErrorLogService, HttpCriticalErrorLogService>();
 builder.Services.AddScoped<IIdeaService, HttpIdeaService>();
 builder.Services.AddScoped<IUserService, HttpUserService>();

@@ -1,5 +1,8 @@
 name: Release
 
+# Push a tag such as v1.2.0 (or v1.3.0-beta.1 for a pre-release) to publish a release. Installs
+# made by install.sh find it from Settings > Updates and install it with one click.
+
 on:
   workflow_dispatch:
   push:
@@ -8,6 +11,10 @@ on:
 
 permissions:
   contents: write
+
+env:
+  # Keep in step with AppBranding.PackageId and install.sh's APP_ID.
+  APP_ID: vibeswarm
 
 jobs:
   publish:
@@ -22,36 +29,65 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Version from tag
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME isn't a version such as v1.2.0 or v1.3.0-beta.1"
+              exit 1
+            fi
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            # A manual run builds an unstamped package to try out; it is never offered as an update.
+            echo "version=0.0.0-dev" >> "$GITHUB_OUTPUT"
+            echo "tag=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Restore
         run: dotnet restore VibeSwarm.sln --nologo
 
       - name: Build
-        run: dotnet build VibeSwarm.sln --configuration Release --no-restore --nologo -warnaserror
+        run: dotnet build VibeSwarm.sln --configuration Release --no-restore --nologo -warnaserror -p:Version=${{ steps.version.outputs.version }}
 
       - name: Test
         run: dotnet test VibeSwarm.sln --configuration Release --no-build --nologo
 
       - name: Publish portable app
-        run: dotnet publish src/VibeSwarm.Web/VibeSwarm.Web.csproj --configuration Release --no-build -o artifacts/vibeswarm /p:UseAppHost=false
+        run: dotnet publish src/VibeSwarm.Web/VibeSwarm.Web.csproj --configuration Release --no-build -o "artifacts/$APP_ID" /p:UseAppHost=false -p:Version=${{ steps.version.outputs.version }}
 
       - name: Copy example configuration
-        run: cp src/VibeSwarm.Web/.env.example artifacts/vibeswarm/.env.example
+        run: cp src/VibeSwarm.Web/.env.example "artifacts/$APP_ID/.env.example"
 
-      - name: Create release archive
+      - name: Create release archives
         run: |
-          archive_name="vibeswarm-${GITHUB_REF_NAME//\//-}"
+          name="$APP_ID-${{ steps.version.outputs.tag }}"
           cd artifacts
-          zip -r "${archive_name}.zip" vibeswarm
+          # Linux and macOS (install.sh and the in-app updater use this one).
+          tar -czf "$name.tar.gz" "$APP_ID"
+          # Windows.
+          zip -qr "$name.zip" "$APP_ID"
+          sha256sum "$name.tar.gz" "$name.zip" > SHA256SUMS
+          cat SHA256SUMS
 
-      - name: Upload release archive
+      - name: Upload release archives
         uses: actions/upload-artifact@v4
         with:
-          name: vibeswarm-release
-          path: artifacts/*.zip
+          name: ${{ env.APP_ID }}-release
+          path: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/SHA256SUMS
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.zip
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/SHA256SUMS
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
