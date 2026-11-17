@@ -18,9 +18,9 @@ VibeSwarm is an agentic CI/CD system for turning ideas into application code. It
 
 | Agent          | CLI Command | Verified against | Minimum | Install                                           |
 | -------------- | ----------- | ---------------- | ------- | ------------------------------------------------- |
-| Claude Code    | `claude`    | 2.1.322          | 2.0.0   | [claude.ai/code](https://claude.ai/code)          |
-| OpenCode       | `opencode`  | 1.18.31          | 1.0.0   | [opencode.ai](https://opencode.ai)                |
-| GitHub Copilot | `copilot`   | 1.0.86           | 1.0.0   | [copilot CLI](https://docs.github.com/en/copilot) |
+| Claude Code    | `claude`    | 2.1.326          | 2.0.0   | [claude.ai/code](https://claude.ai/code)          |
+| OpenCode       | `opencode`  | 2.3.0            | 1.0.0   | [opencode.ai](https://opencode.ai)                |
+| GitHub Copilot | `copilot`   | 1.0.112          | 1.0.0   | [copilot CLI](https://docs.github.com/en/copilot) |
 
 Agents are **auto-detected** at startup. If a supported CLI tool is on your PATH, VibeSwarm registers it as a provider automatically.
 
@@ -28,7 +28,7 @@ Agents are **auto-detected** at startup. If a supported CLI tool is on your PATH
 
 These CLIs change fast. `ProviderVersionReference` (in `src/VibeSwarm.Shared/Providers/`) is the
 single source of truth for the release each integration was built and verified against — last
-reviewed **2026-11-11**. Newer CLI features are version-gated, so an older CLI keeps working
+reviewed **2026-11-17**. Newer CLI features are version-gated, so an older CLI keeps working
 with those features switched off rather than failing.
 
 At startup VibeSwarm compares each detected CLI against this reference and logs the result:

@@ -509,6 +509,16 @@ public sealed class JobSessionPanelTests
 				{
 					Content = """{"type":"session.error","data":{"errorType":"model","message":"Model not available"},"id":"a7"}""",
 					Timestamp = timestamp
+				},
+				new()
+				{
+					Content = """{"type":"session.warning","data":{"warningType":"folder_not_trusted","message":"Skipped workspace MCP servers (.mcp.json)"},"ephemeral":true,"id":"a8"}""",
+					Timestamp = timestamp
+				},
+				new()
+				{
+					Content = """{"type":"session.mcp_server_status_changed","data":{"serverName":"db","status":"failed","error":"exit code 1","configSource":"workspace"},"ephemeral":true,"id":"a9"}""",
+					Timestamp = timestamp
 				}
 			}
 		});
@@ -517,6 +527,8 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("dotnet test", html);
 		Assert.Contains("exit code 1", html);
 		Assert.Contains("Model not available", html);
+		Assert.Contains("Skipped workspace MCP servers (.mcp.json)", html);
+		Assert.Contains("MCP server db failed to start: exit code 1", html);
 		Assert.DoesNotContain("The composed prompt sent to the provider.", html);
 		Assert.DoesNotContain("call_live_1", html);
 		Assert.DoesNotContain("deltaContent", html);

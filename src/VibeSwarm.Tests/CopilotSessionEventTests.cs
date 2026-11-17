@@ -74,6 +74,55 @@ public sealed class CopilotSessionEventTests
 		Assert.Contains(result.Messages, m => m.Role == "system" && m.Content.Contains("Model not available"));
 	}
 
+	[Fact]
+	public void SessionStart_ReportsTheSessionAndModelBeforeTheResultRecord()
+	{
+		// From a real 1.0.112 run (git context trimmed).
+		var (result, _) = Replay(
+			"""{"type":"session.start","data":{"sessionId":"fccffd4b-cbbf-4cbc-a76a-cc11467a69dc","version":1,"producer":"copilot-agent","copilotVersion":"1.0.112","startTime":"2026-11-17T14:15:36.559Z","selectedModel":"gpt-5-mini","contextTier":null,"alreadyInUse":false,"remoteSteerable":false},"id":"40524f09-8c25-4b0a-8a12-cf14f2109213","timestamp":"2026-11-17T14:15:36.598Z","parentId":null}""");
+
+		Assert.Equal("fccffd4b-cbbf-4cbc-a76a-cc11467a69dc", result.SessionId);
+		Assert.Equal("gpt-5-mini", result.ModelUsed);
+	}
+
+	[Fact]
+	public void ModelChange_ReplacesTheModelTheSessionOpenedOn()
+	{
+		var (result, _) = Replay(
+			"""{"type":"session.resume","data":{"resumeTime":"2026-11-17T10:00:00.000Z","eventCount":12,"selectedModel":"gpt-5-mini"},"id":"r1"}""",
+			"""{"type":"session.model_change","data":{"previousModel":"gpt-5-mini","newModel":"claude-sonnet-5.5"},"id":"r2"}""");
+
+		Assert.Equal("claude-sonnet-5.5", result.ModelUsed);
+	}
+
+	[Fact]
+	public void SessionWarning_IsKeptAsASystemMessage()
+	{
+		// From a real 1.0.112 run in a folder missing from trustedFolders, without COPILOT_ALLOW_ALL.
+		var (result, _) = Replay(
+			"""{"type":"session.warning","data":{"warningType":"folder_not_trusted","message":"Skipped workspace MCP servers (.mcp.json) because the folder \"/tmp/repo\" is not trusted. To load them without approving all tools, add the folder to \"trustedFolders\" in /home/pi/.copilot/config.json. COPILOT_ALLOW_ALL=true also trusts it, but approves all tools."},"ephemeral":true,"id":"5c0cd815"}""");
+
+		var warning = Assert.Single(result.Messages);
+		Assert.Equal("system", warning.Role);
+		Assert.StartsWith("[Warning] Skipped workspace MCP servers (.mcp.json)", warning.Content);
+		Assert.Null(result.ErrorMessage);
+	}
+
+	[Fact]
+	public void FailedMcpServer_IsKeptAsAWarningButStartingOneIsNot()
+	{
+		// From a real 1.0.112 run whose .mcp.json names a server that exits at once.
+		var (result, _) = Replay(
+			"""{"type":"session.mcp_server_status_changed","data":{"serverName":"vsdummy","status":"pending"},"ephemeral":true,"id":"359f1e1e"}""",
+			"""{"type":"session.mcp_server_status_changed","data":{"serverName":"vsdummy","status":"failed","error":"MCP server process exited before completing the MCP initialize handshake (exit code 1)","errorClassification":"process_linux_exited","configSource":"workspace"},"ephemeral":true,"id":"478337b3"}""");
+
+		var warning = Assert.Single(result.Messages);
+		Assert.Equal(
+			"[Warning] MCP server vsdummy failed to start: MCP server process exited before completing the MCP initialize handshake (exit code 1)",
+			warning.Content);
+		Assert.Null(result.ErrorMessage);
+	}
+
 	private static (ExecutionResult Result, StringBuilder CurrentMessage) Replay(params string[] lines)
 	{
 		var provider = new CopilotProvider(new Provider

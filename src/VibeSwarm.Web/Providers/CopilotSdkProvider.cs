@@ -241,6 +241,14 @@ public class CopilotSdkProvider : SdkProviderBase
 		config.WorkingDirectory = workingDirectory;
 		ApplyByokConfig(config);
 
+		// Trust the checkout for this session only, so its .mcp.json servers and hooks load
+		// even when the folder is missing from the user's trustedFolders. The SDK offers this
+		// on new sessions only.
+		if (config is SessionConfig newSession)
+		{
+			newSession.TrustWorkingDirectory = WorkingDirectoryTrust.Session;
+		}
+
 		if (!string.IsNullOrEmpty(CurrentReasoningEffort))
 		{
 			config.ReasoningEffort = CurrentReasoningEffort;

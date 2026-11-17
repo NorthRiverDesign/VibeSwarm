@@ -44,6 +44,18 @@ public sealed class CopilotSdkProviderTests
 	}
 
 	[Fact]
+	public void ApplyRunSettings_TrustsTheCheckoutForANewSessionOnly()
+	{
+		var provider = new CopilotSdkProvider(CreateConfig());
+		provider.ApplyOptions(new ExecutionOptions());
+		var config = new SessionConfig();
+
+		provider.ApplyRunSettings(config, "/repo");
+
+		Assert.Equal(WorkingDirectoryTrust.Session, config.TrustWorkingDirectory);
+	}
+
+	[Fact]
 	public void ApplyResumeSessionDefaults_SetsApproveAllPermissionHandler()
 	{
 		var config = new ResumeSessionConfig();
