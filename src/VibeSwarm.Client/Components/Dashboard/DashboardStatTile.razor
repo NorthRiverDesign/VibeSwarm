@@ -1,0 +1,45 @@
+@* One number in the dashboard's top strip: a label, the figure, an optional small graphic
+   (a sparkline or a meter) and one quiet line of context. *@
+
+<div class="h-100 d-flex flex-column gap-3 p-5 border rounded-9 min-w-0">
+	<span class="text-eyebrow text-truncate">@Label</span>
+	<span class="d-flex align-items-baseline gap-3 min-w-0">
+		<span class="text-title fw-bold tabular-nums @ValueClass">@Value</span>
+		@if (!string.IsNullOrWhiteSpace(Unit))
+		{
+			<span class="small fg-2 text-truncate">@Unit</span>
+		}
+	</span>
+	@ChildContent
+	<span class="small fg-1 text-truncate mt-auto" title="@Note @Alert">
+		@Note
+		@if (!string.IsNullOrWhiteSpace(Alert))
+		{
+			<span class="fg-danger fw-semibold">@Alert</span>
+		}
+	</span>
+</div>
+
+@code {
+	[Parameter]
+	public string Label { get; set; } = string.Empty;
+
+	[Parameter]
+	public string Value { get; set; } = string.Empty;
+
+	[Parameter]
+	public string? ValueClass { get; set; }
+
+	[Parameter]
+	public string? Unit { get; set; }
+
+	[Parameter]
+	public string? Note { get; set; }
+
+	/// <summary>Trails the note in red, such as "2 failed".</summary>
+	[Parameter]
+	public string? Alert { get; set; }
+
+	[Parameter]
+	public RenderFragment? ChildContent { get; set; }
+}

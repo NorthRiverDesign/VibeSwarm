@@ -376,6 +376,77 @@ public sealed class DashboardPageTests
 		Assert.DoesNotContain("Refresh usage", cut.Markup);
 	}
 
+	[Fact]
+	public async Task Dashboard_ShowsTheSuccessRate_AndCallsOutFailures()
+	{
+		var startUtc = DateTime.UtcNow.Date.AddDays(-6);
+		var projectService = new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))])
+		{
+			Metrics = new DashboardJobMetrics
+			{
+				RangeDays = 7,
+				TotalCompletedJobs = 19,
+				TotalFailedJobs = 1,
+				AverageDurationSeconds = 1394,
+				Buckets = Enumerable.Range(0, 7)
+					.Select(day => new DashboardJobMetricsBucket
+					{
+						BucketStartUtc = startUtc.AddDays(day),
+						CompletedJobs = day switch { 0 => 9, 5 => 7, 6 => 3, _ => 0 },
+						FailedJobs = day == 5 ? 1 : 0
+					})
+					.ToList()
+			}
+		};
+
+		// The renderer encodes · and —, so read the page as text.
+		var html = WebUtility.HtmlDecode(await RenderDashboardPageAsync(projectService, new FakeProviderService([])));
+
+		Assert.Contains("aria-label=\"At a glance\"", html);
+		Assert.Contains("Success · 7 days", html);
+		// 19 of 20 rounds down to 95%: a failure never shows as 100%.
+		Assert.Contains(">95%<", html);
+		Assert.Contains(">1 failed<", html);
+		Assert.Contains("7 completed jobs · 1 failed", html);
+		Assert.Contains("bg-data-danger", html);
+	}
+
+	[Fact]
+	public async Task Dashboard_SaysItIsIdle_WhenNothingRunsOrWaits()
+	{
+		var html = WebUtility.HtmlDecode(await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))], []),
+			new FakeProviderService([])));
+
+		Assert.Contains(">Idle<", html);
+		Assert.Contains("Nothing waiting", html);
+		Assert.Contains("No jobs finished in the last 7 days", html);
+		Assert.Contains(">—<", html);
+		Assert.DoesNotContain("aria-label=\"Running now\"", html);
+	}
+
+	[Fact]
+	public async Task Dashboard_ShowsTheFullestUsageWindow_InTheNumberStrip()
+	{
+		var claude = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = true };
+		var copilot = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = true };
+		var usage = new Dictionary<Guid, ProviderUsageSummary>
+		{
+			[claude.Id] = new() { ProviderId = claude.Id, LimitType = UsageLimitType.SessionLimit, CurrentUsage = 82, MaxUsage = 100, LimitResetTime = DateTime.UtcNow.AddMinutes(90) },
+			[copilot.Id] = new() { ProviderId = copilot.Id, LimitType = UsageLimitType.PremiumRequests, CurrentUsage = 30, MaxUsage = 1500, LimitResetTime = DateTime.UtcNow.AddDays(12) }
+		};
+
+		var html = WebUtility.HtmlDecode(await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha")], []),
+			new FakeProviderService([claude, copilot]),
+			usageSummaries: usage));
+
+		Assert.Contains(">82%<", html);
+		Assert.Contains("Claude · resets in 1h", html);
+		Assert.Contains("progress-bar bg-data-warning", html);
+		Assert.Contains("Providers OK", html);
+	}
+
 	private static BunitContext CreateInteractiveContext(IReadOnlyList<Provider> providers, UsageRefreshHandler handler)
 	{
 		var context = new BunitContext();
@@ -530,8 +601,10 @@ public sealed class DashboardPageTests
 		public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
 		public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default)
 			=> Task.FromResult<IEnumerable<DashboardProjectInfo>>(_dashboardProjects.Take(count));
+		public DashboardJobMetrics? Metrics { get; init; }
+
 		public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default)
-			=> Task.FromResult(new DashboardJobMetrics
+			=> Task.FromResult(Metrics ?? new DashboardJobMetrics
 			{
 				RangeDays = rangeDays,
 				Buckets = []

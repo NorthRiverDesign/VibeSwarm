@@ -1,163 +1,265 @@
 @inject IProviderService ProviderService
 @inject ICommonProviderSetupService CommonProviderSetupService
 @inject IProjectService ProjectService
-@inject IVersionControlService VersionControlService
 @inject HttpProviderService HttpProviderService
 @inject NavigationManager NavigationManager
 @inject IIdeaService IdeaService
 @implements IAsyncDisposable
+@using System.Globalization
 @using System.Threading
 
-<PageHeader Title="Dashboard" Subtitle="What is running right now, and where your projects stand." />
+@* A command centre: a status line and four numbers, then what is running, the idea queue and
+   job analytics, with projects and providers beside them on a wide screen (section 15 of
+   site.css). The sections keep one order, so a phone shows the same page as one column. *@
 
-<div class="d-flex flex-column gap-7">
-    @if (RunningDashboardJobs.Any())
-    {
-        <DashboardRunningJobsSection Items="@RunningDashboardJobs" />
-    }
-
-    @if (IdeasStatus is not null &&
-        (IdeasStatus.TotalQueueIdeas > 0 || IdeasStatus.ProjectsCurrentlyProcessing > 0))
-    {
-        <section class="d-flex flex-column gap-3" aria-label="Ideas">
-            <SectionHeader Title="Ideas">
-                <Actions>
-                    @if (IdeasStatus.ProjectsCurrentlyProcessing > 0)
-                    {
-                        <button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0"
-                                disabled="@IsStoppingAll" @onclick="OnStopAllProcessing">
-                            <i class="bi bi-stop-fill"></i>@(IsStoppingAll ? "Stopping..." : "Stop all")
-                        </button>
-                    }
-                    else if (IdeasStatus.TotalUnprocessedIdeas > 0 && !IsStartingAll)
-                    {
-                        <button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="() => ShowStartAllModal = true">
-                            <i class="bi bi-play-fill"></i>Start all
-                        </button>
-                    }
-                </Actions>
-            </SectionHeader>
-
-            @if (StartAllError is not null)
-            {
-                <Alert Type="Alert.AlertType.Danger" Dismissible="true" OnDismiss="() => StartAllError = null">
-                    @StartAllError
-                </Alert>
-            }
-
-            <div class="list-group rounded-9">
-                @foreach (var project in IdeasStatus.Projects.Where(p => p.TotalQueueIdeas > 0 || p.IsProcessing))
+<div class="dashboard d-flex flex-column gap-7">
+    <header class="d-flex flex-column gap-1">
+        <h1 class="mb-0">Dashboard</h1>
+        @if (!IsLoading)
+        {
+            <p class="d-flex flex-wrap align-items-center gap-3 small fg-1 mb-0">
+                @if (RunningDashboardJobs.Count > 0)
                 {
-                    <ListRow @key="project.ProjectId" Icon="lightbulb" Title="@project.ProjectName"
-                             Subtitle="@($"{project.TotalQueueIdeas} idea{(project.TotalQueueIdeas != 1 ? "s" : "")} left")"
-                             Href="@($"/projects/{project.ProjectId}")">
-                        <Trailing>
-                            @if (project.HasRunningJob)
-                            {
-                                <span class="small fg-success flex-shrink-0 d-inline-flex align-items-center gap-1"><span class="live-dot"></span>Running</span>
-                            }
-                            else if (project.IsProcessing || project.QueuedIdeas > 0)
-                            {
-                                <span class="small fg-1 flex-shrink-0">Queued</span>
-                            }
-                            else
-                            {
-                                <span class="small fg-2 flex-shrink-0">Waiting</span>
-                            }
-                        </Trailing>
-                    </ListRow>
+                    <span class="live-dot"></span>
+                    <span class="fg-success fw-semibold">@RunningDashboardJobs.Count running</span>
                 }
+                else
+                {
+                    <span class="fw-semibold">Idle</span>
+                }
+                @foreach (var part in GetStatusParts())
+                {
+                    <span class="fg-2" aria-hidden="true">·</span>
+                    <span class="@part.CssClass">@part.Text</span>
+                }
+            </p>
+        }
+    </header>
+
+    @if (!IsLoading)
+    {
+        var usage = BusiestLimit;
+
+        <section class="row g-3" aria-label="At a glance">
+            <div class="col-6 xl:col-3">
+                <DashboardStatTile Label="Running" Value="@RunningDashboardJobs.Count.ToString(CultureInfo.InvariantCulture)"
+                                   Unit="@Pluralize(RunningDashboardJobs.Count, "job")" Note="@GetRunningNote()" />
+            </div>
+            <div class="col-6 xl:col-3">
+                <DashboardStatTile Label="Queue" Value="@QueuedIdeaCount.ToString(CultureInfo.InvariantCulture)"
+                                   Unit="@Pluralize(QueuedIdeaCount, "idea")" Note="@GetQueueNote()" />
+            </div>
+            <div class="col-6 xl:col-3">
+                <DashboardStatTile Label="@($"Success · {GetRangeShortLabel()}")"
+                                   Value="@(SuccessRate is int rate ? $"{rate}%" : "—")"
+                                   Note="@GetSuccessNote()"
+                                   Alert="@(Metrics.TotalFailedJobs > 0 ? $"{Metrics.TotalFailedJobs} failed" : null)">
+                    @if (Metrics.Buckets.Count > 0)
+                    {
+                        <span class="dashboard-spark d-flex align-items-end" aria-hidden="true">
+                            @foreach (var bucket in Metrics.Buckets)
+                            {
+                                <span class="d-flex flex-column-reverse h-100">
+                                    @if (bucket.CompletedJobs + bucket.FailedJobs == 0)
+                                    {
+                                        <span class="dashboard-spark-empty bg-3"></span>
+                                    }
+                                    else
+                                    {
+                                        <span class="bg-data-success" style="height: @GetSparkHeight(bucket.CompletedJobs)"></span>
+                                        <span class="bg-data-danger" style="height: @GetSparkHeight(bucket.FailedJobs)"></span>
+                                    }
+                                </span>
+                            }
+                        </span>
+                    }
+                </DashboardStatTile>
+            </div>
+            <div class="col-6 xl:col-3">
+                <DashboardStatTile Label="Usage limit"
+                                   Value="@(usage is null ? "—" : $"{usage.PercentUsed}%")"
+                                   ValueClass="@(usage is null ? null : UsageMeter.GetTextColorClass(usage.PercentUsed))"
+                                   Unit="@(usage is null ? null : "used")"
+                                   Note="@GetUsageNote(usage)"
+                                   Alert="@(usage?.IsLimitReached == true ? "limit reached" : null)">
+                    @if (usage is not null)
+                    {
+                        <div class="dashboard-spark d-flex align-items-center">
+                            <div class="progress progress-sm flex-grow-1" role="progressbar" aria-valuenow="@usage.PercentUsed"
+                                 aria-valuemin="0" aria-valuemax="100" aria-label="@($"{usage.ProviderName} {usage.WindowLabel}")">
+                                <div class="progress-bar @UsageMeter.GetProgressBarClass(usage.PercentUsed)" style="width: @(usage.PercentUsed)%"></div>
+                            </div>
+                        </div>
+                    }
+                </DashboardStatTile>
             </div>
         </section>
     }
 
-    <DashboardJobAnalyticsSection />
+    <div class="dashboard-grid d-flex flex-column gap-7 xl:d-grid xl:align-items-start">
+        <div class="d-flex flex-column gap-7 min-w-0">
+            @if (RunningDashboardJobs.Any())
+            {
+                <DashboardRunningJobsSection Items="@RunningDashboardJobs" />
+            }
 
-    <section class="d-flex flex-column gap-3" aria-label="Active projects">
-        <SectionHeader Title="Active projects">
-            <Actions>
-                <InputSelect id="dashboardProjectSort" @bind-Value="SelectedProjectSort" aria-label="Sort by"
-                             class="form-control form-control-sm">
-                    <option value="@DashboardProjectSortOption.LastRan">Last ran</option>
-                    <option value="@DashboardProjectSortOption.Name">Name</option>
-                </InputSelect>
-                <a href="/projects" class="btn-sm btn-link text-decoration-none px-0 flex-shrink-0">All</a>
-            </Actions>
-        </SectionHeader>
+            @if (IdeasStatus is not null &&
+                (IdeasStatus.TotalQueueIdeas > 0 || IdeasStatus.ProjectsCurrentlyProcessing > 0))
+            {
+                <section class="d-flex flex-column gap-3" aria-label="Ideas">
+                    <SectionHeader Title="Ideas">
+                        <Actions>
+                            @if (IdeasStatus.ProjectsCurrentlyProcessing > 0)
+                            {
+                                <button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0"
+                                        disabled="@IsStoppingAll" @onclick="OnStopAllProcessing">
+                                    <i class="bi bi-stop-fill"></i>@(IsStoppingAll ? "Stopping..." : "Stop all")
+                                </button>
+                            }
+                            else if (IdeasStatus.TotalUnprocessedIdeas > 0 && !IsStartingAll)
+                            {
+                                <button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="() => ShowStartAllModal = true">
+                                    <i class="bi bi-play-fill"></i>Start all
+                                </button>
+                            }
+                        </Actions>
+                    </SectionHeader>
 
-        @if (IsLoading)
-        {
-            <LoadingSpinner />
-        }
-        else if (!SortedDashboardProjects.Any())
-        {
-            <EmptyState Icon="folder" Title="No projects yet"
-                        Message="Create your first project to start running AI agent jobs.">
-                <ActionButton Icon="plus-lg" Text="Create Project" Size="ActionButton.ButtonSize.Small"
-                              Style="ActionButton.ButtonStyle.Primary"
-                              OnClick="@(() => NavigationManager.NavigateTo("/projects"))" />
-            </EmptyState>
-        }
-        else
-        {
-            <div class="list-group rounded-9">
-                @foreach (var item in SortedDashboardProjects)
+                    @if (StartAllError is not null)
+                    {
+                        <Alert Type="Alert.AlertType.Danger" Dismissible="true" OnDismiss="() => StartAllError = null">
+                            @StartAllError
+                        </Alert>
+                    }
+
+                    <div class="list-group rounded-9">
+                        @foreach (var project in IdeasStatus.Projects.Where(p => p.TotalQueueIdeas > 0 || p.IsProcessing))
+                        {
+                            <ListRow @key="project.ProjectId" Icon="lightbulb" Title="@project.ProjectName"
+                                     Href="@($"/projects/{project.ProjectId}")">
+                                <Trailing>
+                                    <span class="d-flex align-items-center gap-3 flex-shrink-0 small">
+                                        <span class="fg-1 text-nowrap">@($"{project.TotalQueueIdeas} idea{(project.TotalQueueIdeas != 1 ? "s" : "")} left")</span>
+                                        @if (project.HasRunningJob)
+                                        {
+                                            <span class="fg-success fw-semibold d-inline-flex align-items-center gap-1"><span class="live-dot"></span>Running</span>
+                                        }
+                                        else if (project.IsProcessing || project.QueuedIdeas > 0)
+                                        {
+                                            <span class="fg-1">Queued</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="fg-2">Waiting</span>
+                                        }
+                                    </span>
+                                </Trailing>
+                            </ListRow>
+                        }
+                    </div>
+                </section>
+            }
+
+            <DashboardJobAnalyticsSection Metrics="@Metrics" RangeDays="@SelectedRangeDays" IsLoading="@IsLoading"
+                                          IsRefreshing="@IsRefreshingMetrics" LoadError="@MetricsError"
+                                          OnRangeChanged="ChangeRangeAsync" OnRetry="RetryMetricsAsync" />
+        </div>
+
+        <div class="d-flex flex-column gap-7 min-w-0">
+            <section class="d-flex flex-column gap-3" aria-label="Active projects">
+                <SectionHeader Title="Active projects">
+                    <Actions>
+                        <InputSelect id="dashboardProjectSort" @bind-Value="SelectedProjectSort" aria-label="Sort by"
+                                     class="form-control form-control-sm">
+                            <option value="@DashboardProjectSortOption.LastRan">Last ran</option>
+                            <option value="@DashboardProjectSortOption.Name">Name</option>
+                        </InputSelect>
+                        <a href="/projects" class="btn-sm btn-link text-decoration-none px-0 flex-shrink-0">All</a>
+                    </Actions>
+                </SectionHeader>
+
+                @if (IsLoading)
                 {
-                    <ListRow @key="item.Project.Id" Icon="folder" Title="@item.Project.Name"
-                             Subtitle="@GetProjectSummary(item)"
-                             AttentionLine="@(item.LatestJob?.Status == JobStatus.Failed ? GetProjectSummary(item) : null)"
-                             Href="@($"/projects/{item.Project.Id}")" />
+                    <LoadingSpinner />
                 }
-            </div>
-        }
-    </section>
-
-    <section class="d-flex flex-column gap-3" aria-label="Providers">
-        <SectionHeader Title="Providers">
-            <Actions>
-                @if (!IsLoading && VisibleProviders.Any())
+                else if (!SortedDashboardProjects.Any())
                 {
-                    <button type="button" class="btn-sm btn-link text-decoration-none px-0"
-                            title="Reload usage and read each connection's current limits. Claude Code spends one tiny request to do it."
-                            @onclick="RefreshProviderUsageAsync" disabled="@IsRefreshingUsage">
-                        <i class="bi bi-arrow-repeat @(IsRefreshingUsage ? "spinner-rotate" : "")"></i>Refresh usage
-                    </button>
+                    <EmptyState Icon="folder" Title="No projects yet"
+                                Message="Create your first project to start running AI agent jobs.">
+                        <ActionButton Icon="plus-lg" Text="Create Project" Size="ActionButton.ButtonSize.Small"
+                                      Style="ActionButton.ButtonStyle.Primary"
+                                      OnClick="@(() => NavigationManager.NavigateTo("/projects"))" />
+                    </EmptyState>
                 }
-                <a href="/providers" class="btn-sm btn-link text-decoration-none px-0">Manage</a>
-            </Actions>
-        </SectionHeader>
-
-        @if (!string.IsNullOrWhiteSpace(UsageReloadError))
-        {
-            <div class="small fg-emphasis-warning px-1">@UsageReloadError</div>
-        }
-
-        @if (IsLoading)
-        {
-            <LoadingSpinner />
-        }
-        else if (!VisibleProviders.Any())
-        {
-            <EmptyState Icon="cpu" Title="@(HasConfiguredProviders ? "No active providers" : "No providers configured")"
-                        Message="@(HasConfiguredProviders ? "Enable a provider to show it on the dashboard." : "Connect to AI coding agents like Claude Code CLI.")">
-                <ActionButton Icon="plus-lg" Text="@(HasConfiguredProviders ? "Manage Providers" : "Add Provider")"
-                              Size="ActionButton.ButtonSize.Small" Style="ActionButton.ButtonStyle.Primary"
-                              OnClick="@(() => NavigationManager.NavigateTo("/providers"))" />
-            </EmptyState>
-        }
-        else
-        {
-            <div class="list-group rounded-9">
-                @foreach (var provider in VisibleProviders)
+                else
                 {
-                    <DashboardProviderRow @key="provider.Id" Name="@provider.Name" ProviderType="@provider.Type.ToString()"
-                                          ConnectionMode="@provider.ConnectionMode.ToString()" IsEnabled="@provider.IsEnabled"
-                                          CliVersion="@GetCliVersion(provider)" UsageSummary="@GetUsageSummary(provider.Id)"
-                                          UsageRefreshError="@GetUsageRefreshError(provider.Id)" />
+                    <div class="list-group rounded-9">
+                        @foreach (var item in SortedDashboardProjects)
+                        {
+                            var state = GetProjectState(item);
+
+                            <ListRow @key="item.Project.Id" Title="@item.Project.Name" Href="@($"/projects/{item.Project.Id}")">
+                                <Leading>
+                                    <span class="@state.DotClass"></span>
+                                    <span class="visually-hidden">@state.Status</span>
+                                </Leading>
+                                <Trailing>
+                                    <span class="small text-nowrap flex-shrink-0 tabular-nums @state.TextClass">@state.Text</span>
+                                </Trailing>
+                            </ListRow>
+                        }
+                    </div>
                 }
-            </div>
-        }
-    </section>
+            </section>
+
+            <section class="d-flex flex-column gap-3" aria-label="Providers">
+                <SectionHeader Title="Providers">
+                    <Actions>
+                        @if (!IsLoading && VisibleProviders.Any())
+                        {
+                            <button type="button" class="btn-sm btn-link text-decoration-none px-0"
+                                    title="Reload usage and read each connection's current limits. Claude Code spends one tiny request to do it."
+                                    @onclick="RefreshProviderUsageAsync" disabled="@IsRefreshingUsage">
+                                <i class="bi bi-arrow-repeat @(IsRefreshingUsage ? "spinner-rotate" : "")"></i>Refresh usage
+                            </button>
+                        }
+                        <a href="/providers" class="btn-sm btn-link text-decoration-none px-0">Manage</a>
+                    </Actions>
+                </SectionHeader>
+
+                @if (!string.IsNullOrWhiteSpace(UsageReloadError))
+                {
+                    <div class="small fg-emphasis-warning px-1">@UsageReloadError</div>
+                }
+
+                @if (IsLoading)
+                {
+                    <LoadingSpinner />
+                }
+                else if (!VisibleProviders.Any())
+                {
+                    <EmptyState Icon="cpu" Title="@(HasConfiguredProviders ? "No active providers" : "No providers configured")"
+                                Message="@(HasConfiguredProviders ? "Enable a provider to show it on the dashboard." : "Connect to AI coding agents like Claude Code CLI.")">
+                        <ActionButton Icon="plus-lg" Text="@(HasConfiguredProviders ? "Manage Providers" : "Add Provider")"
+                                      Size="ActionButton.ButtonSize.Small" Style="ActionButton.ButtonStyle.Primary"
+                                      OnClick="@(() => NavigationManager.NavigateTo("/providers"))" />
+                    </EmptyState>
+                }
+                else
+                {
+                    <div class="list-group rounded-9">
+                        @foreach (var provider in VisibleProviders)
+                        {
+                            <DashboardProviderRow @key="provider.Id" Name="@provider.Name" ProviderType="@provider.Type.ToString()"
+                                                  ConnectionMode="@provider.ConnectionMode.ToString()" IsEnabled="@provider.IsEnabled"
+                                                  CliVersion="@GetCliVersion(provider)" UsageSummary="@GetUsageSummary(provider.Id)"
+                                                  UsageRefreshError="@GetUsageRefreshError(provider.Id)" />
+                        }
+                    </div>
+                }
+            </section>
+        </div>
+    </div>
 </div>
 
 <ModalDialog @bind-IsVisible="ShowStartAllModal" Title="Start All Ideas" Icon="play-circle"
@@ -185,17 +287,10 @@
 </ModalDialog>
 
 @code {
-    /// <summary>The project's last job and when it ran, or that nothing has run yet.</summary>
-    private static string GetProjectSummary(DashboardProjectInfo item)
-    {
-        if (item.LatestJob is not { } job)
-        {
-            return string.IsNullOrWhiteSpace(item.CurrentBranch) ? "No jobs yet" : $"On {item.CurrentBranch} · no jobs yet";
-        }
+    private sealed record StatusPart(string Text, string CssClass);
 
-        var when = (job.CompletedAt ?? job.StartedAt ?? job.CreatedAt).FormatRelativeToNow();
-        return $"Last job {job.Status.ToString().ToLowerInvariant()} {when}";
-    }
+    /// <summary>How a project row shows its last job: a dot, words for screen readers, and short trailing text.</summary>
+    private sealed record ProjectRowState(string DotClass, string Status, string Text, string TextClass);
 
     private List<Provider> AllProviders { get; set; } = new();
     private List<DashboardProjectInfo> DashboardProjects { get; set; } = new();
@@ -218,7 +313,16 @@
     private IReadOnlyList<DashboardProjectInfo> SortedDashboardProjects
         => DashboardProjectOrdering.Sort(DashboardProjects, SelectedProjectSort);
 
+    private DashboardJobMetrics Metrics { get; set; } = new();
+    private int SelectedRangeDays { get; set; } = 7;
+    private bool IsRefreshingMetrics { get; set; }
+    private string? MetricsError { get; set; }
+    private int? SuccessRate => DashboardHeadlines.SuccessRatePercent(Metrics);
+    private DashboardHeadlines.UsageHeadline? BusiestLimit => DashboardHeadlines.BusiestLimit(
+        VisibleProviders.Select(provider => (provider.Name, GetUsageSummary(provider.Id))), DateTime.UtcNow);
+
     private GlobalIdeasProcessingStatus? IdeasStatus { get; set; }
+    private int QueuedIdeaCount => IdeasStatus?.TotalQueueIdeas ?? 0;
     private bool ShowStartAllModal { get; set; }
     private bool StartAllAutoCommit { get; set; }
     private bool IsStartingAll { get; set; }
@@ -234,8 +338,9 @@
             var commonProviderStatusesTask = CommonProviderSetupService.GetStatusesAsync();
             var dashboardDataTask = LoadDashboardProjectsAsync();
             var ideasStatusTask = LoadIdeasStatusAsync();
+            var metricsTask = LoadMetricsAsync();
 
-            await Task.WhenAll(providersTask, usageTask, commonProviderStatusesTask, dashboardDataTask, ideasStatusTask);
+            await Task.WhenAll(providersTask, usageTask, commonProviderStatusesTask, dashboardDataTask, ideasStatusTask, metricsTask);
 
             AllProviders = (await providersTask).ToList();
             UsageSummaries = await usageTask;
@@ -260,6 +365,130 @@
         return Task.CompletedTask;
     }
 
+    private static string? Pluralize(int count, string noun) => count switch
+    {
+        0 => null,
+        1 => noun,
+        _ => noun + "s"
+    };
+
+    private DateTime? LastFinishedAt => DashboardProjects
+        .Select(item => item.LatestJob?.CompletedAt)
+        .Where(completedAt => completedAt.HasValue)
+        .Max();
+
+    private IEnumerable<StatusPart> GetStatusParts()
+    {
+        if (RunningDashboardJobs.Count == 0 && LastFinishedAt is DateTime finishedAt)
+        {
+            yield return new StatusPart($"last job finished {finishedAt.FormatRelativeToNow()}", string.Empty);
+        }
+
+        if (QueuedIdeaCount > 0)
+        {
+            yield return new StatusPart($"{QueuedIdeaCount} {Pluralize(QueuedIdeaCount, "idea")} queued", string.Empty);
+        }
+
+        var limited = VisibleProviders.FirstOrDefault(provider => GetUsageSummary(provider.Id)?.IsLimitReachedAt(DateTime.UtcNow) == true);
+        if (limited is not null)
+        {
+            yield return new StatusPart($"{limited.Name} is at its limit", "fg-danger fw-semibold");
+        }
+        else if (VisibleProviders.Count == 0)
+        {
+            yield return new StatusPart("No providers on", "fg-2");
+        }
+        else
+        {
+            yield return new StatusPart("Providers OK", string.Empty);
+        }
+    }
+
+    private string GetRunningNote()
+    {
+        if (RunningDashboardJobs.Count > 0)
+        {
+            return string.Join(" · ", RunningDashboardJobs.Select(item => item.Project.Name).Distinct());
+        }
+
+        return LastFinishedAt is DateTime finishedAt
+            ? $"Finished {finishedAt.FormatRelativeToNow()}"
+            : "Nothing running";
+    }
+
+    private string GetQueueNote()
+    {
+        var projects = IdeasStatus?.Projects.Count(project => project.TotalQueueIdeas > 0) ?? 0;
+        return projects switch
+        {
+            0 => "Nothing waiting",
+            1 => "In 1 project",
+            _ => $"Across {projects} projects"
+        };
+    }
+
+    private string GetRangeShortLabel() => SelectedRangeDays == 1 ? "24 hours" : $"{SelectedRangeDays} days";
+
+    private string GetSuccessNote()
+    {
+        if (Metrics.TotalCompletedJobs + Metrics.TotalFailedJobs == 0)
+        {
+            return "No jobs finished";
+        }
+
+        return Metrics.TotalFailedJobs > 0
+            ? $"{Metrics.TotalCompletedJobs} done ·"
+            : $"{Metrics.TotalCompletedJobs} done";
+    }
+
+    private string GetSparkHeight(int jobs)
+    {
+        var tallest = Math.Max(1, Metrics.Buckets.Max(bucket => bucket.CompletedJobs + bucket.FailedJobs));
+        return (100.0 * jobs / tallest).ToString("0.##", CultureInfo.InvariantCulture) + "%";
+    }
+
+    private string GetUsageNote(DashboardHeadlines.UsageHeadline? usage)
+    {
+        if (usage is null)
+        {
+            return VisibleProviders.Count == 0 ? "No providers on" : "No limits reported";
+        }
+
+        if (usage.IsLimitReached)
+        {
+            return $"{usage.ProviderName} ·";
+        }
+
+        return usage.ResetTime is DateTime resetTime && resetTime > DateTime.UtcNow
+            ? $"{usage.ProviderName} · resets in {DashboardHeadlines.FormatShortSpan(resetTime - DateTime.UtcNow)}"
+            : $"{usage.ProviderName} · {usage.WindowLabel}";
+    }
+
+    private ProjectRowState GetProjectState(DashboardProjectInfo item)
+    {
+        var running = RunningDashboardJobs.FirstOrDefault(runningJob => runningJob.Project.Id == item.Project.Id);
+        if (running is not null)
+        {
+            var elapsed = DateTime.UtcNow - (running.Job.StartedAt ?? running.Job.CreatedAt);
+            return new ProjectRowState("live-dot", "Running", $"Running · {TokenHelper.FormatDuration(elapsed)}", "fg-success fw-semibold");
+        }
+
+        if (item.LatestJob is not { } job)
+        {
+            return new ProjectRowState("dashboard-dot dashboard-dot-empty", "No jobs yet", "No jobs yet", "fg-2");
+        }
+
+        var when = (job.CompletedAt ?? job.StartedAt ?? job.CreatedAt).FormatRelativeToNow();
+        return job.Status switch
+        {
+            JobStatus.Completed => new ProjectRowState("dashboard-dot bg-data-success", "Last job completed", when, "fg-1"),
+            JobStatus.Failed or JobStatus.Stalled => new ProjectRowState(
+                "dashboard-dot bg-data-danger", $"Last job {job.Status.ToString().ToLowerInvariant()}", $"{job.Status} · {when}", "fg-danger fw-semibold"),
+            _ => new ProjectRowState(
+                "dashboard-dot", $"Last job {job.Status.ToString().ToLowerInvariant()}", $"{job.Status} · {when}", "fg-1")
+        };
+    }
+
     private string? GetCliVersion(Provider provider)
     {
         if (InstalledVersionsByType.TryGetValue(provider.Type, out var installedVersion))
@@ -278,6 +507,67 @@
     private string? GetUsageRefreshError(Guid providerId)
     {
         return UsageRefreshErrors.TryGetValue(providerId, out var error) ? error : null;
+    }
+
+    /// <summary>
+    /// Loads the job metrics for the selected range. A background refresh keeps the figures on
+    /// screen if it fails, and a reply for a range no longer selected is dropped.
+    /// </summary>
+    private async Task LoadMetricsAsync(bool keepFiguresOnError = false)
+    {
+        var rangeDays = SelectedRangeDays;
+
+        try
+        {
+            var metrics = await ProjectService.GetDashboardJobMetricsAsync(rangeDays);
+            if (rangeDays == SelectedRangeDays)
+            {
+                Metrics = metrics;
+                MetricsError = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!keepFiguresOnError && rangeDays == SelectedRangeDays)
+            {
+                MetricsError = ex.Message;
+                Metrics = new DashboardJobMetrics { RangeDays = rangeDays };
+            }
+        }
+    }
+
+    private async Task ChangeRangeAsync(int rangeDays)
+    {
+        if (rangeDays == SelectedRangeDays)
+        {
+            return;
+        }
+
+        SelectedRangeDays = rangeDays;
+        IsRefreshingMetrics = true;
+
+        try
+        {
+            await LoadMetricsAsync();
+        }
+        finally
+        {
+            IsRefreshingMetrics = false;
+        }
+    }
+
+    private async Task RetryMetricsAsync()
+    {
+        IsRefreshingMetrics = true;
+
+        try
+        {
+            await LoadMetricsAsync();
+        }
+        finally
+        {
+            IsRefreshingMetrics = false;
+        }
     }
 
     /// <summary>
@@ -329,27 +619,6 @@
         }
     }
 
-    private async Task FetchBranchInfoAsync()
-    {
-        var branchTasks = DashboardProjects.Select(async item =>
-        {
-            try
-            {
-                if (Directory.Exists(item.Project.WorkingPath) &&
-                    await VersionControlService.IsGitRepositoryAsync(item.Project.WorkingPath))
-                {
-                    item.CurrentBranch = await VersionControlService.GetCurrentBranchAsync(item.Project.WorkingPath);
-                }
-            }
-            catch
-            {
-                // Silently ignore errors when fetching branch info
-            }
-        });
-
-        await Task.WhenAll(branchTasks);
-    }
-
     private async Task LoadDashboardProjectsAsync()
     {
         var projectsTask = ProjectService.GetRecentWithLatestJobAsync(10);
@@ -359,8 +628,6 @@
 
         DashboardProjects = (await projectsTask).ToList();
         RunningDashboardJobs = (await runningJobsTask).ToList();
-
-        await FetchBranchInfoAsync();
     }
 
     private async Task InitializeSignalRSafeAsync()
@@ -470,8 +737,13 @@
 
             try
             {
-                // Usage is recorded before a job reports completion, so the meters follow it here.
-                await Task.WhenAll(LoadDashboardProjectsAsync(), LoadIdeasStatusAsync(), ReloadUsageSummariesAsync());
+                // Usage is recorded before a job reports completion, so the meters follow it here,
+                // and a finished job moves the analytics and the success rate.
+                await Task.WhenAll(
+                    LoadDashboardProjectsAsync(),
+                    LoadIdeasStatusAsync(),
+                    ReloadUsageSummariesAsync(),
+                    LoadMetricsAsync(keepFiguresOnError: true));
                 await InvokeAsync(StateHasChanged);
             }
             finally
@@ -523,15 +795,15 @@
     {
         IsStartingAll = true;
         StartAllError = null;
-		try
-		{
-			await IdeaService.StartAllProcessingAsync(new IdeaProcessingOptions
-			{
-				AutoCommitMode = StartAllAutoCommit ? AutoCommitMode.CommitOnly : AutoCommitMode.Off
-			});
-			ShowStartAllModal = false;
-			StartAllAutoCommit = false;
-			await LoadIdeasStatusAsync();
+        try
+        {
+            await IdeaService.StartAllProcessingAsync(new IdeaProcessingOptions
+            {
+                AutoCommitMode = StartAllAutoCommit ? AutoCommitMode.CommitOnly : AutoCommitMode.Off
+            });
+            ShowStartAllModal = false;
+            StartAllAutoCommit = false;
+            await LoadIdeasStatusAsync();
         }
         catch (Exception ex)
         {

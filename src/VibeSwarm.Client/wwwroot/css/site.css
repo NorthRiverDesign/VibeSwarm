@@ -38,6 +38,7 @@
    12. PWA Standalone Mode
    13. Design System — minimal Bootstrap extensions
    14. Touch Targets
+   15. Dashboard (command-centre grid, sparkline, chart bars)
 
 ============================================ */
 
@@ -154,7 +155,7 @@
 	--bs-warning-contrast: #1c212b;
 
 	--bs-danger-bg: light-dark(#c4413f, #c23f3f);
-	--bs-danger-fg: light-dark(#b83c3c, #ef6a6a);
+	--bs-danger-fg: light-dark(#b23838, #ef6a6a);
 	--bs-danger-fg-emphasis: color-mix(in oklab, var(--bs-danger-base) 60%, var(--bs-fg-body));
 	--bs-danger-bg-subtle: color-mix(in oklab, var(--bs-danger-base) 15%, var(--bs-bg-body));
 	--bs-danger-bg-muted: color-mix(in oklab, var(--bs-danger-base) 28%, var(--bs-bg-body));
@@ -262,6 +263,9 @@
 	}
 	.bg-data-info {
 		background-color: var(--vs-data-info);
+	}
+	.bg-data-violet {
+		background-color: var(--vs-data-violet);
 	}
 	.max-height-50dvh {
 		max-height: 50dvh;
@@ -1319,8 +1323,8 @@ small, .small {
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
-	background: var(--bs-success-base);
-	box-shadow: 0 0 0 3px color-mix(in oklab, var(--bs-success-base) 20%, transparent);
+	background: var(--vs-data-success);
+	box-shadow: 0 0 0 3px color-mix(in oklab, var(--vs-data-success) 20%, transparent);
 	animation: pulse-live 1.5s ease-in-out infinite;
 	flex: none;
 }
@@ -1408,6 +1412,74 @@ small, .small {
 	.list-group {
 		--bs-list-group-action-hover-bg: var(--bs-list-group-bg);
 		--bs-list-group-action-hover-color: var(--bs-list-group-action-color);
+	}
+}
+
+/* ============================================
+   15. DASHBOARD
+   From 1280px the dashboard is a command centre: live work and analytics in a main
+   column, projects and providers in a right column (markup: xl:d-grid). It gets a
+   wider cap than other pages, so a large monitor fills without stretching rows.
+============================================ */
+@media (width >= 1024px) {
+	.main-content:has(.dashboard) {
+		max-width: 1680px;
+	}
+}
+@media (width >= 1280px) {
+	.dashboard-grid {
+		grid-template-columns: minmax(0, 1fr) clamp(20rem, 28%, 24rem);
+	}
+}
+
+/* Bars in a number tile: one per bucket, completed below failed. */
+.dashboard-spark {
+	height: 1.75rem;
+	gap: 2px;
+}
+.dashboard-spark > span {
+	flex: 1 1 0;
+	min-width: 0;
+}
+.dashboard-spark-empty {
+	height: 2px;
+}
+
+/* A chart legend's colour key. */
+.dashboard-swatch {
+	width: 0.625rem;
+	height: 0.625rem;
+	border-radius: 0.1875rem;
+	flex: none;
+}
+
+/* A project's last job: filled when one ran, an empty ring when none has. */
+.dashboard-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--bs-fg-2);
+	flex: none;
+}
+.dashboard-dot-empty {
+	background: transparent;
+	box-shadow: inset 0 0 0 1.5px var(--bs-fg-2);
+}
+
+/* Chart bars are HTML inside each bar's button, so they keep their width however far
+   the chart stretches; the SVG behind them only draws the grid. */
+.dashboard-chart-bar {
+	width: min(60%, 2.5rem);
+	border-radius: 0.25rem;
+	flex: none;
+}
+.dashboard-chart-slot[aria-pressed="true"] .dashboard-chart-bar {
+	outline: 2px solid var(--bs-fg-body);
+	outline-offset: 1px;
+}
+@media (hover: hover) {
+	.dashboard-chart-slot:hover .dashboard-chart-bar {
+		filter: brightness(1.08);
 	}
 }
 
