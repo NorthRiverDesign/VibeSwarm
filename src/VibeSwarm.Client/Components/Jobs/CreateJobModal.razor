@@ -38,10 +38,10 @@ else
 }
 </button>
 </div>
-@if (!string.IsNullOrWhiteSpace(_templateStatusMessage))
-{
-<div class="form-text">@_templateStatusMessage</div>
-}
+<div class="form-text d-flex flex-wrap justify-content-between gap-3">
+<span>@_templateStatusMessage</span>
+<a href="/templates">Manage templates</a>
+</div>
 </div>
 
 <div class="mb-5">
@@ -534,8 +534,6 @@ private async Task HandleTemplateSelectionChanged()
 		await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
 		await OnProviderChanged.InvokeAsync(FormModel.ProviderId ?? Guid.Empty);
 		_templateStatusMessage = $"Applied template '{template.Name}'.";
-		await JobTemplateService.IncrementUseCountAsync(template.Id);
-		await RefreshTemplatesAsync();
 	}
 	finally
 	{
@@ -561,14 +559,12 @@ private async Task SaveAsTemplateAsync()
 		var template = new JobTemplate
 		{
 			Name = templateName,
-			Description = $"Saved from a create-job draft on {DateTime.UtcNow:yyyy-MM-dd}.",
 			GoalPrompt = JobModel.GoalPrompt,
 			ProviderId = JobModel.ProviderId == Guid.Empty ? null : JobModel.ProviderId,
 			ModelId = JobModel.ModelUsed,
 			ReasoningEffort = JobModel.ReasoningEffort,
-			Branch = JobModel.Branch,
-			GitChangeDeliveryMode = JobModel.GitChangeDeliveryMode,
-			TargetBranch = JobModel.TargetBranch,
+			// Branch and delivery belong to this project, so the template leaves them to whichever
+			// project runs it.
 			CycleMode = JobModel.CycleMode,
 			CycleSessionMode = JobModel.CycleSessionMode,
 			MaxCycles = JobModel.MaxCycles,
@@ -625,9 +621,20 @@ private void ApplyTemplateToJob(JobTemplate template)
 	JobModel.ProviderId = template.ProviderId ?? Guid.Empty;
 	JobModel.ModelUsed = template.ModelId;
 	JobModel.ReasoningEffort = template.ReasoningEffort;
-	JobModel.Branch = template.Branch;
-	JobModel.GitChangeDeliveryMode = template.GitChangeDeliveryMode;
-	JobModel.TargetBranch = template.TargetBranch;
+	// Branch and delivery are the project's unless the template overrides them; the modal has
+	// already filled in the project's values.
+	if (!string.IsNullOrWhiteSpace(template.Branch))
+	{
+		JobModel.Branch = template.Branch;
+	}
+	if (template.GitChangeDeliveryMode is { } deliveryMode)
+	{
+		JobModel.GitChangeDeliveryMode = deliveryMode;
+	}
+	if (!string.IsNullOrWhiteSpace(template.TargetBranch))
+	{
+		JobModel.TargetBranch = template.TargetBranch;
+	}
 	JobModel.CycleMode = template.CycleMode;
 	JobModel.CycleSessionMode = template.CycleSessionMode;
 	JobModel.MaxCycles = template.MaxCycles;

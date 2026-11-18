@@ -1555,7 +1555,7 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("GitChangeDeliveryMode")
+                    b.Property<int?>("GitChangeDeliveryMode")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("GoalPrompt")

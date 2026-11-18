@@ -75,6 +75,10 @@
                 <i class="bi bi-stars"></i>
                 <span>Skills</span>
             </NavLink>
+            <NavLink class="nav-link" href="/templates">
+                <i class="bi bi-file-earmark-text"></i>
+                <span>Templates</span>
+            </NavLink>
 
             <div class="vs-nav-heading text-eyebrow">Configure</div>
             <NavLink class="nav-link" href="/providers">
@@ -365,7 +369,7 @@
         || CurrentPagePath.StartsWith(path + "/", StringComparison.OrdinalIgnoreCase));
 
     private static readonly string[] MoreTabPaths =
-        ["/more", "/scheduler", "/agents", "/skills", "/providers", "/inference", "/users", "/settings"];
+        ["/more", "/scheduler", "/agents", "/skills", "/templates", "/providers", "/inference", "/users", "/settings"];
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

@@ -1,0 +1,258 @@
+@* Runs a template on the projects you tick, grouped by folder. Each project gets its own job,
+   using its own provider, branch and delivery unless the template overrides them. *@
+@inject IJobTemplateService JobTemplateService
+@inject IProjectService ProjectService
+@inject NotificationService NotificationService
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="IsVisibleChanged"
+			 Title="@($"Run {Template?.Name}")" Icon="play-circle" Size="ModalDialog.ModalSize.Large" OnClose="CloseAsync">
+	<ChildContent>
+		@if (_isLoading)
+		{
+			<LoadingSpinner Text="Loading projects..." />
+		}
+		else if (_groups.Count == 0)
+		{
+			<EmptyState Icon="folder" Title="No active projects" Message="Add a project, or turn one back on, to run templates on it." />
+		}
+		else
+		{
+			<div class="d-flex flex-column gap-7">
+				@if (_groups.Count > 1)
+				{
+					<div class="d-flex align-items-center gap-5 px-1">
+						<span class="small fg-1 me-auto">@SelectionSummary</span>
+						<button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="ToggleAll">
+							@(AllSelected ? "Clear" : "Select all")
+						</button>
+					</div>
+				}
+
+				@foreach (var group in _groups)
+				{
+					<section class="d-flex flex-column gap-3" aria-label="@group.Name">
+						<SectionHeader Title="@group.Name">
+							<Actions>
+								<button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="() => ToggleGroup(group)">
+									@(IsGroupSelected(group) ? "Clear" : "Select all")
+								</button>
+							</Actions>
+						</SectionHeader>
+						<div class="list-group rounded-9">
+							@foreach (var project in group.Projects)
+							{
+								var inputId = $"run-template-project-{project.Id:N}";
+								var isRunning = _runningProjectIds.Contains(project.Id);
+								<label @key="project.Id" class="list-group-item d-flex align-items-center gap-5 mb-0" for="@inputId">
+									<input class="check flex-shrink-0" type="checkbox" id="@inputId" disabled="@isRunning"
+										   checked="@_selected.Contains(project.Id)" @onchange="() => Toggle(project.Id)" />
+									<span class="flex-grow-1 min-w-0">
+										<span class="d-block fw-medium text-truncate @(isRunning ? "fg-1" : null)">@project.Name</span>
+										@if (_skipReasons.TryGetValue(project.Id, out var reason))
+										{
+											<span class="d-block small fg-emphasis-warning text-truncate">@reason</span>
+										}
+										else if (isRunning)
+										{
+											<span class="d-block small fg-1 text-truncate">Already running this template</span>
+										}
+									</span>
+								</label>
+							}
+						</div>
+					</section>
+				}
+			</div>
+		}
+
+		@if (!string.IsNullOrWhiteSpace(_errorMessage))
+		{
+			<div class="fg-danger small mt-5">
+				<i class="bi bi-exclamation-circle me-1"></i>@_errorMessage
+			</div>
+		}
+
+		<div class="mt-7">
+			<ModalFooterActions OnCancel="CloseAsync" OnSubmit="RunAsync" Busy="@_isRunning"
+								SubmitText="@SubmitText" SubmitLoadingText="Queuing..." SubmitIcon="play-fill"
+								SubmitDisabled="@(_selected.Count == 0)" />
+		</div>
+	</ChildContent>
+</ModalDialog>
+
+@code {
+	[Parameter] public bool IsVisible { get; set; }
+	[Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+	[Parameter] public JobTemplate? Template { get; set; }
+
+	/// <summary>The template's latest job per project, so projects still running it can't be picked twice.</summary>
+	[Parameter] public IReadOnlyList<JobTemplateProjectRun> Runs { get; set; } = [];
+
+	[Parameter] public EventCallback<JobTemplateRunResult> OnRan { get; set; }
+
+	private sealed record ProjectGroup(string Name, List<Project> Projects);
+
+	private List<ProjectGroup> _groups = [];
+	private readonly HashSet<Guid> _selected = [];
+	private HashSet<Guid> _runningProjectIds = [];
+	private readonly Dictionary<Guid, string> _skipReasons = [];
+	private bool _isLoading;
+	private bool _isRunning;
+	private bool _wasVisible;
+	private string? _errorMessage;
+
+	private IEnumerable<Project> SelectableProjects => _groups
+		.SelectMany(group => group.Projects)
+		.Where(project => !_runningProjectIds.Contains(project.Id));
+
+	private bool AllSelected => SelectableProjects.Any() && SelectableProjects.All(project => _selected.Contains(project.Id));
+
+	private string SelectionSummary => _selected.Count == 0 ? "No projects chosen" : $"{_selected.Count} chosen";
+
+	private string SubmitText => _selected.Count switch
+	{
+		0 => "Run",
+		1 => "Run on 1 project",
+		var count => $"Run on {count} projects"
+	};
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (IsVisible && !_wasVisible)
+		{
+			_wasVisible = true;
+			_selected.Clear();
+			_skipReasons.Clear();
+			_errorMessage = null;
+			_runningProjectIds = Runs.Where(run => run.IsUnfinished).Select(run => run.ProjectId).ToHashSet();
+			await LoadProjectsAsync();
+		}
+		else if (!IsVisible)
+		{
+			_wasVisible = false;
+		}
+	}
+
+	private async Task LoadProjectsAsync()
+	{
+		_isLoading = true;
+		try
+		{
+			var projectsTask = ProjectService.GetAllAsync();
+			var foldersTask = ProjectService.GetFoldersAsync();
+			await Task.WhenAll(projectsTask, foldersTask);
+
+			var folderNames = foldersTask.Result.ToDictionary(folder => folder.Id, folder => folder.Name);
+			_groups = projectsTask.Result
+				.Where(project => project.IsActive)
+				.GroupBy(project => project.FolderId is Guid folderId && folderNames.ContainsKey(folderId) ? folderNames[folderId] : null)
+				.OrderBy(group => group.Key == null)
+				.ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+				.Select(group => new ProjectGroup(
+					group.Key ?? (folderNames.Count > 0 ? "No folder" : "Projects"),
+					group.OrderBy(project => project.Name, StringComparer.OrdinalIgnoreCase).ToList()))
+				.ToList();
+		}
+		catch (HttpRequestException ex)
+		{
+			_errorMessage = ex.Message;
+			_groups = [];
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private void Toggle(Guid projectId)
+	{
+		if (!_selected.Remove(projectId))
+		{
+			_selected.Add(projectId);
+		}
+	}
+
+	private bool IsGroupSelected(ProjectGroup group)
+	{
+		var selectable = group.Projects.Where(project => !_runningProjectIds.Contains(project.Id)).ToList();
+		return selectable.Count > 0 && selectable.All(project => _selected.Contains(project.Id));
+	}
+
+	private void ToggleGroup(ProjectGroup group) => SetSelected(group.Projects, !IsGroupSelected(group));
+
+	private void ToggleAll() => SetSelected(_groups.SelectMany(group => group.Projects), !AllSelected);
+
+	private void SetSelected(IEnumerable<Project> projects, bool selected)
+	{
+		foreach (var project in projects.Where(project => !_runningProjectIds.Contains(project.Id)))
+		{
+			if (selected)
+			{
+				_selected.Add(project.Id);
+			}
+			else
+			{
+				_selected.Remove(project.Id);
+			}
+		}
+	}
+
+	private async Task RunAsync()
+	{
+		if (Template == null || _selected.Count == 0)
+		{
+			return;
+		}
+
+		_isRunning = true;
+		_errorMessage = null;
+		try
+		{
+			var result = await JobTemplateService.RunAsync(Template.Id, _selected.ToList());
+			await OnRan.InvokeAsync(result);
+
+			if (result.SkippedCount == 0)
+			{
+				NotificationService.ShowSuccess(result.QueuedCount == 1
+					? $"Queued '{Template.Name}' on {result.Projects[0].ProjectName}."
+					: $"Queued '{Template.Name}' on {result.QueuedCount} projects.");
+				await CloseAsync();
+				return;
+			}
+
+			// Keep the dialog open so the reasons stay next to the projects they belong to.
+			_skipReasons.Clear();
+			foreach (var outcome in result.Projects)
+			{
+				if (outcome.JobId.HasValue)
+				{
+					_selected.Remove(outcome.ProjectId);
+					_runningProjectIds.Add(outcome.ProjectId);
+				}
+				else if (outcome.SkipReason != null)
+				{
+					_skipReasons[outcome.ProjectId] = outcome.SkipReason;
+				}
+			}
+
+			if (result.QueuedCount > 0)
+			{
+				NotificationService.ShowWarning($"Queued on {result.QueuedCount}, skipped {result.SkippedCount}.");
+			}
+			else
+			{
+				_errorMessage = "Nothing was queued. The reasons are shown under each project.";
+			}
+		}
+		catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+		{
+			_errorMessage = ex.Message;
+		}
+		finally
+		{
+			_isRunning = false;
+		}
+	}
+
+	private Task CloseAsync() => IsVisibleChanged.InvokeAsync(false);
+}

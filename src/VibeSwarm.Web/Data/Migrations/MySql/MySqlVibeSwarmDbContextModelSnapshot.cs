@@ -1564,7 +1564,7 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
-                    b.Property<int>("GitChangeDeliveryMode")
+                    b.Property<int?>("GitChangeDeliveryMode")
                         .HasColumnType("int");
 
                     b.Property<string>("GoalPrompt")

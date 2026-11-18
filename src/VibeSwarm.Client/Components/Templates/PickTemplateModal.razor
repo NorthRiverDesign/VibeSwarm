@@ -1,0 +1,132 @@
+@* Runs a template on the project being viewed: open a template to read its prompt, then Run. *@
+@inject IJobTemplateService JobTemplateService
+@inject NotificationService NotificationService
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="IsVisibleChanged" Title="Run a template" Icon="file-earmark-play"
+			 OnClose="CloseAsync">
+	<ChildContent>
+		@if (_isLoading)
+		{
+			<LoadingSpinner Text="Loading templates..." />
+		}
+		else if (_templates.Count == 0)
+		{
+			<EmptyState Icon="file-earmark-text" Title="No templates yet"
+						Message="Save a task you run on many projects, like a dependency update, and run it here in two taps.">
+				<a class="btn-sm btn-solid theme-primary" href="/templates"><i class="bi bi-plus-lg"></i>New template</a>
+			</EmptyState>
+		}
+		else
+		{
+			<div class="d-flex flex-column gap-3">
+				<div class="list-group rounded-9">
+					@foreach (var template in _templates)
+					{
+						<ListRow @key="template.Id" Icon="file-earmark-text" Title="@template.Name"
+								 Subtitle="@(template.Description ?? Excerpt(template.GoalPrompt))"
+								 AttentionLine="@(_skipReasons.GetValueOrDefault(template.Id))">
+							<div class="small white-space-pre-wrap text-break bg-1 rounded-5 p-3 max-height-50dvh overflow-auto">@template.GoalPrompt</div>
+							@if (TemplateFacts.Describe(template) is { } overrides)
+							{
+								<div class="small fg-1">@overrides</div>
+							}
+							<div class="d-flex align-items-center gap-3">
+								<ActionButton Icon="play-fill" Text="@($"Run on {ProjectName}")" Style="ActionButton.ButtonStyle.Primary"
+											  IsLoading="@(_runningTemplateId == template.Id)" LoadingText="Queuing..."
+											  Disabled="@(_runningTemplateId.HasValue)" OnClick="() => RunAsync(template)" />
+							</div>
+						</ListRow>
+					}
+				</div>
+				<a class="small px-1" href="/templates">Manage templates</a>
+			</div>
+		}
+
+		@if (!string.IsNullOrWhiteSpace(_errorMessage))
+		{
+			<div class="fg-danger small mt-5">
+				<i class="bi bi-exclamation-circle me-1"></i>@_errorMessage
+			</div>
+		}
+	</ChildContent>
+</ModalDialog>
+
+@code {
+	[Parameter] public bool IsVisible { get; set; }
+	[Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+	[Parameter] public Guid ProjectId { get; set; }
+	[Parameter] public string ProjectName { get; set; } = "this project";
+	[Parameter] public EventCallback<JobTemplateRunResult> OnRan { get; set; }
+
+	private List<JobTemplate> _templates = [];
+	private readonly Dictionary<Guid, string> _skipReasons = [];
+	private Guid? _runningTemplateId;
+	private bool _isLoading;
+	private bool _wasVisible;
+	private string? _errorMessage;
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (IsVisible && !_wasVisible)
+		{
+			_wasVisible = true;
+			_skipReasons.Clear();
+			_errorMessage = null;
+			_isLoading = true;
+			try
+			{
+				_templates = (await JobTemplateService.GetAllAsync()).ToList();
+			}
+			catch (HttpRequestException ex)
+			{
+				_errorMessage = ex.Message;
+				_templates = [];
+			}
+			finally
+			{
+				_isLoading = false;
+			}
+		}
+		else if (!IsVisible)
+		{
+			_wasVisible = false;
+		}
+	}
+
+	private async Task RunAsync(JobTemplate template)
+	{
+		_runningTemplateId = template.Id;
+		_errorMessage = null;
+		_skipReasons.Remove(template.Id);
+		try
+		{
+			var result = await JobTemplateService.RunAsync(template.Id, [ProjectId]);
+			var outcome = result.Projects.FirstOrDefault();
+			if (outcome?.JobId != null)
+			{
+				NotificationService.ShowSuccess($"Queued '{template.Name}'.");
+				await OnRan.InvokeAsync(result);
+				await CloseAsync();
+				return;
+			}
+
+			_skipReasons[template.Id] = outcome?.SkipReason ?? "Nothing was queued.";
+		}
+		catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+		{
+			_errorMessage = ex.Message;
+		}
+		finally
+		{
+			_runningTemplateId = null;
+		}
+	}
+
+	private static string Excerpt(string prompt)
+	{
+		var firstLine = prompt.Split('\n', 2)[0].Trim();
+		return firstLine.Length > 120 ? firstLine[..117] + "..." : firstLine;
+	}
+
+	private Task CloseAsync() => IsVisibleChanged.InvokeAsync(false);
+}

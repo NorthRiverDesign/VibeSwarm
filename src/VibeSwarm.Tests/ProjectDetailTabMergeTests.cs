@@ -37,6 +37,7 @@ public sealed class ProjectDetailTabMergeTests
 			var createJobButtons = cut.FindAll("button")
 				.Count(button => button.TextContent.Contains("New job with options", StringComparison.Ordinal));
 			Assert.Equal(1, createJobButtons);
+			Assert.Single(cut.FindAll("button.menu-item"), button => button.TextContent.Contains("Run a template", StringComparison.Ordinal));
 
 			var markup = cut.Markup;
 			Assert.Contains("Add an idea", markup);
@@ -315,6 +316,10 @@ public sealed class ProjectDetailTabMergeTests
 		public Task<JobTemplate> UpdateAsync(JobTemplate template, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<JobTemplate> IncrementUseCountAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IReadOnlyList<VibeSwarm.Shared.Models.JobTemplateProjectRun>> GetRunsAsync(Guid templateId, CancellationToken cancellationToken = default)
+			=> Task.FromResult<IReadOnlyList<VibeSwarm.Shared.Models.JobTemplateProjectRun>>([]);
+		public Task<VibeSwarm.Shared.Models.JobTemplateRunResult> RunAsync(Guid templateId, IReadOnlyCollection<Guid> projectIds, CancellationToken cancellationToken = default)
+			=> Task.FromResult(new VibeSwarm.Shared.Models.JobTemplateRunResult());
 	}
 
 	private sealed class FakeAgentService : FakeAgentServiceBase
