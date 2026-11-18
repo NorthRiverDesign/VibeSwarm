@@ -13,7 +13,8 @@ public static class TemplateFacts
 		if (template.ProviderId.HasValue)
 		{
 			var provider = template.Provider?.Name ?? "a fixed provider";
-			parts.Add(string.IsNullOrWhiteSpace(template.ModelId) ? provider : $"{provider} ({template.ModelId})");
+			// The pinned provider goes first; the job still falls back to others if it fails.
+			parts.Add(string.IsNullOrWhiteSpace(template.ModelId) ? $"{provider} first" : $"{provider} ({template.ModelId}) first");
 		}
 		if (template.CycleMode == CycleMode.FixedCount)
 		{
@@ -34,7 +35,7 @@ public static class TemplateFacts
 				: "commits to the branch");
 		}
 
-		return parts.Count == 0 ? null : "Always uses " + string.Join(", ", parts);
+		return parts.Count == 0 ? null : "Uses " + string.Join(", ", parts);
 	}
 
 	/// <summary>The second line of a template's row: where it last ran, else its note.</summary>

@@ -527,12 +527,22 @@ private async Task HandleTemplateSelectionChanged()
 	_isApplyingTemplate = true;
 	try
 	{
+		var previousProviderId = FormModel.ProviderId;
 		ApplyTemplateToJob(template);
 		FormModel = CreateJobFormModel.FromJob(JobModel);
 		ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
 		SyncGoalPromptValidationState();
+		// Switching provider makes the page load that provider's models and pick the project's
+		// default, so a model the template pins goes back on afterwards.
+		if (FormModel.ProviderId != previousProviderId)
+		{
+			await OnProviderChanged.InvokeAsync(FormModel.ProviderId ?? Guid.Empty);
+		}
+		if (template.ProviderId.HasValue && !string.IsNullOrWhiteSpace(template.ModelId))
+		{
+			SelectedModelId = template.ModelId;
+		}
 		await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
-		await OnProviderChanged.InvokeAsync(FormModel.ProviderId ?? Guid.Empty);
 		_templateStatusMessage = $"Applied template '{template.Name}'.";
 	}
 	finally
@@ -615,14 +625,19 @@ return index >= 0
 
 private void ApplyTemplateToJob(JobTemplate template)
 {
+	// Start from what the form shows (the project's defaults plus any edits) and change only what
+	// the template sets, so a template that leaves the provider or branch to the project doesn't
+	// blank them.
+	FormModel.ApplyTo(JobModel);
 	JobModel.JobTemplateId = template.Id;
 	JobModel.GoalPrompt = template.GoalPrompt;
 	JobModel.AgentId = null;
-	JobModel.ProviderId = template.ProviderId ?? Guid.Empty;
-	JobModel.ModelUsed = template.ModelId;
-	JobModel.ReasoningEffort = template.ReasoningEffort;
-	// Branch and delivery are the project's unless the template overrides them; the modal has
-	// already filled in the project's values.
+	if (template.ProviderId is Guid providerId)
+	{
+		JobModel.ProviderId = providerId;
+		JobModel.ModelUsed = template.ModelId;
+		JobModel.ReasoningEffort = template.ReasoningEffort;
+	}
 	if (!string.IsNullOrWhiteSpace(template.Branch))
 	{
 		JobModel.Branch = template.Branch;
@@ -639,7 +654,6 @@ private void ApplyTemplateToJob(JobTemplate template)
 	JobModel.CycleSessionMode = template.CycleSessionMode;
 	JobModel.MaxCycles = template.MaxCycles;
 	JobModel.CycleReviewPrompt = template.CycleReviewPrompt;
-	SelectedModelId = template.ModelId ?? string.Empty;
 }
 
 private void ApplySelectedAgent(ProjectAgent assignment)

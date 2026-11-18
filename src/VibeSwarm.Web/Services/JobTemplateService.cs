@@ -116,7 +116,19 @@ public class JobTemplateService : IJobTemplateService
 			.Where(project => requestedIds.Contains(project.Id))
 			.ToDictionaryAsync(project => project.Id, cancellationToken);
 
-		// A second tap from the phone must not queue the same template twice on one project.
+		// Like the job form, a pinned provider only runs where the project allows it: a project that
+		// lists providers allows just those, one that lists none allows any enabled provider.
+		var allowedProvidersByProject = (await _dbContext.ProjectProviders
+			.AsNoTracking()
+			.Where(selection => requestedIds.Contains(selection.ProjectId) && selection.IsEnabled)
+			.Select(selection => new { selection.ProjectId, selection.ProviderId })
+			.ToListAsync(cancellationToken))
+			.ToLookup(selection => selection.ProjectId, selection => selection.ProviderId);
+		var pinnedProviderName = template.ProviderId is Guid providerId
+			? await _dbContext.Providers.Where(provider => provider.Id == providerId).Select(provider => provider.Name).FirstOrDefaultAsync(cancellationToken)
+			: null;
+
+				// A second tap from the phone must not queue the same template twice on one project.
 		var busyProjectIds = (await _dbContext.Jobs
 			.AsNoTracking()
 			.Where(job => job.JobTemplateId == templateId &&
@@ -145,6 +157,14 @@ public class JobTemplateService : IJobTemplateService
 			if (!project.IsActive)
 			{
 				outcome.SkipReason = "Project is inactive.";
+				continue;
+			}
+
+			if (template.ProviderId is Guid pinned &&
+				allowedProvidersByProject[project.Id].Any() &&
+				!allowedProvidersByProject[project.Id].Contains(pinned))
+			{
+				outcome.SkipReason = $"Project doesn't use {pinnedProviderName ?? "this template's provider"}.";
 				continue;
 			}
 

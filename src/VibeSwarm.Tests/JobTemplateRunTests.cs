@@ -189,6 +189,28 @@ public sealed class JobTemplateRunTests : IDisposable
 	}
 
 	[Fact]
+	public async Task RunAsync_PinnedProvider_SkipsProjectsThatDontUseIt()
+	{
+		using var scope = _rootProvider.CreateScope();
+		var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+		var claude = SeedProvider(dbContext);
+		var copilot = SeedProvider(dbContext);
+		copilot.Name = "Copilot only";
+		copilot.IsDefault = false;
+		var usesClaude = SeedProject(dbContext, claude.Id, "Alpha");
+		var copilotOnly = SeedProject(dbContext, copilot.Id, "Beta");
+		var anyProvider = SeedProject(dbContext, claude.Id, "Gamma", project => project.ProviderSelections = []);
+		var template = SeedTemplate(dbContext, "Update dependencies", item => item.ProviderId = claude.Id);
+		await dbContext.SaveChangesAsync();
+
+		var result = await CreateService(dbContext, scope).RunAsync(template.Id, [usesClaude.Id, copilotOnly.Id, anyProvider.Id]);
+
+		Assert.NotNull(result.Projects.Single(outcome => outcome.ProjectId == usesClaude.Id).JobId);
+		Assert.NotNull(result.Projects.Single(outcome => outcome.ProjectId == anyProvider.Id).JobId);
+		Assert.Equal("Project doesn't use Copilot.", result.Projects.Single(outcome => outcome.ProjectId == copilotOnly.Id).SkipReason);
+	}
+
+	[Fact]
 	public async Task GetRunsAsync_ReturnsTheLatestTopLevelJobPerProject()
 	{
 		using var scope = _rootProvider.CreateScope();

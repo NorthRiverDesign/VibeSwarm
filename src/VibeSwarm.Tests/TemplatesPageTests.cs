@@ -143,7 +143,7 @@ public sealed class TemplatesPageTests
 	{
 		Assert.Null(TemplateFacts.Describe(new JobTemplate { Name = "Plain", GoalPrompt = "Do it" }));
 		Assert.Equal(
-			"Always uses branch chore/deps, pull request into main",
+			"Uses branch chore/deps, pull request into main",
 			TemplateFacts.Describe(new JobTemplate
 			{
 				Name = "Deps",
