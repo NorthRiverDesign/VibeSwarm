@@ -293,6 +293,20 @@ public sealed class MobileShellCssTests
 		Assert.Empty(unstacked);
 	}
 
+	[Fact]
+	public void MainContent_KeepsItsDesktopWidthCap()
+	{
+		// Bootstrap 6 utilities sit in a later cascade layer than site.css's components, so a
+		// max-w-100 on .main-content silently replaced the 1400px cap and every page ran
+		// edge to edge on a wide screen.
+		var layout = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Shared", "MainLayout.razor"));
+		var mainContent = Regex.Match(layout, "<div class=\"(?<classes>main-content[^\"]*)\"");
+
+		Assert.True(mainContent.Success);
+		Assert.DoesNotMatch(new Regex(@"\b(max-w|mw)-"), mainContent.Groups["classes"].Value);
+		Assert.Matches(new Regex(@"\.main-content\s*\{[^}]*max-width:\s*1400px;"), ReadSiteCss());
+	}
+
 	private static string ReadSiteCss()
 		=> File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "wwwroot", "css", "site.css"));
 
