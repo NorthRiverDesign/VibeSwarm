@@ -256,10 +256,10 @@ else if (UsageSummary != null && ShowEmptyState)
 
 	private static string GetProgressBarClass(int percent) => percent switch
 	{
-		>= 95 => "bg-danger",
-		>= 80 => "bg-warning",
-		>= 60 => "bg-info",
-		_ => "bg-success"
+		>= 95 => "bg-data-danger",
+		>= 80 => "bg-data-warning",
+		>= 60 => "bg-data-info",
+		_ => "bg-data-success"
 	};
 
 	private static string GetTextColorClass(int percent) => percent switch

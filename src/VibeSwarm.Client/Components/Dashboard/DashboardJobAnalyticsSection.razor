@@ -51,7 +51,7 @@
 				<DashboardMetricChart Title="Completed jobs" Subtitle="@GetChartSubtitle()" Icon="check2-circle"
 									  Summary="@GetCompletedSummary()" EmptyIcon="check2-circle" EmptyTitle="No completed jobs yet"
 									  EmptyMessage="Completed jobs from the selected time range will show up here."
-									  Points="@GetCompletedChartPoints()" BarColor="var(--bs-success-base)"  UseIntegerYAxisTicks="true"
+									  Points="@GetCompletedChartPoints()" BarColor="var(--vs-data-success)"  UseIntegerYAxisTicks="true"
 									  YAxisLabelFormatter="FormatCompletedAxisLabel" />
 			</div>
 
@@ -59,7 +59,7 @@
 				<DashboardMetricChart Title="Average job duration" Subtitle="@GetChartSubtitle()" Icon="stopwatch"
 									  Summary="@GetDurationSummary()" EmptyIcon="stopwatch" EmptyTitle="No duration data yet"
 									  EmptyMessage="Average duration appears after jobs complete with timing information."
-									  Points="@GetDurationChartPoints()" BarColor="var(--bs-info-base)"
+									  Points="@GetDurationChartPoints()" BarColor="var(--vs-data-info)"
 									  YAxisLabelFormatter="FormatDurationAxisLabel" />
 			</div>
 
@@ -67,7 +67,7 @@
 				<DashboardMetricChart Title="Input tokens" Subtitle="@GetChartSubtitle()" Icon="arrow-down-circle"
 									  Summary="@GetInputTokensSummary()" EmptyIcon="arrow-down-circle" EmptyTitle="No token data yet"
 									  EmptyMessage="Input token usage will appear once jobs with token tracking complete."
-									  Points="@GetInputTokensChartPoints()" BarColor="var(--bs-warning-base)"
+									  Points="@GetInputTokensChartPoints()" BarColor="var(--vs-data-warning)"
 									  YAxisLabelFormatter="FormatTokenAxisLabel" />
 			</div>
 
@@ -75,7 +75,7 @@
 				<DashboardMetricChart Title="Output tokens" Subtitle="@GetChartSubtitle()" Icon="arrow-up-circle"
 									  Summary="@GetOutputTokensSummary()" EmptyIcon="arrow-up-circle" EmptyTitle="No token data yet"
 									  EmptyMessage="Output token usage will appear once jobs with token tracking complete."
-									  Points="@GetOutputTokensChartPoints()" BarColor="var(--bs-purple-500)"
+									  Points="@GetOutputTokensChartPoints()" BarColor="var(--vs-data-violet)"
 									  YAxisLabelFormatter="FormatTokenAxisLabel" />
 			</div>
 		</div>
