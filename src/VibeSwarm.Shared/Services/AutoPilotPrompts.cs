@@ -55,7 +55,7 @@ public static class AutoPilotPrompts
 			sb.AppendLine("Auto-pilot already worked on these, newest first. Don't suggest them again or reword them:");
 			foreach (var item in recentWork.Take(MaxRecentWorkItems))
 			{
-				var outcome = item.Succeeded ? "done" : item.ChangedNothing ? "already there, nothing to change" : "failed";
+				var outcome = item.ChangedNothing ? "already there, nothing to change" : item.Succeeded ? "done" : "failed";
 				sb.AppendLine($"- {outcome}: {Shorten(item.Title)}");
 			}
 		}

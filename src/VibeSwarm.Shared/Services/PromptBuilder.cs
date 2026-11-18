@@ -364,8 +364,7 @@ public static class PromptBuilder
 	public static string? BuildSystemPromptRules(
 		Project? project,
 		bool injectEfficiencyRules = true,
-		bool injectRepoMap = true,
-		bool requireCodeChange = true)
+		bool injectRepoMap = true)
 	{
 		if (project == null)
 		{
@@ -402,10 +401,9 @@ public static class PromptBuilder
 		// tree after it, with its own attribution settings, so agent commits only get in the way.
 		sb.AppendLine("COMPLETING THE JOB:");
 		sb.AppendLine("- Nobody is watching, so never stop to ask a question or wait for confirmation: make the reasonable call and keep going.");
-		if (requireCodeChange)
-		{
-			sb.AppendLine("- The deliverable is a code change. A run that changes nothing is recorded as failed.");
-		}
+		// A task that is already done (dependencies already current, a check the project
+		// already passes) is still a success. Saying so keeps agents from inventing edits.
+		sb.AppendLine("- If the task needs no change, make none and say so in the summary; that is a success.");
 		sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. Bring back and remove any worktree you use.");
 		sb.AppendLine("- End with a short summary: what changed, how you verified it, assumptions, and anything left undone. Its last line is the commit subject: <commit-summary>A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)</commit-summary>");
 		sb.AppendLine();

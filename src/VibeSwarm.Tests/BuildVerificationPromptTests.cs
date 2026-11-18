@@ -367,7 +367,7 @@ public sealed class BuildVerificationPromptTests
 		Assert.Contains("src/App.cs", rules);
 		Assert.DoesNotContain("BUILD VERIFICATION", rules);
 		Assert.DoesNotContain("dotnet build", rules);
-		Assert.DoesNotContain("The deliverable is a code change.", rules);
+		Assert.DoesNotContain("needs no change", rules);
 		Assert.DoesNotContain("<commit-summary>", rules);
 	}
 

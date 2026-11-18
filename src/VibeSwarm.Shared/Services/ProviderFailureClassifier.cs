@@ -58,10 +58,9 @@ public static class ProviderFailureClassifier
 	];
 
 	/// <summary>
-	/// The run touched nothing. Every provider in the plan is tried before the job fails, so by
-	/// the time this is classified the work has already been attempted everywhere it could be;
-	/// looping the idea round again would only repeat it. It says nothing about the host, though:
-	/// the next, different task can still succeed.
+	/// The message jobs used to fail with when their run touched nothing. Such runs now complete
+	/// successfully (with no changed files); the marker remains so older failed jobs are still
+	/// read as "nothing to change" rather than as a fault.
 	/// </summary>
 	private const string NoChangesMarker = "finished without changing any code";
 
@@ -101,7 +100,7 @@ public static class ProviderFailureClassifier
 	public static bool IsUnrecoverable(string? errorText) =>
 		Classify(errorText) == ProviderFailureKind.Unrecoverable;
 
-	/// <summary>Whether the run ended without changing any code, so the job was recorded as failed.</summary>
+	/// <summary>Whether an older job failed because its run changed no code (see <see cref="NoChangesMarker"/>).</summary>
 	public static bool IsNoChangeRun(string? errorText) =>
 		!string.IsNullOrWhiteSpace(errorText) && errorText.Contains(NoChangesMarker, StringComparison.OrdinalIgnoreCase);
 

@@ -162,13 +162,12 @@ public sealed class LocalEnvironmentSetupTests : IDisposable
 	}
 
 	[Fact]
-	public void BuildSystemPromptRules_DropsCodeChangeRequirement_ForLocalSetup()
+	public void BuildSystemPromptRules_SaysAFinishedTaskNeedsNoChange()
 	{
-		var project = new Project { Name = "App", WorkingPath = "/tmp/app" };
-		const string codeChangeRule = "The deliverable is a code change.";
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project { Name = "App", WorkingPath = "/tmp/app" });
 
-		Assert.Contains(codeChangeRule, PromptBuilder.BuildSystemPromptRules(project));
-		Assert.DoesNotContain(codeChangeRule, PromptBuilder.BuildSystemPromptRules(project, requireCodeChange: false));
+		Assert.Contains("If the task needs no change, make none and say so in the summary; that is a success.", rules);
+		Assert.DoesNotContain("recorded as failed", rules);
 	}
 
 	[Fact]

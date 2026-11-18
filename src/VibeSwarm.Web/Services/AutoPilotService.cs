@@ -592,7 +592,11 @@ public class AutoPilotService : IAutoPilotService
 		if (job?.Status == JobStatus.Completed && job.BuildVerified != false)
 		{
 			loop.ConsecutiveFailures = 0;
-			if (!AutoPilotPrompts.IsPolishJob(job))
+			// A run that changed nothing usually found the idea already built. It succeeded, but
+			// it added nothing for a polish pass to tidy, and the next round looks elsewhere.
+			if (job.ChangedFilesCount == 0)
+				loop.StatusMessage = NoChangeStatusMessage;
+			else if (!AutoPilotPrompts.IsPolishJob(job))
 				loop.IterationsSinceLastPolish++;
 
 			_logger.LogInformation("Auto-pilot iteration {Iteration} succeeded for project {ProjectId}",
@@ -604,13 +608,12 @@ public class AutoPilotService : IAutoPilotService
 			// doesn't count toward the failure limit; the next tick waits for the reset.
 			var hitUsageLimit = job != null && await GetProviderWaitAsync(job.ProviderId, cancellationToken) != null;
 
-			// A run that changed nothing usually found the idea already built. That is a miss
-			// of the idea source, not a fault, so it doesn't count toward the failure limit;
-			// the next round looks at the next focus area and is told the idea was there.
+			// Jobs from before a no-change run counted as a success were failed with a marker.
+			// Treat one the same way: a miss of the idea source, not a fault.
 			var changedNothing = job?.Status == JobStatus.Failed && ProviderFailureClassifier.IsNoChangeRun(job.ErrorMessage);
 			if (changedNothing)
 			{
-				loop.StatusMessage = "The last idea needed no change. Looking at another area next.";
+				loop.StatusMessage = NoChangeStatusMessage;
 			}
 			else if (!hitUsageLimit)
 			{
@@ -963,19 +966,24 @@ public class AutoPilotService : IAutoPilotService
 				&& (j.Tags == null || !j.Tags.Contains(AutoPilotPrompts.PolishJobTag)))
 			.OrderByDescending(j => j.CreatedAt)
 			.Take(RecentWorkCount)
-			.Select(j => new { j.Title, j.Status, j.ErrorMessage })
+			.Select(j => new { j.Title, j.Status, j.ErrorMessage, j.ChangedFilesCount })
 			.ToListAsync(cancellationToken);
 
+		// "Changed nothing" is a completed job with no changed files, or, from before such runs
+		// counted as a success, a failed one carrying the no-change marker.
 		return jobs
 			.Select(j => new AutoPilotWorkItem(
 				j.Title!,
 				j.Status == JobStatus.Completed,
-				j.Status == JobStatus.Failed && ProviderFailureClassifier.IsNoChangeRun(j.ErrorMessage)))
+				(j.Status == JobStatus.Completed && j.ChangedFilesCount == 0)
+					|| (j.Status == JobStatus.Failed && ProviderFailureClassifier.IsNoChangeRun(j.ErrorMessage))))
 			.ToList();
 	}
 
 	/// <summary>Deletes an auto-pilot idea that is still in the backlog after its job failed.</summary>
-	/// <summary>How often a loop waiting for approved ideas looks again.</summary>
+	private const string NoChangeStatusMessage = "The last idea needed no change. Looking at another area next.";
+
+		/// <summary>How often a loop waiting for approved ideas looks again.</summary>
 	internal static readonly TimeSpan ApprovedIdeasRecheckDelay = TimeSpan.FromMinutes(5);
 
 	/// <summary>
