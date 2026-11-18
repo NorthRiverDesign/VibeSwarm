@@ -406,7 +406,7 @@ public sealed class DashboardPageTests
 		Assert.Contains("Success · 7 days", html);
 		// 19 of 20 rounds down to 95%: a failure never shows as 100%.
 		Assert.Contains(">95%<", html);
-		Assert.Contains(">1 failed<", html);
+		Assert.Contains("19 done ·<span class=\"fg-danger fw-semibold\"> 1 failed<", html);
 		Assert.Contains("7 completed jobs · 1 failed", html);
 		Assert.Contains("bg-data-danger", html);
 	}

@@ -15,7 +15,8 @@
 		@Note
 		@if (!string.IsNullOrWhiteSpace(Alert))
 		{
-			<span class="fg-danger fw-semibold">@Alert</span>
+			@* Razor drops the whitespace before a code block, so the space goes inside. *@
+			<span class="fg-danger fw-semibold">@($" {Alert}")</span>
 		}
 	</span>
 </div>
