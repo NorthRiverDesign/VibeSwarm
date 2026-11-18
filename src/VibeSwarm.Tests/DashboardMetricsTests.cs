@@ -28,7 +28,7 @@ public sealed class DashboardMetricsTests : IDisposable
 	}
 
 	[Fact]
-	public async Task GetDashboardJobMetricsAsync_LastSevenDays_AggregatesCompletedJobsAndDuration()
+	public async Task GetDashboardJobMetricsAsync_LastSevenDays_AggregatesCompletedJobsAndDuration_AndCountsFailures()
 	{
 		await using var dbContext = CreateDbContext();
 		var service = CreateProjectService(dbContext);
@@ -78,8 +78,18 @@ public sealed class DashboardMetricsTests : IDisposable
 				Id = Guid.NewGuid(),
 				ProjectId = projectId,
 				ProviderId = providerId,
-				GoalPrompt = "Failed job should not be included",
+				GoalPrompt = "Failed job counts as a failure, not in duration",
 				Status = JobStatus.Failed,
+				CompletedAt = nowUtc.AddDays(-1),
+				ExecutionDurationSeconds = 999
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = projectId,
+				ProviderId = providerId,
+				GoalPrompt = "Cancelled job is left out entirely",
+				Status = JobStatus.Cancelled,
 				CompletedAt = nowUtc.AddDays(-1),
 				ExecutionDurationSeconds = 999
 			},
@@ -105,6 +115,8 @@ public sealed class DashboardMetricsTests : IDisposable
 		Assert.InRange(metrics.AverageDurationSeconds!.Value, 119, 121);
 		Assert.Equal(2, metrics.Buckets.Sum(bucket => bucket.CompletedJobs));
 		Assert.Contains(metrics.Buckets, bucket => bucket.AverageDurationSeconds.HasValue);
+		Assert.Equal(1, metrics.TotalFailedJobs);
+		Assert.Equal(1, metrics.Buckets.Sum(bucket => bucket.FailedJobs));
 	}
 
 	[Fact]
