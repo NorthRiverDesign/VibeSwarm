@@ -144,8 +144,9 @@ BadgeClass="theme-success" @bind-IsOpen="_openBuildVerification">
 }
 
 @* Pinned to the bottom of the scrolling body: the form is long on a phone and
-   Create should never be a scroll away. *@
-<div class="d-flex gap-3 sm:justify-content-end position-sticky pt-5 border-top vs-dialog-sticky-actions">
+   Create should never be a scroll away. z-sticky keeps it above content scrolling
+   under it: an open accordion item and a focused input-group raise their own z-index. *@
+<div class="d-flex gap-3 sm:justify-content-end position-sticky z-sticky pt-5 border-top vs-dialog-sticky-actions">
 <button type="button" class="btn-solid theme-secondary flex-shrink-0" @onclick="HandleCancel">Cancel</button>
 <button type="submit" class="btn-solid theme-primary flex-grow-1 sm:flex-grow-0" disabled="@IsSaving">
 @if (IsSaving)
