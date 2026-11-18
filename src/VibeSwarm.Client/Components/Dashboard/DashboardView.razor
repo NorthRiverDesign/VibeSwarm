@@ -136,23 +136,21 @@
                         @foreach (var project in IdeasStatus.Projects.Where(p => p.TotalQueueIdeas > 0 || p.IsProcessing))
                         {
                             <ListRow @key="project.ProjectId" Icon="lightbulb" Title="@project.ProjectName"
+                                     Subtitle="@($"{project.TotalQueueIdeas} idea{(project.TotalQueueIdeas != 1 ? "s" : "")} left")"
                                      Href="@($"/projects/{project.ProjectId}")">
                                 <Trailing>
-                                    <span class="d-flex align-items-center gap-3 flex-shrink-0 small">
-                                        <span class="fg-1 text-nowrap">@($"{project.TotalQueueIdeas} idea{(project.TotalQueueIdeas != 1 ? "s" : "")} left")</span>
-                                        @if (project.HasRunningJob)
-                                        {
-                                            <span class="fg-success fw-semibold d-inline-flex align-items-center gap-1"><span class="live-dot"></span>Running</span>
-                                        }
-                                        else if (project.IsProcessing || project.QueuedIdeas > 0)
-                                        {
-                                            <span class="fg-1">Queued</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="fg-2">Waiting</span>
-                                        }
-                                    </span>
+                                    @if (project.HasRunningJob)
+                                    {
+                                        <span class="small fg-success fw-semibold flex-shrink-0 d-inline-flex align-items-center gap-3"><span class="live-dot"></span>Running</span>
+                                    }
+                                    else if (project.IsProcessing || project.QueuedIdeas > 0)
+                                    {
+                                        <span class="small fg-1 flex-shrink-0">Queued</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="small fg-2 flex-shrink-0">Waiting</span>
+                                    }
                                 </Trailing>
                             </ListRow>
                         }

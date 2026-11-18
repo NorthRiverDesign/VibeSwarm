@@ -45,6 +45,8 @@ When Bootstrap doesn't have a utility, add a single-property class to Section 2 
 - `.white-space-pre-wrap` → `white-space: pre-wrap`
 - `.inset-0` → `inset: 0`
 - `.touch-manipulation` → `touch-action: manipulation`
+- `.tabular-nums` → `font-variant-numeric: tabular-nums` (figures that update in place)
+- `.bg-data-success` / `-warning` / `-danger` / `-info` / `-primary` / `-violet` → chart bars and meter fills
 
 ### Rules
 1. **Before adding ANY custom CSS**, check if Bootstrap 6 has a utility class, token or component for it
@@ -76,6 +78,9 @@ Every page draws on one set of tokens, defined in section 1 of `site.css`. Don't
 
 - Pick a size with the element or class above. `fs-*` (`fs-lg`, `fs-2xl`, …) is only for icon glyphs and spinners, which Bootstrap 6 sizes in `em`.
 - Pick the heading level that fits the outline; its size is already set, so don't add size classes.
+
+### Colour and contrast
+Every colour is a `light-dark()` pair in section 1, and `ThemeContrastTests` holds both themes to WCAG: text (`fg-*`, links, each theme's `-fg`) 4.5:1 on `bg-body`, `bg-1` and `bg-2`; a solid button's label 4.5:1 on its `-bg`; chart and meter fills (`--vs-data-*`, `.bg-data-*`) 3:1 on every surface. Fill graphics with `.bg-data-*`, not `bg-success` and friends, which are button fills. Mix tints `in oklab`; `oklch` rotates the hue.
 
 ### Spacing and layout
 Use Bootstrap 6's spacer scale only, and from it only these steps: `1` = 4px, `3` = 8px, `5` = 16px, `7` = 24px, `12` = 48px. (v6 renumbered the scale: its `2` is 6px and `4` is 12px; the app doesn't use those.) Pages share one rhythm:
