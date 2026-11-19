@@ -4,6 +4,7 @@
 @inject HttpProviderService HttpProviderService
 @inject NavigationManager NavigationManager
 @inject IIdeaService IdeaService
+@inject IServiceProvider ServiceProvider
 @implements IAsyncDisposable
 @using System.Globalization
 @using System.Threading
@@ -302,6 +303,7 @@
     private Dictionary<Guid, string> UsageRefreshErrors { get; set; } = new();
     private string? UsageReloadError { get; set; }
     private bool PendingDashboardRefresh { get; set; }
+    private AppResumeService? _appResumeService;
     private HubConnection? HubConnection { get; set; }
     private CancellationTokenSource? SignalRCts { get; set; }
     private bool HasConfiguredProviders => AllProviders.Any();
@@ -329,6 +331,13 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Back from the background: the job pushes sent meanwhile were lost, so reload.
+        _appResumeService = ServiceProvider.GetService<AppResumeService>();
+        if (_appResumeService is not null)
+        {
+            _appResumeService.Resumed += QueueDashboardRefreshAsync;
+        }
+
         try
         {
             var providersTask = ProviderService.GetAllAsync();
@@ -834,6 +843,11 @@
 
     public async ValueTask DisposeAsync()
     {
+        if (_appResumeService is not null)
+        {
+            _appResumeService.Resumed -= QueueDashboardRefreshAsync;
+        }
+
         SignalRCts?.Cancel();
         SignalRCts?.Dispose();
 

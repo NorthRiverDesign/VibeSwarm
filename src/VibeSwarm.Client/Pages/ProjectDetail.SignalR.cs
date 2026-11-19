@@ -13,6 +13,7 @@ public partial class ProjectDetail
 	private HashSet<Guid> _localIdeaCreateIds = new();
 	private DateTime _lastIdeasLoadTime = DateTime.MinValue;
 	private bool _disposed;
+	private AppResumeService? _appResumeService;
 
 	private static readonly TimeSpan PollingIntervalActive = TimeSpan.FromSeconds(10);
 	private static readonly TimeSpan PollingIntervalSignalRFallback = TimeSpan.FromSeconds(30);
@@ -20,11 +21,30 @@ public partial class ProjectDetail
 
 	protected override async Task OnInitializedAsync()
 	{
+		// Back from the background: the job pushes sent meanwhile were lost, so reload.
+		_appResumeService = ServiceProvider.GetService<AppResumeService>();
+		if (_appResumeService is not null)
+		{
+			_appResumeService.Resumed += OnAppResumedAsync;
+		}
+
 		await LoadData();
 
 		_ = InitializeSignalRSafe();
 		StartAutoRefresh();
 	}
+
+	// Reloads in place: LoadData would show the loading state and reset both lists to page one.
+	private Task OnAppResumedAsync() => InvokeAsync(async () =>
+	{
+		if (_disposed || Project == null) return;
+
+		await RefreshJobs(force: true);
+		await LoadIdeas(force: true);
+		if (IsAutoPilotRunning)
+			await RefreshAutoPilotAsync();
+		StateHasChanged();
+	});
 
 	private async Task LoadGitInfoSafe()
 	{
@@ -537,6 +557,10 @@ public partial class ProjectDetail
 	public async ValueTask DisposeAsync()
 	{
 		_disposed = true;
+		if (_appResumeService is not null)
+		{
+			_appResumeService.Resumed -= OnAppResumedAsync;
+		}
 
 		_expandCts?.Cancel();
 		_expandCts?.Dispose();

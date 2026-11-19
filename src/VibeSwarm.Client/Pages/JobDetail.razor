@@ -7,6 +7,7 @@
 @inject IJSRuntime JSRuntime
 @inject NotificationService NotificationService
 @inject IInferenceProviderService InferenceProviderService
+@inject IServiceProvider ServiceProvider
 @using System.Threading
 
 @if (IsLoading)
@@ -224,6 +225,7 @@ else
 	private bool _isRefreshing = false;
 	private bool _disposed = false;
 	private Timer? _refreshTimer;
+	private AppResumeService? _appResumeService;
 	private DateTime _pageLoadTime = DateTime.UtcNow;
 	private Guid? _loadedJobId;
 	private bool ShowJobOutcomeSummary => Job != null && Job.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
@@ -358,6 +360,13 @@ else
 
 	protected override async Task OnInitializedAsync()
 	{
+		// Back from the background: the job pushes sent meanwhile were lost, so reload.
+		_appResumeService = ServiceProvider.GetService<AppResumeService>();
+		if (_appResumeService is not null)
+		{
+			_appResumeService.Resumed += OnAppResumedAsync;
+		}
+
 		StartAutoRefresh();
 		_ = LoadFollowUpDraftAvailabilityAsync();
 		if (AuthenticationStateTask != null)

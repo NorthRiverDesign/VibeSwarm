@@ -8,6 +8,7 @@
 @inject ICriticalErrorLogService CriticalErrorLogService
 @inject ChangePasswordModalService ChangePasswordModalService
 @inject QueuePanelStateService QueuePanelStateService
+@inject AppResumeService AppResumeService
 @inject DeveloperUpdateOverlayService DeveloperUpdateOverlayService
 @inject HttpClient HttpClient
 @inject NavigationManager NavigationManager
@@ -378,6 +379,7 @@
             await InitializeGlobalHub();
             await SyncDeveloperUpdateStatusAsync();
             await RegisterSearchShortcut();
+            await RegisterAppResumeAsync();
         }
 
         await SyncPageScrollAsync();
@@ -414,7 +416,7 @@
     {
         try
         {
-            _dotNetRef = DotNetObjectReference.Create(this);
+            _dotNetRef ??= DotNetObjectReference.Create(this);
             await JSRuntime.InvokeVoidAsync("vibeSwarmRegisterSearchShortcut", _dotNetRef);
         }
         catch
@@ -428,6 +430,51 @@
     {
         _showSearchModal = true;
         InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RegisterAppResumeAsync()
+    {
+        try
+        {
+            _dotNetRef ??= DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("vibeSwarmRegisterAppResume", _dotNetRef);
+        }
+        catch
+        {
+            // Non-critical - live updates and page polling still refresh the data
+        }
+    }
+
+    // Back in front after the phone suspended the app: the job updates pushed meanwhile never
+    // arrived, so reload the queue and the open page instead of waiting for the next event.
+    [JSInvokable]
+    public async Task OnAppResumed()
+    {
+        _ = ReconnectGlobalHubIfStoppedAsync();
+        await Task.WhenAll(
+            QueuePanelStateService.RequestRefreshAsync(),
+            AppResumeService.NotifyResumedAsync());
+    }
+
+    // Automatic reconnect only covers a connection that once succeeded; a first connect that
+    // failed (server restarting, phone offline) is retried whenever the app comes back.
+    private async Task ReconnectGlobalHubIfStoppedAsync()
+    {
+        if (_globalHubConnection is not { State: HubConnectionState.Disconnected } hub)
+        {
+            return;
+        }
+
+        try
+        {
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await hub.StartAsync(timeoutCts.Token);
+            await hub.InvokeAsync("SubscribeToGlobalEvents");
+            await hub.InvokeAsync("SubscribeToJobList");
+        }
+        catch
+        {
+        }
     }
 
     private async Task InitializeGlobalHub()
@@ -546,6 +593,8 @@
                 {
                     await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents");
                     await _globalHubConnection.InvokeAsync("SubscribeToJobList");
+                    // Catch up on the job events sent while the connection was down.
+                    await QueuePanelStateService.RequestRefreshAsync();
                     await SyncDeveloperUpdateStatusAsync();
                 }
                 catch

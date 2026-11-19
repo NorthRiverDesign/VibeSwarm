@@ -74,6 +74,34 @@ public sealed class JobsViewTests
 		Assert.NotNull(cut.Find("button[aria-label='New job']"));
 	}
 
+	[Fact]
+	public async Task RenderedJobsView_ReloadsWhenTheAppComesBackToTheForeground()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+		var appResume = new AppResumeService();
+		context.Services.AddSingleton(appResume);
+
+		var project = CreateProject();
+		var jobService = new FakeJobService
+		{
+			CurrentJobs = [CreateJob(project, "Running job", JobStatus.Processing, minutesAgo: 20)]
+		};
+		var cut = RenderJobsView(context, jobService, project, projectFilter: null);
+		cut.WaitForAssertion(() => Assert.Contains("Running job", cut.Find("section[aria-label='Running']").TextContent));
+
+		// The job finished while the phone had the app suspended, so its push never arrived.
+		jobService.CurrentJobs = [];
+		jobService.FinishedJobs = [CreateJob(project, "Running job", JobStatus.Completed, minutesAgo: 20)];
+		await cut.InvokeAsync(appResume.NotifyResumedAsync);
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Empty(cut.FindAll("section[aria-label='Running']"));
+			Assert.Contains("Running job", cut.Find("section[aria-label='Recent']").TextContent);
+		});
+	}
+
 	private static JobSummary CreateJob(Project project, string title, JobStatus status, int priority = 0, int minutesAgo = 0) => new()
 	{
 		Id = Guid.NewGuid(),
@@ -113,8 +141,8 @@ public sealed class JobsViewTests
 		public List<string> StatusRequests { get; } = [];
 		public override Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);
 
-		public List<JobSummary> CurrentJobs { get; init; } = [];
-		public List<JobSummary> FinishedJobs { get; init; } = [];
+		public List<JobSummary> CurrentJobs { get; set; } = [];
+		public List<JobSummary> FinishedJobs { get; set; } = [];
 
 		public override Task<JobsListResult> GetPagedAsync(Guid? projectId = null, string statusFilter = "all", int page = 1, int pageSize = 25, CancellationToken cancellationToken = default)
 		{

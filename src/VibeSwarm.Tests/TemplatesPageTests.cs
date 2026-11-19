@@ -93,6 +93,36 @@ public sealed class TemplatesPageTests
 	}
 
 	[Fact]
+	public async Task TemplatesPage_ShownRunsFollowTheirJobsWithoutAReload()
+	{
+		var template = new JobTemplate { Id = Guid.NewGuid(), Name = "Update dependencies", GoalPrompt = "Bring every dependency up to date." };
+		var jobId = Guid.NewGuid();
+		var templates = new FakeJobTemplateService([template])
+		{
+			History = [new JobTemplateProjectRun { ProjectId = Alpha.Id, ProjectName = "Alpha", JobId = jobId, Status = JobStatus.Processing, CreatedAt = DateTime.UtcNow }]
+		};
+		using var context = CreateContext(templates);
+		var jobEvents = new QueuePanelStateService();
+		context.Services.AddSingleton(jobEvents);
+
+		var cut = context.Render<Templates>();
+		cut.WaitForAssertion(() => Assert.Contains("Update dependencies", cut.Markup));
+		cut.Find("button.list-group-item").Click();
+		cut.WaitForAssertion(() => Assert.Contains("Running ·", cut.Find("section[aria-label='Runs']").TextContent));
+
+		// The job finished; the layout raises this on the job event, a reconnect or the app coming back.
+		templates.History = [new JobTemplateProjectRun { ProjectId = Alpha.Id, ProjectName = "Alpha", JobId = jobId, Status = JobStatus.Completed, CreatedAt = DateTime.UtcNow }];
+		await jobEvents.RequestRefreshAsync();
+
+		cut.WaitForAssertion(() =>
+		{
+			var runs = cut.Find("section[aria-label='Runs']").TextContent;
+			Assert.Contains("Done ·", runs);
+			Assert.DoesNotContain("Running", runs);
+		});
+	}
+
+	[Fact]
 	public void PickTemplateModal_RunsTheTemplateOnTheViewedProject()
 	{
 		var template = new JobTemplate { Id = Guid.NewGuid(), Name = "Update dependencies", GoalPrompt = "Bring every dependency up to date." };
@@ -169,7 +199,7 @@ public sealed class TemplatesPageTests
 	private sealed class FakeJobTemplateService(List<JobTemplate> templates) : IJobTemplateService
 	{
 		public List<(Guid TemplateId, List<Guid> ProjectIds)> Runs { get; } = [];
-		public List<JobTemplateProjectRun> History { get; init; } = [];
+		public List<JobTemplateProjectRun> History { get; set; } = [];
 		public string? SkipReason { get; init; }
 
 		public Task<IEnumerable<JobTemplate>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<JobTemplate>>(templates);

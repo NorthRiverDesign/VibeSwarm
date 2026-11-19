@@ -26,6 +26,32 @@ public sealed class MainLayoutQueueRefreshTests
 	}
 
 	[Fact]
+	public void MainLayout_RefreshesQueueWhenGlobalHubReconnects()
+	{
+		var layoutMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Shared", "MainLayout.razor"));
+
+		Assert.Matches(
+			new Regex(@"_globalHubConnection\.Reconnected\s*\+=[\s\S]*?InvokeAsync\(""SubscribeToJobList""\);\s*(//[^\n]*\s*)?await\s+QueuePanelStateService\.RequestRefreshAsync\(\);", RegexOptions.Multiline),
+			layoutMarkup);
+	}
+
+	[Fact]
+	public void MainLayout_RefreshesQueueAndPageWhenAppComesBackToTheForeground()
+	{
+		var layoutMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Shared", "MainLayout.razor"));
+		var indexHtml = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "wwwroot", "index.html"));
+
+		Assert.Contains("JSRuntime.InvokeVoidAsync(\"vibeSwarmRegisterAppResume\", _dotNetRef)", layoutMarkup, StringComparison.Ordinal);
+		Assert.Matches(
+			new Regex(@"\[JSInvokable\]\s*public\s+async\s+Task\s+OnAppResumed\(\)\s*\{[\s\S]*?QueuePanelStateService\.RequestRefreshAsync\(\)[\s\S]*?AppResumeService\.NotifyResumedAsync\(\)", RegexOptions.Multiline),
+			layoutMarkup);
+
+		Assert.Matches(
+			new Regex(@"window\.vibeSwarmRegisterAppResume = function[\s\S]*?invokeMethodAsync\('OnAppResumed'\)[\s\S]*?document\.addEventListener\('visibilitychange'"),
+			indexHtml);
+	}
+
+	[Fact]
 	public void MainLayout_DoesNotRenderThemeToggle()
 	{
 		var layoutMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Shared", "MainLayout.razor"));

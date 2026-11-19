@@ -7,6 +7,7 @@
 @inject NavigationManager NavigationManager
 @inject NotificationService NotificationService
 @inject IJSRuntime JSRuntime
+@inject IServiceProvider ServiceProvider
 @implements IAsyncDisposable
 @using System.Threading
 @using Microsoft.AspNetCore.SignalR.Client
@@ -202,6 +203,7 @@
     private int _pageNumber = 1;
     private HubConnection? _hubConnection;
     private Timer? _refreshTimer;
+    private AppResumeService? _appResumeService;
     private bool _isRefreshing = false;
     private CancellationTokenSource? _signalRCts;
     private bool ShowJobsLoadingSpinner => _isLoadingJobs && !_hasLoadedJobsInitially;
@@ -228,10 +230,19 @@
     protected override async Task OnInitializedAsync()
     {
         _selectedProjectId = ProjectFilter;
+        // Back from the background: the job pushes sent meanwhile were lost, so reload.
+        _appResumeService = ServiceProvider.GetService<AppResumeService>();
+        if (_appResumeService is not null)
+        {
+            _appResumeService.Resumed += OnAppResumedAsync;
+        }
+
         await LoadData();
         await LoadJobTemplates();
         StartAutoRefresh();
     }
+
+    private Task OnAppResumedAsync() => InvokeAsync(RefreshJobsSafely);
 
     protected override void OnParametersSet()
     {
@@ -844,6 +855,11 @@
 
     public async ValueTask DisposeAsync()
     {
+        if (_appResumeService is not null)
+        {
+            _appResumeService.Resumed -= OnAppResumedAsync;
+        }
+
         _signalRCts?.Cancel();
         _signalRCts?.Dispose();
         _refreshTimer?.Dispose();

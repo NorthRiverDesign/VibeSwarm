@@ -2,6 +2,8 @@
 @attribute [Authorize]
 @inject IJobTemplateService JobTemplateService
 @inject NotificationService NotificationService
+@inject IServiceProvider ServiceProvider
+@implements IDisposable
 
 @* Tasks the user runs on many projects. Each row opens to its prompt, a Run button and where it has
    run; a project's + menu runs the same templates on that one project. *@
@@ -100,10 +102,61 @@ else
 	private JobTemplate? _deleting;
 	private bool _isDeleting;
 
+	private QueuePanelStateService? _jobEvents;
+	private bool _isRefreshingRuns;
+	private bool _pendingRunsRefresh;
+
 	protected override async Task OnInitializedAsync()
 	{
+		// The layout raises this on every job event, after a reconnect and when the app comes back
+		// to the foreground, so the runs shown below follow their jobs without a page reload.
+		_jobEvents = ServiceProvider.GetService<QueuePanelStateService>();
+		if (_jobEvents is not null)
+		{
+			_jobEvents.RefreshRequested += RefreshShownRunsAsync;
+		}
+
 		await LoadTemplatesAsync();
 	}
+
+	/// <summary>Re-reads the runs already shown. A failed read keeps the last list; the next event retries.</summary>
+	private Task RefreshShownRunsAsync() => InvokeAsync(async () =>
+	{
+		if (_isRefreshingRuns)
+		{
+			_pendingRunsRefresh = true;
+			return;
+		}
+
+		_isRefreshingRuns = true;
+		try
+		{
+			do
+			{
+				_pendingRunsRefresh = false;
+				foreach (var templateId in _runs.Keys.ToList())
+				{
+					try
+					{
+						var runs = await JobTemplateService.GetRunsAsync(templateId);
+						if (_runs.ContainsKey(templateId))
+						{
+							_runs[templateId] = runs;
+						}
+					}
+					catch (HttpRequestException)
+					{
+					}
+				}
+				StateHasChanged();
+			}
+			while (_pendingRunsRefresh);
+		}
+		finally
+		{
+			_isRefreshingRuns = false;
+		}
+	});
 
 	private async Task LoadTemplatesAsync()
 	{
@@ -243,6 +296,14 @@ else
 		finally
 		{
 			_isDeleting = false;
+		}
+	}
+
+	public void Dispose()
+	{
+		if (_jobEvents is not null)
+		{
+			_jobEvents.RefreshRequested -= RefreshShownRunsAsync;
 		}
 	}
 }

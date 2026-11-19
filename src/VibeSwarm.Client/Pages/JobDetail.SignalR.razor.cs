@@ -154,6 +154,8 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
                 {
                     try { await SubscribeToSignalRGroups(); }
                     catch { }
+                    // Polling stops once connected, so a job that finished meanwhile would stay "running".
+                    await InvokeAsync(RefreshJobSafely);
                 }
             };
 
@@ -553,9 +555,15 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
 
     #endregion
 
+    private Task OnAppResumedAsync() => InvokeAsync(RefreshJobSafely);
+
     public async ValueTask DisposeAsync()
     {
         _disposed = true;
+        if (_appResumeService is not null)
+        {
+            _appResumeService.Resumed -= OnAppResumedAsync;
+        }
         _signalRConnected = false;
         _signalRCts?.Cancel();
         _signalRCts?.Dispose();
