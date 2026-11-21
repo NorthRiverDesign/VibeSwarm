@@ -306,6 +306,7 @@
 					   SelectedModelIdChanged="OnSelectedSuggestModelChanged"
 					   IdeaCount="@_suggestIdeaCount"
 					   IdeaCountChanged="OnSuggestIdeaCountChanged"
+					   @bind-Focus="_suggestFocus"
 					   IsProcessing="@IsSuggestingIdeas"
 					   OnConfirm="SuggestIdeas"
 					   OnCancel="CloseSuggestIdeasModal" />
@@ -466,6 +467,7 @@
 	private Guid? _selectedConfiguredProviderId;
 	private string? _selectedConfiguredModelId;
 	private int _suggestIdeaCount = SuggestIdeasRequest.DefaultIdeaCount;
+	private string? _suggestFocus;
 
 	// Start All confirmation modal state
 	private bool _showStartAllModal { get; set; }
@@ -1313,7 +1315,8 @@
 				UseInference = _suggestUseInference,
 				ProviderId = SelectedSuggestProviderId,
 				ModelId = SelectedSuggestModelId,
-				IdeaCount = _suggestIdeaCount
+				IdeaCount = _suggestIdeaCount,
+				Focus = string.IsNullOrWhiteSpace(_suggestFocus) ? null : _suggestFocus.Trim()
 			});
 			_suggestResult = result;
 

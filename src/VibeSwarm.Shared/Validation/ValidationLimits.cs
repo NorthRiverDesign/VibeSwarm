@@ -37,6 +37,7 @@ public static class ValidationLimits
 	public const int IdeaExpandedDescriptionMaxLength = 20000;
 	public const int IdeaExpansionErrorMaxLength = 1000;
 	public const int IdeaPromptTemplateMaxLength = 12000;
+	public const int IdeaSuggestionFocusMaxLength = 2000;
 
 	/// <summary>Why the job queue was paused — a short note, not an essay.</summary>
 	public const int JobQueuePausedReasonMaxLength = 300;

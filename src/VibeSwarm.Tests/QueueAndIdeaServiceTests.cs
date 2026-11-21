@@ -1627,6 +1627,90 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		}
 	}
 
+	[Theory]
+	[InlineData("  Keyboard navigation in the idea list  ", true)]
+	[InlineData("   ", false)]
+	[InlineData(null, false)]
+	public async Task SuggestIdeasFromCodebaseAsync_AddsTheUsersFocusToThePromptOnlyWhenGiven(string? focus, bool expectFocusBlock)
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-focused-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Focused Suggestion Project",
+				WorkingPath = workingPath
+			};
+			var provider = new InferenceProvider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Preferred Ollama",
+				Endpoint = "http://preferred-ollama:11434",
+				IsEnabled = true,
+				Models =
+				[
+					new InferenceModel
+					{
+						Id = Guid.NewGuid(),
+						ModelId = "qwen2.5-coder:7b",
+						TaskType = "suggest",
+						IsDefault = true,
+						IsAvailable = true
+					}
+				]
+			};
+
+			provider.Models.First().InferenceProviderId = provider.Id;
+			dbContext.Projects.Add(project);
+			dbContext.InferenceProviders.Add(provider);
+			await dbContext.SaveChangesAsync();
+
+			var inferenceService = new FakeInferenceService
+			{
+				Response = new InferenceResponse
+				{
+					Success = true,
+					ModelUsed = "qwen2.5-coder:7b",
+					Response = "- Let arrow keys move between ideas in the list",
+					DurationMs = 700
+				}
+			};
+
+			var ideaService = CreateIdeaService(dbContext, new Provider(), inferenceService: inferenceService);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				ProviderId = provider.Id,
+				IdeaCount = 1,
+				Focus = focus
+			});
+
+			Assert.True(result.Success);
+			var prompt = inferenceService.LastRequest?.Prompt;
+			Assert.NotNull(prompt);
+			if (expectFocusBlock)
+			{
+				Assert.Contains("<focus>", prompt);
+				Assert.Contains("Keyboard navigation in the idea list\n</focus>", prompt.ReplaceLineEndings("\n"));
+				Assert.DoesNotContain("  Keyboard navigation", prompt);
+			}
+			else
+			{
+				Assert.DoesNotContain("<focus>", prompt);
+			}
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
 	[Fact]
 	public async Task SuggestIdeasFromCodebaseAsync_PrioritizesUserImpactIdeasOverDevelopmentOnlySuggestions()
 	{
