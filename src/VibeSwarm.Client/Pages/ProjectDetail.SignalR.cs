@@ -28,6 +28,8 @@ public partial class ProjectDetail
 			_appResumeService.Resumed += OnAppResumedAsync;
 		}
 
+		// Back on the page: draw what it last showed straight away; LoadData reloads it in place.
+		RestoreSnapshot();
 		await LoadData();
 
 		_ = InitializeSignalRSafe();
@@ -477,18 +479,25 @@ public partial class ProjectDetail
 
 	private async Task LoadData()
 	{
-		IsLoading = true;
+		// A page already showing the project (from the last visit, or before an edit) reloads in
+		// place, without the spinner or the list placeholders.
+		var isShowingProject = Project != null;
+		IsLoading = !isShowingProject;
 		try
 		{
 			Project = await ProjectService.GetByIdAsync(ProjectId);
-			if (Project == null) return;
+			if (Project == null)
+			{
+				ForgetSnapshot();
+				return;
+			}
 
 			// Git runs alongside the rest so the header doesn't wait for jobs, ideas and providers.
 			_ = LoadGitInfoSafe();
 
 			IsLoading = false;
-			_isLoadingJobs = true;
-			_isLoadingIdeas = true;
+			_isLoadingJobs = !isShowingProject;
+			_isLoadingIdeas = !isShowingProject;
 			StateHasChanged();
 
 			_jobsPageNumber = 1;
@@ -512,6 +521,7 @@ public partial class ProjectDetail
 			});
 
 			await Task.WhenAll(jobsTask, ideasTask, providersTask, autoPilotTask);
+			SaveSnapshot();
 
 			await InvokeAsync(StateHasChanged);
 		}
@@ -556,6 +566,7 @@ public partial class ProjectDetail
 
 	public async ValueTask DisposeAsync()
 	{
+		SaveSnapshot();
 		_disposed = true;
 		if (_appResumeService is not null)
 		{

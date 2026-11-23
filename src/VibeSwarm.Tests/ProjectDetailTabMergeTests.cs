@@ -1,5 +1,6 @@
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
+using VibeSwarm.Client.Components.Common;
 using VibeSwarm.Client.Pages;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
@@ -197,6 +198,46 @@ public sealed class ProjectDetailTabMergeTests
 		Assert.Equal(0, versionControl.SyncCount);
 	}
 
+	[Fact]
+	public async Task ProjectDetail_ShowsTheLastVisitAtOnce_ThenTheFreshJobs()
+	{
+		var jobService = new FakeJobService([CreateJob("Older job")]);
+		using var context = CreateContext(ideas: [], jobs: [], jobService: jobService);
+		context.Services.AddSingleton<ViewSnapshotCache>();
+
+		var first = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
+		first.WaitForAssertion(() => Assert.Contains("Older job", first.Markup));
+		// Leaving the page disposes it, as navigating away does.
+		await context.DisposeComponentsAsync();
+
+		jobService.Jobs.Clear();
+		jobService.Jobs.Add(CreateJob("Newer job"));
+		jobService.JobsLoadGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+		// Back on the page: the last visit shows straight away, with no placeholders, while the reload is held.
+		var second = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
+		second.WaitForAssertion(() => Assert.Contains("Older job", second.Markup));
+		Assert.Empty(second.FindComponents<SkeletonLoader>());
+		Assert.False(jobService.JobsLoadGate.Task.IsCompleted);
+
+		jobService.JobsLoadGate.SetResult();
+		second.WaitForAssertion(() =>
+		{
+			Assert.Contains("Newer job", second.Markup);
+			Assert.DoesNotContain("Older job", second.Markup);
+		});
+	}
+
+	private static JobSummary CreateJob(string title) => new()
+	{
+		Id = Guid.NewGuid(),
+		ProjectId = TestProject.Id,
+		Title = title,
+		GoalPrompt = title,
+		Status = JobStatus.Completed,
+		CreatedAt = DateTime.UtcNow
+	};
+
 	private static readonly Project TestProject = new()
 	{
 		Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -243,7 +284,7 @@ public sealed class ProjectDetailTabMergeTests
 
 		public List<Job> CreatedJobs { get; } = [];
 		public List<JobSummary> Jobs => jobs;
-		public TaskCompletionSource? JobsLoadGate { get; init; }
+		public TaskCompletionSource? JobsLoadGate { get; set; }
 
 		public override Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)
 		{

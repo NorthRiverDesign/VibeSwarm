@@ -291,6 +291,25 @@
     /// <summary>How a project row shows its last job: a dot, words for screen readers, and short trailing text.</summary>
     private sealed record ProjectRowState(string DotClass, string Status, string Text, string TextClass);
 
+    /// <summary>What the page showed when last left, drawn at once on the next visit while it reloads.</summary>
+    private sealed record DashboardSnapshot(
+        List<Provider> Providers,
+        Dictionary<Guid, ProviderUsageSummary> UsageSummaries,
+        Dictionary<ProviderType, string> InstalledVersionsByType,
+        List<DashboardProjectInfo> Projects,
+        List<DashboardRunningJobInfo> RunningJobs,
+        GlobalIdeasProcessingStatus? IdeasStatus,
+        DashboardJobMetrics Metrics,
+        string? MetricsError,
+        int RangeDays,
+        DashboardProjectSortOption ProjectSort);
+
+    private const string SnapshotKey = "dashboard";
+    private ViewSnapshotCache? _snapshotCache;
+    private bool _hasLoaded;
+    // The range the figures on screen belong to; a range change sets SelectedRangeDays first.
+    private int _metricsRangeDays = 7;
+
     private List<Provider> AllProviders { get; set; } = new();
     private List<DashboardProjectInfo> DashboardProjects { get; set; } = new();
     private List<DashboardRunningJobInfo> RunningDashboardJobs { get; set; } = new();
@@ -338,6 +357,10 @@
             _appResumeService.Resumed += QueueDashboardRefreshAsync;
         }
 
+        // Back on the page: draw what it last showed straight away, then reload it all below.
+        _snapshotCache = ServiceProvider.GetService<ViewSnapshotCache>();
+        var restored = RestoreSnapshot();
+
         try
         {
             var providersTask = ProviderService.GetAllAsync();
@@ -345,7 +368,7 @@
             var commonProviderStatusesTask = CommonProviderSetupService.GetStatusesAsync();
             var dashboardDataTask = LoadDashboardProjectsAsync();
             var ideasStatusTask = LoadIdeasStatusAsync();
-            var metricsTask = LoadMetricsAsync();
+            var metricsTask = LoadMetricsAsync(keepFiguresOnError: restored);
 
             await Task.WhenAll(providersTask, usageTask, commonProviderStatusesTask, dashboardDataTask, ideasStatusTask, metricsTask);
 
@@ -355,10 +378,49 @@
                 .Where(status => !string.IsNullOrWhiteSpace(status.InstalledVersion))
                 .GroupBy(status => status.ProviderType)
                 .ToDictionary(group => group.Key, group => group.First().InstalledVersion!);
+            _hasLoaded = true;
+            SaveSnapshot();
+        }
+        catch (Exception) when (restored)
+        {
+            // Keep the figures from the last visit; the next job event or app resume reloads them.
         }
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    /// <summary>Fills the page from its last visit, if there was one. Returns whether it did.</summary>
+    private bool RestoreSnapshot()
+    {
+        if (_snapshotCache is null || !_snapshotCache.TryGet<DashboardSnapshot>(SnapshotKey, out var snapshot))
+        {
+            return false;
+        }
+
+        AllProviders = snapshot.Providers;
+        UsageSummaries = snapshot.UsageSummaries;
+        InstalledVersionsByType = snapshot.InstalledVersionsByType;
+        DashboardProjects = snapshot.Projects;
+        RunningDashboardJobs = snapshot.RunningJobs;
+        IdeasStatus = snapshot.IdeasStatus;
+        Metrics = snapshot.Metrics;
+        MetricsError = snapshot.MetricsError;
+        SelectedRangeDays = snapshot.RangeDays;
+        _metricsRangeDays = snapshot.RangeDays;
+        SelectedProjectSort = snapshot.ProjectSort;
+        _hasLoaded = true;
+        IsLoading = false;
+        return true;
+    }
+
+    private void SaveSnapshot()
+    {
+        if (_hasLoaded)
+        {
+            _snapshotCache?.Set(SnapshotKey, new DashboardSnapshot(AllProviders, UsageSummaries, InstalledVersionsByType,
+                DashboardProjects, RunningDashboardJobs, IdeasStatus, Metrics, MetricsError, _metricsRangeDays, SelectedProjectSort));
         }
     }
 
@@ -531,6 +593,7 @@
             {
                 Metrics = metrics;
                 MetricsError = null;
+                _metricsRangeDays = rangeDays;
             }
         }
         catch (Exception ex)
@@ -539,6 +602,7 @@
             {
                 MetricsError = ex.Message;
                 Metrics = new DashboardJobMetrics { RangeDays = rangeDays };
+                _metricsRangeDays = rangeDays;
             }
         }
     }
@@ -843,6 +907,9 @@
 
     public async ValueTask DisposeAsync()
     {
+        // Leaving: keep what is on screen now, with every push and refresh since it loaded.
+        SaveSnapshot();
+
         if (_appResumeService is not null)
         {
             _appResumeService.Resumed -= QueueDashboardRefreshAsync;

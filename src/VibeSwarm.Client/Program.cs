@@ -74,6 +74,7 @@ builder.Services.AddScoped<ThemeService>();
 builder.Services.AddScoped<AppTimeZoneService>();
 builder.Services.AddScoped<QueuePanelStateService>();
 builder.Services.AddScoped<AppResumeService>();
+builder.Services.AddScoped<ViewSnapshotCache>();
 builder.Services.AddScoped<DeveloperUpdateOverlayService>();
 
 // Auth

@@ -1,6 +1,7 @@
 using AngleSharp.Dom;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
+using VibeSwarm.Client.Components.Common;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
@@ -102,6 +103,70 @@ public sealed class JobsViewTests
 		});
 	}
 
+	[Fact]
+	public async Task RenderedJobsView_ShowsTheLastVisitAtOnce_ThenTheFreshJobs()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+		context.Services.AddSingleton<ViewSnapshotCache>();
+
+		var project = CreateProject();
+		var jobService = new FakeJobService
+		{
+			FinishedJobs = [CreateJob(project, "Older job", JobStatus.Completed, minutesAgo: 60)]
+		};
+		var first = RenderJobsView(context, jobService, project, projectFilter: null);
+		first.WaitForAssertion(() => Assert.Contains("Older job", first.Markup));
+		// Leaving the page disposes it, as navigating away does.
+		await context.DisposeComponentsAsync();
+
+		jobService.FinishedJobs = [CreateJob(project, "Newer job", JobStatus.Completed, minutesAgo: 1)];
+		jobService.Gate = new TaskCompletionSource();
+
+		// Back on the page: the last visit shows straight away while the reload is held.
+		var second = context.Render<JobsView>(parameters => parameters.Add(component => component.ProjectFilter, null));
+		Assert.Empty(second.FindComponents<LoadingSpinner>());
+		Assert.Contains("Older job", second.Markup);
+
+		// Another project's list was never seen, so it waits for its own.
+		var otherProject = context.Render<JobsView>(parameters => parameters.Add(component => component.ProjectFilter, Guid.NewGuid()));
+		Assert.NotEmpty(otherProject.FindComponents<LoadingSpinner>());
+
+		jobService.Gate.SetResult();
+		second.WaitForAssertion(() =>
+		{
+			Assert.Contains("Newer job", second.Markup);
+			Assert.DoesNotContain("Older job", second.Markup);
+		});
+	}
+
+	[Fact]
+	public async Task RenderedJobsView_LeavingMidSwitch_KeepsTheOldListOutOfTheNewProject()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.Mode = JSRuntimeMode.Loose;
+		context.Services.AddSingleton<ViewSnapshotCache>();
+
+		var project = CreateProject();
+		var jobService = new FakeJobService
+		{
+			FinishedJobs = [CreateJob(project, "All projects job", JobStatus.Completed, minutesAgo: 60)]
+		};
+		var cut = RenderJobsView(context, jobService, project, projectFilter: null);
+		cut.WaitForAssertion(() => Assert.Contains("All projects job", cut.Markup));
+
+		// Switch to one project, then leave before its list arrives.
+		var otherProjectId = Guid.NewGuid();
+		jobService.Gate = new TaskCompletionSource();
+		cut.Render(parameters => parameters.Add(component => component.ProjectFilter, otherProjectId));
+		await context.DisposeComponentsAsync();
+
+		var reopened = context.Render<JobsView>(parameters => parameters.Add(component => component.ProjectFilter, otherProjectId));
+		Assert.NotEmpty(reopened.FindComponents<LoadingSpinner>());
+		Assert.DoesNotContain("All projects job", reopened.Markup);
+		jobService.Gate.SetResult();
+	}
+
 	private static JobSummary CreateJob(Project project, string title, JobStatus status, int priority = 0, int minutesAgo = 0) => new()
 	{
 		Id = Guid.NewGuid(),
@@ -144,12 +209,20 @@ public sealed class JobsViewTests
 		public List<JobSummary> CurrentJobs { get; set; } = [];
 		public List<JobSummary> FinishedJobs { get; set; } = [];
 
-		public override Task<JobsListResult> GetPagedAsync(Guid? projectId = null, string statusFilter = "all", int page = 1, int pageSize = 25, CancellationToken cancellationToken = default)
+		/// <summary>Holds every list request until set, to catch the page while it loads.</summary>
+		public TaskCompletionSource? Gate { get; set; }
+
+		public override async Task<JobsListResult> GetPagedAsync(Guid? projectId = null, string statusFilter = "all", int page = 1, int pageSize = 25, CancellationToken cancellationToken = default)
 		{
 			StatusRequests.Add(statusFilter);
+			if (Gate is { } gate)
+			{
+				await gate.Task;
+			}
+
 			var items = statusFilter == "current" ? CurrentJobs : FinishedJobs;
 
-			return Task.FromResult(new JobsListResult
+			return new JobsListResult
 			{
 				PageNumber = page,
 				PageSize = pageSize,
@@ -164,7 +237,7 @@ public sealed class JobsViewTests
 						ActiveCount = 1
 					}
 				]
-			});
+			};
 		}
 
 		public override Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);
