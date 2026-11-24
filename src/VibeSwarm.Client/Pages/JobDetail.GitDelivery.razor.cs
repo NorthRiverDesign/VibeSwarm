@@ -15,6 +15,7 @@ public partial class JobDetail : ComponentBase
     private bool _isSyncingWithOrigin = false;
     private bool _isRefreshingBranches = false;
     private bool _isPruningBranches = false;
+    private bool _showMergeBranchDialog = false;
 
     // Commit and push state
     private string _commitMessage = string.Empty;
@@ -71,6 +72,37 @@ public partial class JobDetail : ComponentBase
 
         _showCreateBranchModal = true;
         _createBranchError = null;
+    }
+
+    private void ShowMergeBranchDialog()
+    {
+        if (!ShowGitActions || _isSyncingWithOrigin || _isRefreshingBranches || _isPruningBranches)
+        {
+            return;
+        }
+
+        _showMergeBranchDialog = true;
+    }
+
+    // Merging into the job's own target is what the delivery card's merge does, so record it the same way.
+    // Uncommitted job work stays out of a merge, so the job only counts as merged once it was committed.
+    private async Task HandleBranchMerged(string targetBranch)
+    {
+        if (Job == null || Job.MergedAt != null || string.IsNullOrWhiteSpace(Job.GitCommitHash) ||
+            !string.Equals(targetBranch, EffectiveTargetBranch, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Job.MergedAt = DateTime.UtcNow;
+        try
+        {
+            await JobService.UpdateGitDeliveryAsync(Job.Id, mergedAt: Job.MergedAt);
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowProjectError(Job.Project?.Name, $"Merged, but couldn't record it on the job: {ex.Message}");
+        }
     }
 
     private async Task CreateBranch(string branchName)

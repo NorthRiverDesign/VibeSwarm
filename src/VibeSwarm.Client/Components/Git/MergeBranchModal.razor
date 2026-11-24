@@ -4,7 +4,14 @@
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Merge Branch"
 	Icon="arrow-left-right" Size="ModalDialog.ModalSize.Default">
 	<ChildContent>
-		@if (string.IsNullOrWhiteSpace(CurrentBranch))
+		@if (IsLoadingBranches)
+		{
+			<div class="d-flex align-items-center gap-3 fg-1">
+				<span class="spinner-border spinner-sm" role="status" aria-hidden="true"></span>
+				<span>Loading branches...</span>
+			</div>
+		}
+		else if (string.IsNullOrWhiteSpace(CurrentBranch))
 		{
 			<div class="alert theme-warning py-3 mb-0 align-items-center">
 				<i class="bi flex-shrink-0 bi-exclamation-triangle-fill"></i>
@@ -20,6 +27,14 @@
 		}
 		else
 		{
+			@if (!string.IsNullOrWhiteSpace(Notice))
+			{
+				<div class="alert theme-warning py-3 mb-5">
+					<i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
+					<div>@Notice</div>
+				</div>
+			}
+
 			<p class="mb-5">
 				Merge the current working branch <strong class="fg-primary">@CurrentBranch</strong>
 				into another branch.
@@ -218,6 +233,14 @@
 
 	[Parameter]
 	public string? CurrentBranch { get; set; }
+
+	/// <summary>Shows a spinner in place of the form while the branches are still being read.</summary>
+	[Parameter]
+	public bool IsLoadingBranches { get; set; }
+
+	/// <summary>An optional warning shown above the form, such as work the merge would leave out.</summary>
+	[Parameter]
+	public string? Notice { get; set; }
 
 	[Parameter]
 	public IReadOnlyList<string> TargetBranches { get; set; } = [];

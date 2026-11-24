@@ -2,7 +2,8 @@
    link and the job's actions and stays pinned while the page scrolls, so Stop is in reach from the
    newest message. Every way to stop the job sits behind the one stop button; the rest behind ⋯.
    The title is clamped to two lines (the whole goal opens the conversation below), and one quiet
-   status line opens the remaining facts. *@
+   status line opens the remaining facts. When the back link leads elsewhere (the Jobs list), the
+   project's name sits above the title as a link to its page. *@
 
 <div class="job-nav-bar sticky-top d-flex align-items-center gap-3 py-1">
 	<a href="@BackHref" class="small fg-1 text-decoration-none d-inline-flex align-items-center gap-1 me-auto min-w-0">
@@ -44,6 +45,9 @@
 					<h6 class="menu-header">Git</h6>
 					<button type="button" class="menu-item" @onclick="OnCreateBranch" disabled="@AreGitActionsBusy">
 						<i class="bi bi-plus-lg"></i>New branch
+					</button>
+					<button type="button" class="menu-item" @onclick="OnMergeBranch" disabled="@AreGitActionsBusy">
+						<i class="bi bi-arrow-left-right"></i>Merge branch…
 					</button>
 					<button type="button" class="menu-item" @onclick="OnSync" disabled="@AreGitActionsBusy">
 						<i class="bi bi-cloud-download @(IsGitSyncing ? "spinner-rotate" : null)"></i>Sync with origin
@@ -111,6 +115,13 @@
 </div>
 
 <div class="d-flex flex-column gap-1 mb-5">
+	@if (ShowProjectLink)
+	{
+		<a href="@ProjectHref" class="small fg-primary text-decoration-none d-inline-flex align-items-center gap-1 align-self-start max-w-100 min-w-0"
+		   title="Open project">
+			<i class="bi bi-folder2" aria-hidden="true"></i><span class="text-truncate">@ProjectName</span>
+		</a>
+	}
 	<h1 class="mb-0 text-break @(_isTitleExpanded ? null : "line-clamp-2")" title="@JobTitle"
 		@onclick="@(() => _isTitleExpanded = !_isTitleExpanded)">@(string.IsNullOrEmpty(JobTitle) ? "Job" : JobTitle)</h1>
 
@@ -394,6 +405,10 @@
 	[Parameter]
 	public EventCallback OnPruneBranches { get; set; }
 
+	/// <summary>Opens the dialog that merges the checkout's branch into another, such as a deployment branch.</summary>
+	[Parameter]
+	public EventCallback OnMergeBranch { get; set; }
+
 	[Parameter]
 	public bool CanForceReset { get; set; }
 
@@ -453,6 +468,12 @@
 	public string? EnvironmentTooltip { get; set; }
 
 	private bool _isTitleExpanded;
+
+	private string ProjectHref => $"/projects/{ProjectId}";
+
+	// The back link already names the project when it leads there.
+	private bool ShowProjectLink => ProjectId != Guid.Empty
+		&& !string.Equals(BackHref, ProjectHref, StringComparison.OrdinalIgnoreCase);
 
 	private bool HasMoreMenu => CanRunNext || CanRetry || ShowGitActions;
 
