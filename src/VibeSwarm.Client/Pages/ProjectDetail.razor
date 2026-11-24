@@ -107,7 +107,8 @@ else
                                 DefaultInferenceModelId="@(Project?.IdeaInferenceModelId)"
                                 OnSuggestIdeas="SuggestIdeasFromCodebase" OnPreviousPage="LoadPreviousIdeasPage"
                                 OnNextPage="LoadNextIdeasPage" OnCreateJob="ShowCreateJobModal"
-                                OnRunTemplate="() => _showPickTemplateModal = true" ShowEmptyState="false">
+                                OnRunTemplate="() => _showPickTemplateModal = true" ShowEmptyState="false"
+                                HiddenJobId="@ActiveJob?.Id">
                         <RunningContent>
                             @if (ActiveJob != null || IsAutoPilotRunning)
                             {

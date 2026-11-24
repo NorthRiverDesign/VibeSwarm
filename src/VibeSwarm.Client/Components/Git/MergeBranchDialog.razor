@@ -1,0 +1,392 @@
+@* Merges a checkout's current branch into another local branch, such as a deployment branch, from a
+   page that doesn't track the project's branches itself (the job page). Opening it reads the
+   branches fresh, previews the merge, then merges (and pushes) or opens a pull request. The merge
+   runs in a temporary worktree from committed refs, so it warns when the checkout has uncommitted
+   work it would leave out. *@
+@inject IVersionControlService VersionControlService
+@inject NotificationService NotificationService
+
+<MergeBranchModal IsVisible="@IsVisible" IsVisibleChanged="IsVisibleChanged" IsLoadingBranches="@_isLoading"
+				  CurrentBranch="@_currentBranch" TargetBranches="@_targetBranches" SelectedTargetBranch="@_targetBranch"
+				  PushAfterMerge="@_pushAfterMerge" IsCheckingPreview="@_isCheckingPreview" IsMerging="@_isMerging"
+				  PreviewMessage="@_previewMessage" PreviewError="@_previewError" IsAlreadyUpToDate="@_isAlreadyUpToDate"
+				  ConflictFiles="@_conflictFiles" CreatePullRequest="@_createPullRequest" PullRequestTitle="@_pullRequestTitle"
+				  IsCreatingPullRequest="@_isCreatingPullRequest" IsGitHubCliAvailable="@_isGitHubCliAvailable"
+				  Notice="@_notice"
+				  OnTargetBranchChanged="HandleTargetBranchChangedAsync"
+				  OnPushAfterMergeChanged="HandlePushAfterMergeChanged"
+				  OnCreatePullRequestChanged="HandleCreatePullRequestChanged"
+				  OnPullRequestTitleChanged="HandlePullRequestTitleChanged"
+				  OnConflictResolutionChanged="HandleConflictResolutionChanged"
+				  OnMerge="MergeAsync" OnCreatePullRequestSubmit="CreatePullRequestAsync"
+				  OnCancel="CloseAsync" />
+
+@code {
+	public const string UncommittedChangesNotice =
+		"This checkout has uncommitted changes. The merge only takes committed work, so commit them first to include them.";
+
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public string? WorkingPath { get; set; }
+
+	/// <summary>Names the project in the toasts.</summary>
+	[Parameter]
+	public string? ProjectName { get; set; }
+
+	/// <summary>Target branches to preselect, best first; the first one that exists locally wins.</summary>
+	[Parameter]
+	public IReadOnlyList<string?> PreferredTargetBranches { get; set; } = [];
+
+	/// <summary>Raised after a merge succeeds, with the branch that was merged into.</summary>
+	[Parameter]
+	public EventCallback<string> OnMerged { get; set; }
+
+	private bool _wasVisible;
+	private int _openVersion;
+	private bool _isLoading;
+	private string? _currentBranch;
+	private List<string> _targetBranches = [];
+	private string? _targetBranch;
+	private bool _pushAfterMerge = true;
+	private bool _createPullRequest;
+	private string? _pullRequestTitle;
+	private bool _isGitHubCliAvailable;
+	private bool _isCheckingPreview;
+	private bool _isMerging;
+	private bool _isCreatingPullRequest;
+	private string? _previewMessage;
+	private string? _previewError;
+	private bool _isAlreadyUpToDate;
+	private string? _notice;
+	private List<MergeConflictFile> _conflictFiles = [];
+
+	private bool IsBusy => _isLoading || _isMerging || _isCreatingPullRequest;
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (IsVisible && !_wasVisible)
+		{
+			_wasVisible = true;
+			await OpenAsync();
+		}
+		else if (!IsVisible)
+		{
+			_wasVisible = false;
+		}
+	}
+
+	private async Task OpenAsync()
+	{
+		var version = ++_openVersion;
+		ResetState();
+
+		if (string.IsNullOrWhiteSpace(WorkingPath))
+		{
+			return;
+		}
+
+		var workingPath = WorkingPath;
+		_isLoading = true;
+		try
+		{
+			_currentBranch = await VersionControlService.GetCurrentBranchAsync(workingPath);
+			var branches = await VersionControlService.GetBranchesAsync(workingPath, includeRemote: false);
+			if (version != _openVersion)
+			{
+				return;
+			}
+
+			_targetBranches = branches
+				.Where(branch => !branch.IsRemote && !string.Equals(branch.Name, _currentBranch, StringComparison.Ordinal))
+				.Select(branch => branch.Name)
+				.Distinct(StringComparer.Ordinal)
+				.OrderBy(branch => branch, StringComparer.OrdinalIgnoreCase)
+				.ToList();
+			_targetBranch = PreferredTargetBranches.FirstOrDefault(branch =>
+					!string.IsNullOrWhiteSpace(branch) && _targetBranches.Contains(branch, StringComparer.Ordinal))
+				?? _targetBranches.FirstOrDefault();
+		}
+		catch (Exception ex)
+		{
+			if (version == _openVersion)
+			{
+				NotificationService.ShowProjectError(ProjectName, $"Couldn't load branches: {ex.Message}");
+				await CloseAsync();
+			}
+			return;
+		}
+		finally
+		{
+			if (version == _openVersion)
+			{
+				_isLoading = false;
+			}
+		}
+
+		_ = CheckGitHubCliAvailabilityAsync(version);
+		await CheckUncommittedChangesAsync(workingPath, version);
+		await PreviewAsync(version);
+	}
+
+	private async Task CheckUncommittedChangesAsync(string workingPath, int version)
+	{
+		try
+		{
+			var hasUncommittedChanges = await VersionControlService.HasUncommittedChangesAsync(workingPath);
+			if (version == _openVersion)
+			{
+				_notice = hasUncommittedChanges ? UncommittedChangesNotice : null;
+			}
+		}
+		catch
+		{
+			// The warning is advisory; the merge itself still works without it.
+		}
+	}
+
+	private async Task CheckGitHubCliAvailabilityAsync(int version)
+	{
+		try
+		{
+			var available = await VersionControlService.IsGitHubCliAvailableAsync()
+				&& await VersionControlService.IsGitHubCliAuthenticatedAsync();
+			if (version == _openVersion)
+			{
+				_isGitHubCliAvailable = available;
+				await InvokeAsync(StateHasChanged);
+			}
+		}
+		catch
+		{
+			_isGitHubCliAvailable = false;
+		}
+	}
+
+	private async Task PreviewAsync(int version)
+	{
+		if (!IsVisible || _isMerging || string.IsNullOrWhiteSpace(WorkingPath) ||
+			string.IsNullOrWhiteSpace(_currentBranch) || string.IsNullOrWhiteSpace(_targetBranch))
+		{
+			return;
+		}
+
+		var targetBranch = _targetBranch;
+		_isCheckingPreview = true;
+		_previewMessage = null;
+		_previewError = null;
+		_isAlreadyUpToDate = false;
+		_conflictFiles = [];
+		StateHasChanged();
+
+		try
+		{
+			var result = await VersionControlService.PreviewMergeBranchAsync(WorkingPath, _currentBranch, targetBranch);
+			if (version != _openVersion || !string.Equals(targetBranch, _targetBranch, StringComparison.Ordinal))
+			{
+				return;
+			}
+
+			if (result.Success)
+			{
+				_isAlreadyUpToDate = result.ChangedFilesCount == 0;
+				_previewMessage = result.Output ?? $"'{_currentBranch}' can be merged into '{targetBranch}' without conflicts.";
+			}
+			else
+			{
+				_previewError = result.Error ?? $"{AppConstants.AppName} could not verify the merge preview.";
+				_conflictFiles = result.MergeConflictFiles.Select(CloneConflictFile).ToList();
+				if (_conflictFiles.Count > 0)
+				{
+					_createPullRequest = false;
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			if (version == _openVersion)
+			{
+				_previewError = $"Error checking merge preview: {ex.Message}";
+			}
+		}
+		finally
+		{
+			if (version == _openVersion && string.Equals(targetBranch, _targetBranch, StringComparison.Ordinal))
+			{
+				_isCheckingPreview = false;
+			}
+			StateHasChanged();
+		}
+	}
+
+	private async Task HandleTargetBranchChangedAsync(string targetBranch)
+	{
+		_targetBranch = targetBranch;
+		await PreviewAsync(_openVersion);
+	}
+
+	private void HandlePushAfterMergeChanged(bool pushAfterMerge) => _pushAfterMerge = pushAfterMerge;
+
+	private void HandleCreatePullRequestChanged(bool createPullRequest)
+	{
+		_createPullRequest = createPullRequest;
+		if (createPullRequest)
+		{
+			_pushAfterMerge = true;
+		}
+	}
+
+	private void HandlePullRequestTitleChanged(string? title) => _pullRequestTitle = title;
+
+	private void HandleConflictResolutionChanged(MergeConflictResolution resolution)
+	{
+		var conflictFile = _conflictFiles.FirstOrDefault(file => string.Equals(file.FileName, resolution.FileName, StringComparison.Ordinal));
+		if (conflictFile is not null)
+		{
+			conflictFile.Content = resolution.ResolvedContent;
+		}
+	}
+
+	private async Task MergeAsync((string targetBranch, bool pushAfterMerge) args)
+	{
+		if (IsBusy || string.IsNullOrWhiteSpace(WorkingPath) || string.IsNullOrWhiteSpace(_currentBranch) ||
+			string.IsNullOrWhiteSpace(args.targetBranch))
+		{
+			return;
+		}
+
+		var sourceBranch = _currentBranch;
+		_isMerging = true;
+		_targetBranch = args.targetBranch;
+		_pushAfterMerge = args.pushAfterMerge;
+		_previewError = null;
+		_previewMessage = null;
+		StateHasChanged();
+
+		try
+		{
+			if (_conflictFiles.Count == 0)
+			{
+				var preview = await VersionControlService.PreviewMergeBranchAsync(WorkingPath, sourceBranch, args.targetBranch);
+				if (!preview.Success)
+				{
+					_previewError = preview.Error ?? $"{AppConstants.AppName} could not verify the merge preview.";
+					_conflictFiles = preview.MergeConflictFiles.Select(CloneConflictFile).ToList();
+					return;
+				}
+
+				_previewMessage = preview.Output ?? $"'{sourceBranch}' can be merged into '{args.targetBranch}' without conflicts.";
+			}
+
+			var result = await VersionControlService.MergeBranchAsync(
+				WorkingPath,
+				sourceBranch,
+				args.targetBranch,
+				pushAfterMerge: args.pushAfterMerge,
+				conflictResolutions: _conflictFiles.Count > 0
+					? _conflictFiles.Select(file => new MergeConflictResolution
+					{
+						FileName = file.FileName,
+						ResolvedContent = file.Content
+					}).ToList()
+					: null);
+
+			if (!result.Success)
+			{
+				_previewError = result.Error ?? "Failed to merge branches.";
+				_conflictFiles = result.MergeConflictFiles.Select(CloneConflictFile).ToList();
+				return;
+			}
+
+			await CloseAsync();
+			NotificationService.ShowProjectSuccess(ProjectName, result.Output ?? $"Merged '{sourceBranch}' into '{args.targetBranch}'.");
+			await OnMerged.InvokeAsync(args.targetBranch);
+		}
+		catch (Exception ex)
+		{
+			_previewError = $"Error merging branches: {ex.Message}";
+		}
+		finally
+		{
+			_isMerging = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task CreatePullRequestAsync((string targetBranch, string? title) args)
+	{
+		if (IsBusy || string.IsNullOrWhiteSpace(WorkingPath) || string.IsNullOrWhiteSpace(_currentBranch) ||
+			string.IsNullOrWhiteSpace(args.targetBranch))
+		{
+			return;
+		}
+
+		var sourceBranch = _currentBranch;
+		_isCreatingPullRequest = true;
+		_previewError = null;
+		_previewMessage = null;
+		StateHasChanged();
+
+		try
+		{
+			var title = !string.IsNullOrWhiteSpace(args.title) ? args.title : $"Merge {sourceBranch} into {args.targetBranch}";
+			var result = await VersionControlService.CreatePullRequestAsync(WorkingPath, sourceBranch, args.targetBranch, title);
+			if (!result.Success)
+			{
+				_previewError = result.Error ?? "Failed to create pull request.";
+				return;
+			}
+
+			await CloseAsync();
+			NotificationService.ShowProjectSuccess(ProjectName, !string.IsNullOrWhiteSpace(result.PullRequestUrl)
+				? $"Pull request created: {result.PullRequestUrl}"
+				: result.Output ?? $"Pull request created from '{sourceBranch}' to '{args.targetBranch}'.");
+		}
+		catch (Exception ex)
+		{
+			_previewError = $"Error creating pull request: {ex.Message}";
+		}
+		finally
+		{
+			_isCreatingPullRequest = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task CloseAsync()
+	{
+		// Orphans any load or preview still in flight, so it can't fill the next opening.
+		_openVersion++;
+		await IsVisibleChanged.InvokeAsync(false);
+	}
+
+	private void ResetState()
+	{
+		_isLoading = false;
+		_currentBranch = null;
+		_targetBranches = [];
+		_targetBranch = null;
+		_pushAfterMerge = true;
+		_createPullRequest = false;
+		_pullRequestTitle = null;
+		_isGitHubCliAvailable = false;
+		_isCheckingPreview = false;
+		_previewMessage = null;
+		_previewError = null;
+		_isAlreadyUpToDate = false;
+		_notice = null;
+		_conflictFiles = [];
+	}
+
+	private static MergeConflictFile CloneConflictFile(MergeConflictFile source)
+		=> new()
+		{
+			FileName = source.FileName,
+			DiffContent = source.DiffContent,
+			Content = source.Content
+		};
+}

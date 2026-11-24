@@ -44,7 +44,7 @@ else
 					   ShowGitActions="@ShowGitActions" IsGitSyncing="@_isSyncingWithOrigin"
 					   IsGitRefreshing="@_isRefreshingBranches" IsGitPruning="@_isPruningBranches"
 					   OnRetryWithOptions="ShowRetryModal" OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
-					   OnRefresh="RefreshBranches" OnPruneBranches="PruneRemoteBranches"
+					   OnRefresh="RefreshBranches" OnPruneBranches="PruneRemoteBranches" OnMergeBranch="ShowMergeBranchDialog"
 					   OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
 					   CanEdit="@CanEditJob" OnEdit="ShowEditJobModal"
 					   CanRunNext="@CanRunNext" IsRunningNext="@IsRunningNext" OnRunNext="RunNext"
@@ -198,6 +198,10 @@ else
 
 	<CreateBranchModal @bind-IsVisible="_showCreateBranchModal" CurrentBranch="@_branchName"
 					   IsCreating="@_isCreatingBranch" ErrorMessage="@_createBranchError" OnCreate="CreateBranch" />
+
+	<MergeBranchDialog @bind-IsVisible="_showMergeBranchDialog" WorkingPath="@Job.Project?.WorkingPath"
+					   ProjectName="@Job.Project?.Name" PreferredTargetBranches="@([EffectiveTargetBranch, Job.Project?.ReleaseBranch])"
+					   OnMerged="HandleBranchMerged" />
 
 	@* Retry Job Modal *@
 	<RetryJobModal @bind-IsVisible="_showRetryModal" Job="Job" OnRetry="HandleRetryWithOptions" />

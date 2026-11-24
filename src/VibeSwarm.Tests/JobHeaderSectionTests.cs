@@ -173,4 +173,50 @@ public sealed class JobHeaderSectionTests
 
 		Assert.DoesNotContain("line-clamp-2", cut.Find("h1").ClassName ?? string.Empty);
 	}
+
+	[Fact]
+	public void JobHeaderSection_Bunit_LinksToTheProject_WhenBackLeadsToTheJobsList()
+	{
+		using var context = new BunitContext();
+		var projectId = Guid.NewGuid();
+
+		var cut = context.Render<JobHeaderSection>(parameters => parameters
+			.Add(header => header.Status, JobStatus.Completed)
+			.Add(header => header.JobTitle, "Add dark mode")
+			.Add(header => header.BackHref, "/jobs?status=completed")
+			.Add(header => header.BackLabel, "Jobs")
+			.Add(header => header.ProjectId, projectId)
+			.Add(header => header.ProjectName, "Storefront")
+			.Add(header => header.CreatedAt, DateTime.UtcNow));
+
+		var projectLink = cut.Find($"a[href='/projects/{projectId}']");
+		Assert.Equal("Storefront", projectLink.TextContent.Trim());
+
+		// Opened from the project, the back link already leads there.
+		cut.Render(parameters => parameters
+			.Add(header => header.BackHref, $"/projects/{projectId}")
+			.Add(header => header.BackLabel, "Storefront"));
+
+		Assert.Single(cut.FindAll($"a[href='/projects/{projectId}']"));
+	}
+
+	[Fact]
+	public void JobHeaderSection_Bunit_OffersMergingAFinishedJobsBranch()
+	{
+		using var context = new BunitContext();
+		var mergeClicks = 0;
+
+		var cut = context.Render<JobHeaderSection>(parameters => parameters
+			.Add(header => header.Status, JobStatus.Completed)
+			.Add(header => header.JobTitle, "Add dark mode")
+			.Add(header => header.ShowGitActions, true)
+			.Add(header => header.OnMergeBranch, () => mergeClicks++)
+			.Add(header => header.CreatedAt, DateTime.UtcNow));
+
+		var merge = cut.FindAll("button[aria-label='Job actions'] + .menu .menu-item")
+			.Single(item => item.TextContent.Trim() == "Merge branch…");
+		merge.Click();
+
+		Assert.Equal(1, mergeClicks);
+	}
 }
