@@ -180,6 +180,184 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	}
 
 	[Fact]
+	public async Task CreateAsync_DatabaseEnvironment_EncryptsLogin_AndExportsItToJobs()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = CreateProjectService(dbContext);
+
+		var created = await service.CreateAsync(new Project
+		{
+			Name = "Environment Project",
+			WorkingPath = "/tmp/environment-project",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Prod DB",
+					Type = EnvironmentType.Database,
+					Url = "mysql://db.example.com:3306/app",
+					Username = "readonly",
+					Password = "DbSecret!"
+				}
+			]
+		});
+
+		var stored = await dbContext.ProjectEnvironments.AsNoTracking().SingleAsync();
+		Assert.Equal("mysql://db.example.com:3306/app", stored.Url);
+		Assert.NotNull(stored.UsernameCiphertext);
+		Assert.NotEqual("DbSecret!", stored.PasswordCiphertext);
+
+		var environment = Assert.Single(created.Environments);
+		Assert.Equal("readonly", environment.Username);
+		Assert.True(environment.HasPassword);
+		Assert.Null(environment.Password);
+
+		var credentialService = CreateCredentialService();
+		var forExecution = new Project { Name = "Environment Project", WorkingPath = "/tmp", Environments = [stored] };
+		credentialService.PopulateForExecution(forExecution);
+		var variables = credentialService.BuildJobEnvironmentVariables(forExecution);
+
+		Assert.NotNull(variables);
+		Assert.Equal("mysql://db.example.com:3306/app", variables["APP_PROD_DB_URL"]);
+		Assert.Equal("readonly", variables["APP_PROD_DB_USERNAME"]);
+		Assert.Equal("DbSecret!", variables["APP_PROD_DB_PASSWORD"]);
+		Assert.Equal("DbSecret!", variables["APP_PASSWORD"]);
+	}
+
+	[Fact]
+	public async Task CreateAsync_ReleaseEnvironment_DropsLogin()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = CreateProjectService(dbContext);
+
+		await service.CreateAsync(new Project
+		{
+			Name = "Environment Project",
+			WorkingPath = "/tmp/environment-project",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Releases",
+					Type = EnvironmentType.Release,
+					Url = "https://github.com/octo/repo/releases",
+					Username = "octo",
+					Password = "token"
+				}
+			]
+		});
+
+		var stored = await dbContext.ProjectEnvironments.AsNoTracking().SingleAsync();
+		Assert.Null(stored.UsernameCiphertext);
+		Assert.Null(stored.PasswordCiphertext);
+	}
+
+	[Theory]
+	[InlineData("mysql://db.example.com:3306/app", true)]
+	[InlineData("ssh://deploy@prod.example.com", true)]
+	[InlineData("https://app.example.com", true)]
+	[InlineData("db.example.com", false)]
+	public void Url_AcceptsAnyAbsoluteUrl(string url, bool expectedValid)
+	{
+		var environment = new ProjectEnvironment { Name = "Target", Url = url };
+		var results = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
+
+		var isValid = System.ComponentModel.DataAnnotations.Validator.TryValidateObject(
+			environment,
+			new System.ComponentModel.DataAnnotations.ValidationContext(environment),
+			results,
+			validateAllProperties: true);
+
+		Assert.Equal(expectedValid, isValid);
+	}
+
+	[Fact]
+	public void BuildStructuredPrompt_NamesDatabaseLoginVariables_WithoutTheirValues()
+	{
+		var job = new Job
+		{
+			GoalPrompt = "Pull last week's orders from production.",
+			Project = new Project
+			{
+				Name = "Shop",
+				Environments =
+				[
+					new ProjectEnvironment
+					{
+						Name = "Production",
+						Type = EnvironmentType.Web,
+						Stage = EnvironmentStage.Production,
+						Url = "https://shop.example.com",
+						IsPrimary = true,
+						IsEnabled = true
+					},
+					new ProjectEnvironment
+					{
+						Name = "Prod DB",
+						Type = EnvironmentType.Database,
+						Stage = EnvironmentStage.Production,
+						Url = "mysql://db.example.com:3306/shop",
+						Description = "Reach it from the app server.",
+						IsEnabled = true,
+						SortOrder = 1,
+						Username = "readonly-user",
+						Password = "DbSecret!"
+					}
+				]
+			}
+		};
+
+		var prompt = PromptBuilder.BuildStructuredPrompt(job, true);
+
+		Assert.Contains("Database [Production]: Prod DB | URL: mysql://db.example.com:3306/shop | Env: APP_PROD_DB_URL, APP_PROD_DB_USERNAME, APP_PROD_DB_PASSWORD | Notes: Reach it from the app server.", prompt);
+		Assert.Contains("Env: APP_PRODUCTION_URL", prompt);
+		Assert.Contains("(APP_URL repeats the first entry's)", prompt);
+		Assert.Contains("Production is live: read its data when the task needs it", prompt);
+		Assert.DoesNotContain("DbSecret!", prompt);
+		Assert.DoesNotContain("readonly-user", prompt);
+	}
+
+	[Fact]
+	public void BuildStructuredPrompt_ShortensLongNotesInsteadOfDroppingEnvironments()
+	{
+		var longNotes = string.Concat(Enumerable.Repeat("note ", 200)).Trim();
+		var job = new Job
+		{
+			GoalPrompt = "Check the data.",
+			Project = new Project
+			{
+				Name = "Shop",
+				Environments = Enumerable.Range(0, 3)
+					.Select(index => new ProjectEnvironment
+					{
+						Name = $"Environment {index}",
+						Type = EnvironmentType.Database,
+						Stage = EnvironmentStage.Production,
+						Url = $"postgres://db{index}.example.com/shop",
+						Description = longNotes,
+						IsEnabled = true,
+						SortOrder = index
+					})
+					.ToList()
+			}
+		};
+
+		var prompt = PromptBuilder.BuildStructuredPrompt(job, true);
+
+		for (var index = 0; index < 3; index++)
+		{
+			Assert.Contains($"postgres://db{index}.example.com/shop | Env: APP_ENVIRONMENT_{index}_URL", prompt);
+		}
+		var lines = prompt.Split('\n').Select(line => line.TrimEnd('\r')).ToList();
+		// The primary's notes come first and whole; the next one's are shortened to what is left.
+		Assert.EndsWith($"| Notes: {longNotes}", lines.Single(line => line.Contains("db0.example.com")));
+		var shortened = lines.Single(line => line.Contains("db1.example.com"));
+		Assert.Contains("| Notes: note note", shortened);
+		Assert.EndsWith("...", shortened);
+		Assert.DoesNotContain("omitted for brevity", prompt);
+	}
+
+	[Fact]
 	public void BuildStructuredPrompt_IncludesEnvironmentContextAndCredentials()
 	{
 		var job = new Job
@@ -227,7 +405,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 
 		Assert.Contains("<environments>", prompt);
 		Assert.Contains("Use these URLs instead of assuming localhost", prompt);
-		Assert.Contains("Production is live: change or redeploy it only when the task explicitly asks.", prompt);
+		Assert.Contains("Production is live: read its data when the task needs it (read-only, light queries), but change, migrate or redeploy it only when the task explicitly asks.", prompt);
 		Assert.Contains("Development allows normal testing, changes and redeploys.", prompt);
 		Assert.Contains("Local gives immediate feedback", prompt);
 		Assert.Contains("Primary Web [Development]: Staging", prompt);
@@ -342,7 +520,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		var rules = PromptBuilder.BuildSystemPromptRules(project);
 
 		Assert.NotNull(rules);
-		Assert.Contains("change or redeploy it only when the task explicitly asks", prompt);
+		Assert.Contains("change, migrate or redeploy it only when the task explicitly asks", prompt);
 		Assert.Contains("rebuild, restart services, redeploy, reseed data or wipe the local database", prompt);
 		// Stated beside the URLs in the task prompt, not repeated in the system prompt rules.
 		Assert.DoesNotContain("redeploy", rules);

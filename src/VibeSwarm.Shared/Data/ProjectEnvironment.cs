@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Data;
 
@@ -8,7 +9,8 @@ public enum EnvironmentType
 {
 	Web = 0,
 	Release = 1,
-	Other = 2
+	Other = 2,
+	Database = 3
 }
 
 public enum EnvironmentStage
@@ -36,7 +38,7 @@ public class ProjectEnvironment
 
 	[Required]
 	[StringLength(1000, MinimumLength = 1)]
-	[Url]
+	[AbsoluteUrl]
 	public string Url { get; set; } = string.Empty;
 
 	public EnvironmentType Type { get; set; } = EnvironmentType.Web;
@@ -72,6 +74,11 @@ public class ProjectEnvironment
 	public bool HasPassword => !string.IsNullOrEmpty(PasswordCiphertext) || !string.IsNullOrEmpty(Password);
 
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+	/// <summary>
+	/// Every kind but a release page can hold a login: a web app's, or a database's or server's.
+	/// </summary>
+	public static bool SupportsLogin(EnvironmentType type) => type != EnvironmentType.Release;
 
 	public DateTime? UpdatedAt { get; set; }
 }

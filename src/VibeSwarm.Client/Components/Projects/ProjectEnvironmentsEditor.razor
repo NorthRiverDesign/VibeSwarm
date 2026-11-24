@@ -46,13 +46,14 @@
 							</div>
 							<div class="col-12 md:col-6">
 								<label class="form-label small fg-1 mb-1" for="@($"env-url-{item.Id}")">URL</label>
-								<InputText id="@($"env-url-{item.Id}")" @bind-Value="item.Url" class="form-control font-monospace" placeholder="https://staging.example.com" />
+								<InputText id="@($"env-url-{item.Id}")" @bind-Value="item.Url" class="form-control font-monospace" placeholder="@GetUrlPlaceholder(item.Type)" />
 							</div>
 							<div class="col-6">
 								<label class="form-label small fg-1 mb-1" for="@($"env-kind-{item.Id}")">Kind</label>
 								<InputSelect id="@($"env-kind-{item.Id}")" @bind-Value="item.Type" @bind-Value:after="() => OnEnvironmentTypeChanged(item)" class="form-control">
 									<option value="@EnvironmentType.Web">Web</option>
 									<option value="@EnvironmentType.Release">GitHub Releases</option>
+									<option value="@EnvironmentType.Database">Database</option>
 									<option value="@EnvironmentType.Other">Generic</option>
 								</InputSelect>
 							</div>
@@ -66,7 +67,8 @@
 							</div>
 							<div class="col-12">
 								<label class="form-label small fg-1 mb-1" for="@($"env-description-{item.Id}")">Notes for agents <span class="fg-2">(optional)</span></label>
-								<InputTextArea id="@($"env-description-{item.Id}")" @bind-Value="item.Description" class="form-control" rows="2" />
+								<InputTextArea id="@($"env-description-{item.Id}")" @bind-Value="item.Description" class="form-control" rows="2"
+									placeholder="@(item.Type == EnvironmentType.Database ? "How to reach it (e.g. over SSH) and which tables matter" : null)" />
 							</div>
 						</div>
 
@@ -87,14 +89,15 @@
 							</div>
 						</div>
 
-						@if (item.Type == EnvironmentType.Web)
+						@if (ProjectEnvironment.SupportsLogin(item.Type))
 						{
 							<div class="d-flex flex-column gap-3">
-								<div class="text-eyebrow">Web login <span class="fg-2">· optional</span></div>
+								<div class="text-eyebrow">Login <span class="fg-2">· optional</span></div>
 								<div class="row g-5">
 									<div class="col-12 md:col-6">
 										<label class="form-label small fg-1 mb-1" for="@($"env-username-{item.Id}")">Username</label>
-										<InputText id="@($"env-username-{item.Id}")" @bind-Value="item.Username" class="form-control" placeholder="tester@example.com" />
+										<InputText id="@($"env-username-{item.Id}")" @bind-Value="item.Username" class="form-control"
+											placeholder="@(item.Type == EnvironmentType.Web ? "tester@example.com" : "readonly")" />
 									</div>
 									<div class="col-12 md:col-6">
 										<label class="form-label small fg-1 mb-1" for="@($"env-password-{item.Id}")">Password</label>
@@ -111,6 +114,8 @@
 								</div>
 							</div>
 						}
+
+						<div class="small fg-2 text-break">@GetVariablesHint(item)</div>
 
 						<div class="d-flex align-items-center gap-3">
 							<button type="button" class="btn-sm btn-solid theme-secondary" title="Move up" aria-label="Move up"
@@ -167,6 +172,25 @@
 		parts.Add(string.IsNullOrWhiteSpace(environment.Url) ? "No URL yet" : environment.Url);
 		return string.Join(" · ", parts);
 	}
+
+	// Says where a job finds this environment, so a user knows what to mention in a task.
+	private static string GetVariablesHint(ProjectEnvironment environment)
+	{
+		var prefix = ProjectEnvironmentVariables.GetPrefix(environment.Name);
+		return environment.Type switch
+		{
+			EnvironmentType.Release => $"Jobs get its URL as {prefix}_URL.",
+			EnvironmentType.Web => $"Jobs get its URL and login as {prefix}_* variables.",
+			_ => $"Jobs get its URL and login as {prefix}_* variables. The prompt names them but leaves out the login itself."
+		};
+	}
+
+	private static string GetUrlPlaceholder(EnvironmentType type) => type switch
+	{
+		EnvironmentType.Database => "mysql://db.example.com:3306/app",
+		EnvironmentType.Release => "https://github.com/owner/repo/releases",
+		_ => "https://staging.example.com"
+	};
 
 	private void AddEnvironment()
 	{
@@ -227,7 +251,7 @@
 
 	private void OnEnvironmentTypeChanged(ProjectEnvironment environment)
 	{
-		if (environment.Type == EnvironmentType.Web) return;
+		if (ProjectEnvironment.SupportsLogin(environment.Type)) return;
 		environment.Username = null;
 		environment.Password = null;
 		environment.ClearPassword = true;
@@ -262,6 +286,7 @@
 	{
 		EnvironmentType.Web => "bi-globe",
 		EnvironmentType.Release => "bi-box-seam",
+		EnvironmentType.Database => "bi-database",
 		_ => "bi-hdd-network"
 	};
 }
