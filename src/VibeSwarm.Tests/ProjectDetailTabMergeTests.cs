@@ -52,6 +52,58 @@ public sealed class ProjectDetailTabMergeTests
 	}
 
 	[Fact]
+	public void ProjectDetail_LeavesTheRunningJobsIdeaOutOfUpNext()
+	{
+		var runningJob = CreateJob("Add a link back to the project");
+		runningJob.Status = JobStatus.Processing;
+		runningJob.StartedAt = DateTime.UtcNow;
+		var jobService = new FakeJobService([runningJob]) { ActiveJob = runningJob };
+		using var context = CreateContext(
+			ideas:
+			[
+				new Idea { Id = Guid.NewGuid(), ProjectId = TestProject.Id, Description = "Add a link back to the project", JobId = runningJob.Id, IsProcessing = true, SortOrder = 0 },
+				new Idea { Id = Guid.NewGuid(), ProjectId = TestProject.Id, Description = "Waiting idea", SortOrder = 1 }
+			],
+			jobs: [],
+			jobService: jobService);
+
+		var cut = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
+
+		cut.WaitForAssertion(() =>
+		{
+			var running = cut.Find("section[aria-label='Running']");
+			Assert.Contains("Add a link back to the project", running.TextContent);
+
+			var upNextRows = cut.FindAll("section[aria-label='Up next'] .list-group-item")
+				.Select(row => row.TextContent)
+				.ToList();
+			var row = Assert.Single(upNextRows);
+			Assert.Contains("Waiting idea", row);
+		});
+	}
+
+	[Fact]
+	public void ProjectDetail_HidesUpNextWhenItsOnlyIdeaIsRunning()
+	{
+		var runningJob = CreateJob("Add a link back to the project");
+		runningJob.Status = JobStatus.Processing;
+		runningJob.StartedAt = DateTime.UtcNow;
+		var jobService = new FakeJobService([runningJob]) { ActiveJob = runningJob };
+		using var context = CreateContext(
+			ideas: [new Idea { Id = Guid.NewGuid(), ProjectId = TestProject.Id, Description = "Add a link back to the project", JobId = runningJob.Id, IsProcessing = true }],
+			jobs: [],
+			jobService: jobService);
+
+		var cut = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Single(cut.FindAll("section[aria-label='Running']"));
+			Assert.Empty(cut.FindAll("section[aria-label='Up next']"));
+		});
+	}
+
+	[Fact]
 	public void ProjectDetail_HidesIdeasEmptyStateWhenUnifiedJobsTabHasNoIdeas()
 	{
 		using var context = CreateContext(
@@ -285,6 +337,7 @@ public sealed class ProjectDetailTabMergeTests
 		public List<Job> CreatedJobs { get; } = [];
 		public List<JobSummary> Jobs => jobs;
 		public TaskCompletionSource? JobsLoadGate { get; set; }
+		public JobSummary? ActiveJob { get; set; }
 
 		public override Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)
 		{
@@ -309,7 +362,8 @@ public sealed class ProjectDetailTabMergeTests
 				PageSize = pageSize,
 				TotalCount = jobs.Count,
 				ActiveCount = jobs.Count(job => job.Status is JobStatus.New or JobStatus.Pending or JobStatus.Started or JobStatus.Planning or JobStatus.Processing or JobStatus.Paused or JobStatus.Stalled),
-				CompletedCount = jobs.Count(job => job.Status == JobStatus.Completed)
+				CompletedCount = jobs.Count(job => job.Status == JobStatus.Completed),
+				ActiveJobSummary = ActiveJob
 			};
 		}
 		public override Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);

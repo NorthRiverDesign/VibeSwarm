@@ -141,7 +141,7 @@
 
 	@RunningContent
 
-	@if (!Ideas.Any())
+	@if (!HasIdeasToShow)
 	{
 		@if (ShowEmptyState)
 		{
@@ -192,7 +192,7 @@
 				}
 			</div>
 			<ul class="list-group rounded-9">
-				@foreach (var idea in Ideas)
+				@foreach (var idea in VisibleIdeas)
 				{
 					<IdeaListItem @key="idea.Id" Idea="idea" IsProcessing="@IsIdeaProcessing(idea.Id)"
 							  IsStarting="@(StartingIdeaId == idea.Id)" HasActiveJobs="@HasActiveJobs"
@@ -324,6 +324,12 @@
 	/// <summary>Shown between the idea box and the idea list, e.g. the job running now.</summary>
 	[Parameter]
 	public RenderFragment? RunningContent { get; set; }
+
+	/// <summary>
+	/// A job shown elsewhere on the page (the one running now); the idea it came from is left out of the list so it isn't shown twice.
+	/// </summary>
+	[Parameter]
+	public Guid? HiddenJobId { get; set; }
 
 	/// <summary>Opens the full job form, for work that needs its own provider, model or branch.</summary>
 	[Parameter]
@@ -887,6 +893,13 @@
 
 	// The counter only appears once the idea is long enough for the limit to matter.
 	private bool IsNearLengthLimit => (NewIdeaDescription?.Length ?? 0) > ValidationLimits.IdeaDescriptionMaxLength * 0.8;
+
+	private List<Idea> VisibleIdeas => HiddenJobId is { } hiddenJobId
+		? Ideas.Where(idea => idea.JobId != hiddenJobId).ToList()
+		: Ideas;
+
+	// Keep the section while other pages hold ideas, so pagination stays reachable.
+	private bool HasIdeasToShow => VisibleIdeas.Count > 0 || TotalIdeasCount > Ideas.Count;
 
 	private string UpNextTitle => UnprocessedIdeasCount switch
 	{
