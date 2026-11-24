@@ -66,9 +66,20 @@ public partial class JobProcessingService
             // "another instance with the same key value for {'Id'} is already being tracked".
             // Rebind `job` to the instance tracked in this scope so subsequent Entry(job),
             // dbContext.SaveChanges, and nav-property fix-up all operate on one entity.
+            // The prompt, the job's APP_* variables and its MCP config read the project's
+            // environments and agent team from this instance, so load them here too.
             var trackedJob = await dbContext.Jobs
                 .Include(j => j.Provider)
                 .Include(j => j.Project)
+                    .ThenInclude(project => project!.Environments)
+                .Include(j => j.Project)
+                    .ThenInclude(project => project!.AgentAssignments)
+                        .ThenInclude(assignment => assignment.Provider)
+                .Include(j => j.Project)
+                    .ThenInclude(project => project!.AgentAssignments)
+                        .ThenInclude(assignment => assignment.Agent)
+                            .ThenInclude(agent => agent!.SkillLinks)
+                                .ThenInclude(link => link.Skill)
                 .FirstOrDefaultAsync(j => j.Id == job.Id, cancellationToken);
 
             if (trackedJob == null)
