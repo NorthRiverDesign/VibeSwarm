@@ -11,6 +11,8 @@ namespace VibeSwarm.Tests;
 
 public sealed class CookieAuthenticationStateProviderTests
 {
+	private static readonly TimeSpan KeepAliveWaitTimeout = TimeSpan.FromSeconds(10);
+
 	[Fact]
 	public async Task GetAuthenticationStateAsync_PreservesCachedAuthenticatedState_WhenRequestThrows()
 	{
@@ -88,7 +90,7 @@ public sealed class CookieAuthenticationStateProviderTests
 		var requestCount = 0;
 		var provider = CreateProvider((request, _) =>
 		{
-			requestCount++;
+			Interlocked.Increment(ref requestCount);
 			Assert.Equal("/api/auth/user", request.RequestUri?.AbsolutePath);
 			return Task.FromResult(CreateAuthenticatedResponse("kyle"));
 		});
@@ -98,8 +100,7 @@ public sealed class CookieAuthenticationStateProviderTests
 		_ = context.Render<AuthenticationKeepAlive>(parameters => parameters
 			.Add(component => component.Interval, TimeSpan.FromMilliseconds(20)));
 
-		await Task.Delay(150);
-		Assert.True(requestCount >= 1);
+		Assert.True(await WaitForRequestsAsync(() => Volatile.Read(ref requestCount), 1), $"Expected 1 or more renewals, got {Volatile.Read(ref requestCount)}.");
 	}
 
 	[Fact]
@@ -110,7 +111,7 @@ public sealed class CookieAuthenticationStateProviderTests
 		var requestCount = 0;
 		var provider = CreateProvider((request, _) =>
 		{
-			requestCount++;
+			Interlocked.Increment(ref requestCount);
 			Assert.Equal("/api/auth/user", request.RequestUri?.AbsolutePath);
 			return Task.FromResult(CreateAuthenticatedResponse("kyle"));
 		});
@@ -120,8 +121,20 @@ public sealed class CookieAuthenticationStateProviderTests
 		_ = context.Render<AuthenticationKeepAlive>(parameters => parameters
 			.Add(component => component.Interval, TimeSpan.FromMilliseconds(20)));
 
-		await Task.Delay(150);
-		Assert.True(requestCount >= 3);
+		Assert.True(await WaitForRequestsAsync(() => Volatile.Read(ref requestCount), 3), $"Expected 3 or more renewals, got {Volatile.Read(ref requestCount)}.");
+	}
+
+	// Polls for the renewals instead of giving them a fixed window, which a busy machine can overrun.
+	// The component renders nothing on a renewal, so bUnit's WaitForAssertion would not re-check.
+	private static async Task<bool> WaitForRequestsAsync(Func<int> requestCount, int minimum)
+	{
+		var deadline = DateTime.UtcNow + KeepAliveWaitTimeout;
+		while (requestCount() < minimum && DateTime.UtcNow < deadline)
+		{
+			await Task.Delay(20);
+		}
+
+		return requestCount() >= minimum;
 	}
 
 	private static CookieAuthenticationStateProvider CreateProvider(

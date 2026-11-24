@@ -1,0 +1,9 @@
+<Project>
+	<PropertyGroup>
+		<!--
+			Builds from source report 0.0.0-dev and are never offered an update. Release builds get
+			their version from the tag: .github/workflows/release.yml passes -p:Version=1.2.3 for v1.2.3.
+		-->
+		<Version>0.0.0-dev</Version>
+	</PropertyGroup>
+</Project>

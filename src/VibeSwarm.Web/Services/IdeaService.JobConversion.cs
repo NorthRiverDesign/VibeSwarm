@@ -54,20 +54,7 @@ public partial class IdeaService
 				return null;
 			}
 
-			// Get the current branch if it's a git repository
-			string? currentBranch = null;
-			try
-			{
-				var isGitRepo = await _versionControlService.IsGitRepositoryAsync(idea.Project.WorkingPath);
-				if (isGitRepo)
-				{
-					currentBranch = await _versionControlService.GetCurrentBranchAsync(idea.Project.WorkingPath);
-				}
-			}
-			catch (Exception ex)
-			{
-				_logger.LogWarning(ex, "Could not get current branch for project {ProjectId}", idea.ProjectId);
-			}
+			var branch = await ProjectJobBranch.ResolveDefaultAsync(idea.Project, _versionControlService, _logger, cancellationToken);
 
 			// Use an approved expansion when available; otherwise send directly to implementation.
 			var goalPrompt = idea.HasExpandedDescription
@@ -86,7 +73,7 @@ public partial class IdeaService
 				ProviderId = defaultProvider.Id,
 				Title = idea.Description,  // Use the original idea text as the title
 				GoalPrompt = goalPrompt,
-				Branch = string.IsNullOrWhiteSpace(idea.Project.DevelopmentBranch) ? currentBranch : idea.Project.DevelopmentBranch,
+				Branch = branch,
 				ModelUsed = await ResolveJobModelAsync(idea.ProjectId, defaultProvider.Id, options, cancellationToken),
 				ReasoningEffort = await ResolveJobReasoningAsync(idea.ProjectId, defaultProvider.Id, cancellationToken),
 				AttachedFilesJson = attachmentPaths.Count > 0 ? JsonSerializer.Serialize(attachmentPaths) : null,

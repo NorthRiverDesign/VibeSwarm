@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
@@ -91,9 +93,38 @@ public sealed class JobConcurrencyTests : IDisposable
 	}
 
 	[Fact]
+	public async Task GetPendingJobsAsync_ByDefault_StartsASecondProjectsJobBesideOneRunningOnTheSameProvider()
+	{
+		await using var dbContext = CreateDbContext();
+		AddJob(dbContext, _alpha, _claude, "Running in Alpha", createdMinutesAgo: 40, status: JobStatus.Processing);
+		var queued = AddJob(dbContext, _beta, _claude, "Queued in Beta", createdMinutesAgo: 10);
+		await dbContext.SaveChangesAsync();
+
+		var jobService = CreateJobService(dbContext);
+
+		Assert.Equal(["Queued in Beta"], (await jobService.GetPendingJobsAsync()).Select(job => job.Title));
+		Assert.Equal(JobQueueWaitReason.StartingSoon, (await jobService.GetQueueStatusAsync(queued.Id))!.Reason);
+	}
+
+	[Fact]
+	public async Task GetPendingJobsAsync_ByDefault_StartsJobsInSeparateProjectsOnOneProviderTogether()
+	{
+		await using var dbContext = CreateDbContext();
+		AddJob(dbContext, _alpha, _claude, "Alpha job", createdMinutesAgo: 30);
+		AddJob(dbContext, _beta, _claude, "Beta job", createdMinutesAgo: 20);
+		AddJob(dbContext, _gamma, _claude, "Gamma job", createdMinutesAgo: 10);
+		await dbContext.SaveChangesAsync();
+
+		var pendingJobs = await CreateJobService(dbContext).GetPendingJobsAsync();
+
+		Assert.Equal(["Alpha job", "Beta job", "Gamma job"], pendingJobs.Select(job => job.Title));
+	}
+
+	[Fact]
 	public async Task GetPendingJobsAsync_RunsSeparateProvidersSideBySide()
 	{
 		await using var dbContext = CreateDbContext();
+		await SetProviderLimitAsync(dbContext, _claude, 1);
 		AddJob(dbContext, _alpha, _claude, "Alpha on Claude", createdMinutesAgo: 30);
 		AddJob(dbContext, _beta, _claude, "Beta on Claude", createdMinutesAgo: 20);
 		AddJob(dbContext, _gamma, _copilot, "Gamma on Copilot", createdMinutesAgo: 10);
@@ -141,15 +172,75 @@ public sealed class JobConcurrencyTests : IDisposable
 	}
 
 	[Fact]
-	public void SelectJobsToStart_KeepsOneJobPerProviderByDefault()
+	public void SelectJobsToStart_ByDefault_StartsJobsInSeparateProjectsOnOneProvider()
 	{
 		var provider = new Provider { Id = Guid.NewGuid(), Name = "Claude" };
 		var pendingJobs = new[] { "Alpha job", "Beta job" }
 			.Select(title => new Job { Id = Guid.NewGuid(), ProjectId = Guid.NewGuid(), ProviderId = provider.Id, Provider = provider, GoalPrompt = title })
 			.ToList();
 
+		Assert.Equal(["Alpha job", "Beta job"], JobProcessingService.SelectJobsToStart(pendingJobs, [], availableSlots: 5).Select(job => job.GoalPrompt));
+		Assert.Equal(["Alpha job", "Beta job"], JobProcessingService.SelectJobsToStart(pendingJobs, [(Guid.NewGuid(), null, provider.Id)], availableSlots: 5).Select(job => job.GoalPrompt));
+	}
+
+	[Fact]
+	public void SelectJobsToStart_KeepsOneJobAtATime_OnAProviderLimitedToOne()
+	{
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Claude", MaxConcurrentJobs = 1 };
+		var pendingJobs = new[] { "Alpha job", "Beta job" }
+			.Select(title => new Job { Id = Guid.NewGuid(), ProjectId = Guid.NewGuid(), ProviderId = provider.Id, Provider = provider, GoalPrompt = title })
+			.ToList();
+
 		Assert.Equal(["Alpha job"], JobProcessingService.SelectJobsToStart(pendingJobs, [], availableSlots: 5).Select(job => job.GoalPrompt));
 		Assert.Empty(JobProcessingService.SelectJobsToStart(pendingJobs, [(Guid.NewGuid(), null, provider.Id)], availableSlots: 5));
+	}
+
+	[Fact]
+	public void SelectJobsToStart_RunsAProviderWhoseLimitIsUnknownOneJobAtATime()
+	{
+		var providerId = Guid.NewGuid();
+		var pendingJobs = new[] { "Alpha job", "Beta job" }
+			.Select(title => new Job { Id = Guid.NewGuid(), ProjectId = Guid.NewGuid(), ProviderId = providerId, GoalPrompt = title })
+			.ToList();
+
+		Assert.Equal(["Alpha job"], JobProcessingService.SelectJobsToStart(pendingJobs, [], availableSlots: 5).Select(job => job.GoalPrompt));
+	}
+
+	[Fact]
+	public void Migration_LetsProvidersStillOnTheOldDefaultRunJobsSideBySide()
+	{
+		var databasePath = Path.Combine(Path.GetTempPath(), $"vibeswarm-concurrency-{Guid.NewGuid():N}.db");
+		try
+		{
+			using (var dbContext = DataServiceExtensions.CreateMigrationContext($"Data Source={databasePath};Pooling=False"))
+			{
+				var migrator = dbContext.GetService<IMigrator>();
+				var addedLimits = dbContext.Database.GetMigrations().Single(id => id.EndsWith("_AddJobConcurrencyLimits", StringComparison.Ordinal));
+				migrator.Migrate(addedLimits);
+				dbContext.Providers.AddRange(
+					new Provider { Id = _claude.Id, Name = "Claude", Type = ProviderType.Claude, MaxConcurrentJobs = 1 },
+					new Provider { Id = _copilot.Id, Name = "Copilot", Type = ProviderType.Copilot, MaxConcurrentJobs = 3 });
+				// Rows that point at a provider, so SQLite's rebuild of the table must keep them.
+				dbContext.Projects.Add(new Project { Id = _alpha.Id, Name = "Alpha", WorkingPath = "/tmp/alpha" });
+				dbContext.ProviderModels.Add(new ProviderModel { ProviderId = _claude.Id, ModelId = "opus" });
+				dbContext.Jobs.Add(new Job { Id = Guid.NewGuid(), ProjectId = _alpha.Id, ProviderId = _claude.Id, Title = "Queued", GoalPrompt = "Queued" });
+				dbContext.SaveChanges();
+
+				migrator.Migrate();
+			}
+
+			using var migrated = DataServiceExtensions.CreateMigrationContext($"Data Source={databasePath};Pooling=False");
+			var limits = migrated.Providers.AsNoTracking().ToDictionary(provider => provider.Id, provider => provider.MaxConcurrentJobs);
+
+			Assert.Equal(JobConcurrency.DefaultJobsPerProvider, limits[_claude.Id]);
+			Assert.Equal(3, limits[_copilot.Id]);
+			Assert.Equal(_claude.Id, migrated.ProviderModels.AsNoTracking().Single().ProviderId);
+			Assert.Equal(_claude.Id, migrated.Jobs.AsNoTracking().Single().ProviderId);
+		}
+		finally
+		{
+			File.Delete(databasePath);
+		}
 	}
 
 	[Fact]
@@ -228,7 +319,7 @@ public sealed class JobConcurrencyTests : IDisposable
 	}
 
 	[Theory]
-	[InlineData(false, typeof(ForbidResult), 1)]
+	[InlineData(false, typeof(ForbidResult), JobConcurrency.DefaultJobsPerProvider)]
 	[InlineData(true, typeof(OkObjectResult), 4)]
 	public async Task ProvidersController_LetsOnlyAdminsChangeTheProviderJobLimit(bool isAdmin, Type expectedResult, int expectedLimit)
 	{

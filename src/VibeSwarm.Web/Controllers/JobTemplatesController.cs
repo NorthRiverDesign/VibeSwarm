@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Controllers;
@@ -73,6 +75,29 @@ public class JobTemplatesController : ControllerBase
 	{
 		await _jobTemplateService.DeleteAsync(id, cancellationToken);
 		return Ok();
+	}
+
+	[HttpGet("{id:guid}/runs")]
+	public async Task<IActionResult> GetRuns(Guid id, CancellationToken cancellationToken)
+		=> Ok(await _jobTemplateService.GetRunsAsync(id, cancellationToken));
+
+	[HttpPost("{id:guid}/run")]
+	public async Task<IActionResult> Run(Guid id, [FromBody] JobTemplateRunRequest request, CancellationToken cancellationToken)
+	{
+		try
+		{
+			return Ok(await _jobTemplateService.RunAsync(id, request?.ProjectIds ?? [], cancellationToken));
+		}
+		catch (ValidationException ex)
+		{
+			return BadRequest(new { error = ex.Message });
+		}
+		catch (InvalidOperationException ex)
+		{
+			return ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase)
+				? NotFound(new { error = ex.Message })
+				: BadRequest(new { error = ex.Message });
+		}
 	}
 
 	[HttpPost("{id:guid}/use")]

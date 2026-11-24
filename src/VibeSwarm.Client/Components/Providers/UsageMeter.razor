@@ -116,36 +116,38 @@ else if (UsageSummary != null && ShowEmptyState)
 	/// The windows to draw, as they stand now: one that has reset since its last reading shows as
 	/// empty rather than repeating figures from a window that is over.
 	/// </summary>
-	private List<UsageLimitWindow> GetDisplayWindows()
+	private List<UsageLimitWindow> GetDisplayWindows() => GetDisplayWindows(UsageSummary, DateTime.UtcNow);
+
+	/// <summary>The windows a summary shows as of <paramref name="now"/>; the dashboard reads them too.</summary>
+	internal static List<UsageLimitWindow> GetDisplayWindows(ProviderUsageSummary? summary, DateTime now)
 	{
-		if (UsageSummary == null || UsageSummary.LimitType == UsageLimitType.Unmetered)
+		if (summary == null || summary.LimitType == UsageLimitType.Unmetered)
 		{
 			return [];
 		}
 
-		var now = DateTime.UtcNow;
-		if (UsageSummary.LimitWindows.Count > 0)
+		if (summary.LimitWindows.Count > 0)
 		{
-			return UsageSummary.LimitWindows
+			return summary.LimitWindows
 				.OrderBy(window => GetDisplayOrder(window.Scope))
 				.ThenBy(window => window.Label, StringComparer.OrdinalIgnoreCase)
 				.Select(window => UsageLimitWindowHelper.AsOf(window, now))
 				.ToList();
 		}
 
-		if (UsageSummary.CurrentUsage.HasValue || UsageSummary.EffectiveMaxUsage.HasValue || UsageSummary.LimitResetTime.HasValue)
+		if (summary.CurrentUsage.HasValue || summary.EffectiveMaxUsage.HasValue || summary.LimitResetTime.HasValue)
 		{
 			return
 			[
 				UsageLimitWindowHelper.AsOf(new UsageLimitWindow
 				{
-					Scope = InferScope(UsageSummary.LimitType),
-					LimitType = UsageSummary.LimitType,
-					CurrentUsage = UsageSummary.CurrentUsage,
-					MaxUsage = UsageSummary.EffectiveMaxUsage,
-					ResetTime = UsageSummary.LimitResetTime,
-					IsLimitReached = UsageSummary.IsLimitReached,
-					Message = UsageSummary.LimitMessage
+					Scope = InferScope(summary.LimitType),
+					LimitType = summary.LimitType,
+					CurrentUsage = summary.CurrentUsage,
+					MaxUsage = summary.EffectiveMaxUsage,
+					ResetTime = summary.LimitResetTime,
+					IsLimitReached = summary.IsLimitReached,
+					Message = summary.LimitMessage
 				}, now)
 			];
 		}
@@ -254,15 +256,15 @@ else if (UsageSummary != null && ShowEmptyState)
 		return tokens.ToString("N0");
 	}
 
-	private static string GetProgressBarClass(int percent) => percent switch
+	internal static string GetProgressBarClass(int percent) => percent switch
 	{
-		>= 95 => "bg-danger",
-		>= 80 => "bg-warning",
-		>= 60 => "bg-info",
-		_ => "bg-success"
+		>= 95 => "bg-data-danger",
+		>= 80 => "bg-data-warning",
+		>= 60 => "bg-data-info",
+		_ => "bg-data-success"
 	};
 
-	private static string GetTextColorClass(int percent) => percent switch
+	internal static string GetTextColorClass(int percent) => percent switch
 	{
 		>= 95 => "fg-danger",
 		>= 80 => "fg-warning",
@@ -310,7 +312,7 @@ else if (UsageSummary != null && ShowEmptyState)
 		_ => 4
 	};
 
-	private static string GetScopeLabel(UsageLimitWindowScope scope) => scope switch
+	internal static string GetScopeLabel(UsageLimitWindowScope scope) => scope switch
 	{
 		UsageLimitWindowScope.Session => "Session",
 		UsageLimitWindowScope.Daily => "Daily",

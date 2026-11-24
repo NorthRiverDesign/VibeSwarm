@@ -7,6 +7,7 @@
 @inject NavigationManager NavigationManager
 @inject NotificationService NotificationService
 @inject IJSRuntime JSRuntime
+@inject IServiceProvider ServiceProvider
 @implements IAsyncDisposable
 @using System.Threading
 @using Microsoft.AspNetCore.SignalR.Client
@@ -192,7 +193,7 @@
     private bool _isLoadingProjects = true;
     private bool _isLoadingJobs = true;
     private bool _hasLoadedJobsInitially;
-    private string _statusFilter = "finished";
+    private string _statusFilter = DefaultStatusFilter;
     // Everything not yet finished; split below into running, waiting on the user, and queued
     private List<JobSummary> _currentJobs = new();
     // Ideas that auto-run will turn into jobs once the queued ones finish
@@ -202,6 +203,7 @@
     private int _pageNumber = 1;
     private HubConnection? _hubConnection;
     private Timer? _refreshTimer;
+    private AppResumeService? _appResumeService;
     private bool _isRefreshing = false;
     private CancellationTokenSource? _signalRCts;
     private bool ShowJobsLoadingSpinner => _isLoadingJobs && !_hasLoadedJobsInitially;
@@ -228,10 +230,50 @@
     protected override async Task OnInitializedAsync()
     {
         _selectedProjectId = ProjectFilter;
-        await LoadData();
-        await LoadJobTemplates();
+        // Back from the background: the job pushes sent meanwhile were lost, so reload.
+        _appResumeService = ServiceProvider.GetService<AppResumeService>();
+        if (_appResumeService is not null)
+        {
+            _appResumeService.Resumed += OnAppResumedAsync;
+        }
+
+        // Back on the page: draw the lists it last showed straight away, then reload them.
+        _snapshotCache = ServiceProvider.GetService<ViewSnapshotCache>();
+        RestoreSnapshot();
+
+        await Task.WhenAll(LoadData(), LoadJobTemplates());
         StartAutoRefresh();
     }
+
+    /// <summary>
+    /// The lists last loaded for the view the page opens on (All, first page), kept per project and
+    /// drawn at once on the next visit while they reload.
+    /// </summary>
+    private sealed record JobsSnapshot(JobsListResult Jobs, List<JobSummary> CurrentJobs,
+        List<GlobalQueueIdeaSummary> UpcomingIdeas, IEnumerable<Project> Projects);
+
+    private const string DefaultStatusFilter = "finished";
+    private ViewSnapshotCache? _snapshotCache;
+
+    private static string GetSnapshotKey(Guid? projectId) => projectId.HasValue ? $"jobs:{projectId}" : "jobs";
+
+    private void RestoreSnapshot()
+    {
+        if (_snapshotCache is null || !_snapshotCache.TryGet<JobsSnapshot>(GetSnapshotKey(_selectedProjectId), out var snapshot))
+        {
+            return;
+        }
+
+        _jobsResult = snapshot.Jobs;
+        _currentJobs = snapshot.CurrentJobs;
+        _upcomingIdeas = snapshot.UpcomingIdeas;
+        _projects = snapshot.Projects;
+        _isLoadingProjects = false;
+        _hasLoadedJobsInitially = true;
+    }
+
+
+    private Task OnAppResumedAsync() => InvokeAsync(RefreshJobsSafely);
 
     protected override void OnParametersSet()
     {
@@ -509,13 +551,27 @@
     private async Task LoadJobsAsync()
     {
         _isLoadingJobs = true;
+        // The selection can change while this loads, so the snapshot keys off what was asked for.
+        var projectId = _selectedProjectId;
+        var statusFilter = _statusFilter;
         try
         {
-            _jobsResult = await JobService.GetPagedAsync(_selectedProjectId, _statusFilter, _pageNumber, JobsPageSize);
-            _pageNumber = _jobsResult.PageNumber;
-            _currentJobs = (await JobService.GetPagedAsync(_selectedProjectId, "current", 1, CurrentJobsLimit)).Items;
-            await LoadUpcomingIdeasAsync();
+            var pageTask = JobService.GetPagedAsync(projectId, statusFilter, _pageNumber, JobsPageSize);
+            var currentTask = JobService.GetPagedAsync(projectId, "current", 1, CurrentJobsLimit);
+            var ideasTask = LoadUpcomingIdeasAsync();
+            await Task.WhenAll(pageTask, currentTask, ideasTask);
+
+            var jobs = await pageTask;
+            var currentJobs = (await currentTask).Items;
+            _jobsResult = jobs;
+            _pageNumber = jobs.PageNumber;
+            _currentJobs = currentJobs;
             _hasLoadedJobsInitially = true;
+
+            if (statusFilter == DefaultStatusFilter && jobs.PageNumber == 1)
+            {
+                _snapshotCache?.Set(GetSnapshotKey(projectId), new JobsSnapshot(jobs, currentJobs, _upcomingIdeas, _projects));
+            }
         }
         catch (Exception ex)
         {
@@ -844,6 +900,11 @@
 
     public async ValueTask DisposeAsync()
     {
+        if (_appResumeService is not null)
+        {
+            _appResumeService.Resumed -= OnAppResumedAsync;
+        }
+
         _signalRCts?.Cancel();
         _signalRCts?.Dispose();
         _refreshTimer?.Dispose();

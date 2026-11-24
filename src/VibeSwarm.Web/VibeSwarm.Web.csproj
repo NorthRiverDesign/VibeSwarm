@@ -13,15 +13,22 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- install.sh copies this out of each release to run the install; see Deploy/launcher.sh. -->
+		<None Update="Deploy/launcher.sh" CopyToPublishDirectory="PreserveNewest" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<PackageReference Include="Anthropic" Version="13.*" />
 		<PackageReference Include="DotNetEnv" Version="3.1.1" />
-		<PackageReference Include="GitHub.Copilot.SDK" Version="1.0.19" />
-		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.5" />
+		<PackageReference Include="GitHub.Copilot.SDK" Version="1.0.34" />
+		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.15" />
 		<PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.14" />
-		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.5" />
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.15" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.*" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.*" />
 		<PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="9.0.*" />
+		<!-- Pomelo brings 2.4.0, which leaks the password over zero-configuration TLS (GHSA-473q-m89c-ghf8). -->
+		<PackageReference Include="MySqlConnector" Version="2.6.2" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.*">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

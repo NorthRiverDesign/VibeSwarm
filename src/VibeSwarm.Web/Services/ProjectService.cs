@@ -518,13 +518,14 @@ public class ProjectService : IProjectService
 
 		var jobRows = await _dbContext.Jobs
 			.AsNoTracking()
-			.Where(job => job.Status == JobStatus.Completed &&
+			.Where(job => (job.Status == JobStatus.Completed || job.Status == JobStatus.Failed) &&
 				job.CompletedAt.HasValue &&
 				job.CompletedAt.Value >= bucketConfig.StartUtc &&
 				job.CompletedAt.Value < bucketConfig.EndUtc)
 			.Select(job => new DashboardJobMetricsRow
 			{
 				CompletedAt = job.CompletedAt!.Value,
+				Failed = job.Status == JobStatus.Failed,
 				StartedAt = job.StartedAt,
 				ExecutionDurationSeconds = job.Statistics != null ? job.Statistics.ExecutionDurationSeconds : null,
 				InputTokens = job.Statistics != null ? job.Statistics.InputTokens : null,
@@ -543,6 +544,7 @@ public class ProjectService : IProjectService
 		var durationSamples = 0;
 		long totalInputTokens = 0;
 		long totalOutputTokens = 0;
+		var totalFailedJobs = 0;
 
 		foreach (var row in jobRows)
 		{
@@ -553,6 +555,16 @@ public class ProjectService : IProjectService
 			}
 
 			var bucket = buckets[bucketIndex];
+
+			// Failures count toward the success rate only; duration and tokens stay the
+			// figures for work that finished.
+			if (row.Failed)
+			{
+				bucket.FailedJobs++;
+				totalFailedJobs++;
+				continue;
+			}
+
 			bucket.CompletedJobs++;
 
 			var inputTokens = row.InputTokens ?? 0;
@@ -579,7 +591,8 @@ public class ProjectService : IProjectService
 			RangeDays = normalizedRangeDays,
 			StartUtc = bucketConfig.StartUtc,
 			EndUtc = bucketConfig.EndUtc,
-			TotalCompletedJobs = jobRows.Count,
+			TotalCompletedJobs = jobRows.Count - totalFailedJobs,
+			TotalFailedJobs = totalFailedJobs,
 			AverageDurationSeconds = durationSamples > 0 ? durationTotalSeconds / durationSamples : null,
 			TotalInputTokens = totalInputTokens,
 			TotalOutputTokens = totalOutputTokens,
@@ -588,6 +601,7 @@ public class ProjectService : IProjectService
 				{
 					BucketStartUtc = bucket.BucketStartUtc,
 					CompletedJobs = bucket.CompletedJobs,
+					FailedJobs = bucket.FailedJobs,
 					AverageDurationSeconds = bucket.DurationSamples > 0
 						? bucket.DurationTotalSeconds / bucket.DurationSamples
 						: null,
@@ -1477,6 +1491,7 @@ public class ProjectService : IProjectService
 	{
 		public required DateTime BucketStartUtc { get; init; }
 		public int CompletedJobs { get; set; }
+		public int FailedJobs { get; set; }
 		public double DurationTotalSeconds { get; set; }
 		public int DurationSamples { get; set; }
 		public long TotalInputTokens { get; set; }
@@ -1486,6 +1501,7 @@ public class ProjectService : IProjectService
 	private sealed class DashboardJobMetricsRow
 	{
 		public required DateTime CompletedAt { get; init; }
+		public bool Failed { get; init; }
 		public DateTime? StartedAt { get; init; }
 		public double? ExecutionDurationSeconds { get; init; }
 		public int? InputTokens { get; init; }

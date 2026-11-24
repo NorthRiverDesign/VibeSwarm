@@ -1,0 +1,309 @@
+@page "/templates"
+@attribute [Authorize]
+@inject IJobTemplateService JobTemplateService
+@inject NotificationService NotificationService
+@inject IServiceProvider ServiceProvider
+@implements IDisposable
+
+@* Tasks the user runs on many projects. Each row opens to its prompt, a Run button and where it has
+   run; a project's + menu runs the same templates on that one project. *@
+
+<PageHeader Title="Templates" Subtitle="Tasks you run on many projects, written once.">
+	<Actions>
+		<TitleAction Icon="plus-lg" Label="New template" Primary="true" OnClick="ShowCreate" />
+	</Actions>
+</PageHeader>
+
+@if (_isLoading)
+{
+	<LoadingSpinner Text="Loading templates..." />
+}
+else if (_templates.Count == 0)
+{
+	<EmptyState Icon="file-earmark-text" Title="No templates yet"
+				Message="Write a task once, like updating dependencies, then run it on any project from here or from a project's + menu.">
+		<ActionButton Icon="plus-lg" Text="New template" Style="ActionButton.ButtonStyle.Primary"
+					  Size="ActionButton.ButtonSize.Small" OnClick="ShowCreate" />
+	</EmptyState>
+}
+else
+{
+	<div class="list-group rounded-9">
+		@foreach (var template in _templates)
+		{
+			<ListRow @key="template.Id" Icon="file-earmark-text" Title="@template.Name"
+					 Subtitle="@TemplateFacts.RunSummary(template)" OnClick="() => LoadRunsAsync(template.Id)">
+				@if (!string.IsNullOrWhiteSpace(template.Description) && template.ProjectRunCount > 0)
+				{
+					<div class="small fg-1">@template.Description</div>
+				}
+				<div class="small white-space-pre-wrap text-break bg-1 rounded-5 p-3 max-height-50dvh overflow-auto">@template.GoalPrompt</div>
+				<div class="small fg-1">@(TemplateFacts.Describe(template) ?? "Uses each project's provider, branch and delivery.")</div>
+
+				<div>
+					<ActionButton Icon="play-fill" Text="Run on projects…" Style="ActionButton.ButtonStyle.Primary"
+								  OnClick="() => ShowRun(template)" />
+				</div>
+
+				@if (_runs.TryGetValue(template.Id, out var runs) && runs.Count > 0)
+				{
+					<section class="d-flex flex-column gap-3" aria-label="Runs">
+						<SectionHeader Title="Runs" />
+						<div class="list-group rounded-9">
+							@foreach (var run in runs)
+							{
+								<ListRow @key="run.JobId" Title="@run.ProjectName" Href="@($"/jobs/view/{run.JobId}")"
+										 Subtitle="@($"{TemplateFacts.StatusLabel(run.Status)} · {run.CreatedAt.FormatRelativeToNow()}")">
+									<Leading><JobStatusIcon Status="@run.Status" /></Leading>
+								</ListRow>
+							}
+						</div>
+					</section>
+				}
+				else if (_loadingRunsFor == template.Id)
+				{
+					<div class="small fg-1"><span class="spinner-border spinner-sm" role="status"></span> Loading runs...</div>
+				}
+
+				<div class="d-flex align-items-center gap-3">
+					<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => ShowEdit(template)">Edit</button>
+					<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => ShowDuplicate(template)">Duplicate</button>
+					<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 ms-auto" @onclick="() => ShowDelete(template)">
+						<i class="bi bi-trash"></i>Delete
+					</button>
+				</div>
+			</ListRow>
+		}
+	</div>
+}
+
+<TemplateEditorModal @bind-IsVisible="_showEditor" Template="_editing" OnSaved="HandleSavedAsync" />
+
+<RunTemplateModal @bind-IsVisible="_showRun" Template="_runTemplate" Runs="@RunsFor(_runTemplate)" OnRan="HandleRanAsync" />
+
+<ConfirmationModal @bind-IsVisible="_showDelete" Title="Delete template"
+				   Message="@($"Delete {_deleting?.Name}?")"
+				   SubMessage="Jobs it already queued keep running, but this list forgets where it ran."
+				   ConfirmText="Delete" IsProcessing="_isDeleting" OnConfirm="ConfirmDeleteAsync" OnCancel="() => _showDelete = false" />
+
+@code {
+	private List<JobTemplate> _templates = [];
+	private readonly Dictionary<Guid, IReadOnlyList<JobTemplateProjectRun>> _runs = [];
+	private Guid? _loadingRunsFor;
+	private bool _isLoading = true;
+
+	private bool _showEditor;
+	private JobTemplate? _editing;
+
+	private bool _showRun;
+	private JobTemplate? _runTemplate;
+
+	private bool _showDelete;
+	private JobTemplate? _deleting;
+	private bool _isDeleting;
+
+	private QueuePanelStateService? _jobEvents;
+	private bool _isRefreshingRuns;
+	private bool _pendingRunsRefresh;
+
+	protected override async Task OnInitializedAsync()
+	{
+		// The layout raises this on every job event, after a reconnect and when the app comes back
+		// to the foreground, so the runs shown below follow their jobs without a page reload.
+		_jobEvents = ServiceProvider.GetService<QueuePanelStateService>();
+		if (_jobEvents is not null)
+		{
+			_jobEvents.RefreshRequested += RefreshShownRunsAsync;
+		}
+
+		await LoadTemplatesAsync();
+	}
+
+	/// <summary>Re-reads the runs already shown. A failed read keeps the last list; the next event retries.</summary>
+	private Task RefreshShownRunsAsync() => InvokeAsync(async () =>
+	{
+		if (_isRefreshingRuns)
+		{
+			_pendingRunsRefresh = true;
+			return;
+		}
+
+		_isRefreshingRuns = true;
+		try
+		{
+			do
+			{
+				_pendingRunsRefresh = false;
+				foreach (var templateId in _runs.Keys.ToList())
+				{
+					try
+					{
+						var runs = await JobTemplateService.GetRunsAsync(templateId);
+						if (_runs.ContainsKey(templateId))
+						{
+							_runs[templateId] = runs;
+						}
+					}
+					catch (HttpRequestException)
+					{
+					}
+				}
+				StateHasChanged();
+			}
+			while (_pendingRunsRefresh);
+		}
+		finally
+		{
+			_isRefreshingRuns = false;
+		}
+	});
+
+	private async Task LoadTemplatesAsync()
+	{
+		try
+		{
+			_templates = (await JobTemplateService.GetAllAsync())
+				.OrderBy(template => template.Name, StringComparer.OrdinalIgnoreCase)
+				.ToList();
+		}
+		catch (HttpRequestException ex)
+		{
+			NotificationService.ShowError(ex.Message);
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	/// <summary>Loads a template's run history when its row opens, and again after it runs.</summary>
+	private async Task LoadRunsAsync(Guid templateId, bool force = false)
+	{
+		if (!force && _runs.ContainsKey(templateId))
+		{
+			return;
+		}
+
+		_loadingRunsFor = templateId;
+		try
+		{
+			_runs[templateId] = await JobTemplateService.GetRunsAsync(templateId);
+		}
+		catch (HttpRequestException ex)
+		{
+			NotificationService.ShowError(ex.Message);
+		}
+		finally
+		{
+			_loadingRunsFor = null;
+		}
+	}
+
+	private IReadOnlyList<JobTemplateProjectRun> RunsFor(JobTemplate? template)
+		=> template != null && _runs.TryGetValue(template.Id, out var runs) ? runs : [];
+
+	private void ShowCreate()
+	{
+		_editing = null;
+		_showEditor = true;
+	}
+
+	private void ShowEdit(JobTemplate template)
+	{
+		_editing = template;
+		_showEditor = true;
+	}
+
+	private void ShowDuplicate(JobTemplate template)
+	{
+		_editing = new JobTemplate
+		{
+			Name = UniqueCopyName(template.Name),
+			Description = template.Description,
+			GoalPrompt = template.GoalPrompt,
+			ProviderId = template.ProviderId,
+			ModelId = template.ModelId,
+			ReasoningEffort = template.ReasoningEffort,
+			Branch = template.Branch,
+			GitChangeDeliveryMode = template.GitChangeDeliveryMode,
+			TargetBranch = template.TargetBranch,
+			CycleMode = template.CycleMode,
+			CycleSessionMode = template.CycleSessionMode,
+			MaxCycles = template.MaxCycles,
+			CycleReviewPrompt = template.CycleReviewPrompt
+		};
+		_showEditor = true;
+	}
+
+	private string UniqueCopyName(string name)
+	{
+		var candidate = $"{name} copy";
+		for (var index = 2; _templates.Any(template => string.Equals(template.Name, candidate, StringComparison.OrdinalIgnoreCase)); index++)
+		{
+			candidate = $"{name} copy {index}";
+		}
+		return candidate;
+	}
+
+	private async Task ShowRun(JobTemplate template)
+	{
+		await LoadRunsAsync(template.Id, force: true);
+		_runTemplate = template;
+		_showRun = true;
+	}
+
+	private async Task HandleSavedAsync(JobTemplate saved)
+	{
+		await LoadTemplatesAsync();
+	}
+
+	private async Task HandleRanAsync(JobTemplateRunResult result)
+	{
+		if (_runTemplate is { } template)
+		{
+			await LoadRunsAsync(template.Id, force: true);
+		}
+		await LoadTemplatesAsync();
+	}
+
+	private void ShowDelete(JobTemplate template)
+	{
+		_deleting = template;
+		_showDelete = true;
+	}
+
+	private async Task ConfirmDeleteAsync()
+	{
+		if (_deleting == null)
+		{
+			return;
+		}
+
+		_isDeleting = true;
+		try
+		{
+			await JobTemplateService.DeleteAsync(_deleting.Id);
+			_runs.Remove(_deleting.Id);
+			NotificationService.ShowSuccess($"Deleted '{_deleting.Name}'.");
+			_showDelete = false;
+			_deleting = null;
+			await LoadTemplatesAsync();
+		}
+		catch (HttpRequestException ex)
+		{
+			NotificationService.ShowError(ex.Message);
+		}
+		finally
+		{
+			_isDeleting = false;
+		}
+	}
+
+	public void Dispose()
+	{
+		if (_jobEvents is not null)
+		{
+			_jobEvents.RefreshRequested -= RefreshShownRunsAsync;
+		}
+	}
+}

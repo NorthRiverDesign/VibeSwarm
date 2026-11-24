@@ -66,9 +66,20 @@ public partial class JobProcessingService
             // "another instance with the same key value for {'Id'} is already being tracked".
             // Rebind `job` to the instance tracked in this scope so subsequent Entry(job),
             // dbContext.SaveChanges, and nav-property fix-up all operate on one entity.
+            // The prompt, the job's APP_* variables and its MCP config read the project's
+            // environments and agent team from this instance, so load them here too.
             var trackedJob = await dbContext.Jobs
                 .Include(j => j.Provider)
                 .Include(j => j.Project)
+                    .ThenInclude(project => project!.Environments)
+                .Include(j => j.Project)
+                    .ThenInclude(project => project!.AgentAssignments)
+                        .ThenInclude(assignment => assignment.Provider)
+                .Include(j => j.Project)
+                    .ThenInclude(project => project!.AgentAssignments)
+                        .ThenInclude(assignment => assignment.Agent)
+                            .ThenInclude(agent => agent!.SkillLinks)
+                                .ThenInclude(link => link.Skill)
                 .FirstOrDefaultAsync(j => j.Id == job.Id, cancellationToken);
 
             if (trackedJob == null)
@@ -778,8 +789,7 @@ public partial class JobProcessingService
             var injectEfficiencyRules = appSettings?.InjectEfficiencyRules ?? true;
             var injectRepoMap = appSettings?.InjectRepoMap ?? true;
             var isLocalEnvironmentSetup = LocalEnvironmentSetup.IsSetupJob(job);
-            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap,
-                requireCodeChange: !isLocalEnvironmentSetup);
+            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap);
             projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
             var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
 
@@ -1225,8 +1235,8 @@ public partial class JobProcessingService
             // goes back to the agent in the same session, a bounded number of times.
             async Task<bool> ContinueWithReviewFeedbackAsync(ExecutionResult runResult, IJobService jobService)
             {
-                // Past the time limit there is no turn left for fixes.
-                if (executionContext.TimeLimit?.Reached == true)
+                // Past the time limit there is no turn left for fixes; without a checkout there is nothing to review.
+                if (executionContext.TimeLimit?.Reached == true || string.IsNullOrEmpty(workingDirectory))
                 {
                     return false;
                 }
@@ -1584,22 +1594,11 @@ public partial class JobProcessingService
 
             await CollectLeftoverWorktreesAsync(job, workingDirectory, executionContext);
 
-            // A job's deliverable is a change to the code. A run that ends with the working
-            // tree untouched has not done the work, however articulate its answer was, and
-            // recording it as success hides that. Questions and guidance belong to
-            // Inference, which does not pretend to have edited anything.
-            // Local environment setup is the exception: its work (.env files, a database, a mail
-            // trap) lives outside git by design.
-            if (!wasCancelled && finalResult.Success && !LocalEnvironmentSetup.IsSetupJob(job) &&
-                await ProducedNoCodeChangesAsync(workingDirectory, executionContext.GitCommitBefore, CancellationToken.None))
-            {
-                finalResult.Success = false;
-                finalResult.ErrorMessage =
-                    "The run finished without changing any code. A job has to end in code changes — " +
-                    "use Inference for questions, reviews or guidance.";
-
-                _logger.LogWarning("Job {JobId} finished without changing any code and was recorded as failed", job.Id);
-            }
+            // A run that leaves the code untouched is a success: a dependency update or a
+            // compliance check on a project that already meets it has nothing to change, and
+            // reporting that as a failure skews the success figures and sends the job round
+            // every other provider. CompleteJobAsync records it with ChangedFilesCount = 0,
+            // which the job list shows as "No changes".
 
             if (wasCancelled)
             {
@@ -2015,47 +2014,6 @@ public partial class JobProcessingService
             // Never fail a job because a skill can't be written to disk — the agent still
             // receives name + description via the system prompt, just without an absolute path.
             _logger.LogWarning(ex, "Failed to materialize skill {SkillId} ({SkillName}); continuing without storage path", skill.Id, skill.Name);
-        }
-    }
-
-    /// <summary>
-    /// Whether the run left the working tree exactly as it found it. Counts committed work,
-    /// uncommitted edits and brand-new untracked files, so an agent that committed its own
-    /// changes still reads as having done something.
-    /// </summary>
-    /// <remarks>
-    /// Answers false whenever it cannot tell — a working directory that is not a git
-    /// repository, or a run with no recorded base commit — because failing a job on a
-    /// guess is worse than missing one.
-    /// </remarks>
-    private async Task<bool> ProducedNoCodeChangesAsync(
-        string? workingDirectory,
-        string? baseCommit,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrEmpty(workingDirectory) || !Directory.Exists(workingDirectory) ||
-            string.IsNullOrEmpty(baseCommit))
-        {
-            return false;
-        }
-
-        try
-        {
-            if (!await _versionControlService.IsGitRepositoryAsync(workingDirectory, cancellationToken))
-            {
-                return false;
-            }
-
-            // Git can still be holding locks from the agent's own process.
-            await Task.Delay(750, cancellationToken);
-
-            var changedFiles = await _versionControlService.GetChangedFilesAsync(workingDirectory, baseCommit, cancellationToken);
-            return changedFiles.Count == 0;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not tell whether the working tree changed; treating the run as productive");
-            return false;
         }
     }
 

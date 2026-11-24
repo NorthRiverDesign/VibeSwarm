@@ -247,6 +247,66 @@ public sealed class MobileShellCssTests
 		return rule.Groups["body"].Value;
 	}
 
+	[Fact]
+	public void StickyBars_DeclareAZIndexSoScrollingContentNeverCoversThem()
+	{
+		// Open accordion items (z 2) and focused input-group controls (z 5) raise their own
+		// z-index. A sticky bar without one let form content scroll over the project dialog's
+		// Cancel/Save on a phone. sticky-top and sticky-bottom bring Bootstrap's z-index with them.
+		var css = ReadSiteCss();
+		var stickyElements = new List<string>();
+		var unstacked = new List<string>();
+
+		foreach (var file in Directory.EnumerateFiles(GetRepositoryPath("src", "VibeSwarm.Client"), "*.razor", SearchOption.AllDirectories))
+		{
+			var segments = file.Split(Path.DirectorySeparatorChar);
+			if (segments.Contains("bin") || segments.Contains("obj"))
+			{
+				continue;
+			}
+
+			foreach (Match match in Regex.Matches(File.ReadAllText(file), @"class=""(?<classes>[^""]*\bposition-sticky\b[^""]*)"""))
+			{
+				var classes = match.Groups["classes"].Value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+				var element = $"{Path.GetFileName(file)}: {match.Groups["classes"].Value}";
+				stickyElements.Add(element);
+				var stacked = classes.Any(name => name.StartsWith("z-", StringComparison.Ordinal)
+					|| Regex.IsMatch(css, $@"\.{Regex.Escape(name)}\s*\{{[^}}]*z-index:"));
+				if (!stacked)
+				{
+					unstacked.Add(element);
+				}
+			}
+		}
+
+		foreach (Match rule in Regex.Matches(css, @"(?<selector>[^{}]+)\{(?<body>[^{}]*position:\s*sticky;[^{}]*)\}"))
+		{
+			stickyElements.Add(rule.Groups["selector"].Value.Trim());
+			if (!rule.Groups["body"].Value.Contains("z-index:"))
+			{
+				unstacked.Add(rule.Groups["selector"].Value.Trim());
+			}
+		}
+
+		Assert.Contains(stickyElements, element => element.Contains("vs-dialog-sticky-actions"));
+		Assert.Contains(stickyElements, element => element.Contains(".project-detail-tabs"));
+		Assert.Empty(unstacked);
+	}
+
+	[Fact]
+	public void MainContent_KeepsItsDesktopWidthCap()
+	{
+		// Bootstrap 6 utilities sit in a later cascade layer than site.css's components, so a
+		// max-w-100 on .main-content silently replaced the 1400px cap and every page ran
+		// edge to edge on a wide screen.
+		var layout = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Shared", "MainLayout.razor"));
+		var mainContent = Regex.Match(layout, "<div class=\"(?<classes>main-content[^\"]*)\"");
+
+		Assert.True(mainContent.Success);
+		Assert.DoesNotMatch(new Regex(@"\b(max-w|mw)-"), mainContent.Groups["classes"].Value);
+		Assert.Matches(new Regex(@"\.main-content\s*\{[^}]*max-width:\s*1400px;"), ReadSiteCss());
+	}
+
 	private static string ReadSiteCss()
 		=> File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "wwwroot", "css", "site.css"));
 

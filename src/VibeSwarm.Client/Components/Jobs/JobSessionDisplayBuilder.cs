@@ -950,10 +950,44 @@ internal static class JobSessionDisplayBuilder
 					}
 				];
 
+			case "session.warning":
+				return WarningMessage(ReadJsonString(data, "message"), timestamp);
+
+			case "session.mcp_server_status_changed":
+			{
+				if (ReadJsonString(data, "status") != "failed")
+				{
+					return [];
+				}
+
+				var serverName = ReadJsonString(data, "serverName") ?? "unknown";
+				var reason = ReadJsonString(data, "error");
+				return WarningMessage(
+					string.IsNullOrWhiteSpace(reason)
+						? $"MCP server {serverName} failed to start."
+						: $"MCP server {serverName} failed to start: {reason}",
+					timestamp);
+			}
+
 			default:
 				return [];
 		}
 	}
+
+	private static IReadOnlyList<JobMessage> WarningMessage(string? warning, DateTime timestamp)
+		=> string.IsNullOrWhiteSpace(warning)
+			? []
+			:
+			[
+				new JobMessage
+				{
+					Role = MessageRole.System,
+					Content = $"[Warning] {warning}",
+					Source = MessageSource.Provider,
+					Level = MessageLevel.Warning,
+					CreatedAt = timestamp
+				}
+			];
 
 	private static IReadOnlyList<JobMessage> ExtractOpenCodeEventMessages(
 		string? type,

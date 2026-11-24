@@ -131,6 +131,39 @@ public sealed class CreateJobModalTests
 	}
 
 	[Fact]
+	public void CreateJobModal_TemplateThatLeavesSettingsToTheProject_KeepsTheProjectsProviderBranchAndDelivery()
+	{
+		using var context = CreateGoalPromptContext();
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Claude Code", Type = ProviderType.Claude, IsEnabled = true };
+		var template = new JobTemplate { Id = Guid.NewGuid(), Name = "Update dependencies", GoalPrompt = "Bring every dependency up to date." };
+		var job = new Job { ProviderId = provider.Id, Branch = "develop", GitChangeDeliveryMode = GitChangeDeliveryMode.PullRequest, TargetBranch = "main" };
+		var providerChanges = new List<Guid>();
+		var submitted = false;
+
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, job)
+			.Add(component => component.Providers, [provider])
+			.Add(component => component.AvailableModels, new List<ProviderModel>())
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, [template])
+			.Add(component => component.OnProviderChanged, EventCallback.Factory.Create<Guid>(this, providerChanges.Add))
+			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, () => submitted = true)));
+
+		cut.Find("#jobTemplate").Change(template.Id.ToString());
+		cut.Find("form").Submit();
+
+		Assert.True(submitted);
+		Assert.Equal(template.Id, job.JobTemplateId);
+		Assert.Equal("Bring every dependency up to date.", job.GoalPrompt);
+		Assert.Equal(provider.Id, job.ProviderId);
+		Assert.Equal("develop", job.Branch);
+		Assert.Equal(GitChangeDeliveryMode.PullRequest, job.GitChangeDeliveryMode);
+		Assert.Equal("main", job.TargetBranch);
+		Assert.Empty(providerChanges);
+	}
+
+	[Fact]
 	public void CreateJobModal_SelectingAgentPresetAppliesAssignedExecutionDefaults()
 	{
 		using var context = new BunitContext();
@@ -363,6 +396,10 @@ public sealed class CreateJobModalTests
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
 		public Task<JobTemplate> IncrementUseCountAsync(Guid id, CancellationToken cancellationToken = default)
 			=> Task.FromResult(new JobTemplate { Id = id, Name = "Template", GoalPrompt = "Prompt" });
+		public Task<IReadOnlyList<VibeSwarm.Shared.Models.JobTemplateProjectRun>> GetRunsAsync(Guid templateId, CancellationToken cancellationToken = default)
+			=> Task.FromResult<IReadOnlyList<VibeSwarm.Shared.Models.JobTemplateProjectRun>>([]);
+		public Task<VibeSwarm.Shared.Models.JobTemplateRunResult> RunAsync(Guid templateId, IReadOnlyCollection<Guid> projectIds, CancellationToken cancellationToken = default)
+			=> Task.FromResult(new VibeSwarm.Shared.Models.JobTemplateRunResult());
 	}
 
 	private sealed class FakeProjectService(IReadOnlyList<Project> projects, Project? detailedProject = null) : FakeProjectServiceBase

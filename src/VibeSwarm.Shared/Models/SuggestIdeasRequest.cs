@@ -40,6 +40,13 @@ public class SuggestIdeasRequest
 	public int IdeaCount { get; set; } = DefaultIdeaCount;
 
 	/// <summary>
+	/// Optional area of focus written by the user, such as "onboarding" or "mobile layout",
+	/// so the model suggests ideas about that area instead of the whole codebase.
+	/// </summary>
+	[StringLength(ValidationLimits.IdeaSuggestionFocusMaxLength)]
+	public string? Focus { get; set; }
+
+	/// <summary>
 	/// Optional extra scheduler context so idea generation can avoid already-queued plans and recent repeats.
 	/// </summary>
 	[StringLength(ValidationLimits.ProjectPromptContextMaxLength)]

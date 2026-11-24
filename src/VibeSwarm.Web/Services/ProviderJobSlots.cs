@@ -55,7 +55,7 @@ internal sealed class ProviderJobSlots
 
 	public int LimitOf(Guid providerId) => _limits.TryGetValue(providerId, out var limit)
 		? JobConcurrency.Normalize(limit)
-		: JobConcurrency.DefaultJobsPerProvider;
+		: JobConcurrency.MinJobs;
 
 	public bool CanStart(Guid providerId) =>
 		providerId == Guid.Empty

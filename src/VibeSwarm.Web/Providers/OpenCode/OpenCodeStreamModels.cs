@@ -7,7 +7,7 @@ namespace VibeSwarm.Shared.Providers.OpenCode;
 /// One line of <c>opencode run --format json</c> output. OpenCode 1.x and 2.x write the same shape:
 /// <c>{"type":"text","timestamp":…,"sessionID":"ses_…","part":{…}}</c>, where type is text,
 /// reasoning, tool_use, step_start, step_finish or error. Error events carry <c>error</c>
-/// instead of <c>part</c>.
+/// instead of <c>part</c>. 2.2+ adds retry and background_wait, whose fields sit at the top level.
 /// </summary>
 public class OpenCodeStreamEvent
 {
@@ -29,4 +29,17 @@ public class OpenCodeStreamEvent
 	/// </summary>
 	[JsonPropertyName("error")]
 	public JsonElement Error { get; set; }
+
+	/// <summary>
+	/// On a <c>retry</c> event (2.2+): which attempt is next. The failure it retries is in <see cref="Error"/>.
+	/// </summary>
+	[JsonPropertyName("attempt")]
+	public int? Attempt { get; set; }
+
+	/// <summary>
+	/// On a <c>background_wait</c> event (2.2+): the shell commands and subagents run waits for
+	/// before it exits, each <c>{id, kind, title}</c>.
+	/// </summary>
+	[JsonPropertyName("jobs")]
+	public JsonElement Jobs { get; set; }
 }

@@ -34,6 +34,8 @@ public class CopilotProvider : CliProviderBase
     private static readonly Version UsageOutputFileVersion = new(1, 0, 86);
     private static readonly Version ExtendedReasoningEffortVersion = new(1, 0, 86);
     private static readonly Version ContextTierVersion = new(1, 0, 86);
+
+    private const string WorkspaceTrustEnvironmentVariable = "COPILOT_ALLOW_ALL";
     private UsageLimits? _lastObservedUsageLimits;
 
     // Path Copilot writes its end-of-session usage JSON to for the current run.
@@ -191,6 +193,7 @@ public class CopilotProvider : CliProviderBase
         EnsureBashEnvEnvironmentVariable();
         EnsureByokEnvironmentVariables();
         await EnsureCachedCliVersionAsync(cancellationToken);
+        EnsureWorkspaceTrustEnvironmentVariable();
 
         var execPath = GetExecutablePath();
         if (string.IsNullOrEmpty(execPath))
@@ -784,6 +787,32 @@ public class CopilotProvider : CliProviderBase
     }
 
     /// <summary>
+    /// Trusts the job's checkout so prompt mode loads the repository's .mcp.json servers and
+    /// hooks. Without it, a folder missing from the user's trustedFolders has them skipped with
+    /// only a warning. --trust-folder (1.0.100+) can't be used: it refuses --session-id,
+    /// --resume and --continue. COPILOT_ALLOW_ALL=true also approves every tool, so it is set
+    /// only when the arguments already allow all tools. A caller's own value is kept.
+    /// Internal for unit testing.
+    /// </summary>
+    internal void EnsureWorkspaceTrustEnvironmentVariable()
+    {
+        var allowsAllTools = string.IsNullOrEmpty(CurrentCopilotMode)
+            || (_cachedCliVersion != null && _cachedCliVersion >= ModernFlagsVersion);
+        if (!allowsAllTools
+            || CurrentEnvironmentVariables?.ContainsKey(WorkspaceTrustEnvironmentVariable) == true
+            || BaseEnvironmentVariables?.ContainsKey(WorkspaceTrustEnvironmentVariable) == true)
+        {
+            return;
+        }
+
+        CurrentEnvironmentVariables = CurrentEnvironmentVariables != null
+            ? new Dictionary<string, string>(CurrentEnvironmentVariables, StringComparer.Ordinal)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+
+        CurrentEnvironmentVariables[WorkspaceTrustEnvironmentVariable] = "true";
+    }
+
+    /// <summary>
     /// Injects COPILOT_PROVIDER_* env vars so the Copilot CLI routes model requests to a
     /// non-GitHub endpoint (Azure / Anthropic / OpenAI-compatible) using the provider's ApiEndpoint + ApiKey.
     /// Does not override values the caller has already set via ExecutionOptions.EnvironmentVariables.
@@ -1373,6 +1402,55 @@ public class CopilotProvider : CliProviderBase
                 }
                 break;
 
+            // session.start carries the session ID up front, which a --continue run otherwise
+            // learns only from the closing result record. Seen on a 1.0.112 run.
+            case "session.start":
+                var startedSessionId = ReadString(data, "sessionId");
+                if (!string.IsNullOrEmpty(startedSessionId) && string.IsNullOrEmpty(result.SessionId))
+                {
+                    result.SessionId = startedSessionId;
+                    progress?.Report(new ExecutionProgress
+                    {
+                        SessionId = startedSessionId,
+                        IsStreaming = false
+                    });
+                }
+                ApplySelectedModel(ReadString(data, "selectedModel"), result);
+                break;
+
+            case "session.resume":
+                ApplySelectedModel(ReadString(data, "selectedModel"), result);
+                break;
+
+            case "session.model_change":
+                var newModel = ReadString(data, "newModel");
+                if (!string.IsNullOrEmpty(newModel))
+                {
+                    result.ModelUsed = newModel;
+                }
+                break;
+
+            // Problems the run carries on past, such as an MCP config that could not be read or
+            // repository MCP servers skipped in an untrusted folder.
+            case "session.warning":
+                AddWarning(ReadString(data, "message"), result, progress);
+                break;
+
+            // A server that fails to start is reported only here, never as a warning.
+            case "session.mcp_server_status_changed":
+                if (ReadString(data, "status") == "failed")
+                {
+                    var serverName = ReadString(data, "serverName") ?? "unknown";
+                    var reason = ReadString(data, "error");
+                    AddWarning(
+                        string.IsNullOrWhiteSpace(reason)
+                            ? $"MCP server {serverName} failed to start."
+                            : $"MCP server {serverName} failed to start: {reason}",
+                        result,
+                        progress);
+                }
+                break;
+
             case "session.error":
                 var errorMessage = ReadString(data, "message")
                     ?? ReadString(data, "errorType")
@@ -1405,6 +1483,35 @@ public class CopilotProvider : CliProviderBase
         => element.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    private static void AddWarning(string? warning, ExecutionResult result, IProgress<ExecutionProgress>? progress)
+    {
+        if (string.IsNullOrWhiteSpace(warning))
+        {
+            return;
+        }
+
+        result.Messages.Add(new ExecutionMessage
+        {
+            Role = "system",
+            Content = $"[Warning] {warning}",
+            Timestamp = DateTime.UtcNow
+        });
+        progress?.Report(new ExecutionProgress
+        {
+            CurrentMessage = $"Warning: {warning}",
+            IsStreaming = false
+        });
+    }
+
+    // The model a session opens on; a later assistant.message or model change names the one used.
+    private static void ApplySelectedModel(string? model, ExecutionResult result)
+    {
+        if (!string.IsNullOrEmpty(model) && string.IsNullOrEmpty(result.ModelUsed))
+        {
+            result.ModelUsed = model;
+        }
+    }
 
     private static void ReportStructuredEvent(
         string? content,

@@ -282,6 +282,7 @@ public sealed class JobGitSyncTests : IDisposable
 		Assert.Equal([worktree], await snapshots.ListWorktreesAsync(_repo));
 		var keptOn = await snapshots.CollectWorktreeAsync(_repo, worktree, Guid.NewGuid());
 
+		Assert.NotNull(keptOn);
 		Assert.Equal("agent-wt", keptOn);
 		Assert.False(Directory.Exists(worktree));
 		Assert.Equal("", await GitAsync(_repo, "status --porcelain"));

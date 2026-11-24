@@ -1,5 +1,6 @@
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
+using VibeSwarm.Client.Components.Common;
 using VibeSwarm.Client.Pages;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
@@ -37,6 +38,7 @@ public sealed class ProjectDetailTabMergeTests
 			var createJobButtons = cut.FindAll("button")
 				.Count(button => button.TextContent.Contains("New job with options", StringComparison.Ordinal));
 			Assert.Equal(1, createJobButtons);
+			Assert.Single(cut.FindAll("button.menu-item"), button => button.TextContent.Contains("Run a template", StringComparison.Ordinal));
 
 			var markup = cut.Markup;
 			Assert.Contains("Add an idea", markup);
@@ -196,6 +198,46 @@ public sealed class ProjectDetailTabMergeTests
 		Assert.Equal(0, versionControl.SyncCount);
 	}
 
+	[Fact]
+	public async Task ProjectDetail_ShowsTheLastVisitAtOnce_ThenTheFreshJobs()
+	{
+		var jobService = new FakeJobService([CreateJob("Older job")]);
+		using var context = CreateContext(ideas: [], jobs: [], jobService: jobService);
+		context.Services.AddSingleton<ViewSnapshotCache>();
+
+		var first = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
+		first.WaitForAssertion(() => Assert.Contains("Older job", first.Markup));
+		// Leaving the page disposes it, as navigating away does.
+		await context.DisposeComponentsAsync();
+
+		jobService.Jobs.Clear();
+		jobService.Jobs.Add(CreateJob("Newer job"));
+		jobService.JobsLoadGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+		// Back on the page: the last visit shows straight away, with no placeholders, while the reload is held.
+		var second = context.Render<ProjectDetail>(parameters => parameters.Add(component => component.ProjectId, TestProject.Id));
+		second.WaitForAssertion(() => Assert.Contains("Older job", second.Markup));
+		Assert.Empty(second.FindComponents<SkeletonLoader>());
+		Assert.False(jobService.JobsLoadGate.Task.IsCompleted);
+
+		jobService.JobsLoadGate.SetResult();
+		second.WaitForAssertion(() =>
+		{
+			Assert.Contains("Newer job", second.Markup);
+			Assert.DoesNotContain("Older job", second.Markup);
+		});
+	}
+
+	private static JobSummary CreateJob(string title) => new()
+	{
+		Id = Guid.NewGuid(),
+		ProjectId = TestProject.Id,
+		Title = title,
+		GoalPrompt = title,
+		Status = JobStatus.Completed,
+		CreatedAt = DateTime.UtcNow
+	};
+
 	private static readonly Project TestProject = new()
 	{
 		Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -242,7 +284,7 @@ public sealed class ProjectDetailTabMergeTests
 
 		public List<Job> CreatedJobs { get; } = [];
 		public List<JobSummary> Jobs => jobs;
-		public TaskCompletionSource? JobsLoadGate { get; init; }
+		public TaskCompletionSource? JobsLoadGate { get; set; }
 
 		public override Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)
 		{
@@ -315,6 +357,10 @@ public sealed class ProjectDetailTabMergeTests
 		public Task<JobTemplate> UpdateAsync(JobTemplate template, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<JobTemplate> IncrementUseCountAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IReadOnlyList<VibeSwarm.Shared.Models.JobTemplateProjectRun>> GetRunsAsync(Guid templateId, CancellationToken cancellationToken = default)
+			=> Task.FromResult<IReadOnlyList<VibeSwarm.Shared.Models.JobTemplateProjectRun>>([]);
+		public Task<VibeSwarm.Shared.Models.JobTemplateRunResult> RunAsync(Guid templateId, IReadOnlyCollection<Guid> projectIds, CancellationToken cancellationToken = default)
+			=> Task.FromResult(new VibeSwarm.Shared.Models.JobTemplateRunResult());
 	}
 
 	private sealed class FakeAgentService : FakeAgentServiceBase

@@ -382,7 +382,36 @@ public sealed class AutoPilotServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task Tick_WhenTheJobFoundNothingToChange_KeepsGoingWithoutCountingAFailure()
+	public async Task Tick_WhenTheJobCompletedWithNoChanges_CountsASuccessAndTellsTheNextRound()
+	{
+		using var harness = await CreateHarnessAsync();
+		var loop = await harness.AddLoopAsync(l =>
+		{
+			l.ConsecutiveFailures = 2;
+			l.IterationsSinceLastPolish = 1;
+		});
+		var job = await harness.AddJobAsync("Add CSV export", JobStatus.Completed, loop.Id);
+		await harness.Db.Jobs.Where(j => j.Id == job.Id).ExecuteUpdateAsync(s => s.SetProperty(j => j.ChangedFilesCount, 0));
+		await harness.UpdateLoopAsync(loop.Id, l => l.CurrentJobId = job.Id);
+
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		var saved = await harness.ReloadAsync(loop.Id);
+		Assert.Equal(IterationLoopStatus.Running, saved.Status);
+		Assert.Equal(0, saved.ConsecutiveFailures);
+		Assert.Equal(1, saved.CompletedIterations);
+		Assert.Equal(1, saved.IterationsSinceLastPolish);
+		Assert.Equal("The last idea needed no change. Looking at another area next.", saved.StatusMessage);
+
+		harness.Ideas.SuggestResults.Enqueue(harness.Ideas.CreateIdeaResult("Add PDF export"));
+		await harness.ExpireCooldownAsync(loop.Id);
+		await harness.Service.ProcessTickAsync(loop.Id, CancellationToken.None);
+
+		Assert.Contains("already there, nothing to change: Add CSV export", harness.Ideas.SuggestRequests.Single().AdditionalContext);
+	}
+
+	[Fact]
+	public async Task Tick_WhenAnOlderJobFailedForChangingNothing_KeepsGoingWithoutCountingAFailure()
 	{
 		using var harness = await CreateHarnessAsync();
 		var loop = await harness.AddLoopAsync();

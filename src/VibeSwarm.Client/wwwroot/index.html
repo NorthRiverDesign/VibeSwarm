@@ -520,6 +520,45 @@
                 };
                 document.addEventListener('keydown', window.__vibeSearchHandler);
             };
+
+            // A phone suspends a backgrounded tab or Home Screen app, and the job updates pushed
+            // meanwhile are lost. Tell the app when it is back in front so it reloads what it shows.
+            // A glance away under two seconds keeps its connection, so it needn't reload.
+            window.vibeSwarmRegisterAppResume = function (dotNetRef) {
+                window.__vibeResumeDotNet = dotNetRef;
+                if (window.__vibeResumeRegistered) {
+                    return;
+                }
+                window.__vibeResumeRegistered = true;
+
+                var hiddenAt = document.visibilityState === 'hidden' ? Date.now() : null;
+                var lastResumeAt = 0;
+                var notifyResumed = function () {
+                    var now = Date.now();
+                    // A page restored from the back-forward cache fires pageshow and visibilitychange.
+                    if (now - lastResumeAt < 1000 || !window.__vibeResumeDotNet) {
+                        return;
+                    }
+                    lastResumeAt = now;
+                    window.__vibeResumeDotNet.invokeMethodAsync('OnAppResumed').catch(function () { });
+                };
+
+                document.addEventListener('visibilitychange', function () {
+                    if (document.visibilityState === 'hidden') {
+                        hiddenAt = Date.now();
+                        return;
+                    }
+                    if (hiddenAt !== null && Date.now() - hiddenAt >= 2000) {
+                        notifyResumed();
+                    }
+                    hiddenAt = null;
+                });
+                window.addEventListener('pageshow', function (e) {
+                    if (e.persisted) {
+                        notifyResumed();
+                    }
+                });
+            };
         </script>
 
         <script>

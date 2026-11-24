@@ -81,7 +81,7 @@
 			</div>
 		</div>
 		<div class="form-text mt-0">
-			Each in its own session and a different project. Raise it if your plan takes several sessions at once.
+			Each in its own session and a different project. Lower it to 1 if your plan can't take several sessions at once.
 			@(CanEditJobLimit ? null : "Only an admin can change this.")
 		</div>
 
@@ -148,9 +148,14 @@
 
 	private int LongWindowThreshold => SessionLimitPolicy.ResolvePauseThreshold(Provider.WeeklyLimitPauseThresholdPercent);
 
-	private string? Subtitle => Provider.MaxConcurrentJobs > 1
-		? string.Join(" · ", new[] { LimitSubtitle, $"{Provider.MaxConcurrentJobs} jobs at once" }.Where(part => part != null))
+	// The job limit shows only when an admin has moved it off the default.
+	private string? Subtitle => Provider.MaxConcurrentJobs != JobConcurrency.DefaultJobsPerProvider
+		? string.Join(" · ", new[] { LimitSubtitle, JobLimitSubtitle }.Where(part => part != null))
 		: LimitSubtitle;
+
+	private string JobLimitSubtitle => Provider.MaxConcurrentJobs == 1
+		? "One job at a time"
+		: $"{Provider.MaxConcurrentJobs} jobs at once";
 
 	private string? LimitSubtitle
 	{

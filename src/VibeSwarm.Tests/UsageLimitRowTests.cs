@@ -2,6 +2,7 @@ using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using VibeSwarm.Client.Components.Settings;
 using VibeSwarm.Client.Services;
+using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 
@@ -47,6 +48,26 @@ public sealed class UsageLimitRowTests
 		Assert.Equal(3, Assert.Single(providers.Saved).MaxConcurrentJobs);
 		Assert.Equal(3, provider.MaxConcurrentJobs);
 		Assert.Contains("3 jobs at once", cut.Markup);
+	}
+
+	[Theory]
+	[InlineData(JobConcurrency.DefaultJobsPerProvider, null)]
+	[InlineData(1, "One job at a time")]
+	public void Subtitle_NamesTheJobLimitOnlyWhenItIsOffTheDefault(int maxConcurrentJobs, string? expected)
+	{
+		using var context = CreateContext(new RecordingProviderService());
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true, MaxConcurrentJobs = maxConcurrentJobs };
+		var cut = context.Render<UsageLimitRow>(parameters => parameters.Add(p => p.Provider, provider));
+
+		if (expected == null)
+		{
+			Assert.DoesNotContain("jobs at once", cut.Markup);
+			Assert.DoesNotContain("One job at a time", cut.Markup);
+		}
+		else
+		{
+			Assert.Contains(expected, cut.Markup);
+		}
 	}
 
 	private static BunitContext CreateContext(RecordingProviderService providers)

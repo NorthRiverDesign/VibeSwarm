@@ -1,11 +1,14 @@
+using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
+using VibeSwarm.Client.Components.Common;
 using VibeSwarm.Client.Components.Ideas;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Tests;
 
@@ -62,7 +65,8 @@ public sealed class SuggestIdeasModalTests
 				[nameof(SuggestIdeasModal.AvailableProviders)] = providers,
 				[nameof(SuggestIdeasModal.SelectedProviderId)] = inferenceProviders[0].Id,
 				[nameof(SuggestIdeasModal.SelectedModelId)] = "qwen2.5-coder:7b",
-				[nameof(SuggestIdeasModal.IdeaCount)] = 4
+				[nameof(SuggestIdeasModal.IdeaCount)] = 4,
+				[nameof(SuggestIdeasModal.Focus)] = "Onboarding for new admins"
 			});
 
 			var output = await renderer.RenderComponentAsync<SuggestIdeasModal>(parameters);
@@ -80,6 +84,29 @@ public sealed class SuggestIdeasModalTests
 		Assert.Contains("Qwen 2.5 Coder 7B (Default)", html);
 		Assert.Contains("Llama 3.2", html);
 		Assert.Contains(">4<", html);
+		Assert.Contains("id=\"suggestIdeasFocus\"", html);
+		Assert.Contains($"maxlength=\"{ValidationLimits.IdeaSuggestionFocusMaxLength}\"", html);
+		Assert.Contains("Onboarding for new admins", html);
+	}
+
+	[Fact]
+	public void TypingAFocus_RaisesFocusChanged()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
+		var inferenceProvider = new InferenceProvider { Id = Guid.NewGuid(), Name = "Local Ollama", Endpoint = "http://ollama:11434", IsEnabled = true };
+		string? focus = null;
+
+		var cut = context.Render<SuggestIdeasModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, [inferenceProvider])
+			.Add(component => component.SelectedProviderId, inferenceProvider.Id)
+			.Add(component => component.FocusChanged, EventCallback.Factory.Create<string?>(this, value => focus = value)));
+
+		cut.Find("#suggestIdeasFocus").Input("Mobile layout ");
+
+		cut.WaitForAssertion(() => Assert.Equal("Mobile layout ", focus));
 	}
 
 	[Fact]

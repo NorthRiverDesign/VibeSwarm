@@ -12,6 +12,7 @@
 @inject NavigationManager NavigationManager
 @inject NotificationService NotificationService
 @inject QueuePanelStateService QueuePanelStateService
+@inject IServiceProvider ServiceProvider
 @implements IAsyncDisposable
 
 @if (IsLoading)
@@ -105,7 +106,8 @@ else
                                 DefaultInferenceProviderId="@(Project?.IdeaInferenceProviderId)"
                                 DefaultInferenceModelId="@(Project?.IdeaInferenceModelId)"
                                 OnSuggestIdeas="SuggestIdeasFromCodebase" OnPreviousPage="LoadPreviousIdeasPage"
-                                OnNextPage="LoadNextIdeasPage" OnCreateJob="ShowCreateJobModal" ShowEmptyState="false">
+                                OnNextPage="LoadNextIdeasPage" OnCreateJob="ShowCreateJobModal"
+                                OnRunTemplate="() => _showPickTemplateModal = true" ShowEmptyState="false">
                         <RunningContent>
                             @if (ActiveJob != null || IsAutoPilotRunning)
                             {
@@ -293,6 +295,9 @@ else
                     OnModelsRefreshed="@(models => AvailableModels = models)"
                     TemplateLibrary="@JobTemplates" OnTemplateLibraryChanged="LoadJobTemplates" OnSubmit="HandleCreateJob" />
 
+    @* Run a saved template on this project; the new job arrives through SignalR. *@
+    <PickTemplateModal @bind-IsVisible="_showPickTemplateModal" ProjectId="@ProjectId" ProjectName="@(Project?.Name ?? "this project")" />
+
     @* Delete Project Modal *@
     <ModalDialog @bind-IsVisible="_showDeleteProjectModal" Title="Delete project" Icon="exclamation-triangle"
                  Size="ModalDialog.ModalSize.Small">
@@ -361,6 +366,7 @@ else
 
     // Create job modal state
     private bool _showCreateJobModal { get; set; }
+    private bool _showPickTemplateModal;
 
     // Edit project modal state
     private bool _showEditProjectModal { get; set; }

@@ -57,7 +57,8 @@ public class DashboardRunningJobInfo
 }
 
 /// <summary>
-/// Aggregated dashboard metrics for completed jobs within a selected time window.
+/// Aggregated dashboard metrics for jobs that finished within a selected time window. Duration
+/// and token figures cover completed jobs only; failed jobs are counted separately.
 /// </summary>
 public class DashboardJobMetrics
 {
@@ -65,6 +66,7 @@ public class DashboardJobMetrics
     public DateTime StartUtc { get; set; }
     public DateTime EndUtc { get; set; }
     public int TotalCompletedJobs { get; set; }
+    public int TotalFailedJobs { get; set; }
     public double? AverageDurationSeconds { get; set; }
     public long TotalInputTokens { get; set; }
     public long TotalOutputTokens { get; set; }
@@ -78,6 +80,7 @@ public class DashboardJobMetricsBucket
 {
     public DateTime BucketStartUtc { get; set; }
     public int CompletedJobs { get; set; }
+    public int FailedJobs { get; set; }
     public double? AverageDurationSeconds { get; set; }
     public long TotalInputTokens { get; set; }
     public long TotalOutputTokens { get; set; }

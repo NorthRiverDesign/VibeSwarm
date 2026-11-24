@@ -1007,6 +1007,37 @@ public class OpenCodeProvider : CliProviderBase
                 break;
             }
 
+            // 2.2+: a failed model call that will be tried again. Not an error unless retries run out.
+            case "retry":
+            {
+                var retryReason = evt.Error.ValueKind is JsonValueKind.Object or JsonValueKind.String
+                    ? ReadErrorMessage(evt.Error)
+                    : null;
+                var attempt = evt.Attempt is > 0 ? $" (attempt {evt.Attempt})" : string.Empty;
+                progress?.Report(new ExecutionProgress
+                {
+                    CurrentMessage = string.IsNullOrWhiteSpace(retryReason)
+                        ? $"Retrying{attempt}"
+                        : $"Retrying{attempt}: {retryReason}",
+                    IsStreaming = false
+                });
+                break;
+            }
+
+            // 2.2+: run waits for the background work its prompt started before it exits.
+            case "background_wait":
+            {
+                var count = evt.Jobs.ValueKind == JsonValueKind.Array ? evt.Jobs.GetArrayLength() : 0;
+                progress?.Report(new ExecutionProgress
+                {
+                    CurrentMessage = count == 1
+                        ? "Waiting for 1 background job"
+                        : $"Waiting for {count} background jobs",
+                    IsStreaming = false
+                });
+                break;
+            }
+
             case "error":
             {
                 var errorContent = ReadErrorMessage(evt.Error);

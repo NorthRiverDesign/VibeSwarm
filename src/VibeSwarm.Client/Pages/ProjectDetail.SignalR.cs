@@ -13,6 +13,7 @@ public partial class ProjectDetail
 	private HashSet<Guid> _localIdeaCreateIds = new();
 	private DateTime _lastIdeasLoadTime = DateTime.MinValue;
 	private bool _disposed;
+	private AppResumeService? _appResumeService;
 
 	private static readonly TimeSpan PollingIntervalActive = TimeSpan.FromSeconds(10);
 	private static readonly TimeSpan PollingIntervalSignalRFallback = TimeSpan.FromSeconds(30);
@@ -20,11 +21,32 @@ public partial class ProjectDetail
 
 	protected override async Task OnInitializedAsync()
 	{
+		// Back from the background: the job pushes sent meanwhile were lost, so reload.
+		_appResumeService = ServiceProvider.GetService<AppResumeService>();
+		if (_appResumeService is not null)
+		{
+			_appResumeService.Resumed += OnAppResumedAsync;
+		}
+
+		// Back on the page: draw what it last showed straight away; LoadData reloads it in place.
+		RestoreSnapshot();
 		await LoadData();
 
 		_ = InitializeSignalRSafe();
 		StartAutoRefresh();
 	}
+
+	// Reloads in place: LoadData would show the loading state and reset both lists to page one.
+	private Task OnAppResumedAsync() => InvokeAsync(async () =>
+	{
+		if (_disposed || Project == null) return;
+
+		await RefreshJobs(force: true);
+		await LoadIdeas(force: true);
+		if (IsAutoPilotRunning)
+			await RefreshAutoPilotAsync();
+		StateHasChanged();
+	});
 
 	private async Task LoadGitInfoSafe()
 	{
@@ -457,18 +479,25 @@ public partial class ProjectDetail
 
 	private async Task LoadData()
 	{
-		IsLoading = true;
+		// A page already showing the project (from the last visit, or before an edit) reloads in
+		// place, without the spinner or the list placeholders.
+		var isShowingProject = Project != null;
+		IsLoading = !isShowingProject;
 		try
 		{
 			Project = await ProjectService.GetByIdAsync(ProjectId);
-			if (Project == null) return;
+			if (Project == null)
+			{
+				ForgetSnapshot();
+				return;
+			}
 
 			// Git runs alongside the rest so the header doesn't wait for jobs, ideas and providers.
 			_ = LoadGitInfoSafe();
 
 			IsLoading = false;
-			_isLoadingJobs = true;
-			_isLoadingIdeas = true;
+			_isLoadingJobs = !isShowingProject;
+			_isLoadingIdeas = !isShowingProject;
 			StateHasChanged();
 
 			_jobsPageNumber = 1;
@@ -492,6 +521,7 @@ public partial class ProjectDetail
 			});
 
 			await Task.WhenAll(jobsTask, ideasTask, providersTask, autoPilotTask);
+			SaveSnapshot();
 
 			await InvokeAsync(StateHasChanged);
 		}
@@ -536,7 +566,12 @@ public partial class ProjectDetail
 
 	public async ValueTask DisposeAsync()
 	{
+		SaveSnapshot();
 		_disposed = true;
+		if (_appResumeService is not null)
+		{
+			_appResumeService.Resumed -= OnAppResumedAsync;
+		}
 
 		_expandCts?.Cancel();
 		_expandCts?.Dispose();

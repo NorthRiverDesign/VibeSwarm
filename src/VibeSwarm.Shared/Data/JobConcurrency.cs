@@ -15,8 +15,12 @@ public static class JobConcurrency
 	/// <summary>Jobs running at once across all projects.</summary>
 	public const int DefaultTotalJobs = 5;
 
-	/// <summary>Jobs one provider runs at once, each in a different project.</summary>
-	public const int DefaultJobsPerProvider = 1;
+	/// <summary>
+	/// Jobs one provider runs at once, each in a different project. As many as the total, so by
+	/// default jobs in separate projects start side by side on one provider; lower it for a plan
+	/// that can't take several sessions at once.
+	/// </summary>
+	public const int DefaultJobsPerProvider = DefaultTotalJobs;
 
 	public static int Normalize(int jobs) => Math.Clamp(jobs, MinJobs, MaxJobs);
 }

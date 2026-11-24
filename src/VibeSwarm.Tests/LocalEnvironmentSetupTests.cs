@@ -93,6 +93,35 @@ public sealed class LocalEnvironmentSetupTests : IDisposable
 	}
 
 	[Fact]
+	public void ApplyResult_LeavesALocalDatabaseAlone()
+	{
+		var database = new ProjectEnvironment
+		{
+			Id = Guid.NewGuid(),
+			Name = "Local DB",
+			Url = "mysql://localhost:3306/app",
+			Stage = EnvironmentStage.Local,
+			Type = EnvironmentType.Database,
+			IsEnabled = true,
+			IsPrimary = true
+		};
+		var project = new Project { Environments = [database] };
+
+		var environment = LocalEnvironmentSetup.ApplyResult(project, new LocalEnvironmentSetupResult
+		{
+			Url = "http://localhost:8080"
+		});
+
+		Assert.NotNull(environment);
+		Assert.NotSame(database, environment);
+		Assert.Equal(2, project.Environments.Count);
+		Assert.Equal("mysql://localhost:3306/app", database.Url);
+		Assert.Equal(EnvironmentType.Database, database.Type);
+		Assert.Equal(EnvironmentType.Web, environment.Type);
+		Assert.Equal("http://localhost:8080", environment.Url);
+	}
+
+	[Fact]
 	public void ApplyResult_UpdatesExistingLocalEnvironment_InsteadOfAddingAnother()
 	{
 		var existing = new ProjectEnvironment
@@ -162,13 +191,12 @@ public sealed class LocalEnvironmentSetupTests : IDisposable
 	}
 
 	[Fact]
-	public void BuildSystemPromptRules_DropsCodeChangeRequirement_ForLocalSetup()
+	public void BuildSystemPromptRules_SaysAFinishedTaskNeedsNoChange()
 	{
-		var project = new Project { Name = "App", WorkingPath = "/tmp/app" };
-		const string codeChangeRule = "The deliverable is a code change.";
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project { Name = "App", WorkingPath = "/tmp/app" });
 
-		Assert.Contains(codeChangeRule, PromptBuilder.BuildSystemPromptRules(project));
-		Assert.DoesNotContain(codeChangeRule, PromptBuilder.BuildSystemPromptRules(project, requireCodeChange: false));
+		Assert.Contains("If the task needs no change, make none and say so in the summary; that is a success.", rules);
+		Assert.DoesNotContain("recorded as failed", rules);
 	}
 
 	[Fact]

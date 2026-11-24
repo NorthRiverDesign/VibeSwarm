@@ -1564,7 +1564,7 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
-                    b.Property<int>("GitChangeDeliveryMode")
+                    b.Property<int?>("GitChangeDeliveryMode")
                         .HasColumnType("int");
 
                     b.Property<string>("GoalPrompt")
@@ -2419,7 +2419,7 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<int>("MaxConcurrentJobs")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
-                        .HasDefaultValue(1);
+                        .HasDefaultValue(5);
 
                     b.Property<int?>("MaxExecutionMinutes")
                         .HasColumnType("int");

@@ -1,17 +1,22 @@
 @inject IJSRuntime JS
 
-<div class="card h-100">
-	<div class="card-body d-flex flex-column p-5">
-		<div class="d-flex justify-content-between align-items-start gap-5 mb-3 sm:mb-5">
-			<div>
-				<h3 class="card-title mb-1">@Title</h3>
-				<p class="small fg-1 mb-0">@Subtitle</p>
+@* Framed, the chart is a card with its own title. Unframed, it is just the plot, for a panel
+   that titles it (the dashboard's analytics panel switches one chart between metrics). *@
+<div class="@(Framed ? "card h-100" : null)">
+	<div class="@(Framed ? "card-body d-flex flex-column p-5" : "d-flex flex-column")">
+		@if (Framed)
+		{
+			<div class="d-flex justify-content-between align-items-start gap-5 mb-3 sm:mb-5">
+				<div>
+					<h3 class="card-title mb-1">@Title</h3>
+					<p class="small fg-1 mb-0">@Subtitle</p>
+				</div>
+				@if (!string.IsNullOrWhiteSpace(Summary))
+				{
+					<span class="small fg-1 text-end">@Summary</span>
+				}
 			</div>
-			@if (!string.IsNullOrWhiteSpace(Summary))
-			{
-				<span class="small fg-1 text-end">@Summary</span>
-			}
-		</div>
+		}
 
 		@if (!HasData)
 		{
@@ -75,23 +80,6 @@
 
 									<line x1="0" y1="@BaselineY" x2="@ChartWidth" y2="@BaselineY"
 										  stroke="var(--bs-border-color)" stroke-width="1.25" />
-
-									@for (var index = 0; index < Points.Count; index++)
-									{
-										var point = Points[index];
-										var isSelected = SelectedPointIndex == index;
-										var barHeight = GetBarHeight(point.Value);
-										var x = GetBarX(index);
-										var y = BaselineY - barHeight;
-										var tooltip = GetPointTooltip(point);
-
-										<rect x="@x" y="@y" width="@BarWidth" height="@Math.Max(barHeight, 2)" rx="6"
-											  fill="@BarColor" fill-opacity="@(isSelected ? "1" : "0.85")"
-											  stroke="@(isSelected ? "var(--bs-fg-body)" : "none")" stroke-width="2"
-											  aria-label="@tooltip">
-											<title>@tooltip</title>
-										</rect>
-									}
 								</svg>
 
 								@for (var index = 0; index < Points.Count; index++)
@@ -102,11 +90,30 @@
 									var slotStartX = GetSlotStartX(pointIndex);
 									var tooltip = GetPointTooltip(point);
 
+									var primaryHeight = GetBarHeight(point.Value);
+									var secondaryHeight = GetBarHeight(point.SecondaryValue);
+
 									<button type="button"
-											class="position-absolute p-0 border-0 bg-transparent cursor-pointer touch-manipulation"
+											class="dashboard-chart-slot position-absolute p-0 border-0 bg-transparent cursor-pointer touch-manipulation d-flex flex-column-reverse align-items-center"
 											style="left:@FormatPercent(slotStartX / ChartWidth); top:@FormatPixels(ChartPaddingTop); width:@FormatPercent(SlotWidth / ChartWidth); height:@FormatPixels(PlotHeight);"
 											title="@tooltip" aria-label="@tooltip" aria-pressed="@(isSelected ? "true" : "false")"
-											@onclick="() => TogglePointSelection(pointIndex)"></button>
+											@onclick="() => TogglePointSelection(pointIndex)">
+										@if (point.Total <= 0)
+										{
+											<span class="dashboard-chart-bar bg-3" style="height:2px;"></span>
+										}
+										else
+										{
+											@if (primaryHeight > 0)
+											{
+												<span class="dashboard-chart-bar" style="height:@FormatPixels(primaryHeight); background:@BarColor;"></span>
+											}
+											@if (secondaryHeight > 0)
+											{
+												<span class="dashboard-chart-bar" style="height:@FormatPixels(secondaryHeight); background:@SecondaryBarColor;"></span>
+											}
+										}
+									</button>
 								}
 							</div>
 
@@ -163,7 +170,14 @@
 	public string EmptyIcon { get; set; } = "bar-chart";
 
 	[Parameter]
-	public string BarColor { get; set; } = "var(--bs-primary-base)";
+	public string BarColor { get; set; } = "var(--vs-data-primary)";
+
+	/// <summary>Colour of each point's <see cref="DashboardChartPoint.SecondaryValue"/>, stacked on top.</summary>
+	[Parameter]
+	public string SecondaryBarColor { get; set; } = "var(--vs-data-danger)";
+
+	[Parameter]
+	public bool Framed { get; set; } = true;
 
 	[Parameter]
 	public IReadOnlyList<DashboardChartPoint> Points { get; set; } = [];
@@ -174,7 +188,7 @@
 	[Parameter]
 	public bool UseIntegerYAxisTicks { get; set; }
 
-	private bool HasData => Points.Any(point => point.Value > 0);
+	private bool HasData => Points.Any(point => point.Total > 0);
 	private DashboardChartPoint? SelectedPoint => SelectedPointIndex.HasValue && SelectedPointIndex.Value < Points.Count
 		? Points[SelectedPointIndex.Value]
 		: null;
@@ -185,8 +199,7 @@
 	private string ScrollContentWidth => $"max(100%, {FormatPixels(ChartWidth)})";
 	private string XAxisGridColumns => $"repeat({Points.Count}, minmax({MinimumSlotWidth}px, 1fr))";
 	private double SlotWidth => Points.Count == 0 ? ChartWidth : ChartWidth / Points.Count;
-	private double BarWidth => Math.Clamp(SlotWidth * 0.58, 12, 32);
-	private double MaxValue => Points.Count == 0 ? 0 : Points.Max(point => point.Value);
+	private double MaxValue => Points.Count == 0 ? 0 : Points.Max(point => point.Total);
 	private double ChartMaxValue => ResolveChartMaxValue(MaxValue);
 	private double AxisStepValue => ChartMaxValue / (AxisTickCount - 1);
 	private double YAxisLabelWidth => ResolveYAxisLabelWidth();
@@ -213,12 +226,6 @@
 		return index * SlotWidth;
 	}
 
-	private double GetBarX(int index)
-	{
-		var slotStartX = GetSlotStartX(index);
-		return slotStartX + ((SlotWidth - BarWidth) / 2);
-	}
-
 	private string GetPointTooltip(DashboardChartPoint point)
 	{
 		return $"{point.Label}: {GetPointValueLabel(point)}";
@@ -238,7 +245,7 @@
 			return SelectedPoint;
 		}
 
-		var latestPoint = Points.LastOrDefault(point => point.Value > 0) ?? Points.LastOrDefault();
+		var latestPoint = Points.LastOrDefault(point => point.Total > 0) ?? Points.LastOrDefault();
 		return latestPoint;
 	}
 

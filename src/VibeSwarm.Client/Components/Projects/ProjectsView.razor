@@ -185,10 +185,34 @@
 
 	protected override async Task OnInitializedAsync()
 	{
-		await LoadFolders();
-		await LoadProjects();
-		await LoadActiveJobs();
+		// Back on the page: draw the list it last showed straight away, then reload it.
+		_snapshotCache = Services.GetService<ViewSnapshotCache>();
+		if (_snapshotCache?.TryGet<ProjectsSnapshot>(SnapshotKey, out var snapshot) == true)
+		{
+			Folders = snapshot.Folders;
+			ProjectsWithInfo = snapshot.Projects;
+			ActiveJobs = snapshot.ActiveJobs;
+			HasLoadedProjectsInitially = true;
+			IsLoading = false;
+		}
+
+		await Task.WhenAll(LoadFolders(), LoadProjects(), LoadActiveJobs());
+		SaveSnapshot();
 		StartAutoRefresh();
+	}
+
+	/// <summary>What the page showed when last left, drawn at once on the next visit while it reloads.</summary>
+	private sealed record ProjectsSnapshot(List<ProjectFolder> Folders, List<ProjectInfoWithStats> Projects, List<JobSummary> ActiveJobs);
+
+	private const string SnapshotKey = "projects";
+	private ViewSnapshotCache? _snapshotCache;
+
+	private void SaveSnapshot()
+	{
+		if (HasLoadedProjectsInitially)
+		{
+			_snapshotCache?.Set(SnapshotKey, new ProjectsSnapshot(Folders, ProjectsWithInfo, ActiveJobs));
+		}
 	}
 
 	private void StartAutoRefresh()
@@ -634,6 +658,7 @@
 
 	public void Dispose()
 	{
+		SaveSnapshot();
 		_disposed = true;
 		_refreshTimer?.Dispose();
 	}

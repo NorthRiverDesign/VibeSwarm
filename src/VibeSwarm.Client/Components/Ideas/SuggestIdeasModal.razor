@@ -1,3 +1,4 @@
+@using VibeSwarm.Shared.Validation
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged" Title="Suggest Ideas" Icon="stars"
 			 Size="ModalDialog.ModalSize.Small" OnClose="HandleCancel">
@@ -67,7 +68,7 @@
 				<div class="form-text">@GetModelHelpText()</div>
 			</div>
 
-			<div>
+			<div class="mb-5">
 				<label for="suggestIdeasCount" class="form-label fw-medium">Ideas to Generate</label>
 				<select id="suggestIdeasCount" class="form-control" @bind="IdeaCountValue">
 					@for (var count = SuggestIdeasRequest.MinIdeaCount; count <= SuggestIdeasRequest.MaxIdeaCount; count++)
@@ -75,6 +76,18 @@
 						<option value="@count">@count</option>
 					}
 				</select>
+			</div>
+
+			<div>
+				<label for="suggestIdeasFocus" class="form-label fw-medium">
+					Focus
+					<span class="fg-1 fw-normal">(optional)</span>
+				</label>
+				<textarea id="suggestIdeasFocus" class="form-control textarea-autogrow" rows="2"
+						  maxlength="@ValidationLimits.IdeaSuggestionFocusMaxLength"
+						  placeholder="e.g. Onboarding for new users"
+						  @bind="FocusValue" @bind:event="oninput"></textarea>
+				<div class="form-text">Name an area to get more specific ideas. Leave blank for ideas from across the codebase.</div>
 			</div>
 		}
 	</ChildContent>
@@ -130,6 +143,12 @@
 
 	[Parameter]
 	public EventCallback<int> IdeaCountChanged { get; set; }
+
+	[Parameter]
+	public string? Focus { get; set; }
+
+	[Parameter]
+	public EventCallback<string?> FocusChanged { get; set; }
 
 	[Parameter]
 	public bool IsProcessing { get; set; }
@@ -219,6 +238,19 @@
 			{
 				IdeaCount = normalizedCount;
 				_ = IdeaCountChanged.InvokeAsync(normalizedCount);
+			}
+		}
+	}
+
+	private string FocusValue
+	{
+		get => Focus ?? string.Empty;
+		set
+		{
+			if (!string.Equals(Focus, value, StringComparison.Ordinal))
+			{
+				Focus = value;
+				_ = FocusChanged.InvokeAsync(value);
 			}
 		}
 	}

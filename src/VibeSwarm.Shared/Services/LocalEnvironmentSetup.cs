@@ -87,8 +87,9 @@ public static class LocalEnvironmentSetup
 		project.Environments ??= [];
 		var now = DateTime.UtcNow;
 		// Names are unique per project, so an environment already called Local is reused too.
+		// A local database is its own entry: the app's URL must not replace it.
 		var environment = project.Environments
-			.Where(item => item.Stage == EnvironmentStage.Local ||
+			.Where(item => (item.Stage == EnvironmentStage.Local && item.Type != EnvironmentType.Database) ||
 				string.Equals(item.Name, EnvironmentName, StringComparison.OrdinalIgnoreCase))
 			.OrderByDescending(item => item.Stage == EnvironmentStage.Local)
 			.ThenByDescending(item => string.Equals(item.Name, EnvironmentName, StringComparison.OrdinalIgnoreCase))

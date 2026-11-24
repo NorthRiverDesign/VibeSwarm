@@ -1,0 +1,336 @@
+@* Creates or edits a template. A template is a name and a prompt; everything under "Overrides"
+   is optional, and anything left empty follows the project the template runs on. *@
+@using System.ComponentModel.DataAnnotations
+@using VibeSwarm.Shared.Providers
+@using VibeSwarm.Shared.Validation
+@inject IJobTemplateService JobTemplateService
+@inject IProviderService ProviderService
+@inject NotificationService NotificationService
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="IsVisibleChanged"
+			 Title="@(IsEdit ? "Edit template" : "New template")" Icon="@(IsEdit ? "pencil" : "file-earmark-text")"
+			 Size="ModalDialog.ModalSize.Large" OnClose="CloseAsync">
+	<ChildContent>
+		<EditForm Model="_draft" OnValidSubmit="SaveAsync">
+			<DataAnnotationsValidator />
+
+			<div class="mb-5">
+				<label for="template-name" class="form-label">Name</label>
+				<InputText id="template-name" @bind-Value="_draft.Name" class="form-control"
+						   placeholder="Update dependencies" maxlength="@ValidationLimits.JobTemplateNameMaxLength" />
+				<ValidationMessage For="() => _draft.Name" class="fg-danger small" />
+			</div>
+
+			<div class="mb-5">
+				<label for="template-prompt" class="form-label">What should the agent do?</label>
+				<textarea id="template-prompt" class="form-control textarea-autogrow" rows="6"
+						  @bind="_draft.GoalPrompt" @bind:event="oninput" maxlength="@ValidationLimits.JobGoalPromptMaxLength"
+						  placeholder="Describe the task. It runs as written on every project you choose."></textarea>
+				<div class="form-text d-flex flex-wrap justify-content-between gap-3">
+					<span>The agent works inside each project's repository.</span>
+					<span>@((_draft.GoalPrompt?.Length ?? 0).ToString("N0")) / @ValidationLimits.JobGoalPromptMaxLength.ToString("N0")</span>
+				</div>
+				<ValidationMessage For="() => _draft.GoalPrompt" class="fg-danger small" />
+			</div>
+
+			<div class="mb-5">
+				<label for="template-description" class="form-label">Note <span class="fg-1 fw-normal">(optional)</span></label>
+				<InputText id="template-description" @bind-Value="_draft.Description" class="form-control"
+						   placeholder="Shown under the name in the list" maxlength="@ValidationLimits.JobTemplateDescriptionMaxLength" />
+			</div>
+
+			<div class="accordion">
+				<AccordionSection Title="Overrides" Icon="sliders" Summary="@OverridesSummary" @bind-IsOpen="_overridesOpen">
+					<div class="mb-5">
+						<label for="template-provider" class="form-label">Provider</label>
+						<select id="template-provider" class="form-control" value="@(_draft.ProviderId?.ToString() ?? string.Empty)"
+								@onchange="OnProviderChangedAsync">
+							<option value="">Each project's provider</option>
+							@foreach (var provider in _providers)
+							{
+								<option value="@provider.Id">@provider.Name</option>
+							}
+						</select>
+					</div>
+
+					@if (_draft.ProviderId.HasValue)
+					{
+						<div class="mb-5">
+							<label for="template-model" class="form-label">Model</label>
+							<select id="template-model" class="form-control" @bind="ModelValue" disabled="@_isLoadingModels">
+								<option value="">@(_isLoadingModels ? "Loading models..." : "Provider's default")</option>
+								@foreach (var model in _models)
+								{
+									<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+								}
+							</select>
+						</div>
+
+						@if (ReasoningOptions.Count > 0)
+						{
+							<div class="mb-5">
+								<label for="template-reasoning" class="form-label">Reasoning</label>
+								<select id="template-reasoning" class="form-control" @bind="ReasoningValue">
+									<option value="">Provider's default</option>
+									@foreach (var reasoning in ReasoningOptions)
+									{
+										<option value="@reasoning">@reasoning</option>
+									}
+								</select>
+							</div>
+						}
+					}
+
+					<div class="mb-5">
+						<label for="template-cycles" class="form-label">Passes</label>
+						<select id="template-cycles" class="form-control" @bind="CycleModeValue">
+							<option value="@CycleMode.SingleCycle">One pass</option>
+							<option value="@CycleMode.FixedCount">A fixed number of passes</option>
+							<option value="@CycleMode.Autonomous">Until the agent says it's done</option>
+						</select>
+					</div>
+
+					@if (_draft.CycleMode != CycleMode.SingleCycle)
+					{
+						<div class="mb-5">
+							<label for="template-max-cycles" class="form-label">@(_draft.CycleMode == CycleMode.FixedCount ? "Number of passes" : "At most")</label>
+							<InputNumber id="template-max-cycles" @bind-Value="_draft.MaxCycles" class="form-control" min="1" max="100" />
+						</div>
+						<div class="mb-5">
+							<label for="template-review" class="form-label">Between passes <span class="fg-1 fw-normal">(optional)</span></label>
+							<InputTextArea id="template-review" @bind-Value="_draft.CycleReviewPrompt" class="form-control" rows="2"
+										   placeholder="What the agent checks before the next pass" />
+						</div>
+					}
+
+					<div class="mb-5">
+						<label for="template-branch" class="form-label">Branch</label>
+						<InputText id="template-branch" @bind-Value="_draft.Branch" class="form-control" placeholder="Each project's development branch" />
+					</div>
+
+					<div class="mb-5">
+						<label for="template-delivery" class="form-label">Changes</label>
+						<select id="template-delivery" class="form-control" @bind="DeliveryValue">
+							<option value="">As each project delivers them</option>
+							<option value="@GitChangeDeliveryMode.CommitToBranch">Commit to the branch</option>
+							<option value="@GitChangeDeliveryMode.PullRequest">Open a pull request</option>
+						</select>
+					</div>
+
+					@if (_draft.GitChangeDeliveryMode != GitChangeDeliveryMode.CommitToBranch)
+					{
+						<div>
+							<label for="template-target" class="form-label">Pull request into</label>
+							<InputText id="template-target" @bind-Value="_draft.TargetBranch" class="form-control" placeholder="Each project's target branch" />
+						</div>
+					}
+				</AccordionSection>
+			</div>
+
+			@if (!string.IsNullOrWhiteSpace(_errorMessage))
+			{
+				<div class="fg-danger small mt-5">
+					<i class="bi bi-exclamation-circle me-1"></i>@_errorMessage
+				</div>
+			}
+
+			<div class="mt-7">
+				<ModalFooterActions OnCancel="CloseAsync" Busy="@_isSaving" IsSubmit="true"
+									SubmitText="@(IsEdit ? "Save" : "Create template")" SubmitLoadingText="Saving..."
+									SubmitIcon="check-lg" />
+			</div>
+		</EditForm>
+	</ChildContent>
+</ModalDialog>
+
+@code {
+	[Parameter] public bool IsVisible { get; set; }
+	[Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	/// <summary>The template to edit, or null to create one. A template without an Id starts a
+	/// new one prefilled from it (Duplicate).</summary>
+	[Parameter] public JobTemplate? Template { get; set; }
+
+	[Parameter] public EventCallback<JobTemplate> OnSaved { get; set; }
+
+	private JobTemplate _draft = new();
+	private List<Provider> _providers = [];
+	private List<ProviderModel> _models = [];
+	private bool _isLoadingModels;
+	private bool _isSaving;
+	private bool _overridesOpen;
+	private string? _errorMessage;
+	private bool _wasVisible;
+
+	private bool IsEdit => Template is { Id: var id } && id != Guid.Empty;
+
+	private IReadOnlyList<string> ReasoningOptions => _providers
+		.FirstOrDefault(provider => provider.Id == _draft.ProviderId) is { } selected
+			? ProviderCapabilities.GetSupportedReasoningEfforts(selected)
+			: [];
+
+	private string ModelValue
+	{
+		get => _draft.ModelId ?? string.Empty;
+		set => _draft.ModelId = string.IsNullOrWhiteSpace(value) ? null : value;
+	}
+
+	private string ReasoningValue
+	{
+		get => _draft.ReasoningEffort ?? string.Empty;
+		set => _draft.ReasoningEffort = string.IsNullOrWhiteSpace(value) ? null : value;
+	}
+
+	private CycleMode CycleModeValue
+	{
+		get => _draft.CycleMode;
+		set
+		{
+			_draft.CycleMode = value;
+			if (value == CycleMode.SingleCycle)
+			{
+				_draft.MaxCycles = 1;
+			}
+			else if (_draft.MaxCycles < 2)
+			{
+				_draft.MaxCycles = value == CycleMode.FixedCount ? 2 : 5;
+			}
+		}
+	}
+
+	private string DeliveryValue
+	{
+		get => _draft.GitChangeDeliveryMode?.ToString() ?? string.Empty;
+		set => _draft.GitChangeDeliveryMode = Enum.TryParse<GitChangeDeliveryMode>(value, out var mode) ? mode : null;
+	}
+
+	/// <summary>Says what the template changes from each project's own settings.</summary>
+	private string OverridesSummary
+	{
+		get
+		{
+			var parts = new List<string>();
+			if (_draft.ProviderId.HasValue)
+			{
+				parts.Add(_providers.FirstOrDefault(provider => provider.Id == _draft.ProviderId)?.Name ?? "Provider");
+			}
+			if (_draft.CycleMode != CycleMode.SingleCycle)
+			{
+				parts.Add($"up to {_draft.MaxCycles} passes");
+			}
+			if (!string.IsNullOrWhiteSpace(_draft.Branch))
+			{
+				parts.Add(_draft.Branch.Trim());
+			}
+			if (_draft.GitChangeDeliveryMode is { } mode)
+			{
+				parts.Add(mode == GitChangeDeliveryMode.PullRequest ? "pull request" : "commit");
+			}
+			return parts.Count == 0 ? "None. Each project's own settings apply." : string.Join(" · ", parts);
+		}
+	}
+
+	protected override async Task OnParametersSetAsync()
+	{
+		// Reset the form each time the dialog opens, not on every re-render while it is open.
+		if (IsVisible && !_wasVisible)
+		{
+			_errorMessage = null;
+			_draft = CopyOf(Template);
+			_overridesOpen = false;
+			_models = [];
+			_providers = (await ProviderService.GetAllAsync())
+				.Where(provider => provider.IsEnabled || provider.Id == _draft.ProviderId)
+				.OrderBy(provider => provider.Name)
+				.ToList();
+			await LoadModelsAsync();
+		}
+
+		_wasVisible = IsVisible;
+	}
+
+	private static JobTemplate CopyOf(JobTemplate? source) => source == null
+		? new JobTemplate()
+		: new JobTemplate
+		{
+			Id = source.Id,
+			Name = source.Name,
+			Description = source.Description,
+			GoalPrompt = source.GoalPrompt,
+			ProviderId = source.ProviderId,
+			ModelId = source.ModelId,
+			ReasoningEffort = source.ReasoningEffort,
+			Branch = source.Branch,
+			GitChangeDeliveryMode = source.GitChangeDeliveryMode,
+			TargetBranch = source.TargetBranch,
+			CycleMode = source.CycleMode,
+			CycleSessionMode = source.CycleSessionMode,
+			MaxCycles = source.MaxCycles,
+			CycleReviewPrompt = source.CycleReviewPrompt
+		};
+
+	private async Task OnProviderChangedAsync(ChangeEventArgs args)
+	{
+		_draft.ProviderId = Guid.TryParse(args.Value?.ToString(), out var id) ? id : null;
+		_draft.ModelId = null;
+		_draft.ReasoningEffort = null;
+		await LoadModelsAsync();
+	}
+
+	private async Task LoadModelsAsync()
+	{
+		if (_draft.ProviderId is not Guid providerId)
+		{
+			_models = [];
+			return;
+		}
+
+		_isLoadingModels = true;
+		try
+		{
+			_models = (await ProviderService.GetModelsAsync(providerId))
+				.Where(model => model.IsAvailable)
+				.OrderByDescending(model => model.IsDefault)
+				.ThenBy(model => model.DisplayName ?? model.ModelId)
+				.ToList();
+		}
+		catch (HttpRequestException)
+		{
+			_models = [];
+		}
+		finally
+		{
+			_isLoadingModels = false;
+		}
+	}
+
+	private async Task SaveAsync()
+	{
+		_isSaving = true;
+		_errorMessage = null;
+		try
+		{
+			if (_draft.GitChangeDeliveryMode == GitChangeDeliveryMode.CommitToBranch)
+			{
+				_draft.TargetBranch = null;
+			}
+
+			var saved = IsEdit
+				? await JobTemplateService.UpdateAsync(_draft)
+				: await JobTemplateService.CreateAsync(_draft);
+			NotificationService.ShowSuccess(IsEdit ? $"Saved '{saved.Name}'." : $"Created '{saved.Name}'.");
+			await OnSaved.InvokeAsync(saved);
+			await CloseAsync();
+		}
+		catch (Exception ex) when (ex is ValidationException or HttpRequestException or InvalidOperationException)
+		{
+			_errorMessage = ex.Message;
+		}
+		finally
+		{
+			_isSaving = false;
+		}
+	}
+
+	private Task CloseAsync() => IsVisibleChanged.InvokeAsync(false);
+}

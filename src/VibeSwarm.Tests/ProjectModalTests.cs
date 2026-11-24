@@ -88,6 +88,22 @@ cut.Find("form").Submit();
 }
 
 [Fact]
+public void StickyActions_StayAboveFormContentScrollingUnderThem()
+{
+	using var context = CreateBunitContext();
+
+	var cut = context.Render<ProjectModal>(parameters => parameters
+		.Add(component => component.IsVisible, true));
+
+	// Open accordion items and focused input-groups raise their own z-index; without one of
+	// its own the pinned Cancel/Save bar sat under them on a phone.
+	var actions = cut.Find(".vs-dialog-sticky-actions");
+	Assert.True(actions.ClassList.Contains("position-sticky"));
+	Assert.True(actions.ClassList.Contains("z-sticky"));
+	Assert.NotNull(actions.QuerySelector("button[type=submit]"));
+}
+
+[Fact]
 public void BrowseGitHubRepositories_SelectingRepositoryPopulatesCloneInput()
 {
 	using var context = CreateBunitContext(new FakeProjectService
@@ -396,8 +412,13 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 			cut.Find("#modal-githubRepo").Input(repository[..length]);
 		}
 
-		Assert.Equal("hello-world", cut.Find("#modal-name").GetAttribute("value"));
-		Assert.Equal("/tmp/projects/hello-world", cut.Find("#modal-workingPath").GetAttribute("value"));
+		// A synchronous Input() only queues the event while the renderer is busy (such as with a
+		// folder inspection after its debounce), so wait for the last keystroke to be handled.
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Equal("hello-world", cut.Find("#modal-name").GetAttribute("value"));
+			Assert.Equal("/tmp/projects/hello-world", cut.Find("#modal-workingPath").GetAttribute("value"));
+		}, WaitTimeout);
 	}
 
 	[Fact]

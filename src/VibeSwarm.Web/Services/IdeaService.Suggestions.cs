@@ -104,7 +104,8 @@ public partial class IdeaService
 			project.PromptContext,
 			request.IdeaCount,
 			existingIdeas,
-			request.AdditionalContext);
+			request.AdditionalContext,
+			request.Focus);
 		const string systemPrompt = "You are a senior software engineer performing a codebase review. Identify concrete, actionable improvements. You can't open files or run tools: everything you have is in this message, so answer now. Return only a plain list of ideas, one per line starting with \"- \". No explanations or headers.";
 
 		var generationResult = request.UseInference
@@ -551,7 +552,8 @@ public partial class IdeaService
 		string? promptContext,
 		int ideaCount,
 		IReadOnlyCollection<string> existingIdeas,
-		string? additionalContext)
+		string? additionalContext,
+		string? focus)
 	{
 		var sb = new StringBuilder();
 
@@ -610,6 +612,14 @@ public partial class IdeaService
 		sb.AppendLine("- Fixes for workflows that are confusing, fragile, or error-prone in real usage");
 		sb.AppendLine("De-prioritize development-only work such as adding tests, refactoring internals, or documentation updates unless it clearly unlocks a user-facing improvement.");
 		sb.AppendLine("</objective>");
+
+		if (!string.IsNullOrWhiteSpace(focus))
+		{
+			sb.AppendLine("<focus>");
+			sb.AppendLine("The user asked for ideas about this area. Every idea must address it, and it takes priority over the general priorities above:");
+			sb.AppendLine(focus.Trim());
+			sb.AppendLine("</focus>");
+		}
 
 		sb.AppendLine("<goal>");
 		sb.AppendLine($"Return exactly {ideaCount} concrete, actionable idea{(ideaCount == 1 ? "" : "s")}. Each idea must be a short description (1-2 sentences).");
@@ -735,7 +745,8 @@ public partial class IdeaService
 			ProviderId = request?.ProviderId,
 			ModelId = string.IsNullOrWhiteSpace(request?.ModelId) ? null : request.ModelId.Trim(),
 			IdeaCount = Math.Clamp(request?.IdeaCount ?? SuggestIdeasRequest.DefaultIdeaCount, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount),
-			AdditionalContext = string.IsNullOrWhiteSpace(request?.AdditionalContext) ? null : request.AdditionalContext.Trim()
+			AdditionalContext = string.IsNullOrWhiteSpace(request?.AdditionalContext) ? null : request.AdditionalContext.Trim(),
+			Focus = string.IsNullOrWhiteSpace(request?.Focus) ? null : request.Focus.Trim()
 		};
 	}
 

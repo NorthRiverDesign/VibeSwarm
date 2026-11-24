@@ -55,9 +55,18 @@
 								<i class="bi bi-stars"></i>Suggest ideas
 							</button>
 						}
-						@if (OnCreateJob.HasDelegate)
+						@if (OnRunTemplate.HasDelegate || OnCreateJob.HasDelegate)
 						{
 							<hr class="menu-divider">
+						}
+						@if (OnRunTemplate.HasDelegate)
+						{
+							<button type="button" class="menu-item" @onclick="OnRunTemplate" title="Queue one of your saved templates on this project">
+								<i class="bi bi-file-earmark-play"></i>Run a template…
+							</button>
+						}
+						@if (OnCreateJob.HasDelegate)
+						{
 							<button type="button" class="menu-item" @onclick="OnCreateJob"
 									title="@(HasActiveJobs ? "Create a job with its own provider, model and branch. It will be queued behind the current run." : "Create a job with its own provider, model and branch")">
 								<i class="bi bi-sliders"></i>New job with options…
@@ -297,6 +306,7 @@
 					   SelectedModelIdChanged="OnSelectedSuggestModelChanged"
 					   IdeaCount="@_suggestIdeaCount"
 					   IdeaCountChanged="OnSuggestIdeaCountChanged"
+					   @bind-Focus="_suggestFocus"
 					   IsProcessing="@IsSuggestingIdeas"
 					   OnConfirm="SuggestIdeas"
 					   OnCancel="CloseSuggestIdeasModal" />
@@ -318,6 +328,10 @@
 	/// <summary>Opens the full job form, for work that needs its own provider, model or branch.</summary>
 	[Parameter]
 	public EventCallback OnCreateJob { get; set; }
+
+	/// <summary>Opens the template picker, which queues a saved template on this project.</summary>
+	[Parameter]
+	public EventCallback OnRunTemplate { get; set; }
 
 	[Parameter]
 	public int CurrentPage { get; set; } = 1;
@@ -453,6 +467,7 @@
 	private Guid? _selectedConfiguredProviderId;
 	private string? _selectedConfiguredModelId;
 	private int _suggestIdeaCount = SuggestIdeasRequest.DefaultIdeaCount;
+	private string? _suggestFocus;
 
 	// Start All confirmation modal state
 	private bool _showStartAllModal { get; set; }
@@ -1300,7 +1315,8 @@
 				UseInference = _suggestUseInference,
 				ProviderId = SelectedSuggestProviderId,
 				ModelId = SelectedSuggestModelId,
-				IdeaCount = _suggestIdeaCount
+				IdeaCount = _suggestIdeaCount,
+				Focus = string.IsNullOrWhiteSpace(_suggestFocus) ? null : _suggestFocus.Trim()
 			});
 			_suggestResult = result;
 

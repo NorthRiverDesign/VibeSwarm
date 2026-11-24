@@ -846,6 +846,105 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ProcessJobAsync_GivesTheAgentTheProjectsEnvironments()
+	{
+		var workingPath = Directory.CreateTempSubdirectory("vibeswarm-environments-").FullName;
+		var dataProtectionPath = Directory.CreateTempSubdirectory("vibeswarm-environments-keys-").FullName;
+		var credentialService = new ProjectEnvironmentCredentialService(
+			Microsoft.AspNetCore.DataProtection.DataProtectionProvider.Create(new DirectoryInfo(dataProtectionPath)));
+		var jobId = Guid.NewGuid();
+		await using (var setupContext = CreateDbContext())
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Shop",
+				WorkingPath = workingPath,
+				Environments =
+				[
+					new ProjectEnvironment
+					{
+						Id = Guid.NewGuid(),
+						Name = "Prod DB",
+						Type = EnvironmentType.Database,
+						Stage = EnvironmentStage.Production,
+						Url = "mysql://db.example.com:3306/shop",
+						IsPrimary = true,
+						Username = "readonly",
+						Password = "DbSecret!"
+					}
+				]
+			};
+			credentialService.PrepareForStorage(project);
+			var providerConfig = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+			setupContext.AddRange(project, providerConfig, new Job
+			{
+				Id = jobId,
+				ProjectId = project.Id,
+				ProviderId = providerConfig.Id,
+				GoalPrompt = "Pull last week's orders",
+				Status = JobStatus.New,
+				SessionId = "session-1"
+			});
+			await setupContext.SaveChangesAsync();
+		}
+
+		var agent = new ScriptedProvider((_, _) => Task.FromResult(new ExecutionResult { Success = true, SessionId = "session-1", Output = "Done." }));
+		var jobService = new InteractionJobService();
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		services.AddSingleton<IProjectMemoryService, NoOpProjectMemoryService>();
+		services.AddSingleton<IJobService>(jobService);
+		services.AddSingleton<IProviderService>(new StubProviderService());
+		var processingService = new JobProcessingService(
+			services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			new NotARepositoryVersionControlService(),
+			interactionResponseService: new InMemoryInteractionResponseService(),
+			projectEnvironmentCredentialService: credentialService)
+		{
+			ProviderFactoryOverride = _ => agent
+		};
+
+		try
+		{
+			// The queue loads the job, environments and all, in its own context; the run re-reads it in another.
+			Job queuedJob;
+			await using (var queueContext = CreateDbContext())
+			{
+				queuedJob = await queueContext.Jobs
+					.Include(j => j.Project).ThenInclude(project => project!.Environments)
+					.Include(j => j.Provider)
+					.SingleAsync(j => j.Id == jobId);
+			}
+
+			await using var executionContext = CreateDbContext();
+			await InvokeProcessJobAsync(processingService, queuedJob, jobService, new StubProviderService(), executionContext, withJobCancellation: true)
+				.WaitAsync(TimeSpan.FromSeconds(60));
+		}
+		finally
+		{
+			Directory.Delete(workingPath, recursive: true);
+			Directory.Delete(dataProtectionPath, recursive: true);
+		}
+
+		var (prompt, _) = Assert.Single(agent.Runs);
+		Assert.Contains("<environments>", prompt);
+		Assert.Contains("Database [Production]: Prod DB | URL: mysql://db.example.com:3306/shop | Env: APP_PROD_DB_URL, APP_PROD_DB_USERNAME, APP_PROD_DB_PASSWORD", prompt);
+		Assert.DoesNotContain("DbSecret!", prompt);
+
+		var variables = Assert.Single(agent.EnvironmentVariables);
+		Assert.NotNull(variables);
+		Assert.Equal("mysql://db.example.com:3306/shop", variables["APP_PROD_DB_URL"]);
+		Assert.Equal("readonly", variables["APP_PROD_DB_USERNAME"]);
+		Assert.Equal("DbSecret!", variables["APP_PROD_DB_PASSWORD"]);
+
+		await using var verificationContext = CreateDbContext();
+		var persistedJob = await verificationContext.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal(1, persistedJob.EnvironmentCount);
+	}
+
+	[Fact]
 	public async Task ProcessJobAsync_AMessageSentAsTheAgentFinishes_KeepsTheSessionGoing()
 	{
 		JobProcessingService? processingService = null;
@@ -1463,6 +1562,7 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		: SdkProviderBase(new Provider { Name = "Claude", Type = ProviderType.Claude })
 	{
 		public List<(string Prompt, string? SessionId)> Runs { get; } = [];
+		public List<Dictionary<string, string>?> EnvironmentVariables { get; } = [];
 
 		public override ProviderType Type => ProviderType.Claude;
 		public override Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
@@ -1476,6 +1576,7 @@ public sealed class JobExecutionSafetyTests : IDisposable
 			CancellationToken cancellationToken = default)
 		{
 			Runs.Add((prompt, sessionId));
+			EnvironmentVariables.Add(CurrentEnvironmentVariables);
 			return runTurn(Runs.Count, cancellationToken);
 		}
 

@@ -444,6 +444,16 @@ public partial class JobService : IJobService
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
+        // A template's use count is the number of jobs it has queued, counted here so every way of
+        // creating one (the job form, a template run) counts the same. Child jobs are part of their
+        // parent's run.
+        if (job.JobTemplateId is Guid templateId && job.ParentJobId == null)
+        {
+            await _dbContext.JobTemplates
+                .Where(template => template.Id == templateId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(template => template.UseCount, template => template.UseCount + 1), cancellationToken);
+        }
+
         // Fan out to team swarm jobs if the project has team swarm enabled. A merge has one
         // resolution, so a deploy's conflict job is never split across agents.
 		var swarmJobs = job.AgentId.HasValue || LocalEnvironmentSetup.IsSetupJob(job) || !string.IsNullOrWhiteSpace(job.MergeFromBranch)

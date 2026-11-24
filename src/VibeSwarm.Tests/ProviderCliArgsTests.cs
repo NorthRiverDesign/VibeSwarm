@@ -1878,6 +1878,47 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void Copilot_TrustsTheCheckoutThroughAllowAllWhenToolsAreAllApproved()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 112);
+        provider.ApplyOptions(new ExecutionOptions());
+
+        provider.EnsureWorkspaceTrustEnvironmentVariable();
+
+        Assert.Equal("true", provider.GetEffectiveEnvironmentVariables()!["COPILOT_ALLOW_ALL"]);
+        // --trust-folder would refuse the pre-assigned --session-id.
+        Assert.DoesNotContain("--trust-folder", provider.BuildCliArgs("test", null));
+    }
+
+    [Fact]
+    public void Copilot_KeepsACallersOwnAllowAllValue()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 112);
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            EnvironmentVariables = new Dictionary<string, string> { ["COPILOT_ALLOW_ALL"] = "false" }
+        });
+
+        provider.EnsureWorkspaceTrustEnvironmentVariable();
+
+        Assert.Equal("false", provider.GetEffectiveEnvironmentVariables()!["COPILOT_ALLOW_ALL"]);
+    }
+
+    [Fact]
+    public void Copilot_DoesNotApproveAllToolsForAModeOnACliWithoutAllowAllFlags()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(0, 0, 420);
+        provider.ApplyOptions(new ExecutionOptions { CopilotMode = "plan" });
+
+        provider.EnsureWorkspaceTrustEnvironmentVariable();
+
+        Assert.False(provider.GetEffectiveEnvironmentVariables()?.ContainsKey("COPILOT_ALLOW_ALL") ?? false);
+    }
+
+    [Fact]
     public void Copilot_WithExplicitMode_EmitsModeFlagInsteadOfYolo()
     {
         var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
@@ -2205,6 +2246,31 @@ public sealed class ProviderCliArgsTests
         Assert.False(result.Success);
         Assert.Equal("Invalid API key", result.ErrorMessage);
         Assert.Equal("system", Assert.Single(result.Messages).Role);
+    }
+
+    [Fact]
+    public void OpenCode2_RetryAndBackgroundWaitEvents_ReportProgressWithoutFailingTheRun()
+    {
+        // Shapes from packages/cli/src/run/noninteractive.ts at v2.3.0: the fields sit at the top level.
+        string[] lines =
+        [
+            """{"type":"retry","timestamp":1,"sessionID":"ses_abc","messageID":"msg_1","attempt":2,"nextRetryAt":5,"error":{"type":"provider.rate-limit","message":"Rate limited"}}""",
+            """{"type":"background_wait","timestamp":2,"sessionID":"ses_abc","jobs":[{"id":"job_1","kind":"shell","title":"dotnet test"},{"id":"job_2","kind":"subagent","title":"review"}]}""",
+        ];
+        var result = new ExecutionResult { Success = true, Messages = new List<ExecutionMessage>() };
+        var reports = new List<ExecutionProgress>();
+        var progress = new SynchronousProgress<ExecutionProgress>(reports.Add);
+
+        foreach (var line in lines)
+        {
+            Assert.True(OpenCodeProvider.TryProcessStreamLine(line, result, new System.Text.StringBuilder(), progress));
+        }
+
+        Assert.True(result.Success);
+        Assert.Null(result.ErrorMessage);
+        Assert.Empty(result.Messages);
+        Assert.Contains(reports, report => report.CurrentMessage == "Retrying (attempt 2): Rate limited");
+        Assert.Contains(reports, report => report.CurrentMessage == "Waiting for 2 background jobs");
     }
 
     [Theory]

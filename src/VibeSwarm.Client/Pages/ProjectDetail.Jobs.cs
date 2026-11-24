@@ -1019,6 +1019,7 @@ public partial class ProjectDetail
         try
         {
             await ProjectService.DeleteAsync(Project.Id);
+            ForgetSnapshot();
             NotificationService.ShowSuccess($"Deleted {Project.Name}.");
             NavigationManager.NavigateTo("/projects");
         }

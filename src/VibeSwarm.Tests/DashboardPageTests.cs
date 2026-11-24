@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
+using VibeSwarm.Client.Components.Common;
 using VibeSwarm.Client.Components.Dashboard;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
@@ -376,13 +377,139 @@ public sealed class DashboardPageTests
 		Assert.DoesNotContain("Refresh usage", cut.Markup);
 	}
 
-	private static BunitContext CreateInteractiveContext(IReadOnlyList<Provider> providers, UsageRefreshHandler handler)
+	[Fact]
+	public async Task Dashboard_ShowsTheSuccessRate_AndCallsOutFailures()
+	{
+		var startUtc = DateTime.UtcNow.Date.AddDays(-6);
+		var projectService = new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))])
+		{
+			Metrics = new DashboardJobMetrics
+			{
+				RangeDays = 7,
+				TotalCompletedJobs = 19,
+				TotalFailedJobs = 1,
+				AverageDurationSeconds = 1394,
+				Buckets = Enumerable.Range(0, 7)
+					.Select(day => new DashboardJobMetricsBucket
+					{
+						BucketStartUtc = startUtc.AddDays(day),
+						CompletedJobs = day switch { 0 => 9, 5 => 7, 6 => 3, _ => 0 },
+						FailedJobs = day == 5 ? 1 : 0
+					})
+					.ToList()
+			}
+		};
+
+		// The renderer encodes · and —, so read the page as text.
+		var html = WebUtility.HtmlDecode(await RenderDashboardPageAsync(projectService, new FakeProviderService([])));
+
+		Assert.Contains("aria-label=\"At a glance\"", html);
+		Assert.Contains("Success · 7 days", html);
+		// 19 of 20 rounds down to 95%: a failure never shows as 100%.
+		Assert.Contains(">95%<", html);
+		Assert.Contains("19 done ·<span class=\"fg-danger fw-semibold\"> 1 failed<", html);
+		Assert.Contains("7 completed jobs · 1 failed", html);
+		Assert.Contains("bg-data-danger", html);
+	}
+
+	[Fact]
+	public async Task Dashboard_SaysItIsIdle_WhenNothingRunsOrWaits()
+	{
+		var html = WebUtility.HtmlDecode(await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))], []),
+			new FakeProviderService([])));
+
+		Assert.Contains(">Idle<", html);
+		Assert.Contains("Nothing waiting", html);
+		Assert.Contains("No jobs finished in the last 7 days", html);
+		Assert.Contains(">—<", html);
+		Assert.DoesNotContain("aria-label=\"Running now\"", html);
+	}
+
+	[Fact]
+	public async Task Dashboard_ShowsTheFullestUsageWindow_InTheNumberStrip()
+	{
+		var claude = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = true };
+		var copilot = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = true };
+		var usage = new Dictionary<Guid, ProviderUsageSummary>
+		{
+			[claude.Id] = new() { ProviderId = claude.Id, LimitType = UsageLimitType.SessionLimit, CurrentUsage = 82, MaxUsage = 100, LimitResetTime = DateTime.UtcNow.AddMinutes(90) },
+			[copilot.Id] = new() { ProviderId = copilot.Id, LimitType = UsageLimitType.PremiumRequests, CurrentUsage = 30, MaxUsage = 1500, LimitResetTime = DateTime.UtcNow.AddDays(12) }
+		};
+
+		var html = WebUtility.HtmlDecode(await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha")], []),
+			new FakeProviderService([claude, copilot]),
+			usageSummaries: usage));
+
+		Assert.Contains(">82%<", html);
+		Assert.Contains("Claude · resets in 1h", html);
+		Assert.Contains("progress-bar bg-data-warning", html);
+		Assert.Contains("Providers OK", html);
+	}
+
+	[Fact]
+	public async Task Dashboard_ShowsTheLastVisitAtOnce_ThenTheFreshData()
+	{
+		var projectService = new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))])
+		{
+			Gate = new TaskCompletionSource()
+		};
+		using var context = CreateInteractiveContext([], new UsageRefreshHandler([]), projectService);
+		context.Services.AddSingleton<ViewSnapshotCache>();
+
+		// The first visit has nothing to show until the projects arrive.
+		var first = context.Render<DashboardView>();
+		Assert.NotEmpty(first.FindComponents<LoadingSpinner>());
+		projectService.Gate.SetResult();
+		first.WaitForAssertion(() => Assert.Contains("Alpha", first.Markup));
+		// Leaving the page disposes it, as navigating away does.
+		await context.DisposeComponentsAsync();
+
+		projectService.DashboardProjects = [CreateProjectInfo("Beta", DateTime.UtcNow)];
+		projectService.Gate = new TaskCompletionSource();
+
+		// Back on the page: the last visit shows straight away while the reload is held.
+		var second = context.Render<DashboardView>();
+		Assert.Empty(second.FindComponents<LoadingSpinner>());
+		Assert.Contains("Alpha", second.Markup);
+
+		projectService.Gate.SetResult();
+		second.WaitForAssertion(() =>
+		{
+			Assert.Contains("Beta", second.Markup);
+			Assert.DoesNotContain("Alpha", second.Markup);
+		});
+	}
+
+	[Fact]
+	public async Task Dashboard_KeepsTheLastVisit_WhenTheReloadFails()
+	{
+		var projectService = new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))]);
+		using var context = CreateInteractiveContext([], new UsageRefreshHandler([]), projectService);
+		context.Services.AddSingleton<ViewSnapshotCache>();
+
+		var first = context.Render<DashboardView>();
+		first.WaitForAssertion(() => Assert.Contains("Alpha", first.Markup));
+		// Leaving the page disposes it, as navigating away does.
+		await context.DisposeComponentsAsync();
+
+		projectService.Failure = new HttpRequestException("Server unavailable");
+
+		var second = context.Render<DashboardView>();
+		second.WaitForAssertion(() => Assert.Equal(1, projectService.Failures));
+		Assert.Contains("Alpha", second.Markup);
+		Assert.Empty(second.FindComponents<LoadingSpinner>());
+	}
+
+	private static BunitContext CreateInteractiveContext(IReadOnlyList<Provider> providers, UsageRefreshHandler handler,
+		IProjectService? projectService = null)
 	{
 		var context = new BunitContext();
 		context.JSInterop.Mode = JSRuntimeMode.Loose;
 		context.Services.AddLogging();
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService(providers));
-		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
+		context.Services.AddSingleton(projectService ?? new FakeProjectService([]));
 		context.Services.AddSingleton<ICommonProviderSetupService>(new FakeCommonProviderSetupService([]));
 		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
@@ -517,8 +644,14 @@ public sealed class DashboardPageTests
 		IReadOnlyList<DashboardProjectInfo> dashboardProjects,
 		IReadOnlyList<DashboardRunningJobInfo>? runningJobs = null) : IProjectService
 	{
-		private readonly IReadOnlyList<DashboardProjectInfo> _dashboardProjects = dashboardProjects;
 		private readonly IReadOnlyList<DashboardRunningJobInfo> _runningJobs = runningJobs ?? [];
+		public IReadOnlyList<DashboardProjectInfo> DashboardProjects { get; set; } = dashboardProjects;
+		/// <summary>Holds the project list until set, to catch the page while it loads.</summary>
+		public TaskCompletionSource? Gate { get; set; }
+		/// <summary>Thrown by the project list when set, as a server that can't be reached would.</summary>
+		public Exception? Failure { get; set; }
+		public int Failures { get; private set; }
+		private IReadOnlyList<DashboardProjectInfo> _dashboardProjects => DashboardProjects;
 		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>(_dashboardProjects.Select(project => project.Project));
 		public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>(_dashboardProjects.Select(project => project.Project).Take(count));
 		public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_dashboardProjects.Select(project => project.Project).FirstOrDefault(project => project.Id == id));
@@ -528,10 +661,25 @@ public sealed class DashboardPageTests
 		public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
-		public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default)
-			=> Task.FromResult<IEnumerable<DashboardProjectInfo>>(_dashboardProjects.Take(count));
+		public async Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default)
+		{
+			if (Gate is { } gate)
+			{
+				await gate.Task;
+			}
+
+			if (Failure is { } failure)
+			{
+				Failures++;
+				throw failure;
+			}
+
+			return _dashboardProjects.Take(count).ToList();
+		}
+		public DashboardJobMetrics? Metrics { get; init; }
+
 		public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default)
-			=> Task.FromResult(new DashboardJobMetrics
+			=> Task.FromResult(Metrics ?? new DashboardJobMetrics
 			{
 				RangeDays = rangeDays,
 				Buckets = []

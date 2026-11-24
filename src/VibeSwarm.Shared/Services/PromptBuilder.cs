@@ -11,7 +11,9 @@ namespace VibeSwarm.Shared.Services;
 /// </summary>
 public static class PromptBuilder
 {
-	private const int MaxEnvironmentEntriesLength = 1200;
+	private const int MaxEnvironmentEntriesLength = 2000;
+	private const int MinEnvironmentNotesLength = 40;
+	private const string EnvironmentNotesLabel = " | Notes: ";
 	private const int MaxSkillSummaryLength = 160;
 	private const int MaxLinkedProjectEntriesLength = 1200;
 	private const int MaxLinkedProjectDescriptionLength = 160;
@@ -364,8 +366,7 @@ public static class PromptBuilder
 	public static string? BuildSystemPromptRules(
 		Project? project,
 		bool injectEfficiencyRules = true,
-		bool injectRepoMap = true,
-		bool requireCodeChange = true)
+		bool injectRepoMap = true)
 	{
 		if (project == null)
 		{
@@ -402,10 +403,9 @@ public static class PromptBuilder
 		// tree after it, with its own attribution settings, so agent commits only get in the way.
 		sb.AppendLine("COMPLETING THE JOB:");
 		sb.AppendLine("- Nobody is watching, so never stop to ask a question or wait for confirmation: make the reasonable call and keep going.");
-		if (requireCodeChange)
-		{
-			sb.AppendLine("- The deliverable is a code change. A run that changes nothing is recorded as failed.");
-		}
+		// A task that is already done (dependencies already current, a check the project
+		// already passes) is still a success. Saying so keeps agents from inventing edits.
+		sb.AppendLine("- If the task needs no change, make none and say so in the summary; that is a success.");
 		sb.AppendLine("- Leave git to VibeSwarm unless the task says otherwise: do not commit, push, stash, reset, rebase, or switch branches. Bring back and remove any worktree you use.");
 		sb.AppendLine("- End with a short summary: what changed, how you verified it, assumptions, and anything left undone. Its last line is the commit subject: <commit-summary>A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)</commit-summary>");
 		sb.AppendLine();
@@ -674,17 +674,7 @@ public static class PromptBuilder
 
 	private static string BuildEnvironmentSection(Project project)
 	{
-		if (project.Environments == null || project.Environments.Count == 0)
-		{
-			return string.Empty;
-		}
-
-		var environments = project.Environments
-			.Where(environment => environment.IsEnabled)
-			.OrderByDescending(environment => environment.IsPrimary)
-			.ThenBy(environment => environment.SortOrder)
-			.ThenBy(environment => environment.Name, StringComparer.OrdinalIgnoreCase)
-			.ToList();
+		var environments = ProjectEnvironmentVariables.GetEnabled(project.Environments);
 		if (environments.Count == 0)
 		{
 			return string.Empty;
@@ -706,66 +696,43 @@ public static class PromptBuilder
 				? "  - Use Playwright MCP for web environments. Sign in with a listed login, never a guessed account such as test@test.com."
 				: "  - Use Playwright MCP for web environments.");
 		}
+		sb.AppendLine(BuildEnvironmentVariablesGuidance(environments));
 
 		// The budget covers the environment entries only, so the fixed guidance above never
-		// crowds out the environments themselves.
-		var includedCount = 0;
+		// crowds out the environments themselves. Every entry's URL and login is placed before
+		// any notes, then notes fill what is left in order, shortened to fit: a long note never
+		// costs another environment its line.
+		var entries = new List<(ProjectEnvironment Environment, string Line)>();
 		var entriesLength = 0;
 		foreach (var environment in environments)
 		{
-			var lineBuilder = new StringBuilder();
-			lineBuilder.Append("  - ");
-			if (environment.IsPrimary)
-			{
-				lineBuilder.Append("Primary ");
-			}
-			lineBuilder.Append(environment.Type);
-			lineBuilder.Append(" [");
-			lineBuilder.Append(environment.Stage);
-			lineBuilder.Append(']');
-			lineBuilder.Append(": ");
-			lineBuilder.Append(environment.Name);
-			lineBuilder.Append(" | URL: ");
-			lineBuilder.Append(environment.Url);
-
-			if (!string.IsNullOrWhiteSpace(environment.Description))
-			{
-				lineBuilder.Append(" | Notes: ");
-				lineBuilder.Append(environment.Description);
-			}
-
-			var hasUsername = !string.IsNullOrWhiteSpace(environment.Username);
-			var hasPassword = !string.IsNullOrWhiteSpace(environment.Password);
-			if (environment.Type == EnvironmentType.Web && (hasUsername || hasPassword))
-			{
-				lineBuilder.Append(" | Login: ");
-				if (hasUsername)
-				{
-					lineBuilder.Append("Username=");
-					lineBuilder.Append(environment.Username);
-				}
-				if (hasUsername && hasPassword)
-				{
-					lineBuilder.Append(", ");
-				}
-				if (hasPassword)
-				{
-					lineBuilder.Append("Password=");
-					lineBuilder.Append(environment.Password);
-				}
-			}
-
-			var escapedLine = EscapeXml(lineBuilder.ToString());
+			var escapedLine = EscapeXml(BuildEnvironmentEntry(environment));
 			if (entriesLength + escapedLine.Length > MaxEnvironmentEntriesLength)
 			{
 				break;
 			}
 
-			sb.AppendLine(escapedLine);
+			entries.Add((environment, escapedLine));
 			entriesLength += escapedLine.Length;
-			includedCount++;
 		}
 
+		foreach (var (environment, line) in entries)
+		{
+			var entryLine = line;
+			if (!string.IsNullOrWhiteSpace(environment.Description))
+			{
+				var notes = FitEnvironmentNotes(environment.Description, MaxEnvironmentEntriesLength - entriesLength - EnvironmentNotesLabel.Length);
+				if (notes != null)
+				{
+					entryLine += EnvironmentNotesLabel + notes;
+					entriesLength += EnvironmentNotesLabel.Length + notes.Length;
+				}
+			}
+
+			sb.AppendLine(entryLine);
+		}
+
+		var includedCount = entries.Count;
 		var omittedCount = environments.Count - includedCount;
 		if (omittedCount > 0)
 		{
@@ -774,6 +741,103 @@ public static class PromptBuilder
 
 		sb.AppendLine("</environments>");
 		return sb.ToString();
+	}
+
+	/// <summary>
+	/// One environment's line, without its notes: kind, stage, name, URL, a web login (typed into
+	/// the browser, so shown) and the shell variables holding its URL and login. Other kinds' logins
+	/// are named by variable only, which keeps database and server secrets out of the transcript.
+	/// </summary>
+	private static string BuildEnvironmentEntry(ProjectEnvironment environment)
+	{
+		var lineBuilder = new StringBuilder();
+		lineBuilder.Append("  - ");
+		if (environment.IsPrimary)
+		{
+			lineBuilder.Append("Primary ");
+		}
+		lineBuilder.Append(environment.Type);
+		lineBuilder.Append(" [");
+		lineBuilder.Append(environment.Stage);
+		lineBuilder.Append(']');
+		lineBuilder.Append(": ");
+		lineBuilder.Append(environment.Name);
+		lineBuilder.Append(" | URL: ");
+		lineBuilder.Append(environment.Url);
+
+		var hasUsername = !string.IsNullOrWhiteSpace(environment.Username);
+		var hasPassword = !string.IsNullOrWhiteSpace(environment.Password);
+		if (environment.Type == EnvironmentType.Web && (hasUsername || hasPassword))
+		{
+			lineBuilder.Append(" | Login: ");
+			if (hasUsername)
+			{
+				lineBuilder.Append("Username=");
+				lineBuilder.Append(environment.Username);
+			}
+			if (hasUsername && hasPassword)
+			{
+				lineBuilder.Append(", ");
+			}
+			if (hasPassword)
+			{
+				lineBuilder.Append("Password=");
+				lineBuilder.Append(environment.Password);
+			}
+		}
+
+		var variableNames = ProjectEnvironmentVariables.GetVariables(environment).Select(variable => variable.Key).ToList();
+		if (variableNames.Count > 0)
+		{
+			lineBuilder.Append(" | Env: ");
+			lineBuilder.Append(string.Join(", ", variableNames));
+		}
+
+		return lineBuilder.ToString();
+	}
+
+	private static string BuildEnvironmentVariablesGuidance(IReadOnlyList<ProjectEnvironment> environments)
+	{
+		var shortcuts = ProjectEnvironmentVariables.GetPrimaryShortcuts(environments).Select(shortcut => shortcut.Key).ToList();
+		var sb = new StringBuilder("  - Each entry's Env lists the shell variables holding its URL and login");
+		if (shortcuts.Count > 0)
+		{
+			sb.Append(" (");
+			sb.Append(shortcuts.Count == 1
+				? shortcuts[0]
+				: $"{string.Join(", ", shortcuts.Take(shortcuts.Count - 1))} and {shortcuts[^1]}");
+			sb.Append(shortcuts.Count == 1 ? " repeats" : " repeat");
+			sb.Append(" the first entry's)");
+		}
+		sb.Append(". Read logins from them and keep their values out of files, commits and summaries.");
+		return sb.ToString();
+	}
+
+	/// <summary>
+	/// Escaped notes no longer than <paramref name="maxLength"/>, shortened when they run over, or
+	/// null when too little room is left to say anything useful.
+	/// </summary>
+	private static string? FitEnvironmentNotes(string description, int maxLength)
+	{
+		if (maxLength < MinEnvironmentNotesLength)
+		{
+			return null;
+		}
+
+		var length = maxLength;
+		while (length >= MinEnvironmentNotesLength)
+		{
+			var notes = EscapeXml(Summarize(description, length));
+			if (notes.Length <= maxLength)
+			{
+				return notes;
+			}
+
+			// Escaping lengthened the text; trim by the overshoot and try again.
+			length -= notes.Length - maxLength;
+		}
+
+		return null;
 	}
 
 	private static string BuildTeamSection(Project project)
@@ -899,7 +963,7 @@ public static class PromptBuilder
 
 		if (enabledStages.Contains(EnvironmentStage.Production))
 		{
-			rules.Add("Production is live: change or redeploy it only when the task explicitly asks.");
+			rules.Add("Production is live: read its data when the task needs it (read-only, light queries), but change, migrate or redeploy it only when the task explicitly asks.");
 		}
 
 		if (enabledStages.Contains(EnvironmentStage.Development))

@@ -38,6 +38,7 @@
    12. PWA Standalone Mode
    13. Design System — minimal Bootstrap extensions
    14. Touch Targets
+   15. Dashboard (command-centre grid, sparkline, chart bars)
 
 ============================================ */
 
@@ -99,7 +100,7 @@
 	--bs-bg-4: light-dark(#cfd4dd, #2e3543);
 	--bs-fg-body: light-dark(#1c212b, #e7ecf3);
 	--bs-fg-1: light-dark(#3b4252, #c2c9d4);
-	--bs-fg-2: light-dark(#6b7384, #8d95a3);
+	--bs-fg-2: light-dark(#5f6778, #8d95a3);
 	--bs-fg-3: light-dark(#8a93a3, #656d7b);
 	--bs-fg-4: light-dark(#a9b0bd, #4b5260);
 	--bs-border-color: light-dark(#e3e6ec, #242a35);
@@ -108,74 +109,90 @@
 	--bs-border-muted: var(--bs-border-color);
 	--bs-border-body: var(--bs-border-color);
 	--bs-border-emphasized: light-dark(#cfd4dd, #2e3543);
-	--bs-link-color: light-dark(#4a6ad9, #7ea1ff);
-	--bs-link-hover-color: light-dark(#3051c2, #a4bcff);
+	--bs-link-color: light-dark(#3d5bc7, #7ea1ff);
+	--bs-link-hover-color: light-dark(#2e4aad, #a4bcff);
 
 	/* Theme colours. Each theme sets its base; the tints Bootstrap uses for subtle
 	   backgrounds, emphasis text and borders are mixed from it, so they stay in the
-	   app's hue rather than Bootstrap's stock blue, green, red… */
+	   app's hue rather than Bootstrap's stock blue, green, red… The mixes run in oklab:
+	   oklch rotates the hue on the way to the near-neutral body colour, which turned
+	   warning text red and danger text magenta.
+
+	   Text (-fg) and solid fills (-bg) get their own values where the base can't carry
+	   them: every -fg reaches 4.5:1 on bg-body, bg-1 and bg-2, and every -contrast label
+	   4.5:1 on its -bg, in both themes. ThemeContrastTests holds them to it. */
 	--bs-primary-base: light-dark(#4a6ad9, #5b7cfa);
 	--bs-success-base: light-dark(#2a9e6f, #37c08a);
 	--bs-warning-base: light-dark(#c99028, #e8b558);
 	--bs-danger-base: light-dark(#d74e4e, #ef6a6a);
 	--bs-info-base: light-dark(#3ca7b5, #5ec6d3);
 
-	--bs-primary-bg: var(--bs-primary-base);
-	--bs-primary-fg: var(--bs-primary-base);
-	--bs-primary-fg-emphasis: color-mix(in oklch, var(--bs-primary-base) 60%, var(--bs-fg-body));
-	--bs-primary-bg-subtle: color-mix(in oklch, var(--bs-primary-base) 15%, var(--bs-bg-body));
-	--bs-primary-bg-muted: color-mix(in oklch, var(--bs-primary-base) 28%, var(--bs-bg-body));
-	--bs-primary-border: color-mix(in oklch, var(--bs-primary-base) 45%, var(--bs-bg-body));
-	--bs-primary-focus-ring: color-mix(in oklch, var(--bs-primary-base) 50%, transparent);
+	--bs-primary-bg: light-dark(#4a6ad9, #4363e0);
+	--bs-primary-fg: light-dark(#3d5bc7, #7b97ff);
+	--bs-primary-fg-emphasis: color-mix(in oklab, var(--bs-primary-base) 60%, var(--bs-fg-body));
+	--bs-primary-bg-subtle: color-mix(in oklab, var(--bs-primary-base) 15%, var(--bs-bg-body));
+	--bs-primary-bg-muted: color-mix(in oklab, var(--bs-primary-base) 28%, var(--bs-bg-body));
+	--bs-primary-border: color-mix(in oklab, var(--bs-primary-base) 45%, var(--bs-bg-body));
+	--bs-primary-focus-ring: color-mix(in oklab, var(--bs-primary-base) 50%, transparent);
 	--bs-primary-contrast: #fff;
 
-	--bs-success-bg: var(--bs-success-base);
-	--bs-success-fg: var(--bs-success-base);
-	--bs-success-fg-emphasis: color-mix(in oklch, var(--bs-success-base) 60%, var(--bs-fg-body));
-	--bs-success-bg-subtle: color-mix(in oklch, var(--bs-success-base) 15%, var(--bs-bg-body));
-	--bs-success-bg-muted: color-mix(in oklch, var(--bs-success-base) 28%, var(--bs-bg-body));
-	--bs-success-border: color-mix(in oklch, var(--bs-success-base) 45%, var(--bs-bg-body));
-	--bs-success-focus-ring: color-mix(in oklch, var(--bs-success-base) 50%, transparent);
+	--bs-success-bg: light-dark(#1f8259, #1d7a54);
+	--bs-success-fg: light-dark(#1a7550, #37c08a);
+	--bs-success-fg-emphasis: color-mix(in oklab, var(--bs-success-base) 60%, var(--bs-fg-body));
+	--bs-success-bg-subtle: color-mix(in oklab, var(--bs-success-base) 15%, var(--bs-bg-body));
+	--bs-success-bg-muted: color-mix(in oklab, var(--bs-success-base) 28%, var(--bs-bg-body));
+	--bs-success-border: color-mix(in oklab, var(--bs-success-base) 45%, var(--bs-bg-body));
+	--bs-success-focus-ring: color-mix(in oklab, var(--bs-success-base) 50%, transparent);
 	--bs-success-contrast: #fff;
 
 	--bs-warning-bg: var(--bs-warning-base);
-	--bs-warning-fg: var(--bs-warning-base);
-	--bs-warning-fg-emphasis: color-mix(in oklch, var(--bs-warning-base) 60%, var(--bs-fg-body));
-	--bs-warning-bg-subtle: color-mix(in oklch, var(--bs-warning-base) 15%, var(--bs-bg-body));
-	--bs-warning-bg-muted: color-mix(in oklch, var(--bs-warning-base) 28%, var(--bs-bg-body));
-	--bs-warning-border: color-mix(in oklch, var(--bs-warning-base) 45%, var(--bs-bg-body));
-	--bs-warning-focus-ring: color-mix(in oklch, var(--bs-warning-base) 50%, transparent);
+	--bs-warning-fg: light-dark(#8a5d0a, #e8b558);
+	--bs-warning-fg-emphasis: color-mix(in oklab, var(--bs-warning-base) 60%, var(--bs-fg-body));
+	--bs-warning-bg-subtle: color-mix(in oklab, var(--bs-warning-base) 15%, var(--bs-bg-body));
+	--bs-warning-bg-muted: color-mix(in oklab, var(--bs-warning-base) 28%, var(--bs-bg-body));
+	--bs-warning-border: color-mix(in oklab, var(--bs-warning-base) 45%, var(--bs-bg-body));
+	--bs-warning-focus-ring: color-mix(in oklab, var(--bs-warning-base) 50%, transparent);
 	--bs-warning-contrast: #1c212b;
 
-	--bs-danger-bg: var(--bs-danger-base);
-	--bs-danger-fg: var(--bs-danger-base);
-	--bs-danger-fg-emphasis: color-mix(in oklch, var(--bs-danger-base) 60%, var(--bs-fg-body));
-	--bs-danger-bg-subtle: color-mix(in oklch, var(--bs-danger-base) 15%, var(--bs-bg-body));
-	--bs-danger-bg-muted: color-mix(in oklch, var(--bs-danger-base) 28%, var(--bs-bg-body));
-	--bs-danger-border: color-mix(in oklch, var(--bs-danger-base) 45%, var(--bs-bg-body));
-	--bs-danger-focus-ring: color-mix(in oklch, var(--bs-danger-base) 50%, transparent);
+	--bs-danger-bg: light-dark(#c4413f, #c23f3f);
+	--bs-danger-fg: light-dark(#b23838, #ef6a6a);
+	--bs-danger-fg-emphasis: color-mix(in oklab, var(--bs-danger-base) 60%, var(--bs-fg-body));
+	--bs-danger-bg-subtle: color-mix(in oklab, var(--bs-danger-base) 15%, var(--bs-bg-body));
+	--bs-danger-bg-muted: color-mix(in oklab, var(--bs-danger-base) 28%, var(--bs-bg-body));
+	--bs-danger-border: color-mix(in oklab, var(--bs-danger-base) 45%, var(--bs-bg-body));
+	--bs-danger-focus-ring: color-mix(in oklab, var(--bs-danger-base) 50%, transparent);
 	--bs-danger-contrast: #fff;
 
 	--bs-info-bg: var(--bs-info-base);
-	--bs-info-fg: var(--bs-info-base);
-	--bs-info-fg-emphasis: color-mix(in oklch, var(--bs-info-base) 60%, var(--bs-fg-body));
-	--bs-info-bg-subtle: color-mix(in oklch, var(--bs-info-base) 15%, var(--bs-bg-body));
-	--bs-info-bg-muted: color-mix(in oklch, var(--bs-info-base) 28%, var(--bs-bg-body));
-	--bs-info-border: color-mix(in oklch, var(--bs-info-base) 45%, var(--bs-bg-body));
-	--bs-info-focus-ring: color-mix(in oklch, var(--bs-info-base) 50%, transparent);
+	--bs-info-fg: light-dark(#1d7380, #5ec6d3);
+	--bs-info-fg-emphasis: color-mix(in oklab, var(--bs-info-base) 60%, var(--bs-fg-body));
+	--bs-info-bg-subtle: color-mix(in oklab, var(--bs-info-base) 15%, var(--bs-bg-body));
+	--bs-info-bg-muted: color-mix(in oklab, var(--bs-info-base) 28%, var(--bs-bg-body));
+	--bs-info-border: color-mix(in oklab, var(--bs-info-base) 45%, var(--bs-bg-body));
+	--bs-info-focus-ring: color-mix(in oklab, var(--bs-info-base) 50%, transparent);
 	--bs-info-contrast: #1c212b;
+
+	/* Data colours for chart bars and meter fills (.bg-data-*). Graphics need 3:1, not
+	   4.5:1, against the page, panels and the meter track, so these sit between the
+	   bright bases and the darker text colours. */
+	--vs-data-primary: light-dark(#4a6ad9, #5b7cfa);
+	--vs-data-success: light-dark(#278f63, #37c08a);
+	--vs-data-warning: light-dark(#a67214, #e8b558);
+	--vs-data-danger: light-dark(#d14848, #ef6a6a);
+	--vs-data-info: light-dark(#288b98, #5ec6d3);
+	--vs-data-violet: light-dark(#8b55d6, #b48cf2);
 
 	/* Secondary is the quiet neutral: a secondary button is a grey key, so the one
 	   primary action on a surface stands out. It sits a step above bg-2, the panel
 	   surface, so secondary buttons and badges still read on a panel. */
 	--bs-secondary-base: var(--bs-bg-3);
 	--bs-secondary-bg: var(--bs-bg-3);
-	--bs-secondary-fg: var(--bs-fg-3);
+	--bs-secondary-fg: var(--bs-fg-2);
 	--bs-secondary-fg-emphasis: var(--bs-fg-1);
 	--bs-secondary-bg-subtle: var(--bs-bg-1);
 	--bs-secondary-bg-muted: var(--bs-bg-4);
 	--bs-secondary-border: var(--bs-border-emphasized);
-	--bs-secondary-focus-ring: color-mix(in oklch, var(--bs-fg-3) 50%, transparent);
+	--bs-secondary-focus-ring: color-mix(in oklab, var(--bs-fg-3) 50%, transparent);
 	--bs-secondary-contrast: var(--bs-fg-body);
 
 	/* The shell scrolls inside .app-main, not the page, so the page needs no gutter. */
@@ -226,6 +243,29 @@
 	}
 	.touch-manipulation {
 		touch-action: manipulation;
+	}
+	.tabular-nums {
+		font-variant-numeric: tabular-nums;
+	}
+	/* Chart and meter fills from the data palette (section 1), which keeps 3:1 against
+	   every surface; bg-success and friends are button fills and can fall short. */
+	.bg-data-primary {
+		background-color: var(--vs-data-primary);
+	}
+	.bg-data-success {
+		background-color: var(--vs-data-success);
+	}
+	.bg-data-warning {
+		background-color: var(--vs-data-warning);
+	}
+	.bg-data-danger {
+		background-color: var(--vs-data-danger);
+	}
+	.bg-data-info {
+		background-color: var(--vs-data-info);
+	}
+	.bg-data-violet {
+		background-color: var(--vs-data-violet);
 	}
 	.max-height-50dvh {
 		max-height: 50dvh;
@@ -1283,8 +1323,8 @@ small, .small {
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
-	background: var(--bs-success-base);
-	box-shadow: 0 0 0 3px color-mix(in oklch, var(--bs-success-base) 20%, transparent);
+	background: var(--vs-data-success);
+	box-shadow: 0 0 0 3px color-mix(in oklab, var(--vs-data-success) 20%, transparent);
 	animation: pulse-live 1.5s ease-in-out infinite;
 	flex: none;
 }
@@ -1372,6 +1412,74 @@ small, .small {
 	.list-group {
 		--bs-list-group-action-hover-bg: var(--bs-list-group-bg);
 		--bs-list-group-action-hover-color: var(--bs-list-group-action-color);
+	}
+}
+
+/* ============================================
+   15. DASHBOARD
+   From 1280px the dashboard is a command centre: live work and analytics in a main
+   column, projects and providers in a right column (markup: xl:d-grid). It gets a
+   wider cap than other pages, so a large monitor fills without stretching rows.
+============================================ */
+@media (width >= 1024px) {
+	.main-content:has(.dashboard) {
+		max-width: 1680px;
+	}
+}
+@media (width >= 1280px) {
+	.dashboard-grid {
+		grid-template-columns: minmax(0, 1fr) clamp(20rem, 28%, 24rem);
+	}
+}
+
+/* Bars in a number tile: one per bucket, completed below failed. */
+.dashboard-spark {
+	height: 1.75rem;
+	gap: 2px;
+}
+.dashboard-spark > span {
+	flex: 1 1 0;
+	min-width: 0;
+}
+.dashboard-spark-empty {
+	height: 2px;
+}
+
+/* A chart legend's colour key. */
+.dashboard-swatch {
+	width: 0.625rem;
+	height: 0.625rem;
+	border-radius: 0.1875rem;
+	flex: none;
+}
+
+/* A project's last job: filled when one ran, an empty ring when none has. */
+.dashboard-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--bs-fg-2);
+	flex: none;
+}
+.dashboard-dot-empty {
+	background: transparent;
+	box-shadow: inset 0 0 0 1.5px var(--bs-fg-2);
+}
+
+/* Chart bars are HTML inside each bar's button, so they keep their width however far
+   the chart stretches; the SVG behind them only draws the grid. */
+.dashboard-chart-bar {
+	width: min(60%, 2.5rem);
+	border-radius: 0.25rem;
+	flex: none;
+}
+.dashboard-chart-slot[aria-pressed="true"] .dashboard-chart-bar {
+	outline: 2px solid var(--bs-fg-body);
+	outline-offset: 1px;
+}
+@media (hover: hover) {
+	.dashboard-chart-slot:hover .dashboard-chart-bar {
+		filter: brightness(1.08);
 	}
 }
 
