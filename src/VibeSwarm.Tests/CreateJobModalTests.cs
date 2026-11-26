@@ -107,6 +107,46 @@ public sealed class CreateJobModalTests
 		Assert.DoesNotContain("Goal prompt is required.", cut.Markup);
 	}
 
+	[Fact]
+	public void CreateJobModal_PickingAProfileAndInstances_FillsTheJobAndAsksForCopies()
+	{
+		using var context = CreateGoalPromptContext();
+		var other = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "GitHub Copilot", Type = ProviderType.Copilot, IsEnabled = true };
+		var profile = new Profile { Id = Guid.NewGuid(), Name = "Fast fixer", ProviderId = provider.Id, Provider = provider, ModelId = "gpt-5", ReasoningEffort = "high" };
+		context.Services.AddSingleton<IProfileService>(new SingleProfileService(profile));
+		var submitted = false;
+		var job = new Job { ProviderId = other.Id };
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, job)
+			.Add(component => component.Providers, [other, provider])
+			.Add(component => component.AvailableModels, new List<ProviderModel>())
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, [])
+			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, () => submitted = true)));
+
+		cut.Find("#jobProfile").Change(profile.Id.ToString());
+		cut.Find("#instances").Change("3");
+		cut.Find("#goalPrompt").Input("- One\n- Two\n- Three");
+		cut.Find("form").Submit();
+
+		Assert.True(submitted);
+		Assert.Equal(provider.Id, job.ProviderId);
+		Assert.Equal("gpt-5", job.ModelUsed);
+		Assert.Equal("high", job.ReasoningEffort);
+		Assert.Equal(3, job.RequestedInstances);
+	}
+
+	private sealed class SingleProfileService(Profile profile) : IProfileService
+	{
+		public Task<IEnumerable<Profile>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Profile>>([profile]);
+		public Task<Profile?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Profile?>(profile);
+		public Task<Profile> CreateAsync(Profile created, CancellationToken cancellationToken = default) => Task.FromResult(created);
+		public Task<Profile> UpdateAsync(Profile updated, CancellationToken cancellationToken = default) => Task.FromResult(updated);
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
+	}
+
 	private static BunitContext CreateGoalPromptContext()
 	{
 		var context = new BunitContext();

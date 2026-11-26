@@ -837,6 +837,20 @@ public partial class JobProcessingService
                     _logger.LogWarning(ex, "Failed to load team role context for job {JobId}, continuing without it", job.Id);
                 }
             }
+            else if (job.SwarmId.HasValue && job.InstanceNumber is int instanceNumber)
+            {
+                try
+                {
+                    var instanceCount = await dbContext.Jobs.CountAsync(j => j.SwarmId == job.SwarmId, cancellationToken);
+                    // A follow-up archives the run before it as a change set, so any change set means this run is one.
+                    var isFollowUp = await dbContext.JobChangeSets.AnyAsync(cs => cs.JobId == job.Id, cancellationToken);
+                    roleContext = PromptBuilder.BuildInstanceSystemPromptContext(job.GoalPrompt, instanceNumber, instanceCount, isFollowUp);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to load instance context for job {JobId}, continuing without it", job.Id);
+                }
+            }
 
             systemPromptRules = PromptBuilder.JoinRuleSections(
                 roleContext, systemPromptRules, projectMemoryRules, localSetupRules, priorWorkRules, branchMergeRules);

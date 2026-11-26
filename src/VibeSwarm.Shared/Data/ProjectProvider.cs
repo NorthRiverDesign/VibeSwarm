@@ -28,6 +28,12 @@ public class ProjectProvider
 	[StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
 	public string? PreferredReasoningEffort { get; set; }
 
+	/// <summary>
+	/// The profile this entry's provider, model and reasoning come from. Saving the profile
+	/// updates them; editing any of them by hand unlinks it.
+	/// </summary>
+	public Guid? ProfileId { get; set; }
+
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
 	public DateTime? UpdatedAt { get; set; }

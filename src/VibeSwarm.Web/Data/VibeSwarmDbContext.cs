@@ -48,6 +48,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<JobProviderAttempt> JobProviderAttempts { get; set; }
 	public DbSet<Skill> Skills { get; set; }
 	public DbSet<Agent> Agents { get; set; }
+	public DbSet<Profile> Profiles { get; set; }
 	public DbSet<AgentSkill> AgentSkills { get; set; }
 	public DbSet<Idea> Ideas { get; set; }
 	public DbSet<IdeaAttachment> IdeaAttachments { get; set; }
@@ -482,6 +483,22 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 				.WithMany()
 				.HasForeignKey(e => e.DefaultProviderId)
 				.OnDelete(DeleteBehavior.SetNull);
+			entity.HasIndex(e => e.Name).IsUnique();
+		});
+
+		// Projects and their provider entries point at a profile by id alone, as they do at
+		// providers: deleting a profile clears the links (ProfileService) and leaves the values.
+		modelBuilder.Entity<Profile>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Name).IsRequired().HasMaxLength(ValidationLimits.ProfileNameMaxLength);
+			entity.Property(e => e.Description).HasMaxLength(ValidationLimits.ProfileDescriptionMaxLength);
+			entity.Property(e => e.ModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
+			entity.Property(e => e.ReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
+			entity.HasOne(e => e.Provider)
+				.WithMany()
+				.HasForeignKey(e => e.ProviderId)
+				.OnDelete(DeleteBehavior.Cascade);
 			entity.HasIndex(e => e.Name).IsUnique();
 		});
 

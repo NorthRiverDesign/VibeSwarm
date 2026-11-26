@@ -99,6 +99,12 @@ public class Project
 	public string? PlanningReasoningEffort { get; set; }
 
 	/// <summary>
+	/// The profile the planning provider, model and reasoning come from. Saving the profile
+	/// updates them; editing any of them by hand unlinks it.
+	/// </summary>
+	public Guid? PlanningProfileId { get; set; }
+
+	/// <summary>
 	/// Whether a second model reviews each job's work before it is delivered. Problems it finds
 	/// go back to the job's agent, in the same session, for up to <see cref="JobReview.MaxRounds"/> fixes.
 	/// Review never holds back delivery: when the reviewer can't run, the work is delivered as it is.
@@ -117,6 +123,9 @@ public class Project
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? ReviewReasoningEffort { get; set; }
 
+	/// <summary>The profile the reviewer comes from (see <see cref="PlanningProfileId"/>).</summary>
+	public Guid? ReviewProfileId { get; set; }
+
 	/// <summary>The coding provider (Claude or Copilot, run read-only) that acts as the project's Lead.</summary>
 	public Guid? LeadProviderId { get; set; }
 
@@ -125,6 +134,9 @@ public class Project
 
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? LeadReasoningEffort { get; set; }
+
+	/// <summary>The profile the Lead comes from (see <see cref="PlanningProfileId"/>).</summary>
+	public Guid? LeadProfileId { get; set; }
 
 	/// <summary>
 	/// Where the owner wants the project to go: priorities, what matters most, what is off limits.

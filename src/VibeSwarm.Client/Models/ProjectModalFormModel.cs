@@ -47,6 +47,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? PlanningReasoningEffort { get; set; }
 
+	public Guid? PlanningProfileId { get; set; }
+
 	public bool ReviewEnabled { get; set; }
 
 	public Guid? ReviewProviderId { get; set; }
@@ -59,6 +61,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? ReviewReasoningEffort { get; set; }
 
+	public Guid? ReviewProfileId { get; set; }
+
 	public Guid? LeadProviderId { get; set; }
 
 	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
@@ -66,6 +70,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? LeadReasoningEffort { get; set; }
+
+	public Guid? LeadProfileId { get; set; }
 
 	[StringLength(LeadReviewLimits.DirectionMaxLength)]
 	public string? LeadDirection { get; set; }
@@ -157,14 +163,17 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			PlanningProviderId = source.PlanningProviderId,
 			PlanningModelId = source.PlanningModelId,
 			PlanningReasoningEffort = source.PlanningReasoningEffort,
+			PlanningProfileId = source.PlanningProfileId,
 			ReviewEnabled = source.ReviewEnabled,
 			ReviewProviderId = source.ReviewProviderId,
 			ReviewInferenceProviderId = source.ReviewInferenceProviderId,
 			ReviewModelId = source.ReviewModelId,
 			ReviewReasoningEffort = source.ReviewReasoningEffort,
+			ReviewProfileId = source.ReviewProfileId,
 			LeadProviderId = source.LeadProviderId,
 			LeadModelId = source.LeadModelId,
 			LeadReasoningEffort = source.LeadReasoningEffort,
+			LeadProfileId = source.LeadProfileId,
 			LeadDirection = source.LeadDirection,
 			IdeaInferenceProviderId = source.IdeaInferenceProviderId,
 			IdeaInferenceModelId = source.IdeaInferenceModelId,
@@ -206,14 +215,17 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			PlanningProviderId = PlanningProviderId,
 			PlanningModelId = string.IsNullOrWhiteSpace(PlanningModelId) ? null : PlanningModelId.Trim(),
 			PlanningReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(PlanningReasoningEffort),
+			PlanningProfileId = PlanningProfileId,
 			ReviewEnabled = ReviewEnabled,
 			ReviewProviderId = ReviewProviderId,
 			ReviewInferenceProviderId = ReviewProviderId.HasValue ? null : ReviewInferenceProviderId,
 			ReviewModelId = string.IsNullOrWhiteSpace(ReviewModelId) ? null : ReviewModelId.Trim(),
 			ReviewReasoningEffort = ReviewProviderId.HasValue ? ProviderCapabilities.NormalizeReasoningEffort(ReviewReasoningEffort) : null,
+			ReviewProfileId = ReviewProfileId,
 			LeadProviderId = LeadProviderId,
 			LeadModelId = string.IsNullOrWhiteSpace(LeadModelId) ? null : LeadModelId.Trim(),
 			LeadReasoningEffort = LeadProviderId.HasValue ? ProviderCapabilities.NormalizeReasoningEffort(LeadReasoningEffort) : null,
+			LeadProfileId = LeadProfileId,
 			LeadDirection = string.IsNullOrWhiteSpace(LeadDirection) ? null : LeadDirection.Trim(),
 			IdeaInferenceProviderId = IdeaInferenceProviderId,
 			IdeaInferenceModelId = string.IsNullOrWhiteSpace(IdeaInferenceModelId) ? null : IdeaInferenceModelId.Trim(),
@@ -230,6 +242,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 				IsEnabled = s.IsEnabled,
 				PreferredModelId = s.PreferredModelId,
 				PreferredReasoningEffort = s.PreferredReasoningEffort,
+				ProfileId = s.ProfileId,
 				CreatedAt = s.CreatedAt,
 				UpdatedAt = s.UpdatedAt
 			}).ToList(),

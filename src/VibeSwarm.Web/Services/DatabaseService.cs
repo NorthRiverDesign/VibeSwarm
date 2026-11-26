@@ -6,6 +6,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore.Metadata;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Services;
@@ -51,6 +52,11 @@ public class DatabaseService : IDatabaseService
 			.Include(r => r.SkillLinks)
 				.ThenInclude(sl => sl.Skill)
 			.OrderBy(r => r.Name)
+			.ToListAsync(ct);
+
+		var profiles = await _db.Profiles
+			.Include(profile => profile.Provider)
+			.OrderBy(profile => profile.Name)
 			.ToListAsync(ct);
 
 		var schedules = await _db.JobSchedules
@@ -141,6 +147,16 @@ public class DatabaseService : IDatabaseService
 					.OrderBy(n => n)
 					.ToList(),
 			}).ToList(),
+			Profiles = profiles
+				.Where(profile => profile.Provider != null)
+				.Select(profile => new ProfileExportDto
+				{
+					Name = profile.Name,
+					Description = profile.Description,
+					ProviderName = profile.Provider!.Name,
+					ModelId = profile.ModelId,
+					ReasoningEffort = profile.ReasoningEffort,
+				}).ToList(),
 			Schedules = schedules
 				.Where(s => s.Project != null && s.Provider != null)
 				.Select(s => new ScheduleExportDto
@@ -351,6 +367,52 @@ public class DatabaseService : IDatabaseService
 		// Import schedules (require matching project and provider by name)
 		var projectsByName = await _db.Projects.ToDictionaryAsync(p => p.Name, p => p, ct);
 		var providersByName = await _db.Providers.ToDictionaryAsync(p => p.Name, p => p, ct);
+
+		// Import profiles (require a matching provider by name)
+		var existingProfileNames = (await _db.Profiles.Select(profile => profile.Name).ToListAsync(ct))
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+		foreach (var profileDto in export.Profiles ?? [])
+		{
+			if (string.IsNullOrWhiteSpace(profileDto.Name))
+			{
+				continue;
+			}
+
+			if (existingProfileNames.Contains(profileDto.Name))
+			{
+				result.Skipped.Add($"Profile '{profileDto.Name}' already exists");
+				continue;
+			}
+
+			if (!providersByName.TryGetValue(profileDto.ProviderName, out var profileProvider))
+			{
+				result.Errors.Add($"Profile '{profileDto.Name}' skipped: provider '{profileDto.ProviderName}' not found");
+				continue;
+			}
+
+			// Project settings only take a model the provider lists, so an unknown one falls back to the default.
+			var profileModelId = string.IsNullOrWhiteSpace(profileDto.ModelId) ? null : profileDto.ModelId.Trim();
+			if (profileModelId != null && !await _db.ProviderModels.AnyAsync(
+				model => model.ProviderId == profileProvider.Id && model.IsAvailable && model.ModelId == profileModelId, ct))
+			{
+				profileModelId = null;
+			}
+
+			_db.Profiles.Add(new Profile
+			{
+				Id = Guid.NewGuid(),
+				Name = profileDto.Name.Trim(),
+				Description = profileDto.Description,
+				ProviderId = profileProvider.Id,
+				ModelId = profileModelId,
+				ReasoningEffort = ProviderCapabilities.SupportsReasoningEffort(profileProvider, profileDto.ReasoningEffort)
+					? ProviderCapabilities.NormalizeReasoningEffort(profileDto.ReasoningEffort)
+					: null,
+				CreatedAt = DateTime.UtcNow,
+			});
+			existingProfileNames.Add(profileDto.Name);
+			result.Imported.Add($"Profile '{profileDto.Name}'");
+		}
 
 		foreach (var scheduleDto in export.Schedules)
 		{

@@ -1040,6 +1040,43 @@ public static class PromptBuilder
 		return sb.ToString().TrimEnd();
 	}
 
+	/// <summary>
+	/// The system prompt section for one of several instances of a job: copies on the same
+	/// provider and model, each in its own worktree. A goal written as a list is divided between
+	/// them (<see cref="JobInstanceSplitter"/>); otherwise each is told which share to take.
+	/// A follow-up is about this instance's own work, so it gets no split.
+	/// </summary>
+	public static string BuildInstanceSystemPromptContext(string? goalPrompt, int instanceNumber, int instanceCount, bool isFollowUp = false)
+	{
+		var sb = new StringBuilder();
+		sb.AppendLine($"You are instance {instanceNumber} of {instanceCount} of this job, running at the same time as the others, each in its own copy of the repository, so you won't see their changes while you work.");
+
+		if (!isFollowUp)
+		{
+			var part = JobInstanceSplitter.GetPart(goalPrompt, instanceNumber, instanceCount);
+			if (part is { Count: > 0 })
+			{
+				sb.AppendLine("The goal's list is divided between the instances. Your part:");
+				foreach (var item in part)
+				{
+					sb.AppendLine($"- {Truncate(item, 300)}");
+				}
+
+				sb.AppendLine("Do only your part; the other instances do the rest. Read the whole goal for context.");
+			}
+			else
+			{
+				sb.AppendLine($"Divide the goal into {instanceCount} parts of similar size, in the order it describes them, and do only part {instanceNumber}. If it doesn't divide that far and no part is left for you, change nothing and say so.");
+			}
+		}
+
+		sb.AppendLine("When you finish, VibeSwarm commits your work and replays it onto the branch with theirs. To keep that merge clean:");
+		sb.AppendLine("- Leave files and areas another instance's part needs to that instance.");
+		sb.AppendLine("- Don't reformat, rename or move code your change doesn't need.");
+		sb.AppendLine("- Work in this directory on its current branch; don't switch branches or rewrite history.");
+		return sb.ToString().TrimEnd();
+	}
+
 	private static string Truncate(string text, int maxLength) =>
 		text.Length <= maxLength ? text : text[..(maxLength - 1)].TrimEnd() + "…";
 

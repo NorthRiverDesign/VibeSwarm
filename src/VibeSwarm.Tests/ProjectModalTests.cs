@@ -625,6 +625,36 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 	}
 
 	[Fact]
+	public void EditProject_KeepsProfileLinks_WhenSavedUnchanged()
+	{
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+		var profileId = Guid.NewGuid();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Linked",
+			WorkingPath = "/tmp/linked",
+			PlanningProfileId = profileId,
+			ReviewProfileId = profileId,
+			LeadProfileId = profileId,
+			LeadProviderId = provider.Id,
+			ProviderSelections = [new ProjectProvider { ProviderId = provider.Id, ProfileId = profileId, Priority = 0, IsEnabled = true }]
+		};
+		var projectService = new FakeProjectService { AllProjects = [project] };
+
+		using var context = CreateBunitContext(projectService, provider: provider);
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditProject, project));
+		cut.Find("form").Submit();
+
+		cut.WaitForAssertion(() => Assert.NotNull(projectService.LastUpdatedProject), WaitTimeout);
+		var saved = projectService.LastUpdatedProject!;
+		Assert.Equal((profileId, profileId, profileId), (saved.PlanningProfileId!.Value, saved.ReviewProfileId!.Value, saved.LeadProfileId!.Value));
+		Assert.Equal(profileId, Assert.Single(saved.ProviderSelections).ProfileId);
+	}
+
+	[Fact]
 	public void EditProject_LeavesLinksAlone_WhenTheyDidNotChange()
 	{
 		var project = new Project { Id = Guid.NewGuid(), Name = "Web", WorkingPath = "/tmp/web" };

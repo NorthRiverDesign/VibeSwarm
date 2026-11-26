@@ -7,6 +7,7 @@
 @inject IInferenceProviderService InferenceProviderService
 @inject ISettingsService SettingsService
 @inject NotificationService NotificationService
+@inject IServiceProvider Services
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
 Title="@DialogTitle" Icon="@(IsEdit ? "pencil" : "folder-plus")"
@@ -61,8 +62,9 @@ Badge="@ProvidersSummary" @bind-IsOpen="_openExecution">
 <ProjectProviderPrioritySection Project="@FormModel" AvailableProviders="@_availableProviders"
 ResolveProvider="ResolveProvider" IsProviderSelected="IsProviderSelected"
 ResolveProviderModels="GetProviderModels"
+Profiles="@ProviderProfiles"
 OnReorder="ReorderProviderSelection"
-OnRemove="RemoveProviderSelection" OnAdd="AddProviderSelection"
+OnRemove="RemoveProviderSelection" OnAdd="AddProviderSelection" OnAddProfile="AddProfileSelection"
 OnPreferredModelChanged="HandlePreferredModelChanged"
 OnModelsRefreshed="LoadProviderModelsAsync" />
 
@@ -90,7 +92,7 @@ OnModelsRefreshed="LoadIdeaInferenceModelsAsync" />
 <hr class="my-7" />
 
 <ProjectPlanningSection Project="@FormModel" AvailableProviders="@GetPlanningProviders().ToList()"
-PlanningModels="@_planningModels"
+PlanningModels="@_planningModels" Profiles="@_profiles"
 OnPlanningEnabledChanged="HandlePlanningEnabledChanged"
 OnPlanningProviderChanged="HandlePlanningProviderChanged"
 OnPlanningModelsRefreshed="LoadPlanningModelsAsync" />
@@ -112,7 +114,7 @@ Badge="@LinksSummary" @bind-IsOpen="_openLinks">
 Summary="Looks over the project and suggests what to build next"
 Badge="@(FormModel.LeadProviderId.HasValue ? "On" : null)"
 BadgeClass="theme-primary" @bind-IsOpen="_openLead">
-<ProjectLeadSection Project="@FormModel" AvailableProviders="@GetPlanningProviders().ToList()" />
+<ProjectLeadSection Project="@FormModel" AvailableProviders="@GetPlanningProviders().ToList()" Profiles="@_profiles" />
 </AccordionSection>
 
 <AccordionSection Title="Review" Icon="eye"
@@ -120,7 +122,7 @@ Summary="A second model checks each job before it is delivered"
 Badge="@(FormModel.ReviewEnabled ? "On" : null)"
 BadgeClass="theme-success" @bind-IsOpen="_openReview">
 <ProjectReviewSection Project="@FormModel" AvailableProviders="@GetPlanningProviders().ToList()"
-AvailableInferenceProviders="@_availableInferenceProviders" />
+AvailableInferenceProviders="@_availableInferenceProviders" Profiles="@_profiles" />
 </AccordionSection>
 
 <AccordionSection Title="Build verification" Icon="shield-check"
@@ -251,6 +253,12 @@ private List<ProjectFolder> _folders = [];
 private List<Project> _allProjects = [];
 private HashSet<Guid> _initialLinkedProjectIds = [];
 private ProjectModalFormModel FormModel { get; set; } = new();
+private List<Profile> _profiles = [];
+
+/// <summary>Profiles on a provider the project can run jobs on.</summary>
+private IReadOnlyList<Profile> ProviderProfiles => _profiles
+	.Where(profile => _availableProviders.Any(provider => provider.Id == profile.ProviderId))
+	.ToList();
 
 protected override async Task OnInitializedAsync()
 {
@@ -266,6 +274,7 @@ if (IsVisible && !_previousIsVisible)
 {
 await LoadProvidersAsync();
 await LoadAgentsAsync();
+await LoadProfilesAsync();
 ResetState();
 await LoadExistingProjectPathsAsync();
 await LoadFoldersAsync();
@@ -565,6 +574,56 @@ EnsurePlanningProviderSelection();
 await LoadProviderModelsAsync(provider.Id);
 }
 
+/// <summary>
+/// Adds the profile's provider to the priority list linked to the profile, or links the entry
+/// already there for that provider.
+/// </summary>
+private async Task AddProfileSelection(Profile profile)
+{
+var selection = FormModel.ProviderSelections.FirstOrDefault(candidate => candidate.ProviderId == profile.ProviderId);
+if (selection == null)
+{
+selection = new ProjectProvider
+{
+ProviderId = profile.ProviderId,
+Provider = ResolveProvider(profile.ProviderId),
+Priority = FormModel.ProviderSelections.Count,
+IsEnabled = true,
+CreatedAt = DateTime.UtcNow
+};
+FormModel.ProviderSelections.Add(selection);
+}
+
+selection.ProfileId = profile.Id;
+selection.PreferredModelId = profile.ModelId;
+selection.PreferredReasoningEffort = profile.ReasoningEffort;
+selection.UpdatedAt = DateTime.UtcNow;
+
+NormalizeProviderSelectionOrder();
+EnsurePlanningProviderSelection();
+await LoadProviderModelsAsync(profile.ProviderId);
+}
+
+// Resolved lazily so components and tests that never show profiles need no registration.
+private async Task LoadProfilesAsync()
+{
+var profileService = Services.GetService<IProfileService>();
+if (profileService == null)
+{
+_profiles = [];
+return;
+}
+
+try
+{
+_profiles = (await profileService.GetAllAsync()).ToList();
+}
+catch
+{
+_profiles = [];
+}
+}
+
 private async Task AddTeamAssignment(Agent agent)
 {
 if (IsAgentAssigned(agent.Id))
@@ -661,6 +720,7 @@ if (!_providerModelsByProviderId.ContainsKey(change.ProviderId))
 await LoadProviderModelsAsync(change.ProviderId);
 }
 
+selection.ProfileId = null;
 selection.PreferredModelId = string.IsNullOrWhiteSpace(change.PreferredModelId)
 ? null
 : change.PreferredModelId.Trim();
@@ -984,14 +1044,17 @@ PlanningEnabled = source.PlanningEnabled,
 PlanningProviderId = source.PlanningProviderId,
 PlanningModelId = source.PlanningModelId,
 PlanningReasoningEffort = source.PlanningReasoningEffort,
+PlanningProfileId = source.PlanningProfileId,
 ReviewEnabled = source.ReviewEnabled,
 ReviewProviderId = source.ReviewProviderId,
 ReviewInferenceProviderId = source.ReviewInferenceProviderId,
 ReviewModelId = source.ReviewModelId,
 ReviewReasoningEffort = source.ReviewReasoningEffort,
+ReviewProfileId = source.ReviewProfileId,
 LeadProviderId = source.LeadProviderId,
 LeadModelId = source.LeadModelId,
 LeadReasoningEffort = source.LeadReasoningEffort,
+LeadProfileId = source.LeadProfileId,
 LeadDirection = source.LeadDirection,
 PromptContext = source.PromptContext,
 Memory = source.Memory,
@@ -1025,6 +1088,7 @@ ProviderId = projectProvider.ProviderId,
 	IsEnabled = projectProvider.IsEnabled,
 	PreferredModelId = projectProvider.PreferredModelId,
 	PreferredReasoningEffort = projectProvider.PreferredReasoningEffort,
+	ProfileId = projectProvider.ProfileId,
 	CreatedAt = projectProvider.CreatedAt,
 UpdatedAt = projectProvider.UpdatedAt,
 Provider = ResolveProvider(projectProvider.ProviderId)

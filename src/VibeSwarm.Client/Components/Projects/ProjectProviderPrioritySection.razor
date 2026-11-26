@@ -38,6 +38,7 @@ else
             var modelInputId = $"provider-model-{selection.ProviderId}";
             var reasoningInputId = $"provider-reasoning-{selection.ProviderId}";
             var reasoningOptions = provider != null ? ProviderCapabilities.GetSupportedReasoningEfforts(provider) : [];
+            var linkedProfile = selection.ProfileId is Guid profileId ? Profiles.FirstOrDefault(profile => profile.Id == profileId) : null;
         }
         <div class="rounded border bg-body p-5">
         <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
@@ -49,6 +50,10 @@ else
         {
         <span class="badge badge-subtle theme-secondary">@provider.Type</span>
         }
+        @if (linkedProfile != null)
+        {
+        <span class="badge badge-subtle theme-primary">@linkedProfile.Name</span>
+        }
         </div>
         </div>
         <div class="d-flex flex-wrap justify-content-end gap-3">
@@ -58,6 +63,15 @@ else
         </div>
         </div>
 
+        @if (linkedProfile != null)
+        {
+        <div class="mt-5 d-flex align-items-center gap-3 flex-wrap">
+        <span class="small fg-1 me-auto">@(ProfileRow.Describe(linkedProfile)). Editing the profile updates this too.</span>
+        <button type="button" class="btn-sm btn-link text-decoration-none px-0" @onclick="() => selection.ProfileId = null">Set by hand</button>
+        </div>
+        }
+        else
+        {
         <div class="mt-5">
         <label for="@modelInputId" class="form-label small mb-1">
         Default model
@@ -109,6 +123,7 @@ else
         }
         </div>
         </div>
+        }
         </div>
     </ItemTemplate>
 </DragDropList>
@@ -116,6 +131,25 @@ else
 else
 {
 <div class="small fg-1 fst-italic mb-5">No provider priority configured.</div>
+}
+
+@if (Profiles.Count > 0)
+{
+<div class="form-label">Add a profile</div>
+<div class="d-grid gap-3 mb-5">
+@foreach (var profile in Profiles)
+{
+var isLinked = Project.ProviderSelections.Any(selection => selection.ProfileId == profile.Id);
+<button type="button" class="btn-outline theme-secondary d-flex justify-content-between gap-3 text-start flex-wrap py-3"
+@onclick="() => OnAddProfile.InvokeAsync(profile)" disabled="@isLinked">
+<span class="text-start min-w-0">
+<span class="fw-semibold">@profile.Name</span>
+<span class="fg-1 sm:ms-3 d-block sm:d-inline">@ProfileRow.Describe(profile)</span>
+</span>
+<i class="bi @(isLinked ? "bi-check-lg" : "bi-plus-lg")"></i>
+</button>
+}
+</div>
 }
 
 <div class="form-label">Add a provider</div>
@@ -168,6 +202,13 @@ public EventCallback<Guid> OnRemove { get; set; }
 
 [Parameter]
 public EventCallback<Provider> OnAdd { get; set; }
+
+/// <summary>Profiles on providers the project can use, offered as ready-made entries.</summary>
+[Parameter]
+public IReadOnlyList<Profile> Profiles { get; set; } = [];
+
+[Parameter]
+public EventCallback<Profile> OnAddProfile { get; set; }
 
 [Parameter]
 public EventCallback<ProjectProviderModelSelectionChange> OnPreferredModelChanged { get; set; }

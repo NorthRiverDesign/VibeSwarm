@@ -10,6 +10,7 @@ public class DatabaseExportDto
 	public List<ProjectExportDto> Projects { get; set; } = [];
 	public List<SkillExportDto> Skills { get; set; } = [];
 	public List<AgentExportDto> Agents { get; set; } = [];
+	public List<ProfileExportDto> Profiles { get; set; } = [];
 	public List<ScheduleExportDto> Schedules { get; set; } = [];
 }
 
@@ -90,6 +91,15 @@ public class AgentExportDto
 	public string? DefaultModelId { get; set; }
 	public bool IsEnabled { get; set; } = true;
 	public List<string> SkillNames { get; set; } = [];
+}
+
+public class ProfileExportDto
+{
+	public string Name { get; set; } = string.Empty;
+	public string? Description { get; set; }
+	public string ProviderName { get; set; } = string.Empty;
+	public string? ModelId { get; set; }
+	public string? ReasoningEffort { get; set; }
 }
 
 public class ScheduleExportDto

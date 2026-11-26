@@ -129,6 +129,10 @@ placeholder="@GetGoalPromptPlaceholder()" maxlength="@ValidationLimits.JobGoalPr
 
 @if (SelectedAgent == null)
 {
+<ProfilePicker Id="jobProfile" Class="mb-5" Profiles="JobProfiles" SelectedProfileId="CurrentProfileId"
+			   CustomLabel="None" LinkedNote="" CustomHint="Pick a profile to fill in the provider, model and reasoning."
+			   OnSelected="ApplyProfileAsync" />
+
 <div class="mb-5">
 <label for="provider" class="form-label">Provider</label>
 @if (!string.IsNullOrEmpty(ProviderHint))
@@ -263,6 +267,25 @@ else
 }
 
 </AccordionSection>
+
+@if (SelectedAgent == null)
+{
+<AccordionSection Title="Instances" Icon="copy"
+Summary="Run copies of this job side by side"
+Badge="@InstancesSummary" @bind-IsOpen="_openInstancesSection">
+<div class="mb-5">
+<label for="instances" class="form-label">Instances</label>
+<InputSelect id="instances" @bind-Value="FormModel.Instances" class="form-control">
+@for (var count = 1; count <= ValidationLimits.JobInstancesMax; count++)
+{
+<option value="@count">@(count == 1 ? "1 (just this job)" : $"{count} side by side")</option>
+}
+</InputSelect>
+<ValidationMessage For="@(() => FormModel.Instances)" class="fg-danger small" />
+<div class="form-text">Write the goal as a list: its items are split between copies, each running in its own worktree on the same provider and model, and each copy's work lands on the branch as it finishes. @InstancesNote</div>
+</div>
+</AccordionSection>
+}
 
 @if (SelectedAgent == null)
 {
@@ -407,6 +430,46 @@ public EventCallback OnTemplateLibraryChanged { get; set; }
 private readonly string _formId = $"create-job-form-{Guid.NewGuid():N}";
 private bool ShowAdvancedOptions { get; set; }
 private bool _openModelSection;
+private bool _openInstancesSection;
+private List<Profile> _profiles = [];
+private Guid? _selectedProfileId;
+
+/// <summary>Profiles on a provider this job may use.</summary>
+private IReadOnlyList<Profile> JobProfiles => _profiles
+	.Where(profile => Providers.Any(provider => provider.IsEnabled && provider.Id == profile.ProviderId))
+	.ToList();
+
+/// <summary>The picked profile while the form still matches it; editing any field drops it.</summary>
+private Guid? CurrentProfileId => _selectedProfileId is Guid id
+	&& JobProfiles.FirstOrDefault(profile => profile.Id == id) is { } profile
+	&& FormModel.ProviderId == profile.ProviderId
+	&& string.Equals(NullIfEmpty(SelectedModelId), profile.ModelId, StringComparison.Ordinal)
+	&& string.Equals(NullIfEmpty(FormModel.ReasoningEffort), profile.ReasoningEffort, StringComparison.Ordinal)
+		? id
+		: null;
+
+private string? InstancesSummary => FormModel.Instances > 1 ? $"×{FormModel.Instances}" : null;
+
+/// <summary>How many copies the goal as written will actually run, when that's fewer than asked.</summary>
+private string? InstancesNote
+{
+	get
+	{
+		if (FormModel.Instances < 2)
+		{
+			return null;
+		}
+
+		var items = JobInstanceSplitter.GetListItems(GetEffectiveGoalPrompt()).Count;
+		return items >= FormModel.Instances
+			? null
+			: items < 2
+				? "This goal has no list yet, so it runs once."
+				: $"This goal lists {items} items, so {items} copies run.";
+	}
+}
+
+private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 private bool _openDeliverySection;
 private bool _previousIsVisible;
 private CreateJobFormModel FormModel { get; set; } = new();
@@ -429,7 +492,10 @@ protected override async Task OnParametersSetAsync()
 if (IsVisible && !_previousIsVisible)
 {
 await RefreshAgentProjectAsync();
+await LoadProfilesAsync();
+_selectedProfileId = null;
 FormModel = CreateJobFormModel.FromJob(JobModel);
+_openInstancesSection = FormModel.Instances > 1;
 _selectedTemplateId = JobModel.JobTemplateId;
 _templateStatusMessage = null;
 	if (SelectedAgent != null)
@@ -475,6 +541,45 @@ FormModel.AgentId = agentId;
 	SyncGoalPromptValidationState();
 
 	return Task.CompletedTask;
+}
+
+// Resolved lazily so pages and tests that never show profiles need no registration.
+private async Task LoadProfilesAsync()
+{
+	var profileService = Services.GetService<IProfileService>();
+	if (profileService == null)
+	{
+		_profiles = [];
+		return;
+	}
+
+	try
+	{
+		_profiles = (await profileService.GetAllAsync()).ToList();
+	}
+	catch
+	{
+		_profiles = [];
+	}
+}
+
+private async Task ApplyProfileAsync(Profile? profile)
+{
+	_selectedProfileId = profile?.Id;
+	if (profile == null)
+	{
+		return;
+	}
+
+	if (FormModel.ProviderId != profile.ProviderId)
+	{
+		FormModel.ProviderId = profile.ProviderId;
+		await OnProviderChanged.InvokeAsync(profile.ProviderId);
+	}
+
+	FormModel.ReasoningEffort = profile.ReasoningEffort;
+	SelectedModelId = profile.ModelId ?? string.Empty;
+	await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
 }
 
 private async Task HandleProviderChanged()

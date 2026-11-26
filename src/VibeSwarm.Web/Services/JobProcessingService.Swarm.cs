@@ -325,6 +325,7 @@ public partial class JobProcessingService
 			var agentName = job.AgentId.HasValue
 				? await dbContext.Agents.AsNoTracking().Where(agent => agent.Id == job.AgentId).Select(agent => agent.Name).FirstOrDefaultAsync()
 				: null;
+			agentName ??= job.InstanceNumber is int instanceNumber ? $"instance {instanceNumber}" : null;
 
 			Job BuildMergeJob(bool sameProvider) => new()
 			{

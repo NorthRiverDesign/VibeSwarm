@@ -32,6 +32,11 @@ public static class ValidationLimits
 	public const int SkillDescriptionMaxLength = 2000;
 	public const int AgentDescriptionMaxLength = 500;
 	public const int AgentResponsibilitiesMaxLength = 4000;
+	public const int ProfileNameMaxLength = 100;
+	public const int ProfileDescriptionMaxLength = 500;
+
+	/// <summary>The most copies of one job that can run side by side.</summary>
+	public const int JobInstancesMax = 5;
 
 	public const int IdeaDescriptionMaxLength = 8000;
 	public const int IdeaExpandedDescriptionMaxLength = 20000;

@@ -84,6 +84,7 @@ public class ProjectService : IProjectService
 		{
 			throw new InvalidOperationException($"A project named '{project.Name}' already exists.");
 		}
+		await ApplyProfileLinksAsync(project, cancellationToken);
 		NormalizePlanningSettings(project);
 		project.FolderId = await ResolveFolderIdAsync(project.FolderId, cancellationToken);
 		// Links go both ways, so they are saved through SetLinkedProjectsAsync, never with the project.
@@ -154,6 +155,7 @@ public class ProjectService : IProjectService
 		{
 			throw new InvalidOperationException($"A project named '{project.Name}' already exists.");
 		}
+		await ApplyProfileLinksAsync(project, cancellationToken);
 		NormalizePlanningSettings(project);
 		existing.Name = project.Name;
 		existing.Description = project.Description;
@@ -168,14 +170,17 @@ public class ProjectService : IProjectService
 		existing.PlanningProviderId = project.PlanningProviderId;
 		existing.PlanningModelId = project.PlanningModelId;
 		existing.PlanningReasoningEffort = project.PlanningReasoningEffort;
+		existing.PlanningProfileId = project.PlanningProfileId;
 		existing.ReviewEnabled = project.ReviewEnabled;
 		existing.ReviewProviderId = project.ReviewProviderId;
 		existing.ReviewInferenceProviderId = project.ReviewInferenceProviderId;
 		existing.ReviewModelId = project.ReviewModelId;
 		existing.ReviewReasoningEffort = project.ReviewReasoningEffort;
+		existing.ReviewProfileId = project.ReviewProfileId;
 		existing.LeadProviderId = project.LeadProviderId;
 		existing.LeadModelId = project.LeadModelId;
 		existing.LeadReasoningEffort = project.LeadReasoningEffort;
+		existing.LeadProfileId = project.LeadProfileId;
 		existing.LeadDirection = project.LeadDirection;
 		existing.IdeaInferenceProviderId = project.IdeaInferenceProviderId;
 		existing.IdeaInferenceModelId = string.IsNullOrWhiteSpace(project.IdeaInferenceModelId) ? null : project.IdeaInferenceModelId.Trim();
@@ -1003,6 +1008,7 @@ public class ProjectService : IProjectService
 					IsEnabled = requested.IsEnabled,
 					PreferredModelId = requested.PreferredModelId,
 					PreferredReasoningEffort = requested.PreferredReasoningEffort,
+					ProfileId = requested.ProfileId,
 					CreatedAt = requested.CreatedAt,
 					UpdatedAt = requested.UpdatedAt
 				});
@@ -1013,7 +1019,33 @@ public class ProjectService : IProjectService
 			current.IsEnabled = requested.IsEnabled;
 			current.PreferredModelId = requested.PreferredModelId;
 			current.PreferredReasoningEffort = requested.PreferredReasoningEffort;
+			current.ProfileId = requested.ProfileId;
 			current.UpdatedAt = DateTime.UtcNow;
+		}
+	}
+
+	/// <summary>
+	/// Fills every setting linked to a profile from that profile, so what's saved always matches
+	/// it whatever the client sent. Links to profiles that no longer exist are dropped.
+	/// </summary>
+	private async Task ApplyProfileLinksAsync(Project project, CancellationToken cancellationToken)
+	{
+		var ids = ProfileLinks.GetLinkedProfileIds(project);
+		if (ids.Count == 0)
+		{
+			return;
+		}
+
+		var profiles = await _dbContext.Profiles
+			.AsNoTracking()
+			.Include(profile => profile.Provider)
+			.Where(profile => ids.Contains(profile.Id))
+			.ToDictionaryAsync(profile => profile.Id, cancellationToken);
+
+		ProfileLinks.ApplyRoleLinks(project, profiles);
+		foreach (var entry in project.ProviderSelections ?? [])
+		{
+			ProfileLinks.ApplyEntryLink(entry, profiles);
 		}
 	}
 

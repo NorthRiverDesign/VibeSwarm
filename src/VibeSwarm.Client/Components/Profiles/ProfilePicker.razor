@@ -1,0 +1,68 @@
+@* Picks a profile for a provider, model and reasoning setting, or Custom to set them by hand.
+   Shows nothing when there are no profiles to pick from. *@
+
+@if (Profiles.Count > 0)
+{
+	<div class="@Class">
+		<label for="@Id" class="form-label">@Label</label>
+		<select id="@Id" class="form-control" value="@(Selected?.Id.ToString() ?? string.Empty)" @onchange="HandleChanged">
+			<option value="">@CustomLabel</option>
+			@foreach (var profile in Profiles)
+			{
+				<option value="@profile.Id">@profile.Name</option>
+			}
+		</select>
+		<div class="form-text">
+			@if (Selected is { } selected)
+			{
+				<span>@ProfileRow.Describe(selected). @LinkedNote</span>
+			}
+			else
+			{
+				<span>@CustomHint</span>
+			}
+		</div>
+	</div>
+}
+
+@code {
+	[Parameter, EditorRequired]
+	public string Id { get; set; } = string.Empty;
+
+	[Parameter]
+	public string Label { get; set; } = "Profile";
+
+	[Parameter]
+	public string CustomLabel { get; set; } = "Custom";
+
+	[Parameter]
+	public IReadOnlyList<Profile> Profiles { get; set; } = [];
+
+	[Parameter]
+	public Guid? SelectedProfileId { get; set; }
+
+	/// <summary>Raised with the picked profile, or null for Custom.</summary>
+	[Parameter]
+	public EventCallback<Profile?> OnSelected { get; set; }
+
+	[Parameter]
+	public string? Class { get; set; }
+
+	/// <summary>Follows the picked profile's summary.</summary>
+	[Parameter]
+	public string LinkedNote { get; set; } = "Editing the profile updates this too.";
+
+	/// <summary>Shown while Custom is picked.</summary>
+	[Parameter]
+	public string CustomHint { get; set; } = "Pick a profile to keep this in step with it, or set it by hand below.";
+
+	private Profile? Selected => SelectedProfileId is Guid id ? Profiles.FirstOrDefault(profile => profile.Id == id) : null;
+
+	private Task HandleChanged(ChangeEventArgs args)
+	{
+		var profile = Guid.TryParse(args.Value?.ToString(), out var id)
+			? Profiles.FirstOrDefault(candidate => candidate.Id == id)
+			: null;
+		return OnSelected.InvokeAsync(profile);
+	}
+}

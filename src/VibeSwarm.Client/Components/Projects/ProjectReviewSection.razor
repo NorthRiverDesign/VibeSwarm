@@ -26,6 +26,11 @@
 		}
 		else
 		{
+			<ProfilePicker Id="modal-reviewProfile" Class="mb-5" Profiles="EligibleProfiles"
+						   SelectedProfileId="Project.ReviewProfileId" OnSelected="ApplyProfileAsync" />
+
+			@if (!IsLinked)
+			{
 			<div class="mb-5">
 				<label for="modal-reviewer" class="form-label">Reviewer</label>
 				<select id="modal-reviewer" class="form-control" value="@ReviewerKey" @onchange="HandleReviewerChanged">
@@ -77,6 +82,7 @@
 					</div>
 				}
 			</div>
+			}
 		}
 	}
 }
@@ -91,8 +97,33 @@
 	[Parameter]
 	public IReadOnlyList<InferenceProvider> AvailableInferenceProviders { get; set; } = [];
 
+	/// <summary>Every profile; only those on a provider that can review the code are offered.</summary>
+	[Parameter]
+	public IReadOnlyList<Profile> Profiles { get; set; } = [];
+
 	private List<(string Id, string Name)> _models = [];
 	private string? _loadedFor;
+
+	private IReadOnlyList<Profile> EligibleProfiles => Profiles
+		.Where(profile => AvailableProviders.Any(provider => provider.Id == profile.ProviderId))
+		.ToList();
+
+	private bool IsLinked => Project.ReviewProfileId is Guid id && EligibleProfiles.Any(profile => profile.Id == id);
+
+	private async Task ApplyProfileAsync(Profile? profile)
+	{
+		Project.ReviewProfileId = profile?.Id;
+		if (profile == null)
+		{
+			return;
+		}
+
+		Project.ReviewProviderId = profile.ProviderId;
+		Project.ReviewInferenceProviderId = null;
+		Project.ReviewModelId = profile.ModelId;
+		Project.ReviewReasoningEffort = profile.ReasoningEffort;
+		await LoadModelsAsync();
+	}
 
 	private string? ReviewerKey => Project.ReviewProviderId is Guid providerId
 		? $"p:{providerId}"

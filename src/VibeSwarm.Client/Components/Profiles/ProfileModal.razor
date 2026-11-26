@@ -1,0 +1,234 @@
+@* Adds or edits a profile: a name for one provider, model and reasoning level. *@
+@inject IProfileService ProfileService
+@inject IProviderService ProviderService
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged"
+			 Title="@(IsEdit ? "Edit profile" : "New profile")" Icon="@(IsEdit ? "pencil" : "person-badge")"
+			 OnClose="HandleClose">
+	<ChildContent>
+		<EditForm Model="@_form" OnValidSubmit="HandleValidSubmit">
+			<DataAnnotationsValidator />
+
+			<div class="d-flex flex-column gap-5">
+				<div>
+					<label for="profile-name" class="form-label">Name</label>
+					<InputText id="profile-name" @bind-Value="_form.Name" class="form-control" placeholder="Deep thinker" />
+					<ValidationMessage For="@(() => _form.Name)" class="fg-danger small" />
+				</div>
+
+				<div>
+					<label for="profile-description" class="form-label">Description <span class="fg-1 fw-normal">(optional)</span></label>
+					<InputText id="profile-description" @bind-Value="_form.Description" class="form-control"
+							   placeholder="Careful work on hard problems" />
+					<ValidationMessage For="@(() => _form.Description)" class="fg-danger small" />
+				</div>
+
+				<div>
+					<label for="profile-provider" class="form-label">Provider</label>
+					@if (_providers.Count == 0)
+					{
+						<div class="small fg-1">No enabled providers yet. Add one under Providers first.</div>
+					}
+					else
+					{
+						<InputSelect TValue="Guid?" id="profile-provider" Value="_form.ProviderId"
+									 ValueChanged="HandleProviderChanged" ValueExpression="@(() => _form.ProviderId)"
+									 class="form-control">
+							<option value="">Choose a provider</option>
+							@foreach (var provider in _providers)
+							{
+								<option value="@provider.Id">@provider.Name (@provider.Type)</option>
+							}
+						</InputSelect>
+					}
+					<ValidationMessage For="@(() => _form.ProviderId)" class="fg-danger small" />
+				</div>
+
+				<div class="row g-5">
+					<div class="col-12 sm:col-6">
+						<label for="profile-model" class="form-label">Model</label>
+						<div class="input-group">
+							<InputSelect id="profile-model" @bind-Value="_form.ModelId" class="form-control"
+										 disabled="@(!_form.ProviderId.HasValue || _models.Count == 0)">
+								<option value="">Provider default</option>
+								@foreach (var model in _models)
+								{
+									<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ? " (Default)" : string.Empty)</option>
+								}
+							</InputSelect>
+							<ModelRefreshButton ProviderId="@_form.ProviderId" OnRefreshed="ReloadModelsAsync" />
+						</div>
+						@if (_form.ProviderId.HasValue && _models.Count == 0)
+						{
+							<div class="form-text">No cached models yet — the provider default is used.</div>
+						}
+					</div>
+
+					<div class="col-12 sm:col-6">
+						<label for="profile-reasoning" class="form-label">Reasoning</label>
+						<InputSelect id="profile-reasoning" @bind-Value="_form.ReasoningEffort" class="form-control"
+									 disabled="@(ReasoningOptions.Count == 0)">
+							<option value="">Provider default</option>
+							@foreach (var reasoning in ReasoningOptions)
+							{
+								<option value="@reasoning">@reasoning</option>
+							}
+						</InputSelect>
+						@if (_form.ProviderId.HasValue && ReasoningOptions.Count == 0)
+						{
+							<div class="form-text">This provider has no configurable reasoning levels.</div>
+						}
+					</div>
+				</div>
+
+				@if (IsEdit)
+				{
+					<div class="form-text mt-0">Projects using this profile pick up the change when you save. Jobs already queued keep what they had.</div>
+				}
+
+				@if (!string.IsNullOrEmpty(_error))
+				{
+					<div class="fg-danger small" role="alert">@_error</div>
+				}
+
+				<div class="d-flex gap-3 justify-content-end">
+					<button type="button" class="btn-solid theme-secondary" @onclick="HandleClose">Cancel</button>
+					<button type="submit" class="btn-solid theme-primary" disabled="@_isSaving">
+						@if (_isSaving)
+						{
+							<span class="spinner-border spinner-sm" role="status"></span>
+						}
+						@(IsEdit ? "Save" : "Add profile")
+					</button>
+				</div>
+			</div>
+		</EditForm>
+	</ChildContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public Profile? EditProfile { get; set; }
+
+	[Parameter]
+	public EventCallback OnSaved { get; set; }
+
+	private ProfileFormModel _form = new();
+	private List<Provider> _providers = [];
+	private List<ProviderModel> _models = [];
+	private bool _isSaving;
+	private string? _error;
+	private bool _wasVisible;
+
+	private bool IsEdit => EditProfile != null;
+
+	private IReadOnlyList<string> ReasoningOptions => _form.ProviderId is Guid providerId
+		&& _providers.FirstOrDefault(provider => provider.Id == providerId) is { } selected
+			? ProviderCapabilities.GetSupportedReasoningEfforts(selected)
+			: [];
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (IsVisible && !_wasVisible)
+		{
+			_form = ProfileFormModel.From(EditProfile);
+			_error = null;
+			_models = [];
+			await LoadProvidersAsync();
+			await ReloadModelsAsync();
+		}
+
+		_wasVisible = IsVisible;
+	}
+
+	private async Task LoadProvidersAsync()
+	{
+		try
+		{
+			_providers = (await ProviderService.GetAllAsync())
+				.Where(provider => provider.IsEnabled || provider.Id == _form.ProviderId)
+				.OrderByDescending(provider => provider.IsDefault)
+				.ThenBy(provider => provider.Name)
+				.ToList();
+		}
+		catch
+		{
+			_providers = [];
+		}
+	}
+
+	private async Task HandleProviderChanged(Guid? providerId)
+	{
+		_form.ProviderId = providerId;
+		_form.ModelId = null;
+		_form.ReasoningEffort = null;
+		await ReloadModelsAsync();
+	}
+
+	private async Task ReloadModelsAsync()
+	{
+		if (_form.ProviderId is not Guid providerId)
+		{
+			_models = [];
+			return;
+		}
+
+		try
+		{
+			_models = (await ProviderService.GetModelsAsync(providerId))
+				.Where(model => model.IsAvailable)
+				.OrderByDescending(model => model.IsDefault)
+				.ThenBy(model => model.DisplayName ?? model.ModelId)
+				.ToList();
+		}
+		catch
+		{
+			_models = [];
+		}
+
+		// Only a model the provider lists can be saved.
+		if (!string.IsNullOrWhiteSpace(_form.ModelId) && !_models.Any(model => model.ModelId == _form.ModelId))
+		{
+			_form.ModelId = null;
+		}
+	}
+
+	private async Task HandleValidSubmit()
+	{
+		_isSaving = true;
+		_error = null;
+		try
+		{
+			var profile = _form.ToProfile();
+			if (IsEdit)
+			{
+				await ProfileService.UpdateAsync(profile);
+			}
+			else
+			{
+				await ProfileService.CreateAsync(profile);
+			}
+
+			await IsVisibleChanged.InvokeAsync(false);
+			await OnSaved.InvokeAsync();
+		}
+		catch (Exception ex)
+		{
+			_error = ex.Message;
+		}
+		finally
+		{
+			_isSaving = false;
+		}
+	}
+
+	private Task HandleVisibilityChanged(bool visible) => IsVisibleChanged.InvokeAsync(visible);
+
+	private Task HandleClose() => IsVisibleChanged.InvokeAsync(false);
+}

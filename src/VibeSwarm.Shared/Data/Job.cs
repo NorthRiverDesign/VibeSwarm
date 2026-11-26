@@ -637,6 +637,19 @@ public class Job
     public Guid? SwarmId { get; set; }
 
     /// <summary>
+    /// This job's place, from 1, among copies of one job started side by side. Set on each copy
+    /// when a job is created with more than one instance; null otherwise.
+    /// </summary>
+    public int? InstanceNumber { get; set; }
+
+    /// <summary>
+    /// How many copies of this job to start side by side, each in its own worktree. Read once
+    /// when the job is created and never stored.
+    /// </summary>
+    [NotMapped]
+    public int RequestedInstances { get; set; } = 1;
+
+    /// <summary>
     /// The team role this job is executing as. Set when the job is part of a team swarm.
     /// Null for regular jobs or when no specific role is assigned.
     /// </summary>

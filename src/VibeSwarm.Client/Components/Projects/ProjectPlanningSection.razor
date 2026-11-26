@@ -22,6 +22,11 @@
 		}
 		else
 		{
+			<ProfilePicker Id="modal-planningProfile" Class="mb-5" Profiles="EligibleProfiles"
+						   SelectedProfileId="Project.PlanningProfileId" OnSelected="ApplyProfileAsync" />
+
+			@if (!IsLinked)
+			{
 			<div class="mb-5">
 				<label for="modal-planningProvider" class="form-label">Planning provider</label>
 				<InputSelect TValue="Guid?" id="modal-planningProvider" @bind-Value="Project.PlanningProviderId"
@@ -75,6 +80,7 @@
 					}
 				</div>
 			</div>
+			}
 		}
 	}
 }
@@ -88,6 +94,16 @@
 
 	[Parameter]
 	public IReadOnlyList<ProviderModel> PlanningModels { get; set; } = [];
+
+	/// <summary>Every profile; only those on a provider that can plan are offered.</summary>
+	[Parameter]
+	public IReadOnlyList<Profile> Profiles { get; set; } = [];
+
+	private IReadOnlyList<Profile> EligibleProfiles => Profiles
+		.Where(profile => AvailableProviders.Any(provider => provider.Id == profile.ProviderId))
+		.ToList();
+
+	private bool IsLinked => Project.PlanningProfileId is Guid id && EligibleProfiles.Any(profile => profile.Id == id);
 
 	private IReadOnlyList<string> PlanningReasoningOptions => Project.PlanningProviderId.HasValue
 		? AvailableProviders
@@ -109,4 +125,18 @@
 	private Task HandlePlanningEnabledChanged() => OnPlanningEnabledChanged.InvokeAsync();
 
 	private Task HandlePlanningProviderChanged() => OnPlanningProviderChanged.InvokeAsync();
+
+	private async Task ApplyProfileAsync(Profile? profile)
+	{
+		Project.PlanningProfileId = profile?.Id;
+		if (profile == null)
+		{
+			return;
+		}
+
+		Project.PlanningProviderId = profile.ProviderId;
+		Project.PlanningModelId = profile.ModelId;
+		Project.PlanningReasoningEffort = profile.ReasoningEffort;
+		await OnPlanningModelsRefreshed.InvokeAsync();
+	}
 }

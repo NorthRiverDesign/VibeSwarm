@@ -15,6 +15,11 @@
 	}
 	else
 	{
+		<ProfilePicker Id="modal-leadProfile" Class="mb-5" Profiles="EligibleProfiles"
+					   SelectedProfileId="Project.LeadProfileId" OnSelected="ApplyProfileAsync" />
+
+		@if (!IsLinked)
+		{
 		<div class="mb-5">
 			<label for="modal-leadProvider" class="form-label">Lead</label>
 			<select id="modal-leadProvider" class="form-control" value="@(Project.LeadProviderId?.ToString() ?? string.Empty)"
@@ -27,9 +32,12 @@
 			</select>
 			<div class="form-text">A strong model works best here; it runs only when you ask, or when auto-pilot runs out of approved ideas.</div>
 		</div>
+		}
 
 		@if (Project.LeadProviderId.HasValue)
 		{
+			@if (!IsLinked)
+			{
 			<div class="row g-5 mb-5">
 				<div class="col-12 sm:col-6">
 					<label for="modal-leadModel" class="form-label">
@@ -57,6 +65,7 @@
 					</InputSelect>
 				</div>
 			</div>
+			}
 
 			<label for="modal-leadDirection" class="form-label">
 				Direction <span class="fg-1 fw-normal">(optional)</span>
@@ -76,8 +85,18 @@
 	[Parameter]
 	public IReadOnlyList<Provider> AvailableProviders { get; set; } = [];
 
+	/// <summary>Every profile; only those on a provider that can lead are offered.</summary>
+	[Parameter]
+	public IReadOnlyList<Profile> Profiles { get; set; } = [];
+
 	private List<ProviderModel> _models = [];
 	private Guid? _loadedFor;
+
+	private IReadOnlyList<Profile> EligibleProfiles => Profiles
+		.Where(profile => AvailableProviders.Any(provider => provider.Id == profile.ProviderId))
+		.ToList();
+
+	private bool IsLinked => Project.LeadProfileId is Guid id && EligibleProfiles.Any(profile => profile.Id == id);
 
 	private IReadOnlyList<string> ReasoningOptions => Project.LeadProviderId.HasValue
 		? AvailableProviders
@@ -93,6 +112,20 @@
 		{
 			await LoadModelsAsync();
 		}
+	}
+
+	private async Task ApplyProfileAsync(Profile? profile)
+	{
+		Project.LeadProfileId = profile?.Id;
+		if (profile == null)
+		{
+			return;
+		}
+
+		Project.LeadProviderId = profile.ProviderId;
+		Project.LeadModelId = profile.ModelId;
+		Project.LeadReasoningEffort = profile.ReasoningEffort;
+		await LoadModelsAsync();
 	}
 
 	private async Task HandleProviderChanged(ChangeEventArgs args)

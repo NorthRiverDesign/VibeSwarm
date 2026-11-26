@@ -1,0 +1,59 @@
+@* One profile as a grouped-list row: its name and what it runs on, opening in place for the
+   details and actions. *@
+
+<ListRow Icon="person-badge" Title="@Profile.Name" Subtitle="@Summary">
+	<ChildContent>
+		<dl class="d-flex flex-column gap-3 small mb-0">
+			@foreach (var (label, value) in Facts)
+			{
+				<div class="d-flex justify-content-between gap-5">
+					<dt class="fw-normal fg-1 flex-shrink-0">@label</dt>
+					<dd class="mb-0 text-end text-break">@value</dd>
+				</div>
+			}
+		</dl>
+
+		<div class="d-flex align-items-center gap-3">
+			<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => OnEdit.InvokeAsync(Profile)">Edit</button>
+			<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDelete.InvokeAsync(Profile)">
+				<i class="bi bi-trash"></i>Delete
+			</button>
+		</div>
+	</ChildContent>
+</ListRow>
+
+@code {
+	[Parameter, EditorRequired]
+	public Profile Profile { get; set; } = new();
+
+	[Parameter]
+	public EventCallback<Profile> OnEdit { get; set; }
+
+	[Parameter]
+	public EventCallback<Profile> OnDelete { get; set; }
+
+	/// <summary>What the profile runs on, in one quiet line: provider · model · reasoning.</summary>
+	private string Summary => Describe(Profile);
+
+	private IEnumerable<(string Label, string Value)> Facts
+	{
+		get
+		{
+			if (!string.IsNullOrWhiteSpace(Profile.Description))
+			{
+				yield return ("Description", Profile.Description);
+			}
+
+			yield return ("Provider", Profile.Provider?.Name ?? "Unknown provider");
+			yield return ("Model", Profile.ModelId ?? "Provider default");
+			yield return ("Reasoning", Profile.ReasoningEffort ?? "Provider default");
+		}
+	}
+
+	public static string Describe(Profile profile)
+	{
+		var parts = new[] { profile.Provider?.Name, profile.ModelId, profile.ReasoningEffort }
+			.Where(part => !string.IsNullOrWhiteSpace(part));
+		return string.Join(" · ", parts);
+	}
+}

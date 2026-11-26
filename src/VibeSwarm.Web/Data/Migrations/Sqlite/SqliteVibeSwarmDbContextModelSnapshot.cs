@@ -994,6 +994,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(20000)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("InstanceNumber")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("InteractionChoices")
                         .HasColumnType("TEXT");
 
@@ -1669,6 +1672,48 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.ToTable("LeadReviews");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.Profile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ModelId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ProviderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReasoningEffort")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("ProviderId");
+
+                    b.ToTable("Profiles");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.Project", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1751,6 +1796,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("LeadProfileId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("LeadProviderId")
                         .HasColumnType("TEXT");
 
@@ -1772,6 +1820,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<string>("PlanningModelId")
                         .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("PlanningProfileId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("PlanningProviderId")
@@ -1803,6 +1854,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<string>("ReviewModelId")
                         .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReviewProfileId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("ReviewProviderId")
@@ -2007,6 +2061,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("TEXT");
@@ -2756,6 +2813,17 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .IsRequired();
 
                     b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.Profile", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Providers.Provider", "Provider")
+                        .WithMany()
+                        .HasForeignKey("ProviderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Provider");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.Project", b =>

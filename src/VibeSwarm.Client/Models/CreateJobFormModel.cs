@@ -37,6 +37,10 @@ public sealed class CreateJobFormModel : IValidatableObject
 	[StringLength(2000)]
 	public string? CycleReviewPrompt { get; set; }
 
+	/// <summary>How many copies of the job run side by side (see <see cref="Job.RequestedInstances"/>).</summary>
+	[Range(1, ValidationLimits.JobInstancesMax, ErrorMessage = "Instances must be between {1} and {2}.")]
+	public int Instances { get; set; } = 1;
+
 	public static CreateJobFormModel FromJob(Job job)
 	{
 		return new CreateJobFormModel
@@ -51,7 +55,8 @@ public sealed class CreateJobFormModel : IValidatableObject
 			CycleMode = job.CycleMode,
 			CycleSessionMode = job.CycleSessionMode,
 			MaxCycles = job.MaxCycles,
-			CycleReviewPrompt = job.CycleReviewPrompt
+			CycleReviewPrompt = job.CycleReviewPrompt,
+			Instances = Math.Clamp(job.RequestedInstances, 1, ValidationLimits.JobInstancesMax)
 		};
 	}
 
@@ -68,6 +73,8 @@ public sealed class CreateJobFormModel : IValidatableObject
 		job.CycleSessionMode = CycleSessionMode;
 		job.MaxCycles = MaxCycles;
 		job.CycleReviewPrompt = string.IsNullOrWhiteSpace(CycleReviewPrompt) ? null : CycleReviewPrompt.Trim();
+		// An agent's job runs as that agent alone.
+		job.RequestedInstances = job.AgentId.HasValue ? 1 : Math.Clamp(Instances, 1, ValidationLimits.JobInstancesMax);
 	}
 
 	public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)

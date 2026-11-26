@@ -55,6 +55,7 @@ public static class DataServiceExtensions
 			client.Timeout = TimeSpan.FromSeconds(30);
 		});
 		services.AddScoped<IAgentService, AgentService>();
+		services.AddScoped<IProfileService, ProfileService>();
 		services.AddScoped<IMcpConfigService, McpConfigService>();
 		services.AddScoped<IProjectMemoryService, ProjectMemoryService>();
 		services.AddScoped<ILocalEnvironmentSetupService, LocalEnvironmentSetupService>();
