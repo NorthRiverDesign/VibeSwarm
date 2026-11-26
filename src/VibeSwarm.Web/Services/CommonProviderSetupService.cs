@@ -178,6 +178,7 @@ public class CommonProviderSetupService(
 		}
 
 		await _dbContext.SaveChangesAsync(cancellationToken);
+		await ProfileService.EnsureProviderDefaultsAsync(_dbContext, cancellationToken);
 
 		var status = await GetStatusAsync(request.ProviderType, cancellationToken);
 		return new CommonProviderActionResult

@@ -181,6 +181,8 @@ public class ProjectService : IProjectService
 		existing.LeadModelId = project.LeadModelId;
 		existing.LeadReasoningEffort = project.LeadReasoningEffort;
 		existing.LeadProfileId = project.LeadProfileId;
+		existing.DecisionsProfileId = project.DecisionsProfileId;
+		existing.ResearchProfileId = project.ResearchProfileId;
 		existing.LeadDirection = project.LeadDirection;
 		existing.IdeaInferenceProviderId = project.IdeaInferenceProviderId;
 		existing.IdeaInferenceModelId = string.IsNullOrWhiteSpace(project.IdeaInferenceModelId) ? null : project.IdeaInferenceModelId.Trim();
@@ -1039,13 +1041,20 @@ public class ProjectService : IProjectService
 		var profiles = await _dbContext.Profiles
 			.AsNoTracking()
 			.Include(profile => profile.Provider)
+			.Include(profile => profile.InferenceProvider)
 			.Where(profile => ids.Contains(profile.Id))
 			.ToDictionaryAsync(profile => profile.Id, cancellationToken);
 
 		ProfileLinks.ApplyRoleLinks(project, profiles);
+		ProfileLinks.ApplyHelperLinks(project, profiles);
 		foreach (var entry in project.ProviderSelections ?? [])
 		{
 			ProfileLinks.ApplyEntryLink(entry, profiles);
+		}
+
+		foreach (var assignment in project.AgentAssignments ?? [])
+		{
+			ProfileLinks.ApplyAssignmentLink(assignment, profiles);
 		}
 	}
 
@@ -1081,6 +1090,7 @@ public class ProjectService : IProjectService
 					ProviderId = requested.ProviderId,
 					PreferredModelId = requested.PreferredModelId,
 					PreferredReasoningEffort = requested.PreferredReasoningEffort,
+					ProfileId = requested.ProfileId,
 					IsEnabled = requested.IsEnabled,
 					CreatedAt = requested.CreatedAt,
 					UpdatedAt = requested.UpdatedAt
@@ -1091,6 +1101,7 @@ public class ProjectService : IProjectService
 			current.ProviderId = requested.ProviderId;
 			current.PreferredModelId = requested.PreferredModelId;
 			current.PreferredReasoningEffort = requested.PreferredReasoningEffort;
+			current.ProfileId = requested.ProfileId;
 			current.IsEnabled = requested.IsEnabled;
 			current.UpdatedAt = DateTime.UtcNow;
 		}

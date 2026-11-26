@@ -76,6 +76,7 @@ IsAgentAssigned="IsAgentAssigned" ResolveProviderModels="GetProviderModels"
 OnRemove="RemoveTeamAssignment" OnAdd="AddTeamAssignment"
 OnProviderChanged="HandleTeamAssignmentProviderChanged"
 OnPreferredModelChanged="HandleTeamAssignmentPreferredModelChanged"
+Profiles="@ProviderProfiles" OnProfileChanged="HandleTeamAssignmentProfileChanged"
 OnModelsRefreshed="LoadProviderModelsAsync" />
 </AccordionSection>
 
@@ -115,6 +116,13 @@ Summary="Looks over the project and suggests what to build next"
 Badge="@(FormModel.LeadProviderId.HasValue ? "On" : null)"
 BadgeClass="theme-primary" @bind-IsOpen="_openLead">
 <ProjectLeadSection Project="@FormModel" AvailableProviders="@GetPlanningProviders().ToList()" Profiles="@_profiles" />
+</AccordionSection>
+
+<AccordionSection Title="Helpers" Icon="people"
+Summary="Profiles a running job can ask for decisions and research"
+Badge="@HelpersSummary" @bind-IsOpen="_openHelpers">
+<ProjectHelpersSection Project="@FormModel" Profiles="@_profiles" ReadOnlyProviders="@GetPlanningProviders().ToList()"
+InferenceProviders="@_availableInferenceProviders" />
 </AccordionSection>
 
 <AccordionSection Title="Review" Icon="eye"
@@ -247,6 +255,11 @@ private bool _openIdeas;
 private bool _openInstructions;
 private bool _openBuildVerification;
 private bool _openReview;
+private bool _openHelpers;
+
+private string? HelpersSummary => (FormModel.DecisionsProfileId.HasValue ? 1 : 0) + (FormModel.ResearchProfileId.HasValue ? 1 : 0) is var count and > 0
+	? count.ToString()
+	: null;
 private bool _openLead;
 private bool _openLinks;
 private List<ProjectFolder> _folders = [];
@@ -580,13 +593,18 @@ await LoadProviderModelsAsync(provider.Id);
 /// </summary>
 private async Task AddProfileSelection(Profile profile)
 {
-var selection = FormModel.ProviderSelections.FirstOrDefault(candidate => candidate.ProviderId == profile.ProviderId);
+if (profile.ProviderId is not Guid providerId)
+{
+return;
+}
+
+var selection = FormModel.ProviderSelections.FirstOrDefault(candidate => candidate.ProviderId == providerId);
 if (selection == null)
 {
 selection = new ProjectProvider
 {
-ProviderId = profile.ProviderId,
-Provider = ResolveProvider(profile.ProviderId),
+ProviderId = providerId,
+Provider = ResolveProvider(providerId),
 Priority = FormModel.ProviderSelections.Count,
 IsEnabled = true,
 CreatedAt = DateTime.UtcNow
@@ -601,7 +619,7 @@ selection.UpdatedAt = DateTime.UtcNow;
 
 NormalizeProviderSelectionOrder();
 EnsurePlanningProviderSelection();
-await LoadProviderModelsAsync(profile.ProviderId);
+await LoadProviderModelsAsync(providerId);
 }
 
 // Resolved lazily so components and tests that never show profiles need no registration.
@@ -629,6 +647,27 @@ private async Task AddTeamAssignment(Agent agent)
 if (IsAgentAssigned(agent.Id))
 {
 return;
+}
+
+// An agent on a profile starts on it in the project too.
+if (agent.ProfileId is Guid agentProfileId
+	&& ProviderProfiles.FirstOrDefault(profile => profile.Id == agentProfileId) is { ProviderId: Guid profileProviderId } agentProfile)
+{
+	FormModel.AgentAssignments.Add(new ProjectAgent
+	{
+		AgentId = agent.Id,
+		Agent = agent,
+		ProviderId = profileProviderId,
+		Provider = ResolveProvider(profileProviderId),
+		PreferredModelId = agentProfile.ModelId,
+		PreferredReasoningEffort = agentProfile.ReasoningEffort,
+		ProfileId = agentProfile.Id,
+		IsEnabled = true,
+		CreatedAt = DateTime.UtcNow,
+		UpdatedAt = DateTime.UtcNow
+	});
+	await LoadProviderModelsAsync(profileProviderId);
+	return;
 }
 
 	var defaultProvider = FormModel.ProviderSelections
@@ -740,6 +779,7 @@ if (assignment == null)
 
 assignment.ProviderId = change.ProviderId;
 assignment.Provider = ResolveProvider(change.ProviderId);
+assignment.ProfileId = null;
 assignment.PreferredModelId = null;
 assignment.PreferredReasoningEffort = null;
 assignment.UpdatedAt = DateTime.UtcNow;
@@ -759,6 +799,7 @@ if (!_providerModelsByProviderId.ContainsKey(assignment.ProviderId))
 	await LoadProviderModelsAsync(assignment.ProviderId);
 }
 
+assignment.ProfileId = null;
 assignment.PreferredModelId = string.IsNullOrWhiteSpace(change.PreferredModelId)
 	? null
 	: change.PreferredModelId.Trim();
@@ -766,6 +807,28 @@ assignment.PreferredReasoningEffort = string.IsNullOrWhiteSpace(change.Preferred
 	? null
 	: ProviderCapabilities.NormalizeReasoningEffort(change.PreferredReasoningEffort);
 assignment.UpdatedAt = DateTime.UtcNow;
+}
+
+private async Task HandleTeamAssignmentProfileChanged((Guid AgentId, Profile? Profile) change)
+{
+var assignment = FormModel.AgentAssignments.FirstOrDefault(projectAgent => projectAgent.AgentId == change.AgentId);
+if (assignment == null)
+{
+	return;
+}
+
+assignment.ProfileId = change.Profile?.Id;
+assignment.UpdatedAt = DateTime.UtcNow;
+if (change.Profile?.ProviderId is not Guid providerId)
+{
+	return;
+}
+
+assignment.ProviderId = providerId;
+assignment.Provider = ResolveProvider(providerId);
+assignment.PreferredModelId = change.Profile.ModelId;
+assignment.PreferredReasoningEffort = change.Profile.ReasoningEffort;
+await LoadProviderModelsAsync(providerId);
 }
 
 private void NormalizeProviderSelectionOrder()
@@ -1055,6 +1118,8 @@ LeadProviderId = source.LeadProviderId,
 LeadModelId = source.LeadModelId,
 LeadReasoningEffort = source.LeadReasoningEffort,
 LeadProfileId = source.LeadProfileId,
+DecisionsProfileId = source.DecisionsProfileId,
+ResearchProfileId = source.ResearchProfileId,
 LeadDirection = source.LeadDirection,
 PromptContext = source.PromptContext,
 Memory = source.Memory,
@@ -1103,6 +1168,7 @@ Provider = ResolveProvider(projectProvider.ProviderId)
 		ProviderId = projectAgent.ProviderId,
 		PreferredModelId = projectAgent.PreferredModelId,
 		PreferredReasoningEffort = projectAgent.PreferredReasoningEffort,
+		ProfileId = projectAgent.ProfileId,
 		IsEnabled = projectAgent.IsEnabled,
 		CreatedAt = projectAgent.CreatedAt,
 		UpdatedAt = projectAgent.UpdatedAt,

@@ -566,15 +566,15 @@ private async Task LoadProfilesAsync()
 private async Task ApplyProfileAsync(Profile? profile)
 {
 	_selectedProfileId = profile?.Id;
-	if (profile == null)
+	if (profile?.ProviderId is not Guid providerId)
 	{
 		return;
 	}
 
-	if (FormModel.ProviderId != profile.ProviderId)
+	if (FormModel.ProviderId != providerId)
 	{
-		FormModel.ProviderId = profile.ProviderId;
-		await OnProviderChanged.InvokeAsync(profile.ProviderId);
+		FormModel.ProviderId = providerId;
+		await OnProviderChanged.InvokeAsync(providerId);
 	}
 
 	FormModel.ReasoningEffort = profile.ReasoningEffort;

@@ -499,6 +499,10 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 				.WithMany()
 				.HasForeignKey(e => e.ProviderId)
 				.OnDelete(DeleteBehavior.Cascade);
+			entity.HasOne(e => e.InferenceProvider)
+				.WithMany()
+				.HasForeignKey(e => e.InferenceProviderId)
+				.OnDelete(DeleteBehavior.Cascade);
 			entity.HasIndex(e => e.Name).IsUnique();
 		});
 

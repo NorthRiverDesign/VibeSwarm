@@ -45,6 +45,7 @@ public class HttpProfileService : IProfileService
 		Name = profile.Name,
 		Description = profile.Description,
 		ProviderId = profile.ProviderId,
+		InferenceProviderId = profile.InferenceProviderId,
 		ModelId = profile.ModelId,
 		ReasoningEffort = profile.ReasoningEffort,
 	};

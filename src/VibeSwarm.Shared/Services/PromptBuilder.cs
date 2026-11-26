@@ -1041,6 +1041,32 @@ public static class PromptBuilder
 	}
 
 	/// <summary>
+	/// The system prompt section naming the helpers a job can ask while it works (the project's
+	/// Decisions and Research profiles) and the command that asks them.
+	/// </summary>
+	public static string? BuildHelperRules(string command, IReadOnlyList<(string Name, string Purpose, string Runs, bool ReadsRepository)> helpers, int questionsPerRun)
+	{
+		if (string.IsNullOrWhiteSpace(command) || helpers.Count == 0)
+		{
+			return null;
+		}
+
+		var sb = new StringBuilder();
+		sb.AppendLine("<helpers>");
+		sb.AppendLine($"Other models can help you while you work. Ask one with `{command} <name> <<'EOF'`, then your question on the following lines and `EOF`. It prints the answer. An answer can take several minutes, so give the command a 10-minute timeout. A run can ask {questionsPerRun} questions, one at a time; ask when an answer would change what you do.");
+		foreach (var helper in helpers)
+		{
+			var reads = helper.ReadsRepository
+				? "It can read the repository."
+				: "It sees only your question, so include the context it needs.";
+			sb.AppendLine($"- {helper.Name} ({helper.Runs}): {helper.Purpose} {reads}");
+		}
+
+		sb.Append("</helpers>");
+		return sb.ToString();
+	}
+
+	/// <summary>
 	/// The system prompt section for one of several instances of a job: copies on the same
 	/// provider and model, each in its own worktree. A goal written as a list is divided between
 	/// them (<see cref="JobInstanceSplitter"/>); otherwise each is told which share to take.

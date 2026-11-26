@@ -188,6 +188,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Responsibilities")
                         .HasMaxLength(4000)
                         .HasColumnType("TEXT");
@@ -1685,6 +1688,12 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("InferenceProviderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsProviderDefault")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ModelId")
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
@@ -1694,7 +1703,7 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProviderId")
+                    b.Property<Guid?>("ProviderId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ReasoningEffort")
@@ -1705,6 +1714,8 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("InferenceProviderId");
 
                     b.HasIndex("Name")
                         .IsUnique();
@@ -1738,6 +1749,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("DecisionsProfileId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("DefaultTargetBranch")
@@ -1846,6 +1860,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<DateTime?>("RepoMapGeneratedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("ResearchProfileId")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("ReviewEnabled")
                         .HasColumnType("INTEGER");
 
@@ -1909,6 +1926,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<string>("PreferredReasoningEffort")
                         .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ProfileId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("ProjectId")
@@ -2817,11 +2837,17 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.Profile", b =>
                 {
+                    b.HasOne("VibeSwarm.Shared.Data.InferenceProvider", "InferenceProvider")
+                        .WithMany()
+                        .HasForeignKey("InferenceProviderId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.HasOne("VibeSwarm.Shared.Providers.Provider", "Provider")
                         .WithMany()
                         .HasForeignKey("ProviderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("InferenceProvider");
 
                     b.Navigation("Provider");
                 });

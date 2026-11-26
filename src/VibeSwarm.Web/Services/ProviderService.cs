@@ -56,6 +56,7 @@ public class ProviderService : IProviderService
 
         _dbContext.Providers.Add(provider);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await VibeSwarm.Web.Services.ProfileService.EnsureProviderDefaultsAsync(_dbContext, cancellationToken);
 
         return provider;
     }

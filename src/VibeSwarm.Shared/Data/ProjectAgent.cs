@@ -27,6 +27,12 @@ public class ProjectAgent
 	[StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
 	public string? PreferredReasoningEffort { get; set; }
 
+	/// <summary>
+	/// The profile this assignment runs on. Saving the profile updates the provider, model and
+	/// reasoning above; editing any of them by hand unlinks it.
+	/// </summary>
+	public Guid? ProfileId { get; set; }
+
 	public bool IsEnabled { get; set; } = true;
 
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

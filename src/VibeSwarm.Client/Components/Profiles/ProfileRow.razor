@@ -1,7 +1,13 @@
 @* One profile as a grouped-list row: its name and what it runs on, opening in place for the
    details and actions. *@
 
-<ListRow Icon="person-badge" Title="@Profile.Name" Subtitle="@Summary">
+<ListRow Icon="@(Profile.InferenceProviderId.HasValue ? "cpu" : "person-badge")" Title="@Profile.Name" Subtitle="@Summary">
+	<Trailing>
+		@if (Profile.IsProviderDefault)
+		{
+			<span class="small fg-2 flex-shrink-0">Default</span>
+		}
+	</Trailing>
 	<ChildContent>
 		<dl class="d-flex flex-column gap-3 small mb-0">
 			@foreach (var (label, value) in Facts)
@@ -15,9 +21,12 @@
 
 		<div class="d-flex align-items-center gap-3">
 			<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => OnEdit.InvokeAsync(Profile)">Edit</button>
-			<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDelete.InvokeAsync(Profile)">
-				<i class="bi bi-trash"></i>Delete
-			</button>
+			@if (!Profile.IsProviderDefault)
+			{
+				<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDelete.InvokeAsync(Profile)">
+					<i class="bi bi-trash"></i>Delete
+				</button>
+			}
 		</div>
 	</ChildContent>
 </ListRow>
@@ -44,16 +53,30 @@
 				yield return ("Description", Profile.Description);
 			}
 
-			yield return ("Provider", Profile.Provider?.Name ?? "Unknown provider");
+			yield return ("Provider", ProviderName(Profile) ?? "Unknown provider");
 			yield return ("Model", Profile.ModelId ?? "Provider default");
-			yield return ("Reasoning", Profile.ReasoningEffort ?? "Provider default");
+			if (Profile.InferenceProviderId.HasValue)
+			{
+				yield return ("Kind", "Inference: answers questions, can't run jobs");
+			}
+			else
+			{
+				yield return ("Reasoning", Profile.ReasoningEffort ?? "Provider default");
+			}
+
+			if (Profile.IsProviderDefault)
+			{
+				yield return ("Default", "This provider's default profile, kept while the provider exists");
+			}
 		}
 	}
 
 	public static string Describe(Profile profile)
 	{
-		var parts = new[] { profile.Provider?.Name, profile.ModelId, profile.ReasoningEffort }
+		var parts = new[] { ProviderName(profile), profile.ModelId, profile.ReasoningEffort }
 			.Where(part => !string.IsNullOrWhiteSpace(part));
 		return string.Join(" · ", parts);
 	}
+
+	private static string? ProviderName(Profile profile) => profile.Provider?.Name ?? profile.InferenceProvider?.Name;
 }

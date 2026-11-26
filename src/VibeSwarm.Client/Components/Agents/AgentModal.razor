@@ -2,6 +2,7 @@
 @inject ISkillService SkillService
 @inject IProviderService ProviderService
 @inject NotificationService NotificationService
+@inject IServiceProvider Services
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
 			 Title="@(IsEdit ? "Edit Agent" : "Add Agent")" Icon="@(IsEdit ? "pencil" : "cpu")"
@@ -33,6 +34,13 @@
 				<div class="form-text">Use this to capture what the agent owns, reviews, and how it should approach the work.</div>
 			</div>
 
+			<ProfilePicker Id="team-role-profile" Class="mb-5" Label="Profile" Profiles="EligibleProfiles"
+						   SelectedProfileId="Agent.ProfileId" OnSelected="ApplyProfileAsync"
+						   LinkedNote="Projects you assign this agent to start on this profile. Editing the profile updates it."
+						   CustomHint="Pick the profile this agent runs on, or set its provider and model by hand below." />
+
+			@if (!IsLinked)
+			{
 			<div class="row g-5 mb-5">
 				<div class="col-12 lg:col-6">
 					<label for="team-role-provider" class="form-label">Default Provider</label>
@@ -121,6 +129,7 @@
 					</div>
 				</div>
 			</div>
+			}
 
 			<div class="border rounded bg-2 p-5 mb-5">
 				<div class="fw-semibold mb-3">Default Execution Profile</div>
@@ -254,6 +263,43 @@
 	private List<Provider> _providers = [];
 	private readonly Dictionary<Guid, List<ProviderModel>> _providerModelsByProviderId = [];
 	private bool IsEdit => EditAgent != null;
+	private List<Profile> _profiles = [];
+
+	/// <summary>Coding profiles on an enabled provider: an agent runs jobs, which inference profiles can't.</summary>
+	private IReadOnlyList<Profile> EligibleProfiles => _profiles
+		.Where(profile => profile.ProviderId is Guid providerId && _providers.Any(provider => provider.Id == providerId))
+		.ToList();
+
+	private bool IsLinked => Agent.ProfileId is Guid id && EligibleProfiles.Any(profile => profile.Id == id);
+
+	// Resolved lazily so tests that never show profiles need no registration.
+	private async Task LoadProfilesAsync()
+	{
+		var profileService = Services.GetService<IProfileService>();
+		try
+		{
+			_profiles = profileService == null ? [] : (await profileService.GetAllAsync()).ToList();
+		}
+		catch
+		{
+			_profiles = [];
+		}
+	}
+
+	private async Task ApplyProfileAsync(Profile? profile)
+	{
+		Agent.ProfileId = profile?.Id;
+		if (profile?.ProviderId is not Guid providerId)
+		{
+			return;
+		}
+
+		Agent.DefaultProviderId = providerId;
+		Agent.DefaultProvider = _providers.FirstOrDefault(provider => provider.Id == providerId);
+		Agent.DefaultModelId = profile.ModelId;
+		Agent.DefaultReasoningEffort = profile.ReasoningEffort;
+		await LoadProviderModelsAsync(providerId);
+	}
 	private bool IsSaving { get; set; }
 	private string? ErrorMessage { get; set; }
 	private bool _previousIsVisible;
@@ -279,6 +325,7 @@
 		if (IsVisible && !_previousIsVisible)
 		{
 			await LoadProvidersAsync();
+			await LoadProfilesAsync();
 			ResetState();
 
 			if (EditAgent != null)
@@ -293,6 +340,7 @@
 					DefaultProvider = EditAgent.DefaultProvider,
 					DefaultModelId = EditAgent.DefaultModelId,
 					DefaultReasoningEffort = EditAgent.DefaultReasoningEffort,
+					ProfileId = EditAgent.ProfileId,
 					DefaultCycleMode = EditAgent.DefaultCycleMode,
 					DefaultCycleSessionMode = EditAgent.DefaultCycleSessionMode,
 					DefaultMaxCycles = EditAgent.DefaultMaxCycles,

@@ -52,6 +52,7 @@ public class InferenceProviderService : IInferenceProviderService
 
 		_db.InferenceProviders.Add(provider);
 		await _db.SaveChangesAsync(ct);
+		await ProfileService.EnsureProviderDefaultsAsync(_db, ct);
 
 		return provider;
 	}

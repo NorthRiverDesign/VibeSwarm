@@ -36,6 +36,8 @@ var models = ResolveProviderModels(assignment.ProviderId)
 .ToList();
 var assignmentProvider = AvailableProviders.FirstOrDefault(provider => provider.Id == assignment.ProviderId);
 var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupportedReasoningEfforts(assignmentProvider) : [];
+var linkedProfile = assignment.ProfileId is Guid linkedId ? Profiles.FirstOrDefault(profile => profile.Id == linkedId) : null;
+var profileSelectId = $"team-profile-{assignment.AgentId}";
 
 <div class="rounded border bg-body p-5">
 <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
@@ -81,6 +83,27 @@ var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupp
 </button>
 </div>
 
+@if (Profiles.Count > 0)
+{
+<div class="mt-5">
+<label for="@profileSelectId" class="form-label small mb-1">Profile</label>
+<select id="@profileSelectId" class="form-control form-control-sm" value="@(linkedProfile?.Id.ToString() ?? string.Empty)"
+		@onchange="args => HandleProfileChanged(assignment.AgentId, args)">
+<option value="">Custom</option>
+@foreach (var profile in Profiles)
+{
+<option value="@profile.Id">@profile.Name</option>
+}
+</select>
+@if (linkedProfile != null)
+{
+<div class="form-text">@ProfileRow.Describe(linkedProfile). Editing the profile updates this too.</div>
+}
+</div>
+}
+
+@if (linkedProfile == null)
+{
 <div class="row g-5 mt-1">
 <div class="col-12 lg:col-6">
 <label for="@providerSelectId" class="form-label small mb-1">
@@ -148,6 +171,7 @@ Default reasoning
 </div>
 </div>
 </div>
+}
 </div>
 }
 </div>
@@ -251,6 +275,20 @@ public EventCallback<ProjectAgentModelSelectionChange> OnPreferredModelChanged {
 
 [Parameter]
 public EventCallback<Guid> OnModelsRefreshed { get; set; }
+
+/// <summary>Coding profiles on providers the project can use.</summary>
+[Parameter]
+public IReadOnlyList<Profile> Profiles { get; set; } = [];
+
+/// <summary>Raised with the agent and the profile picked for it, or null for Custom.</summary>
+[Parameter]
+public EventCallback<(Guid AgentId, Profile? Profile)> OnProfileChanged { get; set; }
+
+private Task HandleProfileChanged(Guid agentId, ChangeEventArgs args)
+{
+var profile = Guid.TryParse(args.Value?.ToString(), out var id) ? Profiles.FirstOrDefault(candidate => candidate.Id == id) : null;
+return OnProfileChanged.InvokeAsync((agentId, profile));
+}
 
 private Task HandleProviderChanged(Guid agentId, Guid providerId)
 {

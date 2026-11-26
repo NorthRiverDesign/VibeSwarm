@@ -56,6 +56,7 @@ public class DatabaseService : IDatabaseService
 
 		var profiles = await _db.Profiles
 			.Include(profile => profile.Provider)
+			.Include(profile => profile.InferenceProvider)
 			.OrderBy(profile => profile.Name)
 			.ToListAsync(ct);
 
@@ -148,14 +149,16 @@ public class DatabaseService : IDatabaseService
 					.ToList(),
 			}).ToList(),
 			Profiles = profiles
-				.Where(profile => profile.Provider != null)
+				.Where(profile => profile.Provider != null || profile.InferenceProvider != null)
 				.Select(profile => new ProfileExportDto
 				{
 					Name = profile.Name,
 					Description = profile.Description,
-					ProviderName = profile.Provider!.Name,
+					ProviderName = profile.Provider?.Name ?? string.Empty,
+					InferenceProviderName = profile.InferenceProvider?.Name,
 					ModelId = profile.ModelId,
 					ReasoningEffort = profile.ReasoningEffort,
+					IsProviderDefault = profile.IsProviderDefault,
 				}).ToList(),
 			Schedules = schedules
 				.Where(s => s.Project != null && s.Provider != null)
@@ -368,9 +371,13 @@ public class DatabaseService : IDatabaseService
 		var projectsByName = await _db.Projects.ToDictionaryAsync(p => p.Name, p => p, ct);
 		var providersByName = await _db.Providers.ToDictionaryAsync(p => p.Name, p => p, ct);
 
-		// Import profiles (require a matching provider by name)
+		// Import profiles (require a matching provider by name). A provider keeps one default
+		// profile, so an exported default only arrives for a provider that has none yet.
 		var existingProfileNames = (await _db.Profiles.Select(profile => profile.Name).ToListAsync(ct))
 			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+		var inferenceProvidersByName = (await _db.InferenceProviders.ToListAsync(ct))
+			.GroupBy(provider => provider.Name, StringComparer.OrdinalIgnoreCase)
+			.ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 		foreach (var profileDto in export.Profiles ?? [])
 		{
 			if (string.IsNullOrWhiteSpace(profileDto.Name))
@@ -384,16 +391,46 @@ public class DatabaseService : IDatabaseService
 				continue;
 			}
 
-			if (!providersByName.TryGetValue(profileDto.ProviderName, out var profileProvider))
+			Guid? providerId = null;
+			Guid? inferenceProviderId = null;
+			string? reasoningEffort = null;
+			if (!string.IsNullOrWhiteSpace(profileDto.InferenceProviderName))
 			{
-				result.Errors.Add($"Profile '{profileDto.Name}' skipped: provider '{profileDto.ProviderName}' not found");
+				if (!inferenceProvidersByName.TryGetValue(profileDto.InferenceProviderName, out var inferenceProvider))
+				{
+					result.Errors.Add($"Profile '{profileDto.Name}' skipped: inference provider '{profileDto.InferenceProviderName}' not found");
+					continue;
+				}
+
+				inferenceProviderId = inferenceProvider.Id;
+			}
+			else
+			{
+				if (!providersByName.TryGetValue(profileDto.ProviderName, out var profileProvider))
+				{
+					result.Errors.Add($"Profile '{profileDto.Name}' skipped: provider '{profileDto.ProviderName}' not found");
+					continue;
+				}
+
+				providerId = profileProvider.Id;
+				reasoningEffort = ProviderCapabilities.SupportsReasoningEffort(profileProvider, profileDto.ReasoningEffort)
+					? ProviderCapabilities.NormalizeReasoningEffort(profileDto.ReasoningEffort)
+					: null;
+			}
+
+			if (profileDto.IsProviderDefault
+				&& await _db.Profiles.AnyAsync(profile => profile.IsProviderDefault
+					&& profile.ProviderId == providerId && profile.InferenceProviderId == inferenceProviderId, ct))
+			{
+				result.Skipped.Add($"Profile '{profileDto.Name}': its provider already has a default profile");
 				continue;
 			}
 
 			// Project settings only take a model the provider lists, so an unknown one falls back to the default.
 			var profileModelId = string.IsNullOrWhiteSpace(profileDto.ModelId) ? null : profileDto.ModelId.Trim();
-			if (profileModelId != null && !await _db.ProviderModels.AnyAsync(
-				model => model.ProviderId == profileProvider.Id && model.IsAvailable && model.ModelId == profileModelId, ct))
+			if (profileModelId != null && !(providerId is Guid codingId
+				? await _db.ProviderModels.AnyAsync(model => model.ProviderId == codingId && model.IsAvailable && model.ModelId == profileModelId, ct)
+				: await _db.InferenceModels.AnyAsync(model => model.InferenceProviderId == inferenceProviderId && model.IsAvailable && model.ModelId == profileModelId, ct)))
 			{
 				profileModelId = null;
 			}
@@ -403,11 +440,11 @@ public class DatabaseService : IDatabaseService
 				Id = Guid.NewGuid(),
 				Name = profileDto.Name.Trim(),
 				Description = profileDto.Description,
-				ProviderId = profileProvider.Id,
+				ProviderId = providerId,
+				InferenceProviderId = inferenceProviderId,
 				ModelId = profileModelId,
-				ReasoningEffort = ProviderCapabilities.SupportsReasoningEffort(profileProvider, profileDto.ReasoningEffort)
-					? ProviderCapabilities.NormalizeReasoningEffort(profileDto.ReasoningEffort)
-					: null,
+				ReasoningEffort = reasoningEffort,
+				IsProviderDefault = profileDto.IsProviderDefault,
 				CreatedAt = DateTime.UtcNow,
 			});
 			existingProfileNames.Add(profileDto.Name);

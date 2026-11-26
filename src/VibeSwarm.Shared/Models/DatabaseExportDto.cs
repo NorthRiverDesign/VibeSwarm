@@ -97,9 +97,13 @@ public class ProfileExportDto
 {
 	public string Name { get; set; } = string.Empty;
 	public string? Description { get; set; }
+	/// <summary>The coding provider's name; empty for an inference profile.</summary>
 	public string ProviderName { get; set; } = string.Empty;
+	/// <summary>The inference provider's name, for an inference profile.</summary>
+	public string? InferenceProviderName { get; set; }
 	public string? ModelId { get; set; }
 	public string? ReasoningEffort { get; set; }
+	public bool IsProviderDefault { get; set; }
 }
 
 public class ScheduleExportDto

@@ -38,6 +38,12 @@ public static class ValidationLimits
 	/// <summary>The most copies of one job that can run side by side.</summary>
 	public const int JobInstancesMax = 5;
 
+	/// <summary>The longest question a running job can put to one of its helpers.</summary>
+	public const int JobHelperQuestionMaxLength = 12000;
+
+	/// <summary>How many questions one run of a job can put to its helpers.</summary>
+	public const int JobHelperQuestionsPerRun = 10;
+
 	public const int IdeaDescriptionMaxLength = 8000;
 	public const int IdeaExpandedDescriptionMaxLength = 20000;
 	public const int IdeaExpansionErrorMaxLength = 1000;

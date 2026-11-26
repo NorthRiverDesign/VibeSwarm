@@ -852,8 +852,9 @@ public partial class JobProcessingService
                 }
             }
 
+            var helperRules = await PrepareJobHelpersAsync(job, workingDirectory, dbContext, cancellationToken);
             systemPromptRules = PromptBuilder.JoinRuleSections(
-                roleContext, systemPromptRules, projectMemoryRules, localSetupRules, priorWorkRules, branchMergeRules);
+                roleContext, systemPromptRules, projectMemoryRules, localSetupRules, priorWorkRules, branchMergeRules, helperRules);
             // The read-only planner can't build, edit or commit, so it skips those rules.
             var planningSystemPromptRules = PromptBuilder.JoinRuleSections(
                 roleContext, PromptBuilder.BuildPlanningSystemPromptRules(job.Project, projectMemoryFilePath, injectRepoMap), priorWorkRules);
@@ -1866,6 +1867,7 @@ public partial class JobProcessingService
         finally
         {
             CloseUserMessages(job.Id, executionContext);
+            EndJobHelpers(job.Id);
             executionContext.TimeLimit?.Dispose();
             await ReleaseSwarmWorktreeAfterRunAsync(job.Id, executionContext);
 

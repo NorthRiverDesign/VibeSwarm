@@ -251,6 +251,169 @@ public sealed class ProfileServiceTests : IDisposable
 		}
 	}
 
+	[Fact]
+	public async Task InferenceProfile_TakesAListedModelAndNoReasoning_AndKeepsItsKind()
+	{
+		var (claude, _, _) = await SeedProvidersAsync();
+		var grok = await SeedGrokAsync();
+		await using var dbContext = CreateDbContext();
+		var service = new ProfileService(dbContext);
+
+		await Assert.ThrowsAsync<InvalidOperationException>(
+			() => service.CreateAsync(new Profile { Name = "Both", ProviderId = claude.Id, InferenceProviderId = grok.Id }));
+		await Assert.ThrowsAsync<InvalidOperationException>(
+			() => service.CreateAsync(new Profile { Name = "Reasoning", InferenceProviderId = grok.Id, ReasoningEffort = "high" }));
+		await Assert.ThrowsAsync<InvalidOperationException>(
+			() => service.CreateAsync(new Profile { Name = "Unknown model", InferenceProviderId = grok.Id, ModelId = "grok-0" }));
+
+		var research = await service.CreateAsync(new Profile { Name = "Research", InferenceProviderId = grok.Id, ModelId = "grok-4" });
+		Assert.Equal("Grok", research.InferenceProvider?.Name);
+		Assert.Null(research.ProviderId);
+
+		var error = await Assert.ThrowsAsync<InvalidOperationException>(
+			() => service.UpdateAsync(new Profile { Id = research.Id, Name = "Research", ProviderId = claude.Id }));
+		Assert.Contains("inference", error.Message);
+	}
+
+	[Fact]
+	public async Task EnsureProviderDefaults_GivesEveryProviderOneDefault_AndRunsAgainHarmlessly()
+	{
+		await SeedProvidersAsync();
+		await SeedGrokAsync();
+		await using (var dbContext = CreateDbContext())
+		{
+			// A profile already called "Claude" pushes the default to another name.
+			dbContext.Profiles.Add(new Profile { Id = Guid.NewGuid(), Name = "Claude", ProviderId = (await dbContext.Providers.FirstAsync(p => p.Name == "Copilot")).Id });
+			await dbContext.SaveChangesAsync();
+			await ProfileService.EnsureProviderDefaultsAsync(dbContext);
+			await ProfileService.EnsureProviderDefaultsAsync(dbContext);
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			var defaults = await dbContext.Profiles.Where(profile => profile.IsProviderDefault).ToListAsync();
+			Assert.Equal(4, defaults.Count);
+			Assert.Contains(defaults, profile => profile.Name == "Claude default");
+			Assert.Contains(defaults, profile => profile.Name == "Grok" && profile.InferenceProviderId != null);
+			Assert.All(defaults, profile => Assert.Null(profile.ModelId));
+
+			var service = new ProfileService(dbContext);
+			var claudeDefault = defaults.Single(profile => profile.Name == "Claude default");
+			await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(claudeDefault.Id));
+			var copilotId = (await dbContext.Providers.FirstAsync(p => p.Name == "Copilot")).Id;
+			await Assert.ThrowsAsync<InvalidOperationException>(
+				() => service.UpdateAsync(new Profile { Id = claudeDefault.Id, Name = "Claude default", ProviderId = copilotId }));
+
+			// Its name and model can change.
+			var renamed = await service.UpdateAsync(new Profile { Id = claudeDefault.Id, Name = "Claude Opus", ProviderId = claudeDefault.ProviderId, ModelId = "opus" });
+			Assert.True(renamed.IsProviderDefault);
+			Assert.Equal("opus", renamed.ModelId);
+		}
+	}
+
+	[Fact]
+	public async Task AgentProfile_FillsItsDefaults_AndItsProjectsFollowAChange()
+	{
+		var (claude, copilot, _) = await SeedProvidersAsync();
+		Guid opusId, gptId, agentId, followingId, customId;
+		await using (var dbContext = CreateDbContext())
+		{
+			var profiles = new ProfileService(dbContext);
+			opusId = (await profiles.CreateAsync(new Profile { Name = "Opus", ProviderId = claude.Id, ModelId = "opus", ReasoningEffort = "high" })).Id;
+			gptId = (await profiles.CreateAsync(new Profile { Name = "GPT", ProviderId = copilot.Id, ModelId = "gpt-5" })).Id;
+
+			var agent = await new AgentService(dbContext).CreateAsync(new Agent { Name = "Lead dev", ProfileId = opusId, DefaultProviderId = copilot.Id, DefaultModelId = "stale" });
+			agentId = agent.Id;
+			Assert.Equal((claude.Id, "opus", "high"), (agent.DefaultProviderId!.Value, agent.DefaultModelId, agent.DefaultReasoningEffort));
+
+			var following = NewProject("Following");
+			following.AgentAssignments.Add(new ProjectAgent { AgentId = agentId, ProviderId = claude.Id, PreferredModelId = "opus", ProfileId = opusId });
+			var custom = NewProject("Custom");
+			custom.AgentAssignments.Add(new ProjectAgent { AgentId = agentId, ProviderId = claude.Id, PreferredModelId = "sonnet" });
+			dbContext.Projects.AddRange(following, custom);
+			await dbContext.SaveChangesAsync();
+			followingId = following.Id;
+			customId = custom.Id;
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			var agent = await dbContext.Agents.AsNoTracking().SingleAsync(candidate => candidate.Id == agentId);
+			agent.ProfileId = gptId;
+			await new AgentService(dbContext).UpdateAsync(agent);
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			var following = await dbContext.ProjectAgents.SingleAsync(assignment => assignment.ProjectId == followingId);
+			Assert.Equal((gptId, copilot.Id, "gpt-5"), (following.ProfileId!.Value, following.ProviderId, following.PreferredModelId));
+			var custom = await dbContext.ProjectAgents.SingleAsync(assignment => assignment.ProjectId == customId);
+			Assert.Equal((null, claude.Id, "sonnet"), (custom.ProfileId, custom.ProviderId, custom.PreferredModelId));
+
+			// Editing the profile reaches the agent and its linked assignment.
+			await new ProfileService(dbContext).UpdateAsync(new Profile { Id = gptId, Name = "GPT", ProviderId = copilot.Id, ModelId = null, ReasoningEffort = "low" });
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			var agent = await dbContext.Agents.SingleAsync(candidate => candidate.Id == agentId);
+			Assert.Equal((copilot.Id, (string?)null, "low"), (agent.DefaultProviderId!.Value, agent.DefaultModelId, agent.DefaultReasoningEffort));
+			var following = await dbContext.ProjectAgents.SingleAsync(assignment => assignment.ProjectId == followingId);
+			Assert.Equal("low", following.PreferredReasoningEffort);
+		}
+	}
+
+	[Fact]
+	public async Task ProjectSave_TakesAnInferenceReviewer_AndKeepsOnlyHelpersThatCanAnswer()
+	{
+		var (claude, _, openCode) = await SeedProvidersAsync();
+		var grok = await SeedGrokAsync();
+		Guid researchId, decisionsId, openCodeProfileId;
+		await using (var dbContext = CreateDbContext())
+		{
+			var service = new ProfileService(dbContext);
+			researchId = (await service.CreateAsync(new Profile { Name = "Grok research", InferenceProviderId = grok.Id, ModelId = "grok-4" })).Id;
+			decisionsId = (await service.CreateAsync(new Profile { Name = "Claude decisions", ProviderId = claude.Id })).Id;
+			openCodeProfileId = (await service.CreateAsync(new Profile { Name = "OpenCode", ProviderId = openCode.Id })).Id;
+		}
+
+		Project saved;
+		await using (var dbContext = CreateDbContext())
+		{
+			var project = NewProject("Helped");
+			project.ReviewEnabled = true;
+			project.ReviewProfileId = researchId;
+			project.ReviewProviderId = claude.Id;
+			project.DecisionsProfileId = openCodeProfileId;
+			project.ResearchProfileId = researchId;
+			saved = await CreateProjectService(dbContext).CreateAsync(project);
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			var project = await dbContext.Projects.SingleAsync(p => p.Id == saved.Id);
+			Assert.Equal((null, grok.Id, "grok-4"), (project.ReviewProviderId, project.ReviewInferenceProviderId!.Value, project.ReviewModelId));
+			// OpenCode can't answer read-only, so it can't help.
+			Assert.Null(project.DecisionsProfileId);
+			Assert.Equal(researchId, project.ResearchProfileId);
+
+			project.DecisionsProfileId = decisionsId;
+			await dbContext.SaveChangesAsync();
+			await new ProfileService(dbContext).DeleteAsync(decisionsId);
+			Assert.Null((await dbContext.Projects.AsNoTracking().SingleAsync(p => p.Id == saved.Id)).DecisionsProfileId);
+		}
+	}
+
+	private async Task<InferenceProvider> SeedGrokAsync()
+	{
+		var grok = new InferenceProvider { Id = Guid.NewGuid(), Name = "Grok", ProviderType = VibeSwarm.Shared.Inference.InferenceProviderType.Grok, Endpoint = "https://api.x.ai", IsEnabled = true };
+		await using var dbContext = CreateDbContext();
+		dbContext.InferenceProviders.Add(grok);
+		dbContext.InferenceModels.Add(new InferenceModel { InferenceProviderId = grok.Id, ModelId = "grok-4", IsAvailable = true });
+		await dbContext.SaveChangesAsync();
+		return grok;
+	}
+
 	private async Task<(Provider Claude, Provider Copilot, Provider OpenCode)> SeedProvidersAsync()
 	{
 		var claude = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = true };

@@ -1,6 +1,8 @@
-@* Adds or edits a profile: a name for one provider, model and reasoning level. *@
+@* Adds or edits a profile: a name for one provider and model, plus a reasoning level on a coding
+   provider. Inference providers, such as Grok, answer questions for jobs but never run one. *@
 @inject IProfileService ProfileService
 @inject IProviderService ProviderService
+@inject IServiceProvider Services
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged"
 			 Title="@(IsEdit ? "Edit profile" : "New profile")" Icon="@(IsEdit ? "pencil" : "person-badge")"
@@ -25,23 +27,46 @@
 
 				<div>
 					<label for="profile-provider" class="form-label">Provider</label>
-					@if (_providers.Count == 0)
+					@if (_providers.Count == 0 && _inferenceProviders.Count == 0)
 					{
-						<div class="small fg-1">No enabled providers yet. Add one under Providers first.</div>
+						<div class="small fg-1">No enabled providers yet. Add one under Providers or Inference first.</div>
 					}
 					else
 					{
-						<InputSelect TValue="Guid?" id="profile-provider" Value="_form.ProviderId"
-									 ValueChanged="HandleProviderChanged" ValueExpression="@(() => _form.ProviderId)"
-									 class="form-control">
+						<select id="profile-provider" class="form-control" value="@(_form.ProviderKey ?? string.Empty)"
+								@onchange="HandleProviderChanged" disabled="@_form.IsProviderDefault">
 							<option value="">Choose a provider</option>
-							@foreach (var provider in _providers)
+							@if (OffersCoding && _providers.Count > 0)
 							{
-								<option value="@provider.Id">@provider.Name (@provider.Type)</option>
+								<optgroup label="Coding">
+									@foreach (var provider in _providers)
+									{
+										<option value="@ProfileFormModel.CodingKey(provider.Id)">@provider.Name (@provider.Type)</option>
+									}
+								</optgroup>
 							}
-						</InputSelect>
+							@if (OffersInference && _inferenceProviders.Count > 0)
+							{
+								<optgroup label="Inference">
+									@foreach (var provider in _inferenceProviders)
+									{
+										<option value="@ProfileFormModel.InferenceKey(provider.Id)">@provider.Name</option>
+									}
+								</optgroup>
+							}
+						</select>
+						<div class="form-text">
+							@if (_form.IsProviderDefault)
+							{
+								<span>Every provider has a default profile, so this one stays on its provider.</span>
+							}
+							else if (_form.InferenceProviderId.HasValue)
+							{
+								<span>An inference profile answers a job's questions and can review diffs, but can't run a job.</span>
+							}
+						</div>
 					}
-					<ValidationMessage For="@(() => _form.ProviderId)" class="fg-danger small" />
+					<ValidationMessage For="@(() => _form.ProviderKey)" class="fg-danger small" />
 				</div>
 
 				<div class="row g-5">
@@ -49,41 +74,51 @@
 						<label for="profile-model" class="form-label">Model</label>
 						<div class="input-group">
 							<InputSelect id="profile-model" @bind-Value="_form.ModelId" class="form-control"
-										 disabled="@(!_form.ProviderId.HasValue || _models.Count == 0)">
+										 disabled="@(_form.ProviderKey == null || _models.Count == 0)">
 								<option value="">Provider default</option>
 								@foreach (var model in _models)
 								{
-									<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ? " (Default)" : string.Empty)</option>
+									<option value="@model.Id">@model.Label@(model.IsDefault ? " (Default)" : string.Empty)</option>
 								}
 							</InputSelect>
-							<ModelRefreshButton ProviderId="@_form.ProviderId" OnRefreshed="ReloadModelsAsync" />
+							@if (_form.InferenceProviderId is Guid inferenceId)
+							{
+								<ModelRefreshButton ProviderId="@inferenceId" IsInference="true" OnInferenceRefreshed="_ => ReloadModelsAsync()" />
+							}
+							else
+							{
+								<ModelRefreshButton ProviderId="@_form.ProviderId" OnRefreshed="_ => ReloadModelsAsync()" />
+							}
 						</div>
-						@if (_form.ProviderId.HasValue && _models.Count == 0)
+						@if (_form.ProviderKey != null && _models.Count == 0)
 						{
 							<div class="form-text">No cached models yet — the provider default is used.</div>
 						}
 					</div>
 
-					<div class="col-12 sm:col-6">
-						<label for="profile-reasoning" class="form-label">Reasoning</label>
-						<InputSelect id="profile-reasoning" @bind-Value="_form.ReasoningEffort" class="form-control"
-									 disabled="@(ReasoningOptions.Count == 0)">
-							<option value="">Provider default</option>
-							@foreach (var reasoning in ReasoningOptions)
+					@if (!_form.InferenceProviderId.HasValue)
+					{
+						<div class="col-12 sm:col-6">
+							<label for="profile-reasoning" class="form-label">Reasoning</label>
+							<InputSelect id="profile-reasoning" @bind-Value="_form.ReasoningEffort" class="form-control"
+										 disabled="@(ReasoningOptions.Count == 0)">
+								<option value="">Provider default</option>
+								@foreach (var reasoning in ReasoningOptions)
+								{
+									<option value="@reasoning">@reasoning</option>
+								}
+							</InputSelect>
+							@if (_form.ProviderId.HasValue && ReasoningOptions.Count == 0)
 							{
-								<option value="@reasoning">@reasoning</option>
+								<div class="form-text">This provider has no configurable reasoning levels.</div>
 							}
-						</InputSelect>
-						@if (_form.ProviderId.HasValue && ReasoningOptions.Count == 0)
-						{
-							<div class="form-text">This provider has no configurable reasoning levels.</div>
-						}
-					</div>
+						</div>
+					}
 				</div>
 
 				@if (IsEdit)
 				{
-					<div class="form-text mt-0">Projects using this profile pick up the change when you save. Jobs already queued keep what they had.</div>
+					<div class="form-text mt-0">Projects and agents using this profile pick up the change when you save. Jobs already queued keep what they had.</div>
 				}
 
 				@if (!string.IsNullOrEmpty(_error))
@@ -121,12 +156,18 @@
 
 	private ProfileFormModel _form = new();
 	private List<Provider> _providers = [];
-	private List<ProviderModel> _models = [];
+	private List<InferenceProvider> _inferenceProviders = [];
+	private List<(string Id, string Label, bool IsDefault)> _models = [];
 	private bool _isSaving;
 	private string? _error;
 	private bool _wasVisible;
 
 	private bool IsEdit => EditProfile != null;
+
+	// A saved profile keeps its kind, since the settings linked to it take only that kind.
+	private bool OffersCoding => !IsEdit || EditProfile!.ProviderId.HasValue;
+
+	private bool OffersInference => !IsEdit || EditProfile!.InferenceProviderId.HasValue;
 
 	private IReadOnlyList<string> ReasoningOptions => _form.ProviderId is Guid providerId
 		&& _providers.FirstOrDefault(provider => provider.Id == providerId) is { } selected
@@ -161,11 +202,28 @@
 		{
 			_providers = [];
 		}
+
+		// Resolved lazily so pages and tests that never show inference profiles need no registration.
+		var inferenceService = Services.GetService<IInferenceProviderService>();
+		try
+		{
+			_inferenceProviders = inferenceService == null
+				? []
+				: (await inferenceService.GetAllAsync())
+					.Where(provider => provider.IsEnabled || provider.Id == _form.InferenceProviderId)
+					.OrderBy(provider => provider.Name)
+					.ToList();
+		}
+		catch
+		{
+			_inferenceProviders = [];
+		}
 	}
 
-	private async Task HandleProviderChanged(Guid? providerId)
+	private async Task HandleProviderChanged(ChangeEventArgs args)
 	{
-		_form.ProviderId = providerId;
+		var key = args.Value?.ToString();
+		_form.ProviderKey = string.IsNullOrWhiteSpace(key) ? null : key;
 		_form.ModelId = null;
 		_form.ReasoningEffort = null;
 		await ReloadModelsAsync();
@@ -173,19 +231,28 @@
 
 	private async Task ReloadModelsAsync()
 	{
-		if (_form.ProviderId is not Guid providerId)
-		{
-			_models = [];
-			return;
-		}
-
+		_models = [];
 		try
 		{
-			_models = (await ProviderService.GetModelsAsync(providerId))
-				.Where(model => model.IsAvailable)
-				.OrderByDescending(model => model.IsDefault)
-				.ThenBy(model => model.DisplayName ?? model.ModelId)
-				.ToList();
+			if (_form.ProviderId is Guid providerId)
+			{
+				_models = (await ProviderService.GetModelsAsync(providerId))
+					.Where(model => model.IsAvailable)
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName ?? model.ModelId)
+					.Select(model => (model.ModelId, model.DisplayName ?? model.ModelId, model.IsDefault))
+					.ToList();
+			}
+			else if (_form.InferenceProviderId is Guid inferenceId && Services.GetService<IInferenceProviderService>() is { } inferenceService)
+			{
+				_models = (await inferenceService.GetModelsAsync(inferenceId))
+					.Where(model => model.IsAvailable)
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName ?? model.ModelId)
+					.Select(model => (model.ModelId, model.DisplayName ?? model.ModelId, model.IsDefault))
+					.DistinctBy(model => model.ModelId)
+					.ToList();
+			}
 		}
 		catch
 		{
@@ -193,7 +260,7 @@
 		}
 
 		// Only a model the provider lists can be saved.
-		if (!string.IsNullOrWhiteSpace(_form.ModelId) && !_models.Any(model => model.ModelId == _form.ModelId))
+		if (!string.IsNullOrWhiteSpace(_form.ModelId) && !_models.Any(model => model.Id == _form.ModelId))
 		{
 			_form.ModelId = null;
 		}

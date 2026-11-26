@@ -47,6 +47,7 @@ public class AgentService : IAgentService
 		}
 
 		await ValidateSkillsAsync(agent.SkillLinks, cancellationToken);
+		await ApplyProfileLinkAsync(agent, cancellationToken);
 		await ValidateDefaultProviderAsync(agent, cancellationToken);
 
 		var persistedAgent = new Agent
@@ -58,6 +59,7 @@ public class AgentService : IAgentService
 			DefaultProviderId = agent.DefaultProviderId,
 			DefaultModelId = agent.DefaultModelId,
 			DefaultReasoningEffort = agent.DefaultReasoningEffort,
+			ProfileId = agent.ProfileId,
 			DefaultCycleMode = agent.DefaultCycleMode,
 			DefaultCycleSessionMode = agent.DefaultCycleSessionMode,
 			DefaultMaxCycles = agent.DefaultMaxCycles,
@@ -102,6 +104,7 @@ public class AgentService : IAgentService
 		}
 
 		await ValidateSkillsAsync(agent.SkillLinks, cancellationToken);
+		await ApplyProfileLinkAsync(agent, cancellationToken);
 		await ValidateDefaultProviderAsync(agent, cancellationToken);
 
 		existing.Name = agent.Name;
@@ -110,12 +113,30 @@ public class AgentService : IAgentService
 		existing.DefaultProviderId = agent.DefaultProviderId;
 		existing.DefaultModelId = agent.DefaultModelId;
 		existing.DefaultReasoningEffort = agent.DefaultReasoningEffort;
+		var previousProfileId = existing.ProfileId;
+		existing.ProfileId = agent.ProfileId;
 		existing.DefaultCycleMode = agent.DefaultCycleMode;
 		existing.DefaultCycleSessionMode = agent.DefaultCycleSessionMode;
 		existing.DefaultMaxCycles = agent.DefaultMaxCycles;
 		existing.DefaultCycleReviewPrompt = agent.DefaultCycleReviewPrompt;
 		existing.IsEnabled = agent.IsEnabled;
 		existing.UpdatedAt = DateTime.UtcNow;
+
+		// Projects running the agent on the profile it had follow it to the new one; an
+		// assignment set up differently in a project stays as it was.
+		if (previousProfileId is Guid oldProfileId && agent.ProfileId is Guid newProfileId && oldProfileId != newProfileId)
+		{
+			var newProfile = await _dbContext.Profiles.AsNoTracking().FirstAsync(profile => profile.Id == newProfileId, cancellationToken);
+			var lookup = new Dictionary<Guid, Profile> { [newProfileId] = newProfile };
+			foreach (var assignment in await _dbContext.ProjectAgents
+				.Where(assignment => assignment.AgentId == existing.Id && assignment.ProfileId == oldProfileId)
+				.ToListAsync(cancellationToken))
+			{
+				assignment.ProfileId = newProfileId;
+				ProfileLinks.ApplyAssignmentLink(assignment, lookup);
+				assignment.UpdatedAt = DateTime.UtcNow;
+			}
+		}
 
 		SynchronizeSkills(existing, agent.SkillLinks);
 		await _dbContext.SaveChangesAsync(cancellationToken);
@@ -232,6 +253,21 @@ public class AgentService : IAgentService
 				SkillId = skillId
 			});
 		}
+	}
+
+	/// <summary>Fills the agent's defaults from its linked profile, whatever the client sent; drops a link to a missing profile.</summary>
+	private async Task ApplyProfileLinkAsync(Agent agent, CancellationToken cancellationToken)
+	{
+		if (agent.ProfileId is not Guid profileId)
+		{
+			return;
+		}
+
+		var profiles = await _dbContext.Profiles
+			.AsNoTracking()
+			.Where(profile => profile.Id == profileId)
+			.ToDictionaryAsync(profile => profile.Id, cancellationToken);
+		ProfileLinks.ApplyAgentLink(agent, profiles);
 	}
 
 	private async Task ValidateDefaultProviderAsync(Agent agent, CancellationToken cancellationToken)

@@ -61,6 +61,7 @@ public class HttpAgentService : IAgentService
 			DefaultProviderId = agent.DefaultProviderId,
 			DefaultModelId = agent.DefaultModelId,
 			DefaultReasoningEffort = agent.DefaultReasoningEffort,
+			ProfileId = agent.ProfileId,
 			DefaultCycleMode = agent.DefaultCycleMode,
 			DefaultCycleSessionMode = agent.DefaultCycleSessionMode,
 			DefaultMaxCycles = agent.DefaultMaxCycles,

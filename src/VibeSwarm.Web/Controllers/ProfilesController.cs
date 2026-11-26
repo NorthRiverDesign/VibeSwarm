@@ -64,7 +64,14 @@ public class ProfilesController : ControllerBase
 	[HttpDelete("{id:guid}")]
 	public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
 	{
-		await _profileService.DeleteAsync(id, ct);
-		return Ok();
+		try
+		{
+			await _profileService.DeleteAsync(id, ct);
+			return Ok();
+		}
+		catch (InvalidOperationException ex)
+		{
+			return BadRequest(new { error = ex.Message });
+		}
 	}
 }

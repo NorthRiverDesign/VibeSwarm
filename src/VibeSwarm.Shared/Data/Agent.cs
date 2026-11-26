@@ -28,6 +28,12 @@ public class Agent
 	[StringLength(Validation.ValidationLimits.ReasoningEffortMaxLength)]
 	public string? DefaultReasoningEffort { get; set; }
 
+	/// <summary>
+	/// The profile the agent runs on. Its provider, model and reasoning are copied into the
+	/// defaults above, and saving the profile updates them; null keeps them set by hand.
+	/// </summary>
+	public Guid? ProfileId { get; set; }
+
 	public CycleMode DefaultCycleMode { get; set; } = CycleMode.SingleCycle;
 
 	public CycleSessionMode DefaultCycleSessionMode { get; set; } = CycleSessionMode.ContinueSession;

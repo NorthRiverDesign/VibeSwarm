@@ -139,6 +139,15 @@ public class Project
 	public Guid? LeadProfileId { get; set; }
 
 	/// <summary>
+	/// The profile a running job can ask for a second opinion on a decision. Claude and Copilot
+	/// profiles read the repository; inference profiles see only the question.
+	/// </summary>
+	public Guid? DecisionsProfileId { get; set; }
+
+	/// <summary>The profile a running job can ask to research a question (see <see cref="DecisionsProfileId"/>).</summary>
+	public Guid? ResearchProfileId { get; set; }
+
+	/// <summary>
 	/// Where the owner wants the project to go: priorities, what matters most, what is off limits.
 	/// The Lead steers its suggestions by it.
 	/// </summary>

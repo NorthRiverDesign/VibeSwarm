@@ -16,8 +16,24 @@ public sealed class ProfileFormModel
 	[StringLength(ValidationLimits.ProfileDescriptionMaxLength, ErrorMessage = "Description must be {1} characters or fewer.")]
 	public string? Description { get; set; }
 
+	/// <summary>The picked provider: <c>p:&lt;id&gt;</c> for a coding provider, <c>i:&lt;id&gt;</c> for an inference one.</summary>
 	[Required(ErrorMessage = "Choose a provider.")]
-	public Guid? ProviderId { get; set; }
+	public string? ProviderKey { get; set; }
+
+	public bool IsProviderDefault { get; set; }
+
+	public Guid? ProviderId => ParseKey("p:");
+
+	public Guid? InferenceProviderId => ParseKey("i:");
+
+	public static string CodingKey(Guid id) => $"p:{id}";
+
+	public static string InferenceKey(Guid id) => $"i:{id}";
+
+	private Guid? ParseKey(string prefix)
+		=> ProviderKey != null && ProviderKey.StartsWith(prefix, StringComparison.Ordinal) && Guid.TryParse(ProviderKey[prefix.Length..], out var id)
+			? id
+			: null;
 
 	public string? ModelId { get; set; }
 
@@ -30,7 +46,10 @@ public sealed class ProfileFormModel
 			Id = profile.Id,
 			Name = profile.Name,
 			Description = profile.Description,
-			ProviderId = profile.ProviderId == Guid.Empty ? null : profile.ProviderId,
+			ProviderKey = profile.ProviderId is Guid providerId
+				? CodingKey(providerId)
+				: profile.InferenceProviderId is Guid inferenceId ? InferenceKey(inferenceId) : null,
+			IsProviderDefault = profile.IsProviderDefault,
 			ModelId = profile.ModelId,
 			ReasoningEffort = profile.ReasoningEffort,
 		};
@@ -40,8 +59,9 @@ public sealed class ProfileFormModel
 		Id = Id,
 		Name = Name.Trim(),
 		Description = string.IsNullOrWhiteSpace(Description) ? null : Description.Trim(),
-		ProviderId = ProviderId ?? Guid.Empty,
+		ProviderId = ProviderId,
+		InferenceProviderId = InferenceProviderId,
 		ModelId = string.IsNullOrWhiteSpace(ModelId) ? null : ModelId.Trim(),
-		ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(ReasoningEffort),
+		ReasoningEffort = InferenceProviderId.HasValue ? null : ProviderCapabilities.NormalizeReasoningEffort(ReasoningEffort),
 	};
 }

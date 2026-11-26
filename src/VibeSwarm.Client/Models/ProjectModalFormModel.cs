@@ -73,6 +73,10 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	public Guid? LeadProfileId { get; set; }
 
+	public Guid? DecisionsProfileId { get; set; }
+
+	public Guid? ResearchProfileId { get; set; }
+
 	[StringLength(LeadReviewLimits.DirectionMaxLength)]
 	public string? LeadDirection { get; set; }
 
@@ -174,6 +178,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			LeadModelId = source.LeadModelId,
 			LeadReasoningEffort = source.LeadReasoningEffort,
 			LeadProfileId = source.LeadProfileId,
+			DecisionsProfileId = source.DecisionsProfileId,
+			ResearchProfileId = source.ResearchProfileId,
 			LeadDirection = source.LeadDirection,
 			IdeaInferenceProviderId = source.IdeaInferenceProviderId,
 			IdeaInferenceModelId = source.IdeaInferenceModelId,
@@ -226,6 +232,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			LeadModelId = string.IsNullOrWhiteSpace(LeadModelId) ? null : LeadModelId.Trim(),
 			LeadReasoningEffort = LeadProviderId.HasValue ? ProviderCapabilities.NormalizeReasoningEffort(LeadReasoningEffort) : null,
 			LeadProfileId = LeadProfileId,
+			DecisionsProfileId = DecisionsProfileId,
+			ResearchProfileId = ResearchProfileId,
 			LeadDirection = string.IsNullOrWhiteSpace(LeadDirection) ? null : LeadDirection.Trim(),
 			IdeaInferenceProviderId = IdeaInferenceProviderId,
 			IdeaInferenceModelId = string.IsNullOrWhiteSpace(IdeaInferenceModelId) ? null : IdeaInferenceModelId.Trim(),
@@ -254,6 +262,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 				ProviderId = a.ProviderId,
 				PreferredModelId = a.PreferredModelId,
 				PreferredReasoningEffort = a.PreferredReasoningEffort,
+				ProfileId = a.ProfileId,
 				IsEnabled = a.IsEnabled,
 				CreatedAt = a.CreatedAt,
 				UpdatedAt = a.UpdatedAt

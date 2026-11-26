@@ -104,8 +104,10 @@
 	private List<(string Id, string Name)> _models = [];
 	private string? _loadedFor;
 
+	// Claude and Copilot review the code read-only; an inference provider reads the diff alone.
 	private IReadOnlyList<Profile> EligibleProfiles => Profiles
-		.Where(profile => AvailableProviders.Any(provider => provider.Id == profile.ProviderId))
+		.Where(profile => (profile.ProviderId is Guid providerId && AvailableProviders.Any(provider => provider.Id == providerId))
+			|| (profile.InferenceProviderId is Guid inferenceId && AvailableInferenceProviders.Any(provider => provider.Id == inferenceId)))
 		.ToList();
 
 	private bool IsLinked => Project.ReviewProfileId is Guid id && EligibleProfiles.Any(profile => profile.Id == id);
@@ -119,9 +121,9 @@
 		}
 
 		Project.ReviewProviderId = profile.ProviderId;
-		Project.ReviewInferenceProviderId = null;
+		Project.ReviewInferenceProviderId = profile.InferenceProviderId;
 		Project.ReviewModelId = profile.ModelId;
-		Project.ReviewReasoningEffort = profile.ReasoningEffort;
+		Project.ReviewReasoningEffort = profile.InferenceProviderId.HasValue ? null : profile.ReasoningEffort;
 		await LoadModelsAsync();
 	}
 

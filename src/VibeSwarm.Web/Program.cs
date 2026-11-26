@@ -273,6 +273,17 @@ using (var scope = app.Services.CreateScope())
         await migrationContext.Database.MigrateAsync();
     }
 
+    // Every provider has a default profile; providers from before profiles get theirs here.
+    try
+    {
+        await VibeSwarm.Web.Services.ProfileService.EnsureProviderDefaultsAsync(
+            scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>());
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Could not create default profiles: {ex.Message}");
+    }
+
     // Serve HTTP only unless HTTPS is turned on in Settings, so LAN and VPN browsers don't
     // hit a self-signed certificate warning. Read once here; changing it needs a restart.
     var enableHttps = await scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>().AppSettings
