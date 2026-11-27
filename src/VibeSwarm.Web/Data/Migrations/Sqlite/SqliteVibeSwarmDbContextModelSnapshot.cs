@@ -788,6 +788,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<int>("IdeaSource")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("IdeasProfileId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("InferenceModelId")
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
@@ -1764,6 +1767,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<Guid?>("CommitSummaryInferenceProviderId")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("CommitSummaryProfileId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -1816,6 +1822,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("IdeasProcessingProviderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("IdeasProfileId")
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsActive")

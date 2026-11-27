@@ -186,6 +186,8 @@ public class ProjectService : IProjectService
 		existing.LeadDirection = project.LeadDirection;
 		existing.IdeaInferenceProviderId = project.IdeaInferenceProviderId;
 		existing.IdeaInferenceModelId = string.IsNullOrWhiteSpace(project.IdeaInferenceModelId) ? null : project.IdeaInferenceModelId.Trim();
+		existing.IdeasProfileId = project.IdeasProfileId;
+		existing.CommitSummaryProfileId = project.CommitSummaryProfileId;
 		existing.CommitSummaryInferenceProviderId = project.CommitSummaryInferenceProviderId;
 		existing.CommitSummaryInferenceModelId = string.IsNullOrWhiteSpace(project.CommitSummaryInferenceModelId) ? null : project.CommitSummaryInferenceModelId.Trim();
 		existing.PromptContext = project.PromptContext;
@@ -1090,6 +1092,7 @@ public class ProjectService : IProjectService
 	{
 		ProfileLinks.ApplyRoleLinks(project, profiles);
 		ProfileLinks.ApplyHelperLinks(project, profiles);
+		ProfileLinks.ApplyInferenceRoleLinks(project, profiles);
 		foreach (var entry in project.ProviderSelections ?? [])
 		{
 			ProfileLinks.ApplyEntryLink(entry, profiles);

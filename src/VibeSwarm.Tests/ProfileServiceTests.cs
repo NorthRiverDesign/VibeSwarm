@@ -692,6 +692,59 @@ public sealed class ProfileServiceTests : IDisposable
 		}
 	}
 
+	[Fact]
+	public async Task InferenceRoles_LinkAProfile_FollowItsEdits_AndMoveWhenItIsDeleted()
+	{
+		await SeedProvidersAsync();
+		var grok = await SeedGrokAsync();
+		Guid projectId, loopId, scheduleId;
+		await using (var dbContext = CreateDbContext())
+		{
+			await ProfileService.EnsureProviderDefaultsAsync(dbContext);
+			// As saved before these settings took a profile: a provider and a model.
+			var project = NewProject("Inference roles");
+			project.IdeaInferenceProviderId = grok.Id;
+			project.IdeaInferenceModelId = "grok-4";
+			project.CommitSummaryInferenceProviderId = grok.Id;
+			dbContext.Projects.Add(project);
+			var loop = new IterationLoop { Id = Guid.NewGuid(), ProjectId = project.Id, Status = IterationLoopStatus.Running, InferenceProviderId = grok.Id, InferenceModelId = "grok-4" };
+			var schedule = new JobSchedule { Id = Guid.NewGuid(), ProjectId = project.Id, ScheduleType = JobScheduleType.GenerateIdeas, InferenceProviderId = grok.Id, ModelId = "grok-4" };
+			dbContext.IterationLoops.Add(loop);
+			dbContext.JobSchedules.Add(schedule);
+			await dbContext.SaveChangesAsync();
+			(projectId, loopId, scheduleId) = (project.Id, loop.Id, schedule.Id);
+		}
+
+		Guid ideasProfileId, grokDefaultId;
+		await using (var dbContext = CreateDbContext())
+		{
+			await ProfileService.EnsureSettingsHaveProfilesAsync(dbContext);
+			var project = await dbContext.Projects.SingleAsync(p => p.Id == projectId);
+			var profiles = await dbContext.Profiles.AsNoTracking().ToListAsync();
+			grokDefaultId = profiles.Single(profile => profile.InferenceProviderId == grok.Id && profile.IsProviderDefault).Id;
+			ideasProfileId = project.IdeasProfileId!.Value;
+
+			// One profile holds "Grok on grok-4" for the project, the run and the schedule alike;
+			// the commit writer left its model open, which is the provider's own profile.
+			Assert.Equal("Grok · grok-4", profiles.Single(profile => profile.Id == ideasProfileId).Name);
+			Assert.Equal(grokDefaultId, project.CommitSummaryProfileId);
+			Assert.Equal(ideasProfileId, (await dbContext.IterationLoops.SingleAsync(loop => loop.Id == loopId)).IdeasProfileId);
+			Assert.Equal(ideasProfileId, (await dbContext.JobSchedules.SingleAsync(schedule => schedule.Id == scheduleId)).ProfileId);
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			// Deleting it moves each of them to Grok's own profile, which names no model.
+			await new ProfileService(dbContext).DeleteAsync(ideasProfileId);
+			var project = await dbContext.Projects.AsNoTracking().SingleAsync(p => p.Id == projectId);
+			var loop = await dbContext.IterationLoops.AsNoTracking().SingleAsync(item => item.Id == loopId);
+			var schedule = await dbContext.JobSchedules.AsNoTracking().SingleAsync(item => item.Id == scheduleId);
+			Assert.Equal(((Guid?)grokDefaultId, (Guid?)grok.Id, null), (project.IdeasProfileId, project.IdeaInferenceProviderId, project.IdeaInferenceModelId));
+			Assert.Equal(((Guid?)grokDefaultId, (Guid?)grok.Id, null), (loop.IdeasProfileId, loop.InferenceProviderId, loop.InferenceModelId));
+			Assert.Equal(((Guid?)grokDefaultId, (Guid?)grok.Id, null), (schedule.ProfileId, schedule.InferenceProviderId, schedule.ModelId));
+		}
+	}
+
 	private async Task<InferenceProvider> SeedGrokAsync()
 	{
 		var grok = new InferenceProvider { Id = Guid.NewGuid(), Name = "Grok", ProviderType = VibeSwarm.Shared.Inference.InferenceProviderType.Grok, Endpoint = "https://api.x.ai", IsEnabled = true };

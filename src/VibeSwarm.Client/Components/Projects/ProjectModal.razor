@@ -4,7 +4,6 @@
 @inject IProjectService ProjectService
 @inject IProviderService ProviderService
 @inject IAgentService AgentService
-@inject IInferenceProviderService InferenceProviderService
 @inject ISettingsService SettingsService
 @inject NotificationService NotificationService
 @inject IServiceProvider Services
@@ -53,11 +52,7 @@ Badge="@(FormModel.NewGitHubRepositoryPrivate ? "Private" : "Public")"
 <AccordionSection Title="When a job finishes" Icon="git"
 Summary="Commit, push and pull request behavior"
 Badge="@AutoCommitSummary" @bind-IsOpen="_openAutomation">
-<ProjectAutomationSection Project="@FormModel" IsEdit="@IsEdit"
-AvailableInferenceProviders="@_availableInferenceProviders"
-InferenceModels="@_commitSummaryInferenceModels"
-OnCommitSummaryProviderChanged="HandleCommitSummaryInferenceProviderChanged"
-OnCommitSummaryModelsRefreshed="LoadCommitSummaryInferenceModelsAsync" />
+<ProjectAutomationSection Project="@FormModel" IsEdit="@IsEdit" Profiles="@_profiles" />
 </AccordionSection>
 
 <AccordionSection Title="Agents" Icon="people"
@@ -72,11 +67,7 @@ Profiles="@_profiles" OnProfileChanged="HandleTeamAssignmentProfileChanged" />
 <AccordionSection Title="Ideas" Icon="lightbulb"
 Summary="How improvement ideas are generated"
 @bind-IsOpen="_openIdeas">
-<ProjectIdeaGenerationSection Project="@FormModel"
-AvailableInferenceProviders="@_availableInferenceProviders"
-InferenceModels="@_ideaInferenceModels"
-OnProviderChanged="HandleIdeaInferenceProviderChanged"
-OnModelsRefreshed="LoadIdeaInferenceModelsAsync" />
+<ProjectIdeaGenerationSection Project="@FormModel" Profiles="@_profiles" />
 </AccordionSection>
 
 <AccordionSection Title="Instructions and memory" Icon="journal-richtext"
@@ -197,9 +188,6 @@ private DirectoryBrowser? _directoryBrowser;
 private string? _defaultProjectsDirectory;
 private List<Provider> _availableProviders = [];
 private List<Agent> _availableAgents = [];
-private List<InferenceProvider> _availableInferenceProviders = [];
-private List<InferenceModel> _ideaInferenceModels = [];
-private List<InferenceModel> _commitSummaryInferenceModels = [];
 private readonly ProjectModalState _formState = new();
 private Dictionary<string, string> _existingProjectPaths = new(StringComparer.OrdinalIgnoreCase);
 private Dictionary<string, string> _existingGitHubRepositories = new(StringComparer.OrdinalIgnoreCase);
@@ -223,7 +211,6 @@ protected override async Task OnInitializedAsync()
 await LoadDefaultProjectsDirectory();
 await LoadProvidersAsync();
 await LoadAgentsAsync();
-await LoadInferenceProvidersAsync();
 }
 
 protected override async Task OnParametersSetAsync()
@@ -243,8 +230,6 @@ var editableProject = await ProjectService.GetByIdAsync(EditProject.Id) ?? EditP
 FormModel = ProjectModalFormModel.FromProject(CloneProjectForEditing(editableProject));
 _initialLinkedProjectIds = FormModel.LinkedProjectIds.ToHashSet();
 _formState.LoadFromProject(FormModel);
-await LoadIdeaInferenceModelsAsync();
-await LoadCommitSummaryInferenceModelsAsync();
 }
 else
 {
@@ -411,8 +396,6 @@ ResetState();
 		_initialLinkedProjectIds = [];
 		_cloneProgressMessage = null;
 		_showGitHubRepositoryBrowser = false;
-		_ideaInferenceModels = [];
-		_commitSummaryInferenceModels = [];
 	}
 
 private async Task OpenDirectoryBrowser()
@@ -602,90 +585,6 @@ if (assignment == null)
 FormModel.AgentAssignments.Remove(assignment);
 }
 
-private async Task LoadInferenceProvidersAsync()
-{
-	try
-	{
-		_availableInferenceProviders = (await InferenceProviderService.GetEnabledAsync()).ToList();
-		await LoadIdeaInferenceModelsAsync();
-		await LoadCommitSummaryInferenceModelsAsync();
-	}
-	catch
-	{
-		_availableInferenceProviders = [];
-		_ideaInferenceModels = [];
-		_commitSummaryInferenceModels = [];
-	}
-}
-
-private async Task HandleIdeaInferenceProviderChanged()
-{
-FormModel.IdeaInferenceModelId = null;
-await LoadIdeaInferenceModelsAsync();
-}
-
-private async Task HandleCommitSummaryInferenceProviderChanged()
-{
-FormModel.CommitSummaryInferenceModelId = null;
-await LoadCommitSummaryInferenceModelsAsync();
-}
-
-private async Task LoadIdeaInferenceModelsAsync()
-{
-_ideaInferenceModels = [];
-if (!FormModel.IdeaInferenceProviderId.HasValue)
-{
-return;
-}
-
-try
-{
-_ideaInferenceModels = (await InferenceProviderService.GetModelsAsync(FormModel.IdeaInferenceProviderId.Value))
-.Where(model => model.IsAvailable)
-.OrderByDescending(model => model.IsDefault)
-.ThenBy(model => model.DisplayName ?? model.ModelId)
-.ToList();
-}
-catch
-{
-_ideaInferenceModels = [];
-}
-
-if (!string.IsNullOrWhiteSpace(FormModel.IdeaInferenceModelId) &&
-!_ideaInferenceModels.Any(model => string.Equals(model.ModelId, FormModel.IdeaInferenceModelId, StringComparison.Ordinal)))
-{
-FormModel.IdeaInferenceModelId = null;
-}
-}
-
-private async Task LoadCommitSummaryInferenceModelsAsync()
-{
-_commitSummaryInferenceModels = [];
-if (!FormModel.CommitSummaryInferenceProviderId.HasValue)
-{
-return;
-}
-
-try
-{
-_commitSummaryInferenceModels = (await InferenceProviderService.GetModelsAsync(FormModel.CommitSummaryInferenceProviderId.Value))
-.Where(model => model.IsAvailable)
-.OrderByDescending(model => model.IsDefault)
-.ThenBy(model => model.DisplayName ?? model.ModelId)
-.ToList();
-}
-catch
-{
-_commitSummaryInferenceModels = [];
-}
-
-if (!string.IsNullOrWhiteSpace(FormModel.CommitSummaryInferenceModelId) &&
-!_commitSummaryInferenceModels.Any(model => string.Equals(model.ModelId, FormModel.CommitSummaryInferenceModelId, StringComparison.Ordinal)))
-{
-FormModel.CommitSummaryInferenceModelId = null;
-}
-}
-
 private Project CloneProjectForEditing(Project source)
 {
 return new Project
@@ -723,6 +622,8 @@ Memory = source.Memory,
 BuildVerificationEnabled = source.BuildVerificationEnabled,
 	BuildCommand = source.BuildCommand,
 	TestCommand = source.TestCommand,
+	IdeasProfileId = source.IdeasProfileId,
+	CommitSummaryProfileId = source.CommitSummaryProfileId,
 	IdeaInferenceProviderId = source.IdeaInferenceProviderId,
 	IdeaInferenceModelId = source.IdeaInferenceModelId,
 	CommitSummaryInferenceProviderId = source.CommitSummaryInferenceProviderId,

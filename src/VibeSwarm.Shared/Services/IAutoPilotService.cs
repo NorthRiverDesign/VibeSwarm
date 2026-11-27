@@ -24,6 +24,9 @@ public class AutoPilotConfig
 	/// </summary>
 	public Guid? InferenceProviderId { get; set; }
 
+	/// <summary>The inference profile that suggests ideas. It brings its provider and model.</summary>
+	public Guid? IdeasProfileId { get; set; }
+
 	public string? InferenceModelId { get; set; }
 
 	/// <summary>

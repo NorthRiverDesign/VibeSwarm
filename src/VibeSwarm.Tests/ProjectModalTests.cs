@@ -273,46 +273,40 @@ public void AddAgent_AssignsItOnItsOwnProfile()
 }
 
 	[Fact]
-	public void EditProject_LoadsCommitSummaryInferenceSettings()
+	public void EditProject_ShowsTheProfilesThatSuggestIdeasAndWriteCommitMessages()
 	{
-	var inferenceProviderId = Guid.NewGuid();
-	var inferenceProvider = new InferenceProvider
-	{
-		Id = inferenceProviderId,
-		Name = "Local Ollama",
-		ProviderType = VibeSwarm.Shared.Inference.InferenceProviderType.Ollama,
-		Endpoint = "http://localhost:11434",
-		IsEnabled = true,
-		Models =
-		[
-			new InferenceModel
-			{
-				InferenceProviderId = inferenceProviderId,
-				ModelId = "qwen3",
-				DisplayName = "Qwen 3",
-				IsAvailable = true,
-				IsDefault = true
-			}
-		]
-	};
-
-	using var context = CreateBunitContext(
-		inferenceProviders: [inferenceProvider]);
-
-	var cut = context.Render<ProjectModal>(parameters => parameters
-		.Add(component => component.IsVisible, true)
-		.Add(component => component.EditProject, new Project
+		var ollama = new InferenceProvider
 		{
 			Id = Guid.NewGuid(),
-			Name = "Sample Project",
-			WorkingPath = "/tmp/sample",
-			CommitSummaryInferenceProviderId = inferenceProviderId,
-			CommitSummaryInferenceModelId = "qwen3"
-		}));
+			Name = "Local Ollama",
+			ProviderType = VibeSwarm.Shared.Inference.InferenceProviderType.Ollama,
+			Endpoint = "http://localhost:11434",
+			IsEnabled = true
+		};
+		var writer = new Profile { Id = Guid.NewGuid(), Name = "Commit writer", InferenceProviderId = ollama.Id, InferenceProvider = ollama, ModelId = "qwen3" };
+		var coder = new Provider { Id = Guid.NewGuid(), Name = "GitHub Copilot", Type = ProviderType.Copilot, IsEnabled = true };
+		var coding = new Profile { Id = Guid.NewGuid(), Name = "GitHub Copilot", ProviderId = coder.Id, Provider = coder, IsProviderDefault = true };
 
-	Assert.Contains("Commit message writer", cut.Markup);
-	Assert.Equal(inferenceProviderId.ToString(), cut.Find("#modal-commitSummaryInferenceProvider").GetAttribute("value"));
-	Assert.Equal("qwen3", cut.Find("#modal-commitSummaryInferenceModel").GetAttribute("value"));
+		using var context = CreateBunitContext(provider: coder, profiles: [coding, writer]);
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditProject, new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Sample Project",
+				WorkingPath = "/tmp/sample",
+				CommitSummaryProfileId = writer.Id,
+				CommitSummaryInferenceProviderId = ollama.Id,
+				CommitSummaryInferenceModelId = "qwen3"
+			}));
+
+		Assert.Contains("Commit message writer", cut.Markup);
+		Assert.Equal(writer.Id.ToString(), cut.Find("#modal-commitSummaryProfile").GetAttribute("value"));
+		// Only inference profiles are offered, with the coding provider as the other choice.
+		Assert.Equal(["The coding provider", "Commit writer"], cut.FindAll("#modal-commitSummaryProfile option").Select(option => option.TextContent));
+		Assert.Equal(["The coding provider", "Commit writer"], cut.FindAll("#modal-ideasProfile option").Select(option => option.TextContent));
+		Assert.Empty(cut.FindAll("#modal-commitSummaryInferenceProvider, #modal-commitSummaryInferenceModel, #modal-ideaInferenceProvider, #modal-ideaInferenceModel"));
 	}
 
 	[Fact]

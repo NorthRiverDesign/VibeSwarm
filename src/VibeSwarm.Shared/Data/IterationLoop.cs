@@ -95,6 +95,12 @@ public class IterationLoop
 	/// </summary>
 	public Guid? InferenceProviderId { get; set; }
 
+	/// <summary>
+	/// The inference profile that suggests this run's ideas; the inference provider and model
+	/// beside it are copied from it.
+	/// </summary>
+	public Guid? IdeasProfileId { get; set; }
+
 	[StringLength(200)]
 	public string? InferenceModelId { get; set; }
 

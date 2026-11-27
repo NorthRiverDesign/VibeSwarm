@@ -187,11 +187,34 @@ public static class ProfileLinks
 			? (providerId, profile.ModelId)
 			: null;
 
-	/// <summary>Fills a schedule's provider and model from its linked coding profile, or drops the link.</summary>
+	/// <summary>
+	/// The same for a setting that only asks questions: an inference profile's provider and model.
+	/// </summary>
+	public static (Guid InferenceProviderId, string? ModelId)? InferenceValues(Guid? profileId, IReadOnlyDictionary<Guid, Profile> profiles)
+		=> profileId is Guid id && profiles.TryGetValue(id, out var profile) && profile.InferenceProviderId is Guid inferenceProviderId
+			? (inferenceProviderId, profile.ModelId)
+			: null;
+
+	/// <summary>
+	/// Fills a schedule from its linked profile, or drops the link: a job schedule takes a coding
+	/// profile's provider and model, an idea schedule an inference profile's.
+	/// </summary>
 	public static void ApplyScheduleLink(JobSchedule schedule, IReadOnlyDictionary<Guid, Profile> profiles)
 	{
 		if (!schedule.ProfileId.HasValue)
 		{
+			return;
+		}
+
+		if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+		{
+			if (InferenceValues(schedule.ProfileId, profiles) is not { } ideaValues)
+			{
+				schedule.ProfileId = null;
+				return;
+			}
+
+			(schedule.InferenceProviderId, schedule.ModelId) = ideaValues;
 			return;
 		}
 
@@ -202,6 +225,51 @@ public static class ProfileLinks
 		}
 
 		(schedule.ProviderId, schedule.ModelId) = values;
+	}
+
+	/// <summary>Fills the project's idea provider and commit message writer from their linked inference profiles, or drops the links.</summary>
+	public static void ApplyInferenceRoleLinks(Project project, IReadOnlyDictionary<Guid, Profile> profiles)
+	{
+		if (project.IdeasProfileId.HasValue)
+		{
+			if (InferenceValues(project.IdeasProfileId, profiles) is { } ideas)
+			{
+				(project.IdeaInferenceProviderId, project.IdeaInferenceModelId) = ideas;
+			}
+			else
+			{
+				project.IdeasProfileId = null;
+			}
+		}
+
+		if (project.CommitSummaryProfileId.HasValue)
+		{
+			if (InferenceValues(project.CommitSummaryProfileId, profiles) is { } summary)
+			{
+				(project.CommitSummaryInferenceProviderId, project.CommitSummaryInferenceModelId) = summary;
+			}
+			else
+			{
+				project.CommitSummaryProfileId = null;
+			}
+		}
+	}
+
+	/// <summary>Fills an auto-pilot loop's idea provider and model from its linked inference profile, or drops the link.</summary>
+	public static void ApplyLoopIdeasLink(IterationLoop loop, IReadOnlyDictionary<Guid, Profile> profiles)
+	{
+		if (!loop.IdeasProfileId.HasValue)
+		{
+			return;
+		}
+
+		if (InferenceValues(loop.IdeasProfileId, profiles) is not { } values)
+		{
+			loop.IdeasProfileId = null;
+			return;
+		}
+
+		(loop.InferenceProviderId, loop.InferenceModelId) = values;
 	}
 
 	/// <summary>Fills an auto-pilot loop's provider and model from its linked coding profile, or drops the link.</summary>
@@ -242,7 +310,7 @@ public static class ProfileLinks
 	public static HashSet<Guid> GetLinkedProfileIds(Project project)
 	{
 		var ids = new HashSet<Guid>();
-		foreach (var id in new[] { project.PlanningProfileId, project.ReviewProfileId, project.LeadProfileId, project.DecisionsProfileId, project.ResearchProfileId })
+		foreach (var id in new[] { project.PlanningProfileId, project.ReviewProfileId, project.LeadProfileId, project.DecisionsProfileId, project.ResearchProfileId, project.IdeasProfileId, project.CommitSummaryProfileId })
 		{
 			if (id is Guid value)
 			{

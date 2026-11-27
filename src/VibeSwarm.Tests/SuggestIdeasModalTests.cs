@@ -74,15 +74,12 @@ public sealed class SuggestIdeasModalTests
 		});
 
 		Assert.Contains("Suggest Ideas", html);
-		Assert.Contains("Use inference", html);
-		Assert.Contains("Inference Provider", html);
-		Assert.Contains("Model", html);
+		// One profile choice stands in for the inference switch, the provider and the model.
+		Assert.Contains("id=\"suggestIdeasProfile\"", html);
+		Assert.DoesNotContain("Use inference", html);
+		Assert.DoesNotContain("id=\"suggestIdeasProvider\"", html);
+		Assert.DoesNotContain("id=\"suggestIdeasModel\"", html);
 		Assert.Contains("Ideas to Generate", html);
-		Assert.Contains("Local Ollama A", html, StringComparison.Ordinal);
-		Assert.Contains("Local Ollama B", html, StringComparison.Ordinal);
-		Assert.Contains("Use provider default model", html);
-		Assert.Contains("Qwen 2.5 Coder 7B (Default)", html);
-		Assert.Contains("Llama 3.2", html);
 		Assert.Contains(">4<", html);
 		Assert.Contains("id=\"suggestIdeasFocus\"", html);
 		Assert.Contains($"maxlength=\"{ValidationLimits.IdeaSuggestionFocusMaxLength}\"", html);
@@ -157,12 +154,56 @@ public sealed class SuggestIdeasModalTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("Configured Provider", html);
-		Assert.Contains("Copilot CLI", html);
-		Assert.Contains("GPT-5.4 (Default)", html);
-		Assert.Contains("Leave this blank to use the provider&#x27;s default model selection.", html);
+		Assert.Contains("id=\"suggestIdeasProfile\"", html);
 		Assert.DoesNotContain("Use inference", html);
 		Assert.DoesNotContain("Inference Provider", html);
+	}
+
+	[Fact]
+	public void PickingAProfile_SetsTheKindProviderAndModelTheRequestSends()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
+		var ollama = new InferenceProvider { Id = Guid.NewGuid(), Name = "Local Ollama", Endpoint = "http://ollama:11434", IsEnabled = true,
+			Models = [new InferenceModel { Id = Guid.NewGuid(), ModelId = "qwen", IsAvailable = true }] };
+		var claude = new Provider { Id = Guid.NewGuid(), Name = "Claude CLI", Type = ProviderType.Claude, IsEnabled = true,
+			AvailableModels = [new ProviderModel { Id = Guid.NewGuid(), ModelId = "sonnet", IsAvailable = true }] };
+		var localIdeas = new Profile { Id = Guid.NewGuid(), Name = "Local ideas", InferenceProviderId = ollama.Id, InferenceProvider = ollama, ModelId = "qwen" };
+		var careful = new Profile { Id = Guid.NewGuid(), Name = "Careful", ProviderId = claude.Id, Provider = claude, ModelId = "sonnet" };
+		// A profile on a provider this dialog wasn't given can't be asked.
+		var elsewhere = new Profile { Id = Guid.NewGuid(), Name = "Elsewhere", ProviderId = Guid.NewGuid(), Provider = new Provider { Name = "Other", IsEnabled = true } };
+		context.Services.AddSingleton<VibeSwarm.Shared.Services.IProfileService>(new FakeProfileService(localIdeas, careful, elsewhere));
+		(bool? UseInference, Guid? ProviderId, string? ModelId) sent = (null, null, "unset");
+
+		var cut = context.Render<SuggestIdeasModal>(parameters => parameters
+			.Add(modal => modal.IsVisible, true)
+			.Add(modal => modal.UseInference, true)
+			.Add(modal => modal.HasInference, true)
+			.Add(modal => modal.AvailableInferenceProviders, [ollama])
+			.Add(modal => modal.AvailableProviders, [claude])
+			.Add(modal => modal.SelectedProviderId, ollama.Id)
+			.Add(modal => modal.SelectedModelId, "qwen")
+			.Add(modal => modal.UseInferenceChanged, EventCallback.Factory.Create<bool>(this, value => sent.UseInference = value))
+			.Add(modal => modal.SelectedProviderIdChanged, EventCallback.Factory.Create<Guid?>(this, value => sent.ProviderId = value))
+			.Add(modal => modal.SelectedModelIdChanged, EventCallback.Factory.Create<string?>(this, value => sent.ModelId = value)));
+
+		// It opens on the profile holding what the dialog started with.
+		cut.WaitForAssertion(() => Assert.Equal(localIdeas.Id.ToString(), cut.Find("#suggestIdeasProfile").GetAttribute("value")));
+		Assert.Equal(["Local ideas", "Careful"], cut.FindAll("#suggestIdeasProfile option").Select(option => option.TextContent));
+		Assert.Empty(cut.FindAll("#useInferenceForSuggestions, #suggestIdeasProvider, #suggestIdeasModel"));
+
+		cut.Find("#suggestIdeasProfile").Change(careful.Id.ToString());
+
+		Assert.Equal((false, (Guid?)claude.Id, "sonnet"), sent);
+	}
+
+	private sealed class FakeProfileService(params Profile[] profiles) : VibeSwarm.Shared.Services.IProfileService
+	{
+		public Task<IEnumerable<Profile>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Profile>>(profiles);
+		public Task<Profile?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(profiles.FirstOrDefault(profile => profile.Id == id));
+		public Task<Profile> CreateAsync(Profile profile, CancellationToken cancellationToken = default) => Task.FromResult(profile);
+		public Task<Profile> UpdateAsync(Profile profile, CancellationToken cancellationToken = default) => Task.FromResult(profile);
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
 	}
 
 	private sealed class NoOpJsRuntime : IJSRuntime

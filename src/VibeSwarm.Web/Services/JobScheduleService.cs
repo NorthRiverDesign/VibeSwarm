@@ -300,7 +300,6 @@ public class JobScheduleService : IJobScheduleService
 		if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 		{
 			schedule.ProviderId = null;
-			schedule.ProfileId = null;
 			schedule.AgentId = null;
 			schedule.Prompt = string.Empty;
 			schedule.ExecutionTarget = JobScheduleExecutionTarget.Provider;

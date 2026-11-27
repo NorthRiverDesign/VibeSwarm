@@ -1,6 +1,6 @@
 @* Modal component for adding and editing skills *@
 @inject ISkillService SkillService
-@inject IProviderService ProviderService
+@inject IServiceProvider Services
 @inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
@@ -44,35 +44,11 @@
 					<div class="card bg-2 mb-3">
 						<div class="card-body py-3">
 							<div class="row g-3 align-items-end">
-								<div class="col-12 md:col-5">
-									<label class="form-label small mb-1">Provider</label>
-									<select class="form-control form-control-sm" @bind="_selectedProviderId"
-											@bind:after="LoadModelsForProvider">
-										<option value="">Select provider...</option>
-										@foreach (var provider in _providers.Where(p => p.IsEnabled))
-										{
-											<option value="@provider.Id">@provider.Name</option>
-										}
-									</select>
-								</div>
-								<div class="col-12 md:col-4">
-									<label class="form-label small mb-1">Model</label>
-									<div class="input-group input-group-sm">
-										<select class="form-control form-control-sm" @bind="_selectedModelId"
-												disabled="@(!_models.Any())">
-											<option value="">@(_isLoadingModels ? "Loading..." : "Default")</option>
-											@foreach (var model in _models.Where(m => m.IsAvailable))
-											{
-												<option value="@model.ModelId">@model.DisplayName</option>
-											}
-										</select>
-										<ModelRefreshButton ProviderId="@_selectedProviderId" Small="true" Disabled="@_isLoadingModels"
-															OnRefreshed="HandleModelsRefreshed" />
-									</div>
-								</div>
+								<ProfilePicker Id="skill-expand-profile" Class="col-12 md:col-9" Label="Write it with" Profiles="_profiles" Allowed="ProfileRoles.CanBuild"
+											   SelectedProfileId="_selectedProfileId" OnSelected="profile => _selectedProfileId = profile?.Id" />
 								<div class="col-12 md:col-3">
 									<button type="button" class="btn-sm btn-solid theme-primary w-100" @onclick="ExpandWithAI"
-											disabled="@(_selectedProviderId == Guid.Empty || _isExpanding)">
+											disabled="@(SelectedProfile == null || _isExpanding)">
 										@if (_isExpanding)
 										{
 											<span class="spinner-border spinner-sm me-1" role="status"></span>
@@ -163,11 +139,10 @@
 	private bool _showExpansionPanel;
 	private bool _isExpanding;
 	private string? _expansionError;
-	private List<Provider> _providers = new();
-	private List<ProviderModel> _models = new();
-	private Guid _selectedProviderId;
-	private string _selectedModelId = string.Empty;
-	private bool _isLoadingModels;
+	private List<Profile> _profiles = [];
+	private Guid? _selectedProfileId;
+
+	private Profile? SelectedProfile => _profiles.FirstOrDefault(profile => profile.Id == _selectedProfileId && ProfileRoles.CanBuild(profile));
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -205,66 +180,22 @@
 		_previousIsVisible = IsVisible;
 	}
 
+	// Resolved lazily so pages and tests that never expand a skill need no registration.
 	private async Task LoadProviders()
 	{
 		try
 		{
-			_providers = (await ProviderService.GetAllAsync()).ToList();
-
-			// Pre-select default provider if available
-			var defaultProvider = _providers.FirstOrDefault(p => p.IsDefault && p.IsEnabled);
-			if (defaultProvider != null)
-			{
-				_selectedProviderId = defaultProvider.Id;
-				await LoadModelsForProvider();
-			}
+			_profiles = Services.GetService<IProfileService>() is { } profileService
+				? (await profileService.GetAllAsync()).ToList()
+				: [];
 		}
-		catch
+		catch (HttpRequestException)
 		{
-			_providers = new();
-		}
-	}
-
-	private void HandleModelsRefreshed(List<ProviderModel> models)
-	{
-		_models = models;
-		if (!_models.Any(m => m.IsAvailable && m.ModelId == _selectedModelId))
-		{
-			_selectedModelId = string.Empty;
-		}
-	}
-
-	private async Task LoadModelsForProvider()
-	{
-		if (_selectedProviderId == Guid.Empty)
-		{
-			_models = new();
-			return;
+			_profiles = [];
 		}
 
-		_isLoadingModels = true;
-		_selectedModelId = string.Empty;
-		StateHasChanged();
-
-		try
-		{
-			_models = (await ProviderService.GetModelsAsync(_selectedProviderId)).ToList();
-
-			// Pre-select default model if available
-			var defaultModel = _models.FirstOrDefault(m => m.IsDefault && m.IsAvailable);
-			if (defaultModel != null)
-			{
-				_selectedModelId = defaultModel.ModelId;
-			}
-		}
-		catch
-		{
-			_models = new();
-		}
-		finally
-		{
-			_isLoadingModels = false;
-		}
+		// Start on the default provider's own profile.
+		_selectedProfileId ??= ProjectExecutionDefaults.GetBuildProfileId(null, _profiles);
 	}
 
 	private void ToggleExpansionPanel()
@@ -275,7 +206,7 @@
 
 	private async Task ExpandWithAI()
 	{
-		if (_selectedProviderId == Guid.Empty || string.IsNullOrWhiteSpace(Skill.Description))
+		if (SelectedProfile is not { ProviderId: Guid providerId } profile || string.IsNullOrWhiteSpace(Skill.Description))
 			return;
 
 		_isExpanding = true;
@@ -286,8 +217,8 @@
 		{
 			var result = await SkillService.ExpandSkillAsync(
 			Skill.Description,
-			_selectedProviderId,
-			string.IsNullOrEmpty(_selectedModelId) ? null : _selectedModelId);
+			providerId,
+			profile.ModelId);
 
 			if (!string.IsNullOrWhiteSpace(result))
 			{
@@ -391,6 +322,5 @@
 		_showExpansionPanel = false;
 		_isExpanding = false;
 		_expansionError = null;
-		_selectedModelId = string.Empty;
 	}
 }

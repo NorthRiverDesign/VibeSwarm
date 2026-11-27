@@ -1,4 +1,5 @@
 @using VibeSwarm.Shared.Validation
+@inject IServiceProvider Services
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged" Title="Suggest Ideas" Icon="stars"
 			 Size="ModalDialog.ModalSize.Small" OnClose="HandleCancel">
@@ -14,59 +15,8 @@
 		}
 		else
 		{
-			@if (HasInference && HasConfiguredProviders)
-			{
-				<div class="form-field mb-5">
-					<div class="switch">
-						<input role="switch" switch type="checkbox" id="useInferenceForSuggestions" checked="@UseInference"
-							   @onchange="HandleToggleInference">
-					</div>
-					<label for="useInferenceForSuggestions">
-						<i class="bi @(UseInference ? "bi-pc-display" : "bi-cloud") me-1"></i>
-						@(UseInference ? "Use inference" : "Use configured provider")
-					</label>
-				</div>
-			}
-
-			<div class="mb-5">
-				<label for="suggestIdeasProvider" class="form-label fw-medium">@GetProviderLabel()</label>
-				<select id="suggestIdeasProvider" class="form-control" @bind="SelectedProviderIdValue"
-						disabled="@(!CurrentProviders.Any())">
-					@foreach (var provider in CurrentProviders)
-					{
-						<option value="@provider.Id">@provider.Name</option>
-					}
-				</select>
-				@if (!CurrentProviders.Any())
-				{
-					<div class="form-text">
-						@(UseInference
-							? "Add an enabled inference provider under Settings → Inference."
-							: "Add an enabled provider under Settings → Providers.")
-					</div>
-				}
-			</div>
-
-			<div class="mb-5">
-				<label for="suggestIdeasModel" class="form-label fw-medium">
-					Model
-					<span class="fg-1 fw-normal">(optional)</span>
-				</label>
-				<div class="input-group">
-					<select id="suggestIdeasModel" class="form-control" @bind="SelectedModelIdValue"
-							disabled="@(!SelectedProviderId.HasValue || !SelectedProviderModels.Any())">
-						<option value="">Use provider default model</option>
-						@foreach (var model in SelectedProviderModels)
-						{
-							<option value="@model.ModelId">@model.DisplayName</option>
-						}
-					</select>
-					<ModelRefreshButton ProviderId="@SelectedProviderId" IsInference="@UseInference"
-										OnRefreshed="HandleProviderModelsRefreshed"
-										OnInferenceRefreshed="HandleInferenceModelsRefreshed" />
-				</div>
-				<div class="form-text">@GetModelHelpText()</div>
-			</div>
+			<ProfilePicker Id="suggestIdeasProfile" Class="mb-5" Label="Ask" Profiles="_profiles" Allowed="CanSuggest"
+						   SelectedProfileId="SelectedProfile?.Id" OnSelected="HandleProfileSelected" />
 
 			<div class="mb-5">
 				<label for="suggestIdeasCount" class="form-label fw-medium">Ideas to Generate</label>
@@ -198,34 +148,40 @@
 		.FirstOrDefault(provider => provider.Id == SelectedProviderId)?
 		.Models ?? [];
 
-	private string SelectedProviderIdValue
-	{
-		get => SelectedProviderId?.ToString() ?? string.Empty;
-		set
-		{
-			Guid? providerId = Guid.TryParse(value, out var parsed) ? parsed : null;
-			if (SelectedProviderId != providerId)
-			{
-				SelectedProviderId = providerId;
-				_ = SelectedProviderIdChanged.InvokeAsync(providerId);
-			}
+	private List<Profile> _profiles = [];
+	private bool _wasVisible;
 
-			ResetSelectedModelIfUnavailable();
-		}
-	}
+	/// <summary>A profile on a coding or inference provider this dialog can ask.</summary>
+	private bool CanSuggest(Profile profile)
+		=> profile.ProviderId is Guid providerId
+			? AvailableProviders.Any(provider => provider.Id == providerId)
+			: AvailableInferenceProviders.Any(provider => provider.Id == profile.InferenceProviderId);
 
-	private string SelectedModelIdValue
+	private Guid? ProviderOf(Profile profile) => UseInference ? profile.InferenceProviderId : profile.ProviderId;
+
+	/// <summary>The profile holding what the request will send: this kind, provider and model.</summary>
+	private Profile? SelectedProfile => SelectedProviderId.HasValue
+		? _profiles
+			.Where(CanSuggest)
+			.Where(profile => ProviderOf(profile) == SelectedProviderId && string.Equals(profile.ModelId, SelectedModelId, StringComparison.Ordinal))
+			.OrderByDescending(profile => profile.IsProviderDefault)
+			.FirstOrDefault()
+		: null;
+
+	// The request still carries a kind, a provider and a model; a profile sets all three at once.
+	private async Task HandleProfileSelected(Profile? profile)
 	{
-		get => SelectedModelId ?? string.Empty;
-		set
+		if (profile == null)
 		{
-			var normalizedModelId = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-			if (!string.Equals(SelectedModelId, normalizedModelId, StringComparison.Ordinal))
-			{
-				SelectedModelId = normalizedModelId;
-				_ = SelectedModelIdChanged.InvokeAsync(normalizedModelId);
-			}
+			return;
 		}
+
+		UseInference = profile.InferenceProviderId.HasValue;
+		SelectedProviderId = profile.ProviderId ?? profile.InferenceProviderId;
+		SelectedModelId = profile.ModelId;
+		await UseInferenceChanged.InvokeAsync(UseInference);
+		await SelectedProviderIdChanged.InvokeAsync(SelectedProviderId);
+		await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
 	}
 
 	private int IdeaCountValue
@@ -277,6 +233,37 @@
 
 		await EnsureValidProviderSelectionAsync();
 		await ResetSelectedModelIfUnavailableAsync();
+
+		// Once per opening: load the profiles and, when nothing holds exactly what the dialog
+		// started on, move to the profile nearest it so the picker shows what will be asked.
+		if (IsVisible && !_wasVisible)
+		{
+			_wasVisible = true;
+			// Resolved lazily so pages and tests that never open the dialog need no registration.
+			try
+			{
+				_profiles = Services.GetService<IProfileService>() is { } profileService
+					? (await profileService.GetAllAsync()).ToList()
+					: [];
+			}
+			catch (HttpRequestException)
+			{
+				_profiles = [];
+			}
+
+			if (SelectedProfile == null)
+			{
+				var offered = _profiles.Where(CanSuggest).ToList();
+				await HandleProfileSelected(offered
+					.Where(profile => ProviderOf(profile) == SelectedProviderId)
+					.OrderByDescending(profile => profile.IsProviderDefault)
+					.FirstOrDefault() ?? offered.FirstOrDefault());
+			}
+		}
+		else if (!IsVisible)
+		{
+			_wasVisible = false;
+		}
 	}
 
 	private async Task HandleVisibilityChanged(bool visible)
@@ -301,24 +288,6 @@
 		await OnCancel.InvokeAsync();
 	}
 
-	private async Task HandleToggleInference(ChangeEventArgs e)
-	{
-		var useInference = e.Value is bool value && value;
-		if (UseInference == useInference)
-		{
-			return;
-		}
-
-		UseInference = useInference;
-		SelectedProviderId = null;
-		SelectedModelId = null;
-
-		await UseInferenceChanged.InvokeAsync(useInference);
-		await SelectedProviderIdChanged.InvokeAsync(null);
-		await SelectedModelIdChanged.InvokeAsync(null);
-		await EnsureValidProviderSelectionAsync();
-	}
-
 	private async Task EnsureValidProviderSelectionAsync()
 	{
 		if (CurrentProviders.Any() && (!SelectedProviderId.HasValue || CurrentProviders.All(provider => provider.Id != SelectedProviderId.Value)))
@@ -328,41 +297,6 @@
 				.FirstOrDefault();
 			await SelectedProviderIdChanged.InvokeAsync(SelectedProviderId);
 		}
-	}
-
-	private void ResetSelectedModelIfUnavailable()
-	{
-		var validModelIds = SelectedProviderModels
-			.Select(model => model.ModelId)
-			.ToHashSet(StringComparer.Ordinal);
-
-		if (!string.IsNullOrWhiteSpace(SelectedModelId) && !validModelIds.Contains(SelectedModelId))
-		{
-			SelectedModelId = null;
-			_ = SelectedModelIdChanged.InvokeAsync(null);
-		}
-	}
-
-	private async Task HandleProviderModelsRefreshed(List<ProviderModel> models)
-	{
-		var provider = AvailableProviders.FirstOrDefault(provider => provider.Id == SelectedProviderId);
-		if (provider != null)
-		{
-			provider.AvailableModels = models;
-		}
-
-		await ResetSelectedModelIfUnavailableAsync();
-	}
-
-	private async Task HandleInferenceModelsRefreshed(List<InferenceModel> models)
-	{
-		var provider = AvailableInferenceProviders.FirstOrDefault(provider => provider.Id == SelectedProviderId);
-		if (provider != null)
-		{
-			provider.Models = models;
-		}
-
-		await ResetSelectedModelIfUnavailableAsync();
 	}
 
 	private async Task ResetSelectedModelIfUnavailableAsync()
@@ -376,29 +310,6 @@
 			SelectedModelId = null;
 			await SelectedModelIdChanged.InvokeAsync(null);
 		}
-	}
-
-	private string GetProviderLabel() => UseInference ? "Inference Provider" : "Configured Provider";
-
-	private string GetModelHelpText()
-	{
-		if (!SelectedProviderId.HasValue)
-		{
-			return UseInference
-				? "Choose an inference provider to browse any cached models."
-				: "Choose a configured provider to browse any cached models.";
-		}
-
-		if (!SelectedProviderModels.Any())
-		{
-			return UseInference
-				? "No cached models were found for this inference provider yet. Its configured suggest/default model will be used if available."
-				: "No cached models were found for this provider yet. Its default CLI model will be used.";
-		}
-
-		return UseInference
-			? "Leave this blank to use the provider's configured suggest model first, then its default model."
-			: "Leave this blank to use the provider's default model selection.";
 	}
 
 	private static string GetInferenceModelDisplayName(InferenceModel model)

@@ -36,9 +36,9 @@
 						@if (AvailableInferenceProviders.Count > 0)
 						{
 							<option value="@AnyInferenceSource">Any inference provider</option>
-							@foreach (var provider in AvailableInferenceProviders)
+							@foreach (var profile in IdeaProfiles)
 							{
-								<option value="@provider.Id">@provider.Name</option>
+								<option value="@profile.Id">@profile.Name</option>
 							}
 						}
 						<option value="@CodingAgentSource">The coding agent</option>
@@ -67,23 +67,6 @@
 		<section class="d-flex flex-column gap-3" aria-label="More options">
 			<div class="list-group rounded-9">
 				<ListRow Icon="sliders" IconClass="fg-2" Title="More options" Subtitle="@GetMoreOptionsSummary()">
-					@if (_config.InferenceProviderId.HasValue)
-					{
-						<div class="form-field mb-0">
-							<label for="ap-inference-model">Idea model</label>
-							<div class="input-group">
-								<select id="ap-inference-model" class="form-control" @bind="_config.InferenceModelId">
-									<option value="">Provider default</option>
-									@foreach (var model in GetInferenceModelsForSelectedProvider())
-									{
-										<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
-									}
-								</select>
-								<ModelRefreshButton ProviderId="@_config.InferenceProviderId" IsInference="true"
-													OnInferenceRefreshed="HandleInferenceModelsRefreshed" />
-							</div>
-						</div>
-					}
 					<div class="row g-5">
 						<div class="col-6">
 							<label for="ap-max-cost" class="form-label small fg-1 mb-1">Spend up to ($)</label>
@@ -297,17 +280,20 @@
 			_defaultsApplied = true;
 			// Pre-fill from project settings
 			_config.AutoPush = Project.AutoCommitMode == AutoCommitMode.CommitAndPush;
-			_config.InferenceModelId = Project.IdeaInferenceModelId;
 		}
 
-		// Follow the default idea source until the user picks one, so its model field shows.
+		// Follow the default idea source until the user picks one.
 		if (_ideaSource == null)
 			ApplyIdeaSource();
 	}
 
+	/// <summary>Inference profiles on a provider that is turned on: the ones that can suggest ideas.</summary>
+	private IReadOnlyList<Profile> IdeaProfiles => _profiles.Where(ProjectInferenceRoles.CanAnswerAlone).ToList();
+
 	/// <summary>
-	/// Where ideas come from: a chosen inference provider, any that answers, or the coding agent.
-	/// Defaults to the project's idea provider, else any inference provider when one is enabled.
+	/// Where ideas come from: a chosen inference profile, any inference provider that answers, or
+	/// the coding agent. Defaults to the project's idea profile, else any inference provider when
+	/// one is enabled.
 	/// </summary>
 	private string IdeaSource
 	{
@@ -316,9 +302,9 @@
 			if (_ideaSource != null)
 				return _ideaSource;
 
-			if (Project?.IdeaInferenceProviderId is Guid projectProviderId
-				&& AvailableInferenceProviders.Any(p => p.Id == projectProviderId))
-				return projectProviderId.ToString();
+			if (Project?.IdeasProfileId is Guid projectProfileId
+				&& IdeaProfiles.Any(profile => profile.Id == projectProfileId))
+				return projectProfileId.ToString();
 
 			return AvailableInferenceProviders.Count > 0 ? AnyInferenceSource : CodingAgentSource;
 		}
@@ -326,11 +312,8 @@
 
 	private void OnIdeaSourceChanged(ChangeEventArgs e)
 	{
-		var previousProviderId = _config.InferenceProviderId;
 		_ideaSource = e.Value?.ToString() ?? CodingAgentSource;
 		ApplyIdeaSource();
-		if (_config.InferenceProviderId != previousProviderId)
-			_config.InferenceModelId = null;
 	}
 
 	private void ApplyIdeaSource()
@@ -338,9 +321,11 @@
 		var source = IdeaSource;
 		_config.IdeaSource = source == ApprovedSource ? AutoPilotIdeaSource.ApprovedBacklog : AutoPilotIdeaSource.OwnIdeas;
 		_config.UseInferenceForIdeas = source is not (CodingAgentSource or ApprovedSource);
-		_config.InferenceProviderId = Guid.TryParse(source, out var providerId) ? providerId : null;
-		if (!_config.InferenceProviderId.HasValue)
-			_config.InferenceModelId = null;
+		// A profile brings its own inference provider and model.
+		var profile = Guid.TryParse(source, out var profileId) ? IdeaProfiles.FirstOrDefault(candidate => candidate.Id == profileId) : null;
+		_config.IdeasProfileId = profile?.Id;
+		_config.InferenceProviderId = profile?.InferenceProviderId;
+		_config.InferenceModelId = profile?.ModelId;
 	}
 
 	// Shows the spinner only until the first load: a refresh keeps what's on screen meanwhile.
@@ -446,22 +431,6 @@
 		_loop = loop;
 		_isLoading = false;
 		StateHasChanged();
-	}
-
-	private void HandleInferenceModelsRefreshed(List<InferenceModel> models)
-	{
-		var provider = AvailableInferenceProviders.FirstOrDefault(p => p.Id == _config.InferenceProviderId);
-		if (provider != null)
-		{
-			provider.Models = models;
-		}
-	}
-
-	private List<InferenceModel> GetInferenceModelsForSelectedProvider()
-	{
-		if (_config.InferenceProviderId == null) return [];
-		var provider = AvailableInferenceProviders.FirstOrDefault(p => p.Id == _config.InferenceProviderId);
-		return provider?.Models?.Where(m => m.IsAvailable).ToList() ?? [];
 	}
 
 	private string GetMoreOptionsSummary()

@@ -82,6 +82,12 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	public Guid? IdeaInferenceProviderId { get; set; }
 
+	/// <summary>The inference profile that suggests ideas; the idea provider and model follow it.</summary>
+	public Guid? IdeasProfileId { get; set; }
+
+	/// <summary>The inference profile that writes commit messages; that provider and model follow it.</summary>
+	public Guid? CommitSummaryProfileId { get; set; }
+
 	[StringLength(200)]
 	public string? IdeaInferenceModelId { get; set; }
 
@@ -181,6 +187,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			DecisionsProfileId = source.DecisionsProfileId,
 			ResearchProfileId = source.ResearchProfileId,
 			LeadDirection = source.LeadDirection,
+			IdeasProfileId = source.IdeasProfileId,
+			CommitSummaryProfileId = source.CommitSummaryProfileId,
 			IdeaInferenceProviderId = source.IdeaInferenceProviderId,
 			IdeaInferenceModelId = source.IdeaInferenceModelId,
 			CommitSummaryInferenceProviderId = source.CommitSummaryInferenceProviderId,
@@ -235,6 +243,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			DecisionsProfileId = DecisionsProfileId,
 			ResearchProfileId = ResearchProfileId,
 			LeadDirection = string.IsNullOrWhiteSpace(LeadDirection) ? null : LeadDirection.Trim(),
+			IdeasProfileId = IdeasProfileId,
+			CommitSummaryProfileId = CommitSummaryProfileId,
 			IdeaInferenceProviderId = IdeaInferenceProviderId,
 			IdeaInferenceModelId = string.IsNullOrWhiteSpace(IdeaInferenceModelId) ? null : IdeaInferenceModelId.Trim(),
 			CommitSummaryInferenceProviderId = CommitSummaryInferenceProviderId,

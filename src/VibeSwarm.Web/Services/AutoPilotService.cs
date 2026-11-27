@@ -437,6 +437,7 @@ public class AutoPilotService : IAutoPilotService
 	private static void ApplyConfig(IterationLoop loop, AutoPilotConfig config)
 	{
 		loop.UseInferenceForIdeas = config.UseInferenceForIdeas || config.InferenceProviderId.HasValue;
+		loop.IdeasProfileId = config.IdeasProfileId;
 		loop.InferenceProviderId = config.InferenceProviderId;
 		loop.InferenceModelId = string.IsNullOrWhiteSpace(config.InferenceModelId) ? null : config.InferenceModelId.Trim();
 		loop.ProfileId = config.ProfileId;
@@ -459,13 +460,15 @@ public class AutoPilotService : IAutoPilotService
 	/// </summary>
 	private async Task ApplyProfileAsync(IterationLoop loop, CancellationToken cancellationToken)
 	{
-		if (loop.ProfileId is Guid profileId)
+		if (loop.ProfileId.HasValue || loop.IdeasProfileId.HasValue)
 		{
 			var profiles = await _dbContext.Profiles
 				.AsNoTracking()
-				.Where(profile => profile.Id == profileId)
+				.Where(profile => profile.Id == loop.ProfileId || profile.Id == loop.IdeasProfileId)
 				.ToDictionaryAsync(profile => profile.Id, cancellationToken);
 			ProfileLinks.ApplyLoopLink(loop, profiles);
+			ProfileLinks.ApplyLoopIdeasLink(loop, profiles);
+			loop.UseInferenceForIdeas = loop.UseInferenceForIdeas || loop.IdeasProfileId.HasValue;
 		}
 
 		await ProfileService.LinkLoopAsync(_dbContext, loop, cancellationToken);

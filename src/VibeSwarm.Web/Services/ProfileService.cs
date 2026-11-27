@@ -239,6 +239,19 @@ public class ProfileService : IProfileService
 			ProfileLinks.ApplyIdeasQueueLink(project, lookup);
 		}
 
+		foreach (var project in await _dbContext.Projects.Where(project => project.IdeasProfileId == id || project.CommitSummaryProfileId == id).ToListAsync(cancellationToken))
+		{
+			project.IdeasProfileId = project.IdeasProfileId == id ? fallbackId : project.IdeasProfileId;
+			project.CommitSummaryProfileId = project.CommitSummaryProfileId == id ? fallbackId : project.CommitSummaryProfileId;
+			ApplyInferenceRoleLinksFor(project, lookup);
+		}
+
+		foreach (var loop in await _dbContext.IterationLoops.Where(loop => loop.IdeasProfileId == id).ToListAsync(cancellationToken))
+		{
+			loop.IdeasProfileId = fallbackId;
+			ProfileLinks.ApplyLoopIdeasLink(loop, lookup);
+		}
+
 		_dbContext.Profiles.Remove(profile);
 		await _dbContext.SaveChangesAsync(cancellationToken);
 	}
@@ -363,6 +376,30 @@ public class ProfileService : IProfileService
 		{
 			ProfileLinks.ApplyIdeasQueueLink(project, lookup);
 		}
+
+		foreach (var project in await _dbContext.Projects.Where(project => project.IdeasProfileId == id || project.CommitSummaryProfileId == id).ToListAsync(cancellationToken))
+		{
+			ApplyInferenceRoleLinksFor(project, lookup);
+		}
+
+		foreach (var loop in await _dbContext.IterationLoops.Where(loop => loop.IdeasProfileId == id).ToListAsync(cancellationToken))
+		{
+			ProfileLinks.ApplyLoopIdeasLink(loop, lookup);
+		}
+	}
+
+	/// <summary>
+	/// Applies only the project's idea and commit-message links found in <paramref name="lookup"/>;
+	/// a link to another profile is set aside first, so it isn't dropped for missing from the lookup.
+	/// </summary>
+	private static void ApplyInferenceRoleLinksFor(Project project, IReadOnlyDictionary<Guid, Profile> lookup)
+	{
+		var (ideas, summary) = (project.IdeasProfileId, project.CommitSummaryProfileId);
+		project.IdeasProfileId = ideas is Guid ideasId && lookup.ContainsKey(ideasId) ? ideas : null;
+		project.CommitSummaryProfileId = summary is Guid summaryId && lookup.ContainsKey(summaryId) ? summary : null;
+		ProfileLinks.ApplyInferenceRoleLinks(project, lookup);
+		project.IdeasProfileId ??= ideas is Guid keptIdeas && !lookup.ContainsKey(keptIdeas) ? ideas : project.IdeasProfileId;
+		project.CommitSummaryProfileId ??= summary is Guid keptSummary && !lookup.ContainsKey(keptSummary) ? summary : project.CommitSummaryProfileId;
 	}
 
 	/// <summary>
@@ -540,6 +577,10 @@ public class ProfileService : IProfileService
 			project.LeadProfileId = Existing(project.LeadProfileId);
 			project.DecisionsProfileId = Existing(project.DecisionsProfileId);
 			project.ResearchProfileId = Existing(project.ResearchProfileId);
+			project.IdeasProfileId = Existing(project.IdeasProfileId)
+				?? FindOrAdd(null, project.IdeaInferenceProviderId, project.IdeaInferenceModelId, null);
+			project.CommitSummaryProfileId = Existing(project.CommitSummaryProfileId)
+				?? FindOrAdd(null, project.CommitSummaryInferenceProviderId, project.CommitSummaryInferenceModelId, null);
 
 			if (switchOffRolesWithNothingToRunOn)
 			{
@@ -592,6 +633,12 @@ public class ProfileService : IProfileService
 		public void LinkSchedule(JobSchedule schedule, IEnumerable<ProjectProvider> buildOrder)
 		{
 			schedule.ProfileId = Existing(schedule.ProfileId);
+			if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+			{
+				schedule.ProfileId ??= FindOrAdd(null, schedule.InferenceProviderId, schedule.ModelId, null);
+				return;
+			}
+
 			if (schedule.ScheduleType != JobScheduleType.RunJob || schedule.ExecutionTarget != JobScheduleExecutionTarget.Provider
 				|| schedule.ProfileId.HasValue || schedule.ProviderId is not Guid providerId)
 			{
@@ -609,9 +656,17 @@ public class ProfileService : IProfileService
 		{
 			loop.ProfileId = Existing(loop.ProfileId);
 
-			// A finished run is history: it keeps the provider and model it ran on as they are.
+			loop.IdeasProfileId = Existing(loop.IdeasProfileId);
+
+			// A finished run is history: it keeps the providers and models it ran on as they are.
 			var canStillRun = loop.Status is IterationLoopStatus.Idle or IterationLoopStatus.Running or IterationLoopStatus.Paused or IterationLoopStatus.Stopping;
-			if (!canStillRun || loop.ProfileId.HasValue || loop.ProviderId is not Guid providerId)
+			if (!canStillRun)
+			{
+				return;
+			}
+
+			loop.IdeasProfileId ??= FindOrAdd(null, loop.InferenceProviderId, loop.InferenceModelId, null);
+			if (loop.ProfileId.HasValue || loop.ProviderId is not Guid providerId)
 			{
 				return;
 			}

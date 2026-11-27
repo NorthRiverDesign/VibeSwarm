@@ -60,20 +60,23 @@ public sealed class AutoPilotPanelTests
 	}
 
 	[Fact]
-	public void Idle_PickingAnInferenceProviderSendsIt()
+	public void Idle_PickingAnInferenceProfileForIdeas_SendsItWithItsProviderAndModel()
 	{
 		var service = new FakeAutoPilotService(null);
 		using var context = CreateContext(service);
 		var grok = new InferenceProvider { Id = Guid.NewGuid(), Name = "Grok", IsEnabled = true };
+		var ideas = new Profile { Id = Guid.NewGuid(), Name = "Grok ideas", InferenceProviderId = grok.Id, InferenceProvider = grok, ModelId = "grok-4" };
+		context.Services.AddSingleton<IProfileService>(new OneProfileService(ideas));
 		var cut = context.Render<AutoPilotPanel>(parameters => parameters
 			.Add(p => p.ProjectId, ProjectId)
 			.Add(p => p.AvailableInferenceProviders, [grok]));
 
-		cut.WaitForAssertion(() => Assert.NotNull(cut.Find("#ap-idea-source")));
-		cut.Find("#ap-idea-source").Change(grok.Id.ToString());
+		cut.WaitForAssertion(() => Assert.Contains("Grok ideas", cut.FindAll("#ap-idea-source option").Select(option => option.TextContent)));
+		Assert.Empty(cut.FindAll("#ap-inference-model"));
+		cut.Find("#ap-idea-source").Change(ideas.Id.ToString());
 		cut.FindAll("button").Single(b => b.TextContent.Contains("Start Auto-Pilot")).Click();
 
-		Assert.Equal(grok.Id, service.StartedWith?.InferenceProviderId);
+		Assert.Equal((ideas.Id, grok.Id, "grok-4"), (service.StartedWith!.IdeasProfileId!.Value, service.StartedWith.InferenceProviderId!.Value, service.StartedWith.InferenceModelId));
 		Assert.True(service.StartedWith?.UseInferenceForIdeas);
 	}
 

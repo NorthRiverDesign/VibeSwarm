@@ -112,7 +112,8 @@ Deploys are always manual.
 
 A **profile** names one provider, one model and one reasoning level, such as *Deep thinker* or
 *Quick fixer*. Wherever VibeSwarm asks who should run something (a job, a retry, a template, a
-role in a project) it asks for a profile, never for a provider and a model. Every provider has a
+schedule, auto-pilot, Start All, a role in a project) it asks for a profile, never for a provider
+and a model. Every provider has a
 default profile that follows its own default model and reasoning. Add more on the **Profiles**
 page, or pick **New profile…** from any profile list. Editing a profile updates everything that
 uses it; deleting one moves what used it to its provider's default profile.
@@ -128,6 +129,10 @@ Each project's settings show a **Workflow**: the roles that work on it, each Off
 So a project can build on a large model at high reasoning while cheaper profiles review and
 advise. Plan first and Lead need Claude Code or Copilot. Review, Research and Decisions also take
 an inference profile, such as Grok, which sees only what it is sent rather than the repository.
+
+Two more project settings take an inference profile, or leave the work to the coding provider:
+who suggests ideas, and who writes commit messages. A schedule, auto-pilot and Start All run on
+the project's Build profile unless you pick another for them.
 
 A job runs on its project's Build profile unless you pick another when you create it. A job
 remembers the profile it was asked to run on, and its page shows that name ahead of the provider

@@ -797,6 +797,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<int>("IdeaSource")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("IdeasProfileId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("InferenceModelId")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
@@ -1773,6 +1776,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<Guid?>("CommitSummaryInferenceProviderId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("CommitSummaryProfileId")
+                        .HasColumnType("char(36)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -1825,6 +1831,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasColumnType("char(36)");
 
                     b.Property<Guid?>("IdeasProcessingProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("IdeasProfileId")
                         .HasColumnType("char(36)");
 
                     b.Property<bool>("IsActive")

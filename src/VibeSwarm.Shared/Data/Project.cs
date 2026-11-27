@@ -161,6 +161,12 @@ public class Project
 	public Guid? IdeaInferenceProviderId { get; set; }
 
 	/// <summary>
+	/// The inference profile that suggests ideas for this project; the idea provider and model
+	/// beside it are copied from it. Null, with no provider either, leaves ideas to the coding provider.
+	/// </summary>
+	public Guid? IdeasProfileId { get; set; }
+
+	/// <summary>
 	/// Default inference model for idea generation. When null, uses the provider's default.
 	/// </summary>
 	[StringLength(200)]
@@ -171,6 +177,12 @@ public class Project
 	/// When null, commit summaries continue to come from the coding provider output.
 	/// </summary>
 	public Guid? CommitSummaryInferenceProviderId { get; set; }
+
+	/// <summary>
+	/// The inference profile that writes commit messages; the provider and model beside it are
+	/// copied from it. Null, with no provider either, leaves them to the coding provider.
+	/// </summary>
+	public Guid? CommitSummaryProfileId { get; set; }
 
 	/// <summary>
 	/// Optional inference model used to generate auto-commit summaries.
