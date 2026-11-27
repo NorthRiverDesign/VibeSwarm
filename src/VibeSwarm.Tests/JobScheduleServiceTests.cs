@@ -30,6 +30,58 @@ public sealed class JobScheduleServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task CreateAsync_TakesAProfileOrNothing_AndAnIdeaScheduleTakesAnInferenceProfile()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = CreateProject();
+		var provider = CreateProvider();
+		var grok = new InferenceProvider { Id = Guid.NewGuid(), Name = "Grok", ProviderType = VibeSwarm.Shared.Inference.InferenceProviderType.Grok, Endpoint = "https://api.x.ai", IsEnabled = true };
+		var nightly = new Profile { Id = Guid.NewGuid(), Name = "Nightly", ProviderId = provider.Id, ModelId = "night-model" };
+		var ideas = new Profile { Id = Guid.NewGuid(), Name = "Grok ideas", InferenceProviderId = grok.Id, ModelId = "grok-4" };
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.InferenceProviders.Add(grok);
+		dbContext.ProviderModels.Add(new ProviderModel { Id = Guid.NewGuid(), ProviderId = provider.Id, ModelId = "night-model", IsAvailable = true });
+		dbContext.InferenceModels.Add(new InferenceModel { InferenceProviderId = grok.Id, ModelId = "grok-4", IsAvailable = true });
+		dbContext.Profiles.AddRange(nightly, ideas);
+		await dbContext.SaveChangesAsync();
+		var service = new JobScheduleService(dbContext);
+
+		// Each is checked the way the API checks it on arrival, before the service fills anything in:
+		// the editor sends a profile and never a provider.
+		static bool ArrivesValid(JobSchedule schedule)
+			=> System.ComponentModel.DataAnnotations.Validator.TryValidateObject(schedule, new System.ComponentModel.DataAnnotations.ValidationContext(schedule), null, validateAllProperties: true);
+		JobSchedule Daily(JobScheduleType type, Guid? profileId) => new()
+		{
+			ProjectId = project.Id,
+			ScheduleType = type,
+			ProfileId = profileId,
+			Prompt = type == JobScheduleType.RunJob ? "update dependencies" : string.Empty,
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9
+		};
+
+		var onAProfile = Daily(JobScheduleType.RunJob, nightly.Id);
+		Assert.True(ArrivesValid(onAProfile));
+		var saved = await service.CreateAsync(onAProfile);
+		Assert.Equal(((Guid?)nightly.Id, "Nightly", (Guid?)provider.Id, "night-model"), (saved.ProfileId, saved.ProfileName, saved.ProviderId, saved.ModelId));
+
+		// Naming nothing leaves the job to the project's Build profile.
+		var namesNothing = Daily(JobScheduleType.RunJob, null);
+		Assert.True(ArrivesValid(namesNothing));
+		saved = await service.CreateAsync(namesNothing);
+		Assert.Equal((null, null, null), (saved.ProfileId, saved.ProviderId, saved.ModelId));
+
+		var ideaSchedule = Daily(JobScheduleType.GenerateIdeas, ideas.Id);
+		Assert.True(ArrivesValid(ideaSchedule));
+		saved = await service.CreateAsync(ideaSchedule);
+		Assert.Equal(((Guid?)ideas.Id, "Grok ideas", (Guid?)grok.Id, "grok-4"), (saved.ProfileId, saved.ProfileName, saved.InferenceProviderId, saved.ModelId));
+
+		// Ideas have to come from somewhere.
+		Assert.False(ArrivesValid(Daily(JobScheduleType.GenerateIdeas, null)));
+	}
+
+	[Fact]
 	public async Task CreateAsync_ComputesNextRunForDailySchedule()
 	{
 		await using var dbContext = CreateDbContext();

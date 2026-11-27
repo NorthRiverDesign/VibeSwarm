@@ -99,19 +99,16 @@ public class JobSchedule : IValidatableObject
 			yield return new ValidationResult("A project is required.", [nameof(ProjectId)]);
 		}
 
-		if (ScheduleType == JobScheduleType.RunJob && ExecutionTarget == JobScheduleExecutionTarget.Provider && (!ProviderId.HasValue || ProviderId == Guid.Empty))
-		{
-			yield return new ValidationResult("A provider is required.", [nameof(ProviderId)]);
-		}
-
 		if (ScheduleType == JobScheduleType.RunJob && ExecutionTarget == JobScheduleExecutionTarget.Agent && (!AgentId.HasValue || AgentId == Guid.Empty))
 		{
 			yield return new ValidationResult("An agent is required.", [nameof(AgentId)]);
 		}
 
-		if (ScheduleType == JobScheduleType.GenerateIdeas && (!InferenceProviderId.HasValue || InferenceProviderId == Guid.Empty))
+		// An idea schedule names an inference profile; the server fills in the provider it runs on.
+		// (A job schedule may name a profile, or nothing at all to run on the project's Build profile.)
+		if (ScheduleType == JobScheduleType.GenerateIdeas && !ProfileId.HasValue && (!InferenceProviderId.HasValue || InferenceProviderId == Guid.Empty))
 		{
-			yield return new ValidationResult("An inference provider is required.", [nameof(InferenceProviderId)]);
+			yield return new ValidationResult("Choose an inference profile for the ideas.", [nameof(ProfileId)]);
 		}
 
 		if (ScheduleType == JobScheduleType.RunJob && string.IsNullOrWhiteSpace(Prompt))
