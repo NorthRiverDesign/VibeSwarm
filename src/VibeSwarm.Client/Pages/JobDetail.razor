@@ -30,7 +30,7 @@ else
                       GitHubRepository="@Job.Project?.GitHubRepository" BranchName="@_branchName" ProjectId="@Job.ProjectId"
                       ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@Job.Provider?.Name"
                       ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
-					   ExecutionDuration="@Job.ExecutionDuration" ModelUsed="@Job.ModelUsed" RetryCount="@Job.RetryCount"
+					   ExecutionDuration="@Job.ExecutionDuration" ModelUsed="@Job.ModelUsed" ProfileName="@Job.ProfileName" RetryCount="@Job.RetryCount"
 					   PlanningProviderName="@Job.PlanningProvider?.Name" PlanningModelUsed="@Job.PlanningModelUsed"
 					   InputTokens="@Job.InputTokens" OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd"
 					   IsTokenEstimate="@Job.IsTokenEstimate"

@@ -1,7 +1,6 @@
 @inject IJobService JobService
 @inject IIdeaService IdeaService
 @inject IProjectService ProjectService
-@inject IProviderService ProviderService
 @inject IJobTemplateService JobTemplateService
 @inject IVersionControlService VersionControlService
 @inject NavigationManager NavigationManager
@@ -174,11 +173,10 @@
 </div>
 
 @* Create Job Modal *@
-<CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@_newJob" Project="@GetSelectedProject()" Providers="@GetAllowedCreateJobProviders()"
-				AvailableModels="@_availableModels" Branches="@_branches" CurrentBranch="@_currentBranch"
-				ShowBranchSelector="@(_branches.Any())" IsLoadingModels="@_isLoadingModels" IsSaving="@_isSaving"
-				ErrorMessage="@_createJobError" @bind-SelectedModelId="@_selectedModelId" OnProviderChanged="OnCreateJobProviderChanged"
-				OnModelsRefreshed="@(models => _availableModels = models)"
+<CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@_newJob" Project="@GetSelectedProject()"
+				Branches="@_branches" CurrentBranch="@_currentBranch"
+				ShowBranchSelector="@(_branches.Any())" IsSaving="@_isSaving"
+				ErrorMessage="@_createJobError"
 				TemplateLibrary="@_jobTemplates" OnTemplateLibraryChanged="LoadJobTemplates" OnSubmit="HandleCreateJob" />
 
 @code {
@@ -211,12 +209,9 @@
     // Create Job modal state
     private bool _showCreateJobModal;
     private Job _newJob = new();
-    private List<Provider> _providers = new();
-    private List<ProviderModel> _availableModels = new();
     private List<JobTemplate> _jobTemplates = new();
     private List<GitBranchInfo> _branches = new();
     private string? _currentBranch;
-	private bool _isLoadingModels;
 	private bool _isSaving;
 	private string? _createJobError;
 
@@ -224,8 +219,6 @@
 	{
 		SetStatusFilter(e.Value?.ToString() ?? "finished");
 	}
-
-    private string _selectedModelId = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -755,16 +748,11 @@
             ProjectId = _selectedProjectId.Value
         };
         _createJobError = null;
-        _selectedModelId = string.Empty;
-        _availableModels.Clear();
         _branches.Clear();
-        _newJob.ReasoningEffort = null;
 
         try
         {
             await LoadJobTemplates();
-            // Load providers
-            _providers = (await ProviderService.GetAllAsync()).ToList();
 
             // Load branch info for the selected project
             var project = _projects.FirstOrDefault(p => p.Id == _selectedProjectId.Value);
@@ -785,13 +773,6 @@
                     // Ignore git errors — branch selection will be hidden
                 }
             }
-
-            var defaultProvider = GetPreferredCreateJobProvider();
-            if (defaultProvider != null)
-            {
-                _newJob.ProviderId = defaultProvider.Id;
-                await LoadCreateJobModels(defaultProvider.Id);
-            }
         }
         catch (Exception ex)
         {
@@ -801,51 +782,6 @@
         _showCreateJobModal = true;
     }
 
-    private async Task OnCreateJobProviderChanged(Guid providerId)
-    {
-        if (providerId != Guid.Empty && !GetAllowedCreateJobProviders().Any(provider => provider.Id == providerId))
-        {
-            _createJobError = "This provider is not enabled for the selected project.";
-            return;
-        }
-
-        _newJob.ProviderId = providerId;
-        _selectedModelId = string.Empty;
-        _availableModels.Clear();
-        _createJobError = null;
-
-        if (providerId != Guid.Empty)
-        {
-            await LoadCreateJobModels(providerId);
-        }
-    }
-
-    private async Task LoadCreateJobModels(Guid providerId)
-    {
-        _isLoadingModels = true;
-        try
-        {
-            _availableModels = (await ProviderService.GetModelsAsync(providerId))
-                .Where(model => model.IsAvailable)
-                .OrderByDescending(model => model.IsDefault)
-                .ThenBy(model => model.DisplayName ?? model.ModelId)
-                .ToList();
-
-            if (_selectedProjectId.HasValue)
-            {
-                _selectedModelId = ProjectExecutionDefaults.ResolveModelId(GetSelectedProject(), providerId, _availableModels);
-                var provider = GetAllowedCreateJobProviders().FirstOrDefault(item => item.Id == providerId);
-                _newJob.ReasoningEffort = provider != null
-                    ? ProjectExecutionDefaults.ResolveReasoningEffort(GetSelectedProject(), provider)
-                    : null;
-            }
-        }
-        finally
-        {
-            _isLoadingModels = false;
-        }
-    }
-
     private Project? GetSelectedProject()
     {
         return _selectedProjectId.HasValue
@@ -853,30 +789,13 @@
             : null;
     }
 
-    private List<Provider> GetAllowedCreateJobProviders()
-    {
-        return ProjectExecutionDefaults.GetAllowedProviders(GetSelectedProject(), _providers);
-    }
-
-    private Provider? GetPreferredCreateJobProvider()
-    {
-        return ProjectExecutionDefaults.GetPreferredProvider(GetSelectedProject(), _providers);
-    }
-
     private async Task HandleCreateJob()
     {
-        if (_newJob.ProviderId == Guid.Empty)
-        {
-            _createJobError = "Please select a provider.";
-            return;
-        }
-
         _isSaving = true;
         _createJobError = null;
 
         try
         {
-            _newJob.ModelUsed = string.IsNullOrEmpty(_selectedModelId) ? null : _selectedModelId;
             var createdJob = await JobService.CreateAsync(_newJob);
             _showCreateJobModal = false;
             _pageNumber = 1;

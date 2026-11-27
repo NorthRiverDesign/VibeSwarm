@@ -151,8 +151,16 @@
 	[Parameter]
 	public Profile? EditProfile { get; set; }
 
+	/// <summary>Raised with the profile as it was saved.</summary>
 	[Parameter]
-	public EventCallback OnSaved { get; set; }
+	public EventCallback<Profile> OnSaved { get; set; }
+
+	/// <summary>
+	/// When a picker opens the dialog to add a profile for one role, the rule that role's
+	/// profiles follow. Only providers a profile could pass it on are offered.
+	/// </summary>
+	[Parameter]
+	public Func<Profile, bool>? Allowed { get; set; }
 
 	private ProfileFormModel _form = new();
 	private List<Provider> _providers = [];
@@ -194,6 +202,7 @@
 		{
 			_providers = (await ProviderService.GetAllAsync())
 				.Where(provider => provider.IsEnabled || provider.Id == _form.ProviderId)
+				.Where(provider => Fits(new Profile { ProviderId = provider.Id, Provider = provider }))
 				.OrderByDescending(provider => provider.IsDefault)
 				.ThenBy(provider => provider.Name)
 				.ToList();
@@ -211,6 +220,7 @@
 				? []
 				: (await inferenceService.GetAllAsync())
 					.Where(provider => provider.IsEnabled || provider.Id == _form.InferenceProviderId)
+					.Where(provider => Fits(new Profile { InferenceProviderId = provider.Id, InferenceProvider = provider }))
 					.OrderBy(provider => provider.Name)
 					.ToList();
 		}
@@ -219,6 +229,8 @@
 			_inferenceProviders = [];
 		}
 	}
+
+	private bool Fits(Profile onProvider) => IsEdit || Allowed == null || Allowed(onProvider);
 
 	private async Task HandleProviderChanged(ChangeEventArgs args)
 	{
@@ -273,17 +285,13 @@
 		try
 		{
 			var profile = _form.ToProfile();
-			if (IsEdit)
-			{
-				await ProfileService.UpdateAsync(profile);
-			}
-			else
-			{
-				await ProfileService.CreateAsync(profile);
-			}
+			var saved = IsEdit
+				? await ProfileService.UpdateAsync(profile)
+				: await ProfileService.CreateAsync(profile);
 
+			// Saved first: a host that treats closing as giving up must hear of the save before it.
+			await OnSaved.InvokeAsync(saved);
 			await IsVisibleChanged.InvokeAsync(false);
-			await OnSaved.InvokeAsync();
 		}
 		catch (Exception ex)
 		{

@@ -220,6 +220,9 @@
     @* Global Search Modal *@
     <GlobalSearchModal @bind-IsVisible="_showSearchModal" />
 
+    @* New profile, opened from any profile picker; here so it sits outside every form *@
+    <ProfileComposerHost />
+
     @* Change Password Modal - rendered outside sidebar to avoid stacking context issues *@
     <ModalDialog @bind-IsVisible="_showChangePasswordModal" Title="Change Password" Icon="key"
                  Size="ModalDialog.ModalSize.Default">

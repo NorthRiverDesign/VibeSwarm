@@ -64,13 +64,13 @@ placeholder="@GetGoalPromptPlaceholder()" maxlength="@ValidationLimits.JobGoalPr
 			 ValueChanged="HandleAgentChanged"
 			 ValueExpression="@(() => FormModel.AgentId)"
 			 class="form-control">
-<option value="">Choose provider manually</option>
+<option value="">No agent</option>
 @foreach (var agent in AvailableAgents)
 {
 <option value="@agent.AgentId">@GetAgentDisplayName(agent)</option>
 }
 </InputSelect>
-<div class="form-text">Agent presets combine a purpose, provider/model assignment, and optional multi-cycle defaults for this project.</div>
+<div class="form-text">An agent brings its own purpose, profile and cycle settings.</div>
 </div>
 }
 
@@ -93,16 +93,8 @@ placeholder="@GetGoalPromptPlaceholder()" maxlength="@ValidationLimits.JobGoalPr
 }
 <div class="row g-5 mt-1">
 <div class="col-12 md:col-6">
-<div class="small fg-1 text-uppercase fw-semibold mb-1">Provider</div>
-<div>@GetSelectedAgentProviderDisplayText()</div>
-</div>
-<div class="col-12 md:col-6">
-<div class="small fg-1 text-uppercase fw-semibold mb-1">Model</div>
-<div>@GetSelectedAgentModelDisplayText()</div>
-</div>
-<div class="col-12 md:col-6">
-<div class="small fg-1 text-uppercase fw-semibold mb-1">Reasoning</div>
-<div>@GetSelectedAgentReasoningDisplayText()</div>
+<div class="small fg-1 text-uppercase fw-semibold mb-1">Runs on</div>
+<div class="text-break">@GetSelectedAgentRunsOnText()</div>
 </div>
 <div class="col-12 md:col-6">
 <div class="small fg-1 text-uppercase fw-semibold mb-1">Execution</div>
@@ -123,97 +115,17 @@ placeholder="@GetGoalPromptPlaceholder()" maxlength="@ValidationLimits.JobGoalPr
 <div class="small white-space-pre-wrap">@FormModel.CycleReviewPrompt</div>
 </div>
 }
-<div class="form-text mt-5">Remove the agent selection to choose provider, model, reasoning, or cycle behavior manually for this one job.</div>
+<div class="form-text mt-5">Choose No agent to pick the profile and cycle behavior for this one job yourself.</div>
 </div>
 }
 
 @if (SelectedAgent == null)
 {
-<ProfilePicker Id="jobProfile" Class="mb-5" Profiles="JobProfiles" SelectedProfileId="CurrentProfileId"
-			   CustomLabel="None" LinkedNote="" CustomHint="Pick a profile to fill in the provider, model and reasoning."
-			   OnSelected="ApplyProfileAsync" />
-
-<div class="mb-5">
-<label for="provider" class="form-label">Provider</label>
-@if (!string.IsNullOrEmpty(ProviderHint))
-{
-<div class="form-text mb-3">@ProviderHint</div>
-}
-<InputSelect TValue="Guid?" id="provider" @bind-Value="FormModel.ProviderId"
-@bind-Value:after="HandleProviderChanged" class="form-control">
-<option value="">Select a provider...</option>
-@foreach (var provider in Providers.Where(p => p.IsEnabled))
-{
-<option value="@provider.Id">@GetProviderDisplayText(provider)</option>
-}
-</InputSelect>
-<ValidationMessage For="@(() => FormModel.ProviderId)" class="fg-danger small" />
-@if (!Providers.Any(p => p.IsEnabled))
-{
-<div class="form-text fg-warning">
-No enabled providers. <a href="/providers">Configure one</a> first.
-</div>
-}
-</div>
+<ProfilePicker Id="jobProfile" Class="mb-5" Label="Run with" Profiles="JobProfiles" Allowed="ProfileRoles.CanBuild"
+			   SelectedProfileId="FormModel.ProfileId" OnSelected="profile => FormModel.ProfileId = profile?.Id" />
 }
 
 <div class="accordion mb-5">
-@if (SelectedAgent == null)
-{
-<AccordionSection Title="Model and reasoning" Icon="cpu"
-Summary="Defaults come from the project and provider"
-Badge="@ModelSummary" @bind-IsOpen="_openModelSection">
-<div class="mb-5">
-<label for="model" class="form-label">Model</label>
-<div class="input-group">
-<InputSelect id="model" @bind-Value="SelectedModelId" class="form-control"
-disabled="@(!FormModel.ProviderId.HasValue || IsLoadingModels)">
-@if (IsLoadingModels)
-{
-<option value="">Loading models...</option>
-}
-else if (!AvailableModels.Any())
-{
-<option value="">@(!FormModel.ProviderId.HasValue ? "Select a provider first..." : "No models available")</option>
-}
-else
-{
-<option value="">Use project/provider default</option>
-@foreach (var model in AvailableModels.Where(m => m.IsAvailable))
-{
-<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ? " (default)" : "")@(model.RetiresOn.HasValue ? $" — retires {model.RetiresOn.Value:yyyy-MM-dd}" : "")</option>
-}
-}
-</InputSelect>
-<ModelRefreshButton ProviderId="@FormModel.ProviderId" Disabled="@IsLoadingModels" OnRefreshed="HandleModelsRefreshed" />
-</div>
-<div class="form-text">Leave empty to use the project's default model, or the provider default when no project override is set.</div>
-</div>
-
-<div class="mb-5">
-<label for="reasoning" class="form-label">Reasoning</label>
-<InputSelect id="reasoning" @bind-Value="FormModel.ReasoningEffort" class="form-control"
-disabled="@(!FormModel.ProviderId.HasValue || !ReasoningOptions.Any())">
-<option value="">Use project/provider default</option>
-@foreach (var reasoning in ReasoningOptions)
-{
-<option value="@reasoning">@reasoning</option>
-}
-</InputSelect>
-<div class="form-text">
-@if (FormModel.ProviderId.HasValue && !ReasoningOptions.Any())
-{
-<span>This provider does not expose configurable reasoning levels.</span>
-}
-else
-{
-<span>Leave empty to use the project's default reasoning, or the provider default when no project override is set.</span>
-}
-</div>
-</div>
-</AccordionSection>
-}
-
 <AccordionSection Title="Branch and delivery" Icon="git"
 Summary="Where the job works and where the changes land"
 Badge="@DeliverySummary" @bind-IsOpen="_openDeliverySection">
@@ -282,7 +194,7 @@ Badge="@InstancesSummary" @bind-IsOpen="_openInstancesSection">
 }
 </InputSelect>
 <ValidationMessage For="@(() => FormModel.Instances)" class="fg-danger small" />
-<div class="form-text">Write the goal as a list: its items are split between copies, each running in its own worktree on the same provider and model, and each copy's work lands on the branch as it finishes. @InstancesNote</div>
+<div class="form-text">Write the goal as a list: its items are split between copies, each running in its own worktree on the same profile, and each copy's work lands on the branch as it finishes. @InstancesNote</div>
 </div>
 </AccordionSection>
 }
@@ -380,12 +292,6 @@ public Job JobModel { get; set; } = new();
 public Project? Project { get; set; }
 
 [Parameter]
-public List<Provider> Providers { get; set; } = new();
-
-[Parameter]
-public List<ProviderModel> AvailableModels { get; set; } = new();
-
-[Parameter]
 public List<GitBranchInfo> Branches { get; set; } = new();
 
 [Parameter]
@@ -395,31 +301,13 @@ public string? CurrentBranch { get; set; }
 public bool ShowBranchSelector { get; set; }
 
 [Parameter]
-public bool IsLoadingModels { get; set; }
-
-[Parameter]
 public bool IsSaving { get; set; }
 
 [Parameter]
 public string? ErrorMessage { get; set; }
 
 [Parameter]
-public string SelectedModelId { get; set; } = string.Empty;
-
-[Parameter]
-public EventCallback<string> SelectedModelIdChanged { get; set; }
-
-[Parameter]
-public EventCallback<Guid> OnProviderChanged { get; set; }
-
-[Parameter]
-public EventCallback<List<ProviderModel>> OnModelsRefreshed { get; set; }
-
-[Parameter]
 public EventCallback OnSubmit { get; set; }
-
-[Parameter]
-public string? ProviderHint { get; set; }
 
 [Parameter]
 public List<JobTemplate> TemplateLibrary { get; set; } = new();
@@ -429,24 +317,11 @@ public EventCallback OnTemplateLibraryChanged { get; set; }
 
 private readonly string _formId = $"create-job-form-{Guid.NewGuid():N}";
 private bool ShowAdvancedOptions { get; set; }
-private bool _openModelSection;
 private bool _openInstancesSection;
 private List<Profile> _profiles = [];
-private Guid? _selectedProfileId;
 
-/// <summary>Profiles on a provider this job may use.</summary>
-private IReadOnlyList<Profile> JobProfiles => _profiles
-	.Where(profile => Providers.Any(provider => provider.IsEnabled && provider.Id == profile.ProviderId))
-	.ToList();
-
-/// <summary>The picked profile while the form still matches it; editing any field drops it.</summary>
-private Guid? CurrentProfileId => _selectedProfileId is Guid id
-	&& JobProfiles.FirstOrDefault(profile => profile.Id == id) is { } profile
-	&& FormModel.ProviderId == profile.ProviderId
-	&& string.Equals(NullIfEmpty(SelectedModelId), profile.ModelId, StringComparison.Ordinal)
-	&& string.Equals(NullIfEmpty(FormModel.ReasoningEffort), profile.ReasoningEffort, StringComparison.Ordinal)
-		? id
-		: null;
+/// <summary>Profiles a job can run on, the project's own Build order first.</summary>
+private IReadOnlyList<Profile> JobProfiles => ProjectExecutionDefaults.OrderJobProfiles(Project, _profiles);
 
 private string? InstancesSummary => FormModel.Instances > 1 ? $"×{FormModel.Instances}" : null;
 
@@ -469,7 +344,6 @@ private string? InstancesNote
 	}
 }
 
-private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 private bool _openDeliverySection;
 private bool _previousIsVisible;
 private CreateJobFormModel FormModel { get; set; } = new();
@@ -480,12 +354,6 @@ private string? _templateStatusMessage;
 private Project? _agentProject;
 private IReadOnlyList<ProjectAgent> AvailableAgents => AgentPresetHelper.GetEnabledAgents(_agentProject);
 private ProjectAgent? SelectedAgent => AgentPresetHelper.ResolveAgent(_agentProject, FormModel.AgentId);
-private IReadOnlyList<string> ReasoningOptions => FormModel.ProviderId.HasValue
-? Providers.Where(provider => provider.Id == FormModel.ProviderId.Value)
-	.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
-	.Distinct(StringComparer.Ordinal)
-	.ToList()
-: [];
 
 protected override async Task OnParametersSetAsync()
 {
@@ -493,8 +361,13 @@ if (IsVisible && !_previousIsVisible)
 {
 await RefreshAgentProjectAsync();
 await LoadProfilesAsync();
-_selectedProfileId = null;
 FormModel = CreateJobFormModel.FromJob(JobModel);
+// A new job starts on the project's Build profile, which is also what the server gives a
+// job that names none.
+if (JobProfiles.All(profile => profile.Id != FormModel.ProfileId))
+{
+	FormModel.ProfileId = ProjectExecutionDefaults.GetBuildProfileId(Project, _profiles);
+}
 _openInstancesSection = FormModel.Instances > 1;
 _selectedTemplateId = JobModel.JobTemplateId;
 _templateStatusMessage = null;
@@ -563,52 +436,10 @@ private async Task LoadProfilesAsync()
 	}
 }
 
-private async Task ApplyProfileAsync(Profile? profile)
-{
-	_selectedProfileId = profile?.Id;
-	if (profile?.ProviderId is not Guid providerId)
-	{
-		return;
-	}
-
-	if (FormModel.ProviderId != providerId)
-	{
-		FormModel.ProviderId = providerId;
-		await OnProviderChanged.InvokeAsync(providerId);
-	}
-
-	FormModel.ReasoningEffort = profile.ReasoningEffort;
-	SelectedModelId = profile.ModelId ?? string.Empty;
-	await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
-}
-
-private async Task HandleProviderChanged()
-{
-await OnProviderChanged.InvokeAsync(FormModel.ProviderId ?? Guid.Empty);
-}
-
-private async Task HandleModelsRefreshed(List<ProviderModel> models)
-{
-	var availableModels = models
-		.Where(model => model.IsAvailable)
-		.OrderByDescending(model => model.IsDefault)
-		.ThenBy(model => model.DisplayName ?? model.ModelId)
-		.ToList();
-	await OnModelsRefreshed.InvokeAsync(availableModels);
-
-	if (!string.IsNullOrEmpty(SelectedModelId) && availableModels.All(model => model.ModelId != SelectedModelId))
-	{
-		SelectedModelId = string.Empty;
-		await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
-	}
-}
-
 private async Task HandleSubmit()
 {
 	ApplyEffectiveFormValuesToJobModel();
 	JobModel.JobTemplateId = _selectedTemplateId;
-	JobModel.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
-	await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
 await OnSubmit.InvokeAsync();
 }
 
@@ -632,22 +463,10 @@ private async Task HandleTemplateSelectionChanged()
 	_isApplyingTemplate = true;
 	try
 	{
-		var previousProviderId = FormModel.ProviderId;
 		ApplyTemplateToJob(template);
 		FormModel = CreateJobFormModel.FromJob(JobModel);
 		ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
 		SyncGoalPromptValidationState();
-		// Switching provider makes the page load that provider's models and pick the project's
-		// default, so a model the template pins goes back on afterwards.
-		if (FormModel.ProviderId != previousProviderId)
-		{
-			await OnProviderChanged.InvokeAsync(FormModel.ProviderId ?? Guid.Empty);
-		}
-		if (template.ProviderId.HasValue && !string.IsNullOrWhiteSpace(template.ModelId))
-		{
-			SelectedModelId = template.ModelId;
-		}
-		await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
 		_templateStatusMessage = $"Applied template '{template.Name}'.";
 	}
 	finally
@@ -668,16 +487,15 @@ private async Task SaveAsTemplateAsync()
 	{
 		_isSavingTemplate = true;
 		ApplyEffectiveFormValuesToJobModel();
-		JobModel.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
 
 		var templateName = BuildTemplateName(JobModel.GoalPrompt);
 		var template = new JobTemplate
 		{
 			Name = templateName,
 			GoalPrompt = JobModel.GoalPrompt,
-			ProviderId = JobModel.ProviderId == Guid.Empty ? null : JobModel.ProviderId,
-			ModelId = JobModel.ModelUsed,
-			ReasoningEffort = JobModel.ReasoningEffort,
+			// A job left on this project's own Build profile makes a template that leaves the
+			// profile to each project; only a profile picked instead is kept.
+			ProfileId = JobModel.ProfileId == ProjectExecutionDefaults.GetBuildProfileId(Project, _profiles) ? null : JobModel.ProfileId,
 			// Branch and delivery belong to this project, so the template leaves them to whichever
 			// project runs it.
 			CycleMode = JobModel.CycleMode,
@@ -720,28 +538,18 @@ private async Task Close()
 await IsVisibleChanged.InvokeAsync(false);
 }
 
-private string GetProviderDisplayText(Provider provider)
-{
-var index = Providers.FindIndex(p => p.Id == provider.Id);
-return index >= 0
-? $"#{index + 1} {provider.Name} ({provider.Type})"
-: $"{provider.Name} ({provider.Type})";
-}
-
 private void ApplyTemplateToJob(JobTemplate template)
 {
 	// Start from what the form shows (the project's defaults plus any edits) and change only what
-	// the template sets, so a template that leaves the provider or branch to the project doesn't
+	// the template sets, so a template that leaves the profile or branch to the project doesn't
 	// blank them.
 	FormModel.ApplyTo(JobModel);
 	JobModel.JobTemplateId = template.Id;
 	JobModel.GoalPrompt = template.GoalPrompt;
 	JobModel.AgentId = null;
-	if (template.ProviderId is Guid providerId)
+	if (template.ProfileId is Guid profileId && JobProfiles.Any(profile => profile.Id == profileId))
 	{
-		JobModel.ProviderId = providerId;
-		JobModel.ModelUsed = template.ModelId;
-		JobModel.ReasoningEffort = template.ReasoningEffort;
+		JobModel.ProfileId = profileId;
 	}
 	if (!string.IsNullOrWhiteSpace(template.Branch))
 	{
@@ -770,9 +578,6 @@ private void ApplySelectedAgent(ProjectAgent assignment)
 	};
 
 	AgentPresetHelper.ApplyExecutionDefaults(job, assignment);
-	FormModel.ProviderId = job.ProviderId == Guid.Empty ? null : job.ProviderId;
-	SelectedModelId = job.ModelUsed ?? string.Empty;
-	FormModel.ReasoningEffort = job.ReasoningEffort;
 	FormModel.CycleMode = job.CycleMode;
 	FormModel.CycleSessionMode = job.CycleSessionMode;
 	FormModel.MaxCycles = job.MaxCycles;
@@ -823,9 +628,6 @@ private Project BuildAgentProject(Project? baseProject, IEnumerable<Agent> enabl
 
 private ProjectAgent BuildGlobalAssignment(Agent agent, Guid? projectId)
 {
-	var provider = Providers.FirstOrDefault(p => p.Id == agent.DefaultProviderId!.Value)
-		?? agent.DefaultProvider;
-
 	return new ProjectAgent
 	{
 		Id = agent.Id,
@@ -833,7 +635,8 @@ private ProjectAgent BuildGlobalAssignment(Agent agent, Guid? projectId)
 		AgentId = agent.Id,
 		Agent = agent,
 		ProviderId = agent.DefaultProviderId!.Value,
-		Provider = provider,
+		Provider = agent.DefaultProvider,
+		ProfileId = agent.ProfileId,
 		PreferredModelId = agent.DefaultModelId,
 		PreferredReasoningEffort = agent.DefaultReasoningEffort,
 		IsEnabled = agent.IsEnabled,
@@ -886,10 +689,7 @@ private Provider? ResolveProvider(IEnumerable<ProjectAgent> assignments)
 {
 	return assignments
 		.Select(assignment => assignment.Provider)
-		.FirstOrDefault(provider => provider != null)
-		?? assignments
-			.Select(assignment => Providers.FirstOrDefault(provider => provider.Id == assignment.ProviderId))
-			.FirstOrDefault(provider => provider != null);
+		.FirstOrDefault(provider => provider != null);
 }
 
 private string GetAgentDisplayName(ProjectAgent assignment)
@@ -974,25 +774,21 @@ private string? GetSelectedAgentGoalPromptFallback()
 		: null;
 }
 
-private string GetSelectedAgentProviderDisplayText()
+/// <summary>What the selected agent runs on: its profile, by name and by what that profile holds.</summary>
+private string GetSelectedAgentRunsOnText()
 {
-	return SelectedAgent?.Provider?.Name
-		?? Providers.FirstOrDefault(provider => provider.Id == FormModel.ProviderId)?.Name
-		?? "Unknown provider";
-}
+	var assignment = SelectedAgent;
+	var profile = assignment?.ProfileId is Guid profileId
+		? _profiles.FirstOrDefault(candidate => candidate.Id == profileId)
+		: null;
+	if (profile != null)
+	{
+		return $"{profile.Name} ({ProfileRow.Describe(profile)})";
+	}
 
-private string GetSelectedAgentModelDisplayText()
-{
-	return string.IsNullOrWhiteSpace(SelectedModelId)
-		? "Use provider default"
-		: SelectedModelId;
-}
-
-private string GetSelectedAgentReasoningDisplayText()
-{
-	return string.IsNullOrWhiteSpace(FormModel.ReasoningEffort)
-		? "Use provider default"
-		: FormModel.ReasoningEffort;
+	var parts = new[] { assignment?.Provider?.Name, assignment?.PreferredModelId, assignment?.PreferredReasoningEffort }
+		.Where(part => !string.IsNullOrWhiteSpace(part));
+	return string.Join(" · ", parts) is { Length: > 0 } described ? described : "The agent's own profile";
 }
 
 private string GetSelectedAgentExecutionDisplayText()
@@ -1024,20 +820,6 @@ private static string BuildTemplateName(string prompt)
 	var firstLine = trimmed.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? trimmed;
 	return firstLine.Length <= maxLength ? firstLine : firstLine[..maxLength].TrimEnd();
 }
-
-	private string ModelSummary
-	{
-		get
-		{
-			var model = string.IsNullOrWhiteSpace(SelectedModelId)
-				? null
-				: AvailableModels.FirstOrDefault(m => m.ModelId == SelectedModelId)?.DisplayName ?? SelectedModelId;
-			var reasoning = string.IsNullOrWhiteSpace(FormModel.ReasoningEffort) ? null : FormModel.ReasoningEffort;
-
-			var parts = new[] { model, reasoning }.Where(part => !string.IsNullOrWhiteSpace(part)).ToList();
-			return parts.Count == 0 ? "Default" : string.Join(" · ", parts);
-		}
-	}
 
 	private string DeliverySummary => FormModel.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest
 		? $"PR → {(string.IsNullOrWhiteSpace(FormModel.TargetBranch) ? "?" : FormModel.TargetBranch)}"

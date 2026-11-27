@@ -1,10 +1,9 @@
 @* Creates or edits a template. A template is a name and a prompt; everything under "Overrides"
    is optional, and anything left empty follows the project the template runs on. *@
 @using System.ComponentModel.DataAnnotations
-@using VibeSwarm.Shared.Providers
 @using VibeSwarm.Shared.Validation
 @inject IJobTemplateService JobTemplateService
-@inject IProviderService ProviderService
+@inject IServiceProvider Services
 @inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="IsVisibleChanged"
@@ -41,45 +40,9 @@
 
 			<div class="accordion">
 				<AccordionSection Title="Overrides" Icon="sliders" Summary="@OverridesSummary" @bind-IsOpen="_overridesOpen">
-					<div class="mb-5">
-						<label for="template-provider" class="form-label">Provider</label>
-						<select id="template-provider" class="form-control" value="@(_draft.ProviderId?.ToString() ?? string.Empty)"
-								@onchange="OnProviderChangedAsync">
-							<option value="">Each project's provider</option>
-							@foreach (var provider in _providers)
-							{
-								<option value="@provider.Id">@provider.Name</option>
-							}
-						</select>
-					</div>
-
-					@if (_draft.ProviderId.HasValue)
-					{
-						<div class="mb-5">
-							<label for="template-model" class="form-label">Model</label>
-							<select id="template-model" class="form-control" @bind="ModelValue" disabled="@_isLoadingModels">
-								<option value="">@(_isLoadingModels ? "Loading models..." : "Provider's default")</option>
-								@foreach (var model in _models)
-								{
-									<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
-								}
-							</select>
-						</div>
-
-						@if (ReasoningOptions.Count > 0)
-						{
-							<div class="mb-5">
-								<label for="template-reasoning" class="form-label">Reasoning</label>
-								<select id="template-reasoning" class="form-control" @bind="ReasoningValue">
-									<option value="">Provider's default</option>
-									@foreach (var reasoning in ReasoningOptions)
-									{
-										<option value="@reasoning">@reasoning</option>
-									}
-								</select>
-							</div>
-						}
-					}
+					<ProfilePicker Id="template-profile" Class="mb-5" Label="Run with" Profiles="_profiles" Allowed="ProfileRoles.CanBuild"
+								   SelectedProfileId="_draft.ProfileId" OnSelected="HandleProfileSelected"
+								   EmptyLabel="Each project's Build profile" />
 
 					<div class="mb-5">
 						<label for="template-cycles" class="form-label">Passes</label>
@@ -154,32 +117,13 @@
 	[Parameter] public EventCallback<JobTemplate> OnSaved { get; set; }
 
 	private JobTemplate _draft = new();
-	private List<Provider> _providers = [];
-	private List<ProviderModel> _models = [];
-	private bool _isLoadingModels;
+	private List<Profile> _profiles = [];
 	private bool _isSaving;
 	private bool _overridesOpen;
 	private string? _errorMessage;
 	private bool _wasVisible;
 
 	private bool IsEdit => Template is { Id: var id } && id != Guid.Empty;
-
-	private IReadOnlyList<string> ReasoningOptions => _providers
-		.FirstOrDefault(provider => provider.Id == _draft.ProviderId) is { } selected
-			? ProviderCapabilities.GetSupportedReasoningEfforts(selected)
-			: [];
-
-	private string ModelValue
-	{
-		get => _draft.ModelId ?? string.Empty;
-		set => _draft.ModelId = string.IsNullOrWhiteSpace(value) ? null : value;
-	}
-
-	private string ReasoningValue
-	{
-		get => _draft.ReasoningEffort ?? string.Empty;
-		set => _draft.ReasoningEffort = string.IsNullOrWhiteSpace(value) ? null : value;
-	}
 
 	private CycleMode CycleModeValue
 	{
@@ -210,9 +154,9 @@
 		get
 		{
 			var parts = new List<string>();
-			if (_draft.ProviderId.HasValue)
+			if (_draft.ProfileId is Guid profileId)
 			{
-				parts.Add(_providers.FirstOrDefault(provider => provider.Id == _draft.ProviderId)?.Name ?? "Provider");
+				parts.Add(_profiles.FirstOrDefault(profile => profile.Id == profileId)?.Name ?? _draft.ProfileName ?? "Profile");
 			}
 			if (_draft.CycleMode != CycleMode.SingleCycle)
 			{
@@ -238,12 +182,17 @@
 			_errorMessage = null;
 			_draft = CopyOf(Template);
 			_overridesOpen = false;
-			_models = [];
-			_providers = (await ProviderService.GetAllAsync())
-				.Where(provider => provider.IsEnabled || provider.Id == _draft.ProviderId)
-				.OrderBy(provider => provider.Name)
-				.ToList();
-			await LoadModelsAsync();
+			// Resolved lazily so pages and tests that never open the editor need no registration.
+			try
+			{
+				_profiles = Services.GetService<IProfileService>() is { } profileService
+					? (await profileService.GetAllAsync()).ToList()
+					: [];
+			}
+			catch (HttpRequestException)
+			{
+				_profiles = [];
+			}
 		}
 
 		_wasVisible = IsVisible;
@@ -257,9 +206,8 @@
 			Name = source.Name,
 			Description = source.Description,
 			GoalPrompt = source.GoalPrompt,
-			ProviderId = source.ProviderId,
-			ModelId = source.ModelId,
-			ReasoningEffort = source.ReasoningEffort,
+			ProfileId = source.ProfileId,
+			ProfileName = source.ProfileName,
 			Branch = source.Branch,
 			GitChangeDeliveryMode = source.GitChangeDeliveryMode,
 			TargetBranch = source.TargetBranch,
@@ -269,39 +217,12 @@
 			CycleReviewPrompt = source.CycleReviewPrompt
 		};
 
-	private async Task OnProviderChangedAsync(ChangeEventArgs args)
+	// The server fills the provider, model and reasoning from the profile; none is sent, so a
+	// template set back to each project's own profile doesn't keep the old one's provider.
+	private void HandleProfileSelected(Profile? profile)
 	{
-		_draft.ProviderId = Guid.TryParse(args.Value?.ToString(), out var id) ? id : null;
-		_draft.ModelId = null;
-		_draft.ReasoningEffort = null;
-		await LoadModelsAsync();
-	}
-
-	private async Task LoadModelsAsync()
-	{
-		if (_draft.ProviderId is not Guid providerId)
-		{
-			_models = [];
-			return;
-		}
-
-		_isLoadingModels = true;
-		try
-		{
-			_models = (await ProviderService.GetModelsAsync(providerId))
-				.Where(model => model.IsAvailable)
-				.OrderByDescending(model => model.IsDefault)
-				.ThenBy(model => model.DisplayName ?? model.ModelId)
-				.ToList();
-		}
-		catch (HttpRequestException)
-		{
-			_models = [];
-		}
-		finally
-		{
-			_isLoadingModels = false;
-		}
+		_draft.ProfileId = profile?.Id;
+		_draft.ProfileName = profile?.Name;
 	}
 
 	private async Task SaveAsync()

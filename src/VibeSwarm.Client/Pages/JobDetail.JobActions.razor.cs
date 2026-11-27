@@ -481,7 +481,7 @@ public partial class JobDetail : ComponentBase
 
         try
         {
-            var result = await JobService.ResetJobWithOptionsAsync(Job.Id, options.ProviderId, options.ModelId, options.ReasoningEffort);
+            var result = await JobService.ResetJobWithOptionsAsync(Job.Id, profileId: options.ProfileId);
             if (result)
             {
                 NotificationService.ShowProjectSuccess(Job.Project?.Name, "Job has been reset with new options and will be retried shortly.");

@@ -16,13 +16,13 @@
 	}
 	else
 	{
-		<ProfilePicker Id="modal-decisionsProfile" Class="mb-5" Label="Decisions" CustomLabel="None"
+		<LegacyProfilePicker Id="modal-decisionsProfile" Class="mb-5" Label="Decisions" CustomLabel="None"
 					   Profiles="EligibleProfiles" SelectedProfileId="Project.DecisionsProfileId"
 					   LinkedNote="@DescribeAccess(Project.DecisionsProfileId)"
 					   CustomHint="A second opinion before a design or approach decision."
 					   OnSelected="profile => Project.DecisionsProfileId = profile?.Id" />
 
-		<ProfilePicker Id="modal-researchProfile" Label="Research" CustomLabel="None"
+		<LegacyProfilePicker Id="modal-researchProfile" Label="Research" CustomLabel="None"
 					   Profiles="EligibleProfiles" SelectedProfileId="Project.ResearchProfileId"
 					   LinkedNote="@DescribeAccess(Project.ResearchProfileId)"
 					   CustomHint="Research: libraries, APIs, current facts and how others solve a problem."

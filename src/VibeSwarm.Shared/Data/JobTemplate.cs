@@ -65,6 +65,10 @@ public class JobTemplate
 
 	public int UseCount { get; set; }
 
+	/// <summary>The name of <see cref="ProfileId"/>. Filled in when a template is read; not stored.</summary>
+	[NotMapped]
+	public string? ProfileName { get; set; }
+
 	/// <summary>When a job was last created from this template. Filled in by the template list; not stored.</summary>
 	[NotMapped]
 	public DateTime? LastRunAt { get; set; }

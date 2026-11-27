@@ -192,7 +192,7 @@ public sealed class ProfilesUiTests
 	public void ProfilePicker_RendersNothingWithoutProfiles()
 	{
 		using var context = new BunitContext();
-		var cut = context.Render<ProfilePicker>(parameters => parameters.Add(picker => picker.Id, "picker"));
+		var cut = context.Render<LegacyProfilePicker>(parameters => parameters.Add(picker => picker.Id, "picker"));
 		Assert.Empty(cut.FindAll("select"));
 	}
 

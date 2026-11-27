@@ -289,11 +289,10 @@ else
                              OnCancelDiscard="CloseDiscardConfirmation" />
 
     @* Create Job Modal *@
-    <CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@NewJob" Project="@Project" Providers="@GetAllowedJobProviders()"
-                    AvailableModels="@AvailableModels" Branches="@Branches" CurrentBranch="@CurrentBranch"
-                    ShowBranchSelector="@(IsGitRepository && Branches.Any())" IsLoadingModels="@IsLoadingModels" IsSaving="@IsSaving"
-                    ErrorMessage="@ErrorMessage" @bind-SelectedModelId="@SelectedModelId" ProviderHint="@GetProviderHint()" OnProviderChanged="OnProviderChanged"
-                    OnModelsRefreshed="@(models => AvailableModels = models)"
+    <CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@NewJob" Project="@Project"
+                    Branches="@Branches" CurrentBranch="@CurrentBranch"
+                    ShowBranchSelector="@(IsGitRepository && Branches.Any())" IsSaving="@IsSaving"
+                    ErrorMessage="@ErrorMessage"
                     TemplateLibrary="@JobTemplates" OnTemplateLibraryChanged="LoadJobTemplates" OnSubmit="HandleCreateJob" />
 
     @* Run a saved template on this project; the new job arrives through SignalR. *@
@@ -342,11 +341,7 @@ else
     private string? ErrorMessage { get; set; }
     private System.Threading.Timer? _refreshTimer;
 
-    // Model selection
-    private List<ProviderModel> AvailableModels { get; set; } = new();
     private List<JobTemplate> JobTemplates { get; set; } = new();
-    private string SelectedModelId { get; set; } = string.Empty;
-    private bool IsLoadingModels { get; set; }
 
     // Git-related properties
     private bool IsGitRepository { get; set; }

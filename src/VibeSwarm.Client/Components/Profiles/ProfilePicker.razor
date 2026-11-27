@@ -1,68 +1,143 @@
-@* Picks a profile for a provider, model and reasoning setting, or Custom to set them by hand.
-   Shows nothing when there are no profiles to pick from. *@
+@* Picks the profile something runs on: the profiles that can do the job, an empty choice such as
+   Off where there is one, and New profile… to add one without leaving the form. *@
+@implements IDisposable
+@inject IServiceProvider Services
 
-@if (Profiles.Count > 0)
-{
-	<div class="@Class">
-		<label for="@Id" class="form-label">@Label</label>
-		<select id="@Id" class="form-control" value="@(Selected?.Id.ToString() ?? string.Empty)" @onchange="HandleChanged">
-			<option value="">@CustomLabel</option>
-			@foreach (var profile in Profiles)
-			{
-				<option value="@profile.Id">@profile.Name</option>
-			}
-		</select>
-		<div class="form-text">
-			@if (Selected is { } selected)
-			{
-				<span>@ProfileRow.Describe(selected). @LinkedNote</span>
-			}
-			else
-			{
-				<span>@CustomHint</span>
-			}
-		</div>
-	</div>
+@{
+	var options = GetOptions();
+	var selected = SelectedProfileId is Guid selectedId ? options.FirstOrDefault(profile => profile.Id == selectedId) : null;
 }
 
+<div class="@Class">
+	<label for="@Id" class="form-label">@Label</label>
+	<select @key="_resetCount" id="@Id" class="form-control" value="@(selected?.Id.ToString() ?? string.Empty)"
+			@onchange="HandleChanged" disabled="@Disabled">
+		@if (EmptyLabel != null)
+		{
+			<option value="">@EmptyLabel</option>
+		}
+		else if (selected == null)
+		{
+			<option value="">Choose a profile</option>
+		}
+		@foreach (var profile in options)
+		{
+			<option value="@profile.Id">@profile.Name</option>
+		}
+		@if (_composer != null)
+		{
+			<option value="@NewProfileValue">New profile…</option>
+		}
+	</select>
+	@if (selected != null)
+	{
+		<div class="form-text">@ProfileRow.Describe(selected)</div>
+	}
+	else if (options.Count == 0 && EmptyLabel == null)
+	{
+		<div class="form-text">No profile can do this yet. <a href="/providers">Add a provider</a> first.</div>
+	}
+	else if (!string.IsNullOrEmpty(EmptyHint))
+	{
+		<div class="form-text">@EmptyHint</div>
+	}
+</div>
+
 @code {
+	private const string NewProfileValue = "new";
+
 	[Parameter, EditorRequired]
 	public string Id { get; set; } = string.Empty;
 
 	[Parameter]
 	public string Label { get; set; } = "Profile";
 
-	[Parameter]
-	public string CustomLabel { get; set; } = "Custom";
-
+	/// <summary>Every profile, in the order to offer them.</summary>
 	[Parameter]
 	public IReadOnlyList<Profile> Profiles { get; set; } = [];
+
+	/// <summary>Which profiles can fill this role, such as <see cref="ProfileRoles.CanBuild"/>. Null offers them all.</summary>
+	[Parameter]
+	public Func<Profile, bool>? Allowed { get; set; }
 
 	[Parameter]
 	public Guid? SelectedProfileId { get; set; }
 
-	/// <summary>Raised with the picked profile, or null for Custom.</summary>
+	/// <summary>Raised with the picked profile, or null for the empty choice.</summary>
 	[Parameter]
 	public EventCallback<Profile?> OnSelected { get; set; }
+
+	/// <summary>The first choice when no profile is one, such as "Off". Null means a profile must be picked.</summary>
+	[Parameter]
+	public string? EmptyLabel { get; set; }
+
+	/// <summary>Shown under the select while the empty choice is picked.</summary>
+	[Parameter]
+	public string? EmptyHint { get; set; }
 
 	[Parameter]
 	public string? Class { get; set; }
 
-	/// <summary>Follows the picked profile's summary.</summary>
 	[Parameter]
-	public string LinkedNote { get; set; } = "Editing the profile updates this too.";
+	public bool Disabled { get; set; }
 
-	/// <summary>Shown while Custom is picked.</summary>
-	[Parameter]
-	public string CustomHint { get; set; } = "Pick a profile to keep this in step with it, or set it by hand below.";
+	// Resolved lazily so pages and tests that never add a profile need no registration.
+	private ProfileComposer? _composer;
 
-	private Profile? Selected => SelectedProfileId is Guid id ? Profiles.FirstOrDefault(profile => profile.Id == id) : null;
+	// Bumped to redraw the select when New profile… is closed without adding one, since the
+	// select would otherwise stay on that option.
+	private int _resetCount;
 
-	private Task HandleChanged(ChangeEventArgs args)
+	protected override void OnInitialized()
 	{
-		var profile = Guid.TryParse(args.Value?.ToString(), out var id)
-			? Profiles.FirstOrDefault(candidate => candidate.Id == id)
+		_composer = Services.GetService<ProfileComposer>();
+		if (_composer != null)
+		{
+			_composer.Changed += HandleComposerChanged;
+		}
+	}
+
+	/// <summary>
+	/// The profiles that fit, plus any added since the list was loaded. The one already picked is
+	/// always offered, even if it no longer fits (its provider was turned off, say), so opening
+	/// and saving a form never changes a pick.
+	/// </summary>
+	private List<Profile> GetOptions()
+		=> Profiles
+			.Concat(_composer?.Added ?? [])
+			.DistinctBy(profile => profile.Id)
+			.Where(profile => Allowed == null || Allowed(profile) || profile.Id == SelectedProfileId)
+			.ToList();
+
+	private async Task HandleChanged(ChangeEventArgs args)
+	{
+		var value = args.Value?.ToString();
+		if (value == NewProfileValue && _composer != null)
+		{
+			var added = await _composer.NewAsync(Allowed);
+			if (added == null)
+			{
+				_resetCount++;
+				return;
+			}
+
+			await OnSelected.InvokeAsync(added);
+			return;
+		}
+
+		var profile = Guid.TryParse(value, out var id)
+			? GetOptions().FirstOrDefault(candidate => candidate.Id == id)
 			: null;
-		return OnSelected.InvokeAsync(profile);
+		await OnSelected.InvokeAsync(profile);
+	}
+
+	private void HandleComposerChanged() => InvokeAsync(StateHasChanged);
+
+	public void Dispose()
+	{
+		if (_composer != null)
+		{
+			_composer.Changed -= HandleComposerChanged;
+		}
 	}
 }

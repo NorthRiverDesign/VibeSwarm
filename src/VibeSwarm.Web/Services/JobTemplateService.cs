@@ -59,7 +59,27 @@ public class JobTemplateService : IJobTemplateService
 			template.LastRunAt = templateRuns.Count > 0 ? templateRuns.Max(run => run.CreatedAt) : null;
 		}
 
+		await NameProfilesAsync(templates, cancellationToken);
 		return templates;
+	}
+
+	/// <summary>Fills each template's profile name, which the list shows instead of a provider and model.</summary>
+	private async Task NameProfilesAsync(IReadOnlyCollection<JobTemplate> templates, CancellationToken cancellationToken)
+	{
+		var profileIds = templates.Where(template => template.ProfileId.HasValue).Select(template => template.ProfileId!.Value).Distinct().ToList();
+		if (profileIds.Count == 0)
+		{
+			return;
+		}
+
+		var names = await _dbContext.Profiles
+			.AsNoTracking()
+			.Where(profile => profileIds.Contains(profile.Id))
+			.ToDictionaryAsync(profile => profile.Id, profile => profile.Name, cancellationToken);
+		foreach (var template in templates)
+		{
+			template.ProfileName = template.ProfileId is Guid id ? names.GetValueOrDefault(id) : null;
+		}
 	}
 
 	public async Task<IReadOnlyList<JobTemplateProjectRun>> GetRunsAsync(Guid templateId, CancellationToken cancellationToken = default)
@@ -230,8 +250,14 @@ public class JobTemplateService : IJobTemplateService
 
 	public async Task<JobTemplate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
 	{
-		return await BuildQuery()
+		var template = await BuildQuery()
 			.FirstOrDefaultAsync(template => template.Id == id, cancellationToken);
+		if (template != null)
+		{
+			await NameProfilesAsync([template], cancellationToken);
+		}
+
+		return template;
 	}
 
 	public async Task<JobTemplate> CreateAsync(JobTemplate template, CancellationToken cancellationToken = default)

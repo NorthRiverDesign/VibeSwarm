@@ -73,16 +73,6 @@ public partial class ProjectDetail
         NewJob.Branch = string.IsNullOrWhiteSpace(Project?.DevelopmentBranch) ? CurrentBranch : Project.DevelopmentBranch;
         NewJob.GitChangeDeliveryMode = Project?.GitChangeDeliveryMode ?? GitChangeDeliveryMode.CommitToBranch;
         NewJob.TargetBranch = Project?.DefaultTargetBranch ?? CurrentBranch;
-        SelectedModelId = string.Empty;
-        AvailableModels.Clear();
-        NewJob.ReasoningEffort = null;
-
-        var initialProvider = GetPreferredJobProvider();
-        if (initialProvider != null)
-        {
-            NewJob.ProviderId = initialProvider.Id;
-            await LoadModelsForProvider(initialProvider.Id);
-        }
 
         ErrorMessage = null;
         _showCreateJobModal = true;
@@ -95,18 +85,6 @@ public partial class ProjectDetail
 
     private async Task HandleCreateJob()
     {
-        if (NewJob.ProviderId == Guid.Empty)
-        {
-            ErrorMessage = "Please select a provider.";
-            return;
-        }
-
-        if (!GetAllowedJobProviders().Any(p => p.Id == NewJob.ProviderId) && !IsSelectedAgentProviderAllowed())
-        {
-            ErrorMessage = "The selected provider is not allowed for this project.";
-            return;
-        }
-
         if (NewJob.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
         {
             if (string.IsNullOrWhiteSpace(NewJob.TargetBranch))
@@ -134,7 +112,6 @@ public partial class ProjectDetail
         try
         {
             NewJob.ProjectId = ProjectId;
-            NewJob.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
             var createdJob = await JobService.CreateAsync(NewJob);
             NavigationManager.NavigateTo($"/jobs/view/{createdJob.Id}");
         }
@@ -142,48 +119,6 @@ public partial class ProjectDetail
         {
             ErrorMessage = $"Error creating job: {ex.Message}";
             IsSaving = false;
-        }
-    }
-
-    private async Task OnProviderChanged(Guid providerId)
-    {
-        if (providerId != Guid.Empty && !GetAllowedJobProviders().Any(p => p.Id == providerId))
-        {
-            ErrorMessage = "This provider is not enabled for the current project.";
-            return;
-        }
-
-        NewJob.ProviderId = providerId;
-        SelectedModelId = string.Empty;
-        AvailableModels.Clear();
-        ErrorMessage = null;
-
-        if (providerId != Guid.Empty)
-        {
-            await LoadModelsForProvider(providerId);
-        }
-    }
-
-    private async Task LoadModelsForProvider(Guid providerId)
-    {
-        IsLoadingModels = true;
-        try
-        {
-            AvailableModels = (await ProviderService.GetModelsAsync(providerId))
-                .Where(model => model.IsAvailable)
-                .OrderByDescending(model => model.IsDefault)
-                .ThenBy(model => model.DisplayName ?? model.ModelId)
-                .ToList();
-
-            SelectedModelId = ProjectExecutionDefaults.ResolveModelId(Project, providerId, AvailableModels);
-            var provider = GetAllowedJobProviders().FirstOrDefault(item => item.Id == providerId);
-            NewJob.ReasoningEffort = provider != null
-                ? ProjectExecutionDefaults.ResolveReasoningEffort(Project, provider)
-                : null;
-        }
-        finally
-        {
-            IsLoadingModels = false;
         }
     }
 
@@ -218,40 +153,6 @@ public partial class ProjectDetail
 
         var resolvedModelId = ProjectExecutionDefaults.ResolveModelId(Project, provider.Id, models);
         return string.IsNullOrWhiteSpace(resolvedModelId) ? null : resolvedModelId;
-    }
-
-    private string? GetProviderHint()
-    {
-        var allowedProviders = GetAllowedJobProviders();
-        if (allowedProviders.Count == 0)
-        {
-            return null;
-        }
-
-        var hasProjectPriority = Project?.ProviderSelections?.Any(pp => pp.IsEnabled) == true;
-        if (!hasProjectPriority)
-        {
-            return "This project can use any enabled provider. The list below is ordered by the current provider defaults.";
-        }
-
-        var chain = string.Join(" -> ", allowedProviders.Select(p => p.Name));
-        return $"This project will try providers in this order: {chain}.";
-    }
-
-    private bool IsSelectedAgentProviderAllowed()
-    {
-        if (!NewJob.AgentId.HasValue || NewJob.AgentId == Guid.Empty)
-        {
-            return false;
-        }
-
-        var assignment = AgentPresetHelper.ResolveAgent(Project, NewJob.AgentId);
-        if (assignment != null && assignment.ProviderId == NewJob.ProviderId)
-        {
-            return true;
-        }
-
-        return NewJob.ProviderId != Guid.Empty;
     }
 
     private async Task DeleteSelectedJobs(List<Guid> jobIds)

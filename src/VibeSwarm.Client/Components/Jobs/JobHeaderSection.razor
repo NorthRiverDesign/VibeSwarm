@@ -147,7 +147,7 @@
 			@if (!string.IsNullOrEmpty(ProviderModelDisplay))
 			{
 				<span class="fg-2" aria-hidden="true">·</span>
-				<span class="text-break" title="Provider chain and model">@ProviderModelDisplay</span>
+				<span class="text-break" title="@(string.IsNullOrWhiteSpace(ProfileName) ? "Provider and model" : "Profile, then the provider and model that ran")">@ProviderModelDisplay</span>
 			}
 			@if (MaxCycles > 1)
 			{
@@ -304,6 +304,10 @@
 
 	[Parameter]
 	public string? ModelUsed { get; set; }
+
+	/// <summary>The profile the job was asked to run on, shown ahead of what ran.</summary>
+	[Parameter]
+	public string? ProfileName { get; set; }
 
 	[Parameter]
 	public string? PlanningProviderName { get; set; }
@@ -552,6 +556,17 @@
 	}
 
 	private string? BuildProviderModelDisplay()
+	{
+		var stages = BuildStagesDisplay();
+
+		// The profile is what was asked for; the provider and model after it are what ran, which
+		// differ once the job has switched provider.
+		return string.IsNullOrWhiteSpace(ProfileName)
+			? stages
+			: string.IsNullOrWhiteSpace(stages) ? ProfileName : $"{ProfileName} · {stages}";
+	}
+
+	private string? BuildStagesDisplay()
 	{
 		var planningDisplay = BuildStageProviderDisplay(PlanningProviderName, PlanningModelUsed);
 		var executionDisplay = BuildStageProviderDisplay(ProviderName, ModelUsed);

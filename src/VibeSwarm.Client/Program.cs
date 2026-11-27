@@ -33,6 +33,7 @@ builder.Services.AddScoped(sp =>
 });
 
 // HTTP service implementations
+builder.Services.AddScoped<ProfileComposer>();
 builder.Services.AddScoped<IJobService, HttpJobService>();
 builder.Services.AddScoped<IJobScheduleService, HttpJobScheduleService>();
 builder.Services.AddScoped<IJobTemplateService, HttpJobTemplateService>();

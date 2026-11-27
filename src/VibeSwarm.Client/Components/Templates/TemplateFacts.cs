@@ -10,11 +10,10 @@ public static class TemplateFacts
 	public static string? Describe(JobTemplate template)
 	{
 		var parts = new List<string>();
-		if (template.ProviderId.HasValue)
+		if (template.ProfileId.HasValue || template.ProviderId.HasValue)
 		{
-			var provider = template.Provider?.Name ?? "a fixed provider";
-			// The pinned provider goes first; the job still falls back to others if it fails.
-			parts.Add(string.IsNullOrWhiteSpace(template.ModelId) ? $"{provider} first" : $"{provider} ({template.ModelId}) first");
+			// The template's profile goes first; the job still falls back to the project's others if it fails.
+			parts.Add($"{template.ProfileName ?? template.Provider?.Name ?? "a fixed profile"} first");
 		}
 		if (template.CycleMode == CycleMode.FixedCount)
 		{

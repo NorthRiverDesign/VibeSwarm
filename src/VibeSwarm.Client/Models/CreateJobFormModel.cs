@@ -9,15 +9,15 @@ public sealed class CreateJobFormModel : IValidatableObject
 	[StringLength(ValidationLimits.JobGoalPromptMaxLength, ErrorMessage = "Goal prompt must be {1:N0} characters or fewer.")]
 	public string GoalPrompt { get; set; } = string.Empty;
 
-	[Required(ErrorMessage = "Please select a provider.")]
-	public Guid? ProviderId { get; set; }
+	/// <summary>
+	/// The profile the job runs on. Left empty, the job runs on the project's Build profile; an
+	/// agent's job runs on the agent's own.
+	/// </summary>
+	public Guid? ProfileId { get; set; }
 
 	public Guid? AgentId { get; set; }
 
 	public bool AllowBlankGoalPrompt { get; set; }
-
-	[StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
-	public string? ReasoningEffort { get; set; }
 
 	[StringLength(250)]
 	public string? Branch { get; set; }
@@ -46,9 +46,8 @@ public sealed class CreateJobFormModel : IValidatableObject
 		return new CreateJobFormModel
 		{
 			GoalPrompt = job.GoalPrompt ?? string.Empty,
-			ProviderId = job.ProviderId == Guid.Empty ? null : job.ProviderId,
+			ProfileId = job.ProfileId,
 			AgentId = job.AgentId,
-			ReasoningEffort = job.ReasoningEffort,
 			Branch = job.Branch,
 			GitChangeDeliveryMode = job.GitChangeDeliveryMode,
 			TargetBranch = job.TargetBranch,
@@ -63,9 +62,13 @@ public sealed class CreateJobFormModel : IValidatableObject
 	public void ApplyTo(Job job)
 	{
 		job.GoalPrompt = GoalPrompt.Trim();
-		job.ProviderId = ProviderId ?? Guid.Empty;
 		job.AgentId = AgentId == Guid.Empty ? null : AgentId;
-		job.ReasoningEffort = VibeSwarm.Shared.Providers.ProviderCapabilities.NormalizeReasoningEffort(ReasoningEffort);
+		// The server works out the provider, model and reasoning: from the profile, or from the
+		// agent when the job runs as one.
+		job.ProfileId = job.AgentId.HasValue ? null : ProfileId;
+		job.ProviderId = Guid.Empty;
+		job.ModelUsed = null;
+		job.ReasoningEffort = null;
 		job.Branch = string.IsNullOrWhiteSpace(Branch) ? null : Branch.Trim();
 		job.GitChangeDeliveryMode = GitChangeDeliveryMode;
 		job.TargetBranch = string.IsNullOrWhiteSpace(TargetBranch) ? null : TargetBranch.Trim();
