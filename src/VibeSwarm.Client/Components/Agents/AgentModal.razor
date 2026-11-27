@@ -1,6 +1,5 @@
 @inject IAgentService AgentService
 @inject ISkillService SkillService
-@inject IProviderService ProviderService
 @inject NotificationService NotificationService
 @inject IServiceProvider Services
 
@@ -34,102 +33,9 @@
 				<div class="form-text">Use this to capture what the agent owns, reviews, and how it should approach the work.</div>
 			</div>
 
-			<LegacyProfilePicker Id="team-role-profile" Class="mb-5" Label="Profile" Profiles="EligibleProfiles"
-						   SelectedProfileId="Agent.ProfileId" OnSelected="ApplyProfileAsync"
-						   LinkedNote="Projects you assign this agent to start on this profile. Editing the profile updates it."
-						   CustomHint="Pick the profile this agent runs on, or set its provider and model by hand below." />
-
-			@if (!IsLinked)
-			{
-			<div class="row g-5 mb-5">
-				<div class="col-12 lg:col-6">
-					<label for="team-role-provider" class="form-label">Default Provider</label>
-					@if (!_providers.Any())
-					{
-						<div class="rounded border bg-2 p-5 small fg-1">
-							No enabled providers are available yet. You can still save this agent and choose a provider when assigning it to a project.
-						</div>
-					}
-					else
-					{
-						<InputSelect TValue="Guid?" id="team-role-provider"
-									 Value="Agent.DefaultProviderId"
-									 ValueChanged="HandleDefaultProviderChanged"
-									 ValueExpression="@(() => Agent.DefaultProviderId)"
-									 class="form-control">
-							<option value="">Choose when assigned to a project</option>
-							@foreach (var provider in _providers)
-							{
-								<option value="@provider.Id">@provider.Name</option>
-							}
-						</InputSelect>
-						<div class="form-text">Used when this agent is assigned to a project or selected for a job.</div>
-					}
-				</div>
-				<div class="col-12 lg:col-6">
-					<label for="team-role-model" class="form-label">Default Model</label>
-					<div class="input-group">
-						<InputSelect TValue="string" id="team-role-model"
-									 Value="@(Agent.DefaultModelId ?? string.Empty)"
-									 ValueChanged="HandleDefaultModelChanged"
-									 ValueExpression="@(() => Agent.DefaultModelId)"
-									 class="form-control"
-									 disabled="@(!Agent.DefaultProviderId.HasValue || !CurrentProviderModels.Any())">
-							<option value="">Use provider default model</option>
-							@foreach (var model in CurrentProviderModels)
-							{
-								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
-							}
-						</InputSelect>
-						<ModelRefreshButton ProviderId="@Agent.DefaultProviderId"
-											OnRefreshed="() => LoadProviderModelsAsync(Agent.DefaultProviderId!.Value)" />
-					</div>
-					<div class="form-text">
-						@if (!Agent.DefaultProviderId.HasValue)
-						{
-							<span>Select a default provider first.</span>
-						}
-						else if (!CurrentProviderModels.Any())
-						{
-							<span>No cached models found for this provider yet. The provider default will be used.</span>
-						}
-						else
-						{
-							<span>Projects can keep this default or override it per assignment.</span>
-						}
-					</div>
-				</div>
-				<div class="col-12 lg:col-6">
-					<label for="team-role-reasoning" class="form-label">Default Reasoning</label>
-					<InputSelect TValue="string" id="team-role-reasoning"
-								 Value="@(Agent.DefaultReasoningEffort ?? string.Empty)"
-								 ValueChanged="HandleDefaultReasoningChanged"
-								 ValueExpression="@(() => Agent.DefaultReasoningEffort)"
-								 class="form-control"
-								 disabled="@(!Agent.DefaultProviderId.HasValue || !CurrentReasoningOptions.Any())">
-						<option value="">Use provider default reasoning</option>
-						@foreach (var reasoning in CurrentReasoningOptions)
-						{
-							<option value="@reasoning">@reasoning</option>
-						}
-					</InputSelect>
-					<div class="form-text">
-						@if (!Agent.DefaultProviderId.HasValue)
-						{
-							<span>Select a default provider first.</span>
-						}
-						else if (!CurrentReasoningOptions.Any())
-						{
-							<span>This provider does not expose configurable reasoning levels.</span>
-						}
-						else
-						{
-							<span>Projects can keep this reasoning default or override it per assignment.</span>
-						}
-					</div>
-				</div>
-			</div>
-			}
+			<ProfilePicker Id="team-role-profile" Class="mb-5" Label="Runs on" Profiles="_profiles" Allowed="ProfileRoles.CanBuild"
+						   SelectedProfileId="Agent.ProfileId" OnSelected="ApplyProfile" EmptyLabel="Choose in each project"
+						   EmptyHint="Each project you assign this agent to picks the profile it runs on there." />
 
 			<div class="border rounded bg-2 p-5 mb-5">
 				<div class="fw-semibold mb-3">Default Execution Profile</div>
@@ -260,17 +166,8 @@
 
 	private Agent Agent { get; set; } = new();
 	private List<Skill> _skills = [];
-	private List<Provider> _providers = [];
-	private readonly Dictionary<Guid, List<ProviderModel>> _providerModelsByProviderId = [];
 	private bool IsEdit => EditAgent != null;
 	private List<Profile> _profiles = [];
-
-	/// <summary>Coding profiles on an enabled provider: an agent runs jobs, which inference profiles can't.</summary>
-	private IReadOnlyList<Profile> EligibleProfiles => _profiles
-		.Where(profile => profile.ProviderId is Guid providerId && _providers.Any(provider => provider.Id == providerId))
-		.ToList();
-
-	private bool IsLinked => Agent.ProfileId is Guid id && EligibleProfiles.Any(profile => profile.Id == id);
 
 	// Resolved lazily so tests that never show profiles need no registration.
 	private async Task LoadProfilesAsync()
@@ -286,45 +183,30 @@
 		}
 	}
 
-	private async Task ApplyProfileAsync(Profile? profile)
+	// The defaults sit beside the profile's id, as the server stores them; with no profile there
+	// are none, and each project picks.
+	private void ApplyProfile(Profile? profile)
 	{
 		Agent.ProfileId = profile?.Id;
-		if (profile?.ProviderId is not Guid providerId)
-		{
-			return;
-		}
-
-		Agent.DefaultProviderId = providerId;
-		Agent.DefaultProvider = _providers.FirstOrDefault(provider => provider.Id == providerId);
-		Agent.DefaultModelId = profile.ModelId;
-		Agent.DefaultReasoningEffort = profile.ReasoningEffort;
-		await LoadProviderModelsAsync(providerId);
+		Agent.DefaultProviderId = profile?.ProviderId;
+		Agent.DefaultProvider = profile?.Provider;
+		Agent.DefaultModelId = profile?.ModelId;
+		Agent.DefaultReasoningEffort = profile?.ReasoningEffort;
 	}
+
 	private bool IsSaving { get; set; }
 	private string? ErrorMessage { get; set; }
 	private bool _previousIsVisible;
-	private IReadOnlyList<ProviderModel> CurrentProviderModels => Agent.DefaultProviderId.HasValue && _providerModelsByProviderId.TryGetValue(Agent.DefaultProviderId.Value, out var models)
-		? models
-		: [];
-	private IReadOnlyList<string> CurrentReasoningOptions => Agent.DefaultProviderId.HasValue
-		? _providers
-			.Where(provider => provider.Id == Agent.DefaultProviderId.Value)
-			.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
-			.Distinct(StringComparer.Ordinal)
-			.ToList()
-		: [];
 
 	protected override async Task OnInitializedAsync()
 	{
 		await LoadSkillsAsync();
-		await LoadProvidersAsync();
 	}
 
 	protected override async Task OnParametersSetAsync()
 	{
 		if (IsVisible && !_previousIsVisible)
 		{
-			await LoadProvidersAsync();
 			await LoadProfilesAsync();
 			ResetState();
 
@@ -358,20 +240,6 @@
 						.ToList()
 				};
 			}
-
-			if (Agent.DefaultProviderId.HasValue)
-			{
-				if (!_providers.Any(provider => provider.Id == Agent.DefaultProviderId.Value) && Agent.DefaultProvider != null)
-				{
-					_providers.Add(Agent.DefaultProvider);
-					_providers = _providers
-						.OrderByDescending(provider => provider.IsDefault)
-						.ThenBy(provider => provider.Name)
-						.ToList();
-				}
-
-				await LoadProviderModelsAsync(Agent.DefaultProviderId.Value);
-			}
 		}
 
 		_previousIsVisible = IsVisible;
@@ -392,68 +260,7 @@
 		}
 	}
 
-	private async Task LoadProvidersAsync()
-	{
-		_providers = (await ProviderService.GetAllAsync())
-			.Where(provider => provider.IsEnabled)
-			.OrderByDescending(provider => provider.IsDefault)
-			.ThenBy(provider => provider.Name)
-			.ToList();
-	}
-
-	private async Task HandleDefaultProviderChanged(Guid? providerId)
-	{
-		Agent.DefaultProviderId = providerId;
-		Agent.DefaultProvider = providerId.HasValue
-			? _providers.FirstOrDefault(provider => provider.Id == providerId.Value)
-			: null;
-		Agent.DefaultModelId = null;
-		Agent.DefaultReasoningEffort = null;
-
-		if (providerId.HasValue)
-		{
-			await LoadProviderModelsAsync(providerId.Value);
-		}
-	}
-
-	private Task HandleDefaultModelChanged(string? modelId)
-	{
-		Agent.DefaultModelId = string.IsNullOrWhiteSpace(modelId) ? null : modelId.Trim();
-		return Task.CompletedTask;
-	}
-
-	private Task HandleDefaultReasoningChanged(string? reasoningEffort)
-	{
-		Agent.DefaultReasoningEffort = string.IsNullOrWhiteSpace(reasoningEffort)
-			? null
-			: ProviderCapabilities.NormalizeReasoningEffort(reasoningEffort);
-		return Task.CompletedTask;
-	}
-
-	private async Task LoadProviderModelsAsync(Guid providerId)
-	{
-		try
-		{
-			_providerModelsByProviderId[providerId] = (await ProviderService.GetModelsAsync(providerId))
-				.Where(model => model.IsAvailable)
-				.OrderByDescending(model => model.IsDefault)
-				.ThenBy(model => model.DisplayName ?? model.ModelId)
-				.ToList();
-		}
-		catch
-		{
-			_providerModelsByProviderId[providerId] = [];
-		}
-
-		if (!string.IsNullOrWhiteSpace(Agent.DefaultModelId) &&
-			(!_providerModelsByProviderId.TryGetValue(providerId, out var models) ||
-			 !models.Any(model => string.Equals(model.ModelId, Agent.DefaultModelId, StringComparison.Ordinal))))
-		{
-			Agent.DefaultModelId = null;
-		}
-	}
-
-	private bool IsSkillSelected(Guid skillId)
+						private bool IsSkillSelected(Guid skillId)
 	{
 		return Agent.SkillLinks.Any(link => link.SkillId == skillId);
 	}
@@ -550,6 +357,5 @@
 		Agent = new Agent();
 		ErrorMessage = null;
 		IsSaving = false;
-		_providerModelsByProviderId.Clear();
 	}
 }

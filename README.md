@@ -108,9 +108,34 @@ branch and leaves the conflicts for a provider to resolve, and the result is com
 merge only once no conflict markers remain. When that job finishes, press **Deploy** again.
 Deploys are always manual.
 
+### Profiles and Workflow
+
+A **profile** names one provider, one model and one reasoning level, such as *Deep thinker* or
+*Quick fixer*. Wherever VibeSwarm asks who should run something (a job, a retry, a template, a
+role in a project) it asks for a profile, never for a provider and a model. Every provider has a
+default profile that follows its own default model and reasoning. Add more on the **Profiles**
+page, or pick **New profile…** from any profile list. Editing a profile updates everything that
+uses it; deleting one moves what used it to its provider's default profile.
+
+Each project's settings show a **Workflow**: the roles that work on it, each Off or on a profile.
+
+- **Build** runs each job. Add fallbacks on other providers for when the first can't run.
+- **Plan first** writes a plan before a job builds.
+- **Review** checks each job before its work is delivered.
+- **Research** and **Decisions** answer the builder's questions while a job runs.
+- **Lead** suggests what to build next.
+
+So a project can build on a large model at high reasoning while cheaper profiles review and
+advise. Plan first and Lead need Claude Code or Copilot. Review, Research and Decisions also take
+an inference profile, such as Grok, which sees only what it is sent rather than the repository.
+
+A job runs on its project's Build profile unless you pick another when you create it. A job
+remembers the profile it was asked to run on, and its page shows that name ahead of the provider
+and model that ran, which differ once a job has moved to a fallback.
+
 ### Review and Lead
 
-Two optional helpers sit above single jobs. Both are set per project in its settings, and both
+Two optional helpers sit above single jobs. Both are roles in the project's Workflow, and both
 run read-only: Claude Code or Copilot with their write tools blocked.
 
 - **Review** (off by default) checks each job before its work is delivered. When the agent

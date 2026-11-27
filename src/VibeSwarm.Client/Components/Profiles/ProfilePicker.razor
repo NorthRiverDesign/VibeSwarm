@@ -31,7 +31,12 @@
 	</select>
 	@if (selected != null)
 	{
-		<div class="form-text">@ProfileRow.Describe(selected)</div>
+		// A profile named after what it runs on needs no second line saying so.
+		var runsOn = ProfileRow.Describe(selected);
+		@if (!string.Equals(runsOn, selected.Name, StringComparison.OrdinalIgnoreCase))
+		{
+			<div class="form-text">@runsOn</div>
+		}
 	}
 	else if (options.Count == 0 && EmptyLabel == null)
 	{
@@ -81,6 +86,13 @@
 	[Parameter]
 	public bool Disabled { get; set; }
 
+	/// <summary>
+	/// For a picker that adds what is picked to a list instead of holding it: the select goes
+	/// back to its empty choice afterwards.
+	/// </summary>
+	[Parameter]
+	public bool ResetAfterPick { get; set; }
+
 	// Resolved lazily so pages and tests that never add a profile need no registration.
 	private ProfileComposer? _composer;
 
@@ -122,6 +134,7 @@
 			}
 
 			await OnSelected.InvokeAsync(added);
+			ResetIfAsked();
 			return;
 		}
 
@@ -129,6 +142,15 @@
 			? GetOptions().FirstOrDefault(candidate => candidate.Id == id)
 			: null;
 		await OnSelected.InvokeAsync(profile);
+		ResetIfAsked();
+	}
+
+	private void ResetIfAsked()
+	{
+		if (ResetAfterPick)
+		{
+			_resetCount++;
+		}
 	}
 
 	private void HandleComposerChanged() => InvokeAsync(StateHasChanged);

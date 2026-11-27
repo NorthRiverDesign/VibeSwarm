@@ -109,7 +109,7 @@ var isValid = Validator.TryValidateObject(project, new ValidationContext(project
 		var isValid = Validator.TryValidateObject(project, new ValidationContext(project), validationResults, validateAllProperties: true);
 
 		Assert.False(isValid);
-		Assert.Contains(validationResults, result => result.ErrorMessage == "Each assigned agent must have a provider.");
+		Assert.Contains(validationResults, result => result.ErrorMessage == "Each assigned agent needs a profile.");
 	}
 
 	[Fact]

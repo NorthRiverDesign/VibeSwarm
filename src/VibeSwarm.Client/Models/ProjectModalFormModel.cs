@@ -325,7 +325,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 		if (AgentAssignments.Any(assignment => assignment.ProviderId == Guid.Empty))
 		{
 			yield return new ValidationResult(
-				"Each assigned agent must have a provider.",
+				"Each assigned agent needs a profile.",
 				[nameof(AgentAssignments)]);
 		}
 

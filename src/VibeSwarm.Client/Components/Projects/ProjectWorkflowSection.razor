@@ -1,0 +1,320 @@
+@* A project's roles in one list: who builds, and who plans, reviews, researches, weighs decisions
+   and leads. Each role is Off or runs on a profile, so a large profile can build while cheaper
+   ones check and advise. *@
+@using VibeSwarm.Shared.Validation
+@implements IDisposable
+@inject IServiceProvider Services
+
+<div class="d-flex flex-column gap-3 mb-7">
+	<SectionHeader Title="Workflow" Subtitle="Who does what on this project. Each role runs on a profile." />
+	<div class="list-group rounded-9">
+		<ListRow Icon="hammer" Title="Build" Subtitle="@BuildSummary">
+			<ChildContent>
+				<p class="small fg-1 mb-0">Runs each job. When this profile can't run, the job moves down the list below.</p>
+				<ProfilePicker Id="workflow-build" Label="Build with" Profiles="Known" Allowed="ProfileRoles.CanBuild"
+							   SelectedProfileId="BuildProfileId" OnSelected="SetBuild" />
+				@if (Fallbacks.Count > 0)
+				{
+					<div class="d-flex flex-column gap-3">
+						<div class="form-label mb-0">Then try</div>
+						@foreach (var entry in Fallbacks)
+						{
+							var profile = Find(entry.ProfileId);
+							var name = profile?.Name ?? entry.Provider?.Name ?? "Unknown profile";
+							<div class="d-flex align-items-center gap-3">
+								<span class="min-w-0 flex-grow-1">
+									<span class="d-block text-truncate">@name</span>
+									@if (profile != null && !string.Equals(ProfileRow.Describe(profile), name, StringComparison.OrdinalIgnoreCase))
+									{
+										<span class="d-block small fg-1 text-truncate">@ProfileRow.Describe(profile)</span>
+									}
+								</span>
+								<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 flex-shrink-0"
+										aria-label="@($"Remove {name}")" @onclick="() => RemoveFallback(entry)">Remove</button>
+							</div>
+						}
+					</div>
+				}
+				<ProfilePicker Id="workflow-fallback" Label="@(Fallbacks.Count == 0 ? "If that can't run" : "And after that")"
+							   Profiles="Known" Allowed="CanBeFallback" EmptyLabel="Add a fallback…" ResetAfterPick="true"
+							   EmptyHint="@FallbackHint" OnSelected="AddFallback" />
+			</ChildContent>
+		</ListRow>
+
+		<ListRow Icon="map" Title="Plan first" Subtitle="@(RoleSummary(PlanProfileId, Project.PlanningEnabled, "Writes a plan before each job builds"))">
+			<Trailing>@OffLabel(Project.PlanningEnabled)</Trailing>
+			<ChildContent>
+				<p class="small fg-1 mb-0">Before a job builds, this profile reads the code and writes the plan the builder follows. It also turns an idea into a plan you can check. Needs Claude Code or Copilot.</p>
+				<ProfilePicker Id="workflow-plan" Label="Plan with" Profiles="Known" Allowed="ProfileRoles.CanRunReadOnly"
+							   SelectedProfileId="PlanProfileId" EmptyLabel="Off" OnSelected="SetPlan" />
+			</ChildContent>
+		</ListRow>
+
+		<ListRow Icon="eye" Title="Review" Subtitle="@(RoleSummary(ReviewProfileId, Project.ReviewEnabled, "Checks each job before it is delivered"))">
+			<Trailing>@OffLabel(Project.ReviewEnabled)</Trailing>
+			<ChildContent>
+				<p class="small fg-1 mb-0">When the builder finishes, the build and tests run, then this profile reads the change against the goal. Problems go back to the builder for up to @JobReview.MaxRounds fixes. If the reviewer can't run, the work is delivered as it is.</p>
+				<ProfilePicker Id="workflow-review" Label="Review with" Profiles="Known" Allowed="ProfileRoles.CanHelpJobs"
+							   SelectedProfileId="ReviewProfileId" EmptyLabel="Off" OnSelected="SetReview"
+							   EmptyHint="A different model from the builder gives the most independent check." />
+				@if (DescribeAccess(ReviewProfileId, "Reads the code as well as the change.", "Reads the change only.") is { } reviewAccess)
+				{
+					<p class="small fg-1 mb-0">@reviewAccess</p>
+				}
+			</ChildContent>
+		</ListRow>
+
+		<ListRow Icon="search" Title="Research" Subtitle="@(RoleSummary(Project.ResearchProfileId, Project.ResearchProfileId.HasValue, "Looks things up for the builder"))">
+			<Trailing>@OffLabel(Project.ResearchProfileId.HasValue)</Trailing>
+			<ChildContent>
+				<p class="small fg-1 mb-0">While a job runs, the builder can ask this profile to look things up: libraries, APIs, current facts and how others solve a problem. A run can ask @ValidationLimits.JobHelperQuestionsPerRun questions across its helpers.</p>
+				<ProfilePicker Id="workflow-research" Label="Research with" Profiles="Known" Allowed="ProfileRoles.CanHelpJobs"
+							   SelectedProfileId="Project.ResearchProfileId" EmptyLabel="Off"
+							   OnSelected="profile => Project.ResearchProfileId = profile?.Id" />
+				@if (DescribeAccess(Project.ResearchProfileId, "Reads the repository to answer.", "Sees only the question, not the code.") is { } researchAccess)
+				{
+					<p class="small fg-1 mb-0">@researchAccess</p>
+				}
+			</ChildContent>
+		</ListRow>
+
+		<ListRow Icon="signpost-split" Title="Decisions" Subtitle="@(RoleSummary(Project.DecisionsProfileId, Project.DecisionsProfileId.HasValue, "Gives the builder a second opinion"))">
+			<Trailing>@OffLabel(Project.DecisionsProfileId.HasValue)</Trailing>
+			<ChildContent>
+				<p class="small fg-1 mb-0">While a job runs, the builder can ask this profile for a second opinion before it settles a design or an approach.</p>
+				<ProfilePicker Id="workflow-decisions" Label="Decide with" Profiles="Known" Allowed="ProfileRoles.CanHelpJobs"
+							   SelectedProfileId="Project.DecisionsProfileId" EmptyLabel="Off"
+							   OnSelected="profile => Project.DecisionsProfileId = profile?.Id" />
+				@if (DescribeAccess(Project.DecisionsProfileId, "Reads the repository to answer.", "Sees only the question, not the code.") is { } decisionsAccess)
+				{
+					<p class="small fg-1 mb-0">@decisionsAccess</p>
+				}
+			</ChildContent>
+		</ListRow>
+
+		<ListRow Icon="compass" Title="Lead" Subtitle="@(RoleSummary(LeadProfileId, Project.LeadProviderId.HasValue, "Suggests what to build next"))">
+			<Trailing>@OffLabel(Project.LeadProviderId.HasValue)</Trailing>
+			<ChildContent>
+				<p class="small fg-1 mb-0">The Lead reads the latest code, the project memory and how recent jobs went, then suggests the next ideas with a goal and acceptance criteria. Nothing runs until you approve it. Needs Claude Code or Copilot.</p>
+				<ProfilePicker Id="workflow-lead" Label="Lead with" Profiles="Known" Allowed="ProfileRoles.CanRunReadOnly"
+							   SelectedProfileId="LeadProfileId" EmptyLabel="Off" OnSelected="SetLead"
+							   EmptyHint="A strong model works best here. It runs only when you ask, or when auto-pilot runs out of approved ideas." />
+				@if (Project.LeadProviderId.HasValue)
+				{
+					<div>
+						<label for="modal-leadDirection" class="form-label">
+							Direction <span class="fg-1 fw-normal">(optional)</span>
+						</label>
+						<InputTextArea id="modal-leadDirection" @bind-Value="Project.LeadDirection" class="form-control" rows="5"
+									   maxlength="@LeadReviewLimits.DirectionMaxLength"
+									   placeholder="Where should this project go next? What matters most, and what should the Lead leave alone?" />
+						<div class="form-text">The Lead steers its suggestions by this instead of you writing each idea.</div>
+					</div>
+				}
+			</ChildContent>
+		</ListRow>
+	</div>
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public ProjectModalFormModel Project { get; set; } = default!;
+
+	/// <summary>Every profile; each role offers the ones that can fill it.</summary>
+	[Parameter]
+	public IReadOnlyList<Profile> Profiles { get; set; } = [];
+
+	// Resolved lazily so pages and tests that never add a profile need no registration.
+	private ProfileComposer? _composer;
+
+	protected override void OnInitialized()
+	{
+		_composer = Services.GetService<ProfileComposer>();
+		if (_composer != null)
+		{
+			_composer.Changed += HandleComposerChanged;
+		}
+	}
+
+	/// <summary>The loaded profiles plus any added from a picker since, so a new one can be named at once.</summary>
+	private IReadOnlyList<Profile> Known => _composer is { Added.Count: > 0 }
+		? Profiles.Concat(_composer.Added).DistinctBy(profile => profile.Id).ToList()
+		: Profiles;
+
+	private Profile? Find(Guid? profileId) => profileId is Guid id ? Known.FirstOrDefault(profile => profile.Id == id) : null;
+
+	private List<ProjectProvider> BuildOrder => Project.ProviderSelections.OrderBy(entry => entry.Priority).ToList();
+
+	private List<ProjectProvider> Fallbacks => BuildOrder.Skip(1).ToList();
+
+	/// <summary>
+	/// The profile jobs build with: the first in the list. A project that lists none builds with
+	/// the default provider's own profile, which is shown without being written to the list.
+	/// </summary>
+	private Guid? BuildProfileId => BuildOrder.FirstOrDefault()?.ProfileId ?? ProjectExecutionDefaults.GetBuildProfileId(null, Known);
+
+	private string BuildSummary
+	{
+		get
+		{
+			var names = BuildOrder.Count == 0
+				? [Find(BuildProfileId)?.Name ?? "Not set"]
+				: BuildOrder.Select(entry => Find(entry.ProfileId)?.Name ?? entry.Provider?.Name ?? "Unknown profile").ToList();
+			return names.Count == 1 ? names[0] : $"{names[0]}, then {string.Join(", ", names.Skip(1))}";
+		}
+	}
+
+	private string FallbackHint => Project.ProviderSelections.Count == 0
+		? "Nothing is listed yet, so a job that can't run here moves to any other enabled provider."
+		: Fallbacks.Count == 0
+			? "With no fallback, a job waits when this profile's provider is out of usage."
+			: string.Empty;
+
+	// A project lists a provider once, so a fallback has to sit on one the list doesn't hold yet.
+	private bool CanBeFallback(Profile profile)
+		=> ProfileRoles.CanBuild(profile) && Project.ProviderSelections.All(entry => entry.ProviderId != profile.ProviderId);
+
+	private Guid? PlanProfileId => Project.PlanningEnabled ? Project.PlanningProfileId : null;
+
+	private Guid? ReviewProfileId => Project.ReviewEnabled ? Project.ReviewProfileId : null;
+
+	// The Lead has no switch of its own: it runs whenever it has a provider.
+	private Guid? LeadProfileId => Project.LeadProviderId.HasValue ? Project.LeadProfileId : null;
+
+	private string RoleSummary(Guid? profileId, bool isOn, string whatItDoes)
+		=> isOn ? Find(profileId)?.Name ?? "On" : whatItDoes;
+
+	private static RenderFragment? OffLabel(bool isOn) => isOn
+		? null
+		: @<span class="small fg-2 flex-shrink-0">Off</span>;
+
+	private string? DescribeAccess(Guid? profileId, string readsCode, string readsOnlyWhatItIsSent)
+		=> Find(profileId) is { } profile
+			? profile.InferenceProviderId.HasValue ? readsOnlyWhatItIsSent : readsCode
+			: null;
+
+	private void SetBuild(Profile? profile)
+	{
+		if (profile?.ProviderId is not Guid providerId)
+		{
+			return;
+		}
+
+		var order = BuildOrder;
+		var first = order.FirstOrDefault();
+		if (first == null)
+		{
+			first = new ProjectProvider { ProjectId = Project.Id, IsEnabled = true, CreatedAt = DateTime.UtcNow };
+			order.Add(first);
+		}
+
+		// The profile's provider may already be a fallback; it moves up rather than being listed twice.
+		order.RemoveAll(entry => entry != first && entry.ProviderId == providerId);
+		Apply(first, profile, providerId);
+		SaveOrder(order);
+	}
+
+	private void AddFallback(Profile? profile)
+	{
+		if (profile?.ProviderId is not Guid providerId || !CanBeFallback(profile))
+		{
+			return;
+		}
+
+		var order = BuildOrder;
+		if (order.Count == 0)
+		{
+			// A fallback needs something to fall back from: what the project builds with today.
+			if (Find(BuildProfileId) is not { ProviderId: Guid buildProviderId } build || buildProviderId == providerId)
+			{
+				return;
+			}
+
+			var first = new ProjectProvider { ProjectId = Project.Id, IsEnabled = true, CreatedAt = DateTime.UtcNow };
+			Apply(first, build, buildProviderId);
+			order.Add(first);
+		}
+
+		var entry = new ProjectProvider { ProjectId = Project.Id, IsEnabled = true, CreatedAt = DateTime.UtcNow };
+		Apply(entry, profile, providerId);
+		order.Add(entry);
+		SaveOrder(order);
+	}
+
+	private void RemoveFallback(ProjectProvider entry)
+	{
+		var order = BuildOrder;
+		order.Remove(entry);
+		SaveOrder(order);
+	}
+
+	private static void Apply(ProjectProvider entry, Profile profile, Guid providerId)
+	{
+		entry.ProfileId = profile.Id;
+		entry.ProviderId = providerId;
+		entry.Provider = profile.Provider;
+		entry.PreferredModelId = profile.ModelId;
+		entry.PreferredReasoningEffort = profile.ReasoningEffort;
+		entry.UpdatedAt = DateTime.UtcNow;
+	}
+
+	private void SaveOrder(List<ProjectProvider> order)
+	{
+		for (var index = 0; index < order.Count; index++)
+		{
+			order[index].Priority = index;
+		}
+
+		Project.ProviderSelections = order;
+	}
+
+	// Each role keeps the profile's provider, model and reasoning beside its id, as the server
+	// stores them; the server fills them again from the profile when the project is saved.
+	private void SetPlan(Profile? profile)
+	{
+		Project.PlanningEnabled = profile != null;
+		if (profile == null)
+		{
+			return;
+		}
+
+		Project.PlanningProfileId = profile.Id;
+		Project.PlanningProviderId = profile.ProviderId;
+		Project.PlanningModelId = profile.ModelId;
+		Project.PlanningReasoningEffort = profile.ReasoningEffort;
+	}
+
+	private void SetReview(Profile? profile)
+	{
+		Project.ReviewEnabled = profile != null;
+		if (profile == null)
+		{
+			return;
+		}
+
+		Project.ReviewProfileId = profile.Id;
+		Project.ReviewProviderId = profile.ProviderId;
+		Project.ReviewInferenceProviderId = profile.ProviderId.HasValue ? null : profile.InferenceProviderId;
+		Project.ReviewModelId = profile.ModelId;
+		Project.ReviewReasoningEffort = profile.ProviderId.HasValue ? profile.ReasoningEffort : null;
+	}
+
+	// Off clears the provider too: a Lead with a provider still runs.
+	private void SetLead(Profile? profile)
+	{
+		Project.LeadProfileId = profile?.Id;
+		Project.LeadProviderId = profile?.ProviderId;
+		Project.LeadModelId = profile?.ModelId;
+		Project.LeadReasoningEffort = profile?.ReasoningEffort;
+	}
+
+	private void HandleComposerChanged() => InvokeAsync(StateHasChanged);
+
+	public void Dispose()
+	{
+		if (_composer != null)
+		{
+			_composer.Changed -= HandleComposerChanged;
+		}
+	}
+}

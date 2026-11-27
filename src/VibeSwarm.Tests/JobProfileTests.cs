@@ -87,6 +87,30 @@ public sealed class JobProfileTests : IDisposable
 	}
 
 	[Fact]
+	public async Task CreateAsync_OnAProjectThatListsNothing_RunsOnTheDefaultProvidersOwnProfile()
+	{
+		Guid unlistedProjectId;
+		Guid claudeDefaultId;
+		using (var scope = _rootProvider.CreateScope())
+		{
+			var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+			await VibeSwarm.Web.Services.ProfileService.EnsureProviderDefaultsAsync(dbContext);
+			claudeDefaultId = (await dbContext.Profiles.SingleAsync(profile => profile.ProviderId == _claude.Id && profile.IsProviderDefault)).Id;
+			var unlisted = new Project { Id = Guid.NewGuid(), Name = "Unlisted", WorkingPath = "/tmp/unlisted" };
+			dbContext.Projects.Add(unlisted);
+			await dbContext.SaveChangesAsync();
+			unlistedProjectId = unlisted.Id;
+		}
+
+		using var createScope = _rootProvider.CreateScope();
+		var job = await new JobService(createScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>(), createScope.ServiceProvider)
+			.CreateAsync(new Job { ProjectId = unlistedProjectId, Title = "A job", GoalPrompt = "Do the thing" });
+
+		// Claude is the default provider; its profile leaves the model and reasoning to it.
+		Assert.Equal(((Guid?)claudeDefaultId, _claude.Id, "opus", "medium"), (job.ProfileId, job.ProviderId, job.ModelUsed, job.ReasoningEffort));
+	}
+
+	[Fact]
 	public async Task CreateAsync_OnAProfileThatCannotRun_FallsThroughInsteadOfFailing()
 	{
 		// A profile that is gone, and one whose provider is turned off, both count as not named.

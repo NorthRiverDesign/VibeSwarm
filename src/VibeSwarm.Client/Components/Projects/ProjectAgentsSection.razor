@@ -10,10 +10,10 @@
 <span>No agents exist yet. Create them on the Agents page first.</span>
 </Alert>
 }
-else if (!AvailableProviders.Any())
+else if (!Profiles.Any(ProfileRoles.CanBuild))
 {
 <Alert Type="Alert.AlertType.Warning" Class="py-3 px-5 small mb-0">
-<span>No enabled providers are available to assign to agents yet.</span>
+<span>No profile can run an agent yet. Enable a provider first.</span>
 </Alert>
 }
 else
@@ -26,19 +26,6 @@ else
 @foreach (var assignment in Project.AgentAssignments.OrderBy(assignment => ResolveAgent(assignment.AgentId)?.Name ?? string.Empty).ToList())
 {
 var agent = ResolveAgent(assignment.AgentId);
-var providerSelectId = $"team-provider-{assignment.AgentId}";
-var modelSelectId = $"team-model-{assignment.AgentId}";
-var reasoningSelectId = $"team-reasoning-{assignment.AgentId}";
-var models = ResolveProviderModels(assignment.ProviderId)
-.Where(model => model.IsAvailable)
-.OrderByDescending(model => model.IsDefault)
-.ThenBy(model => model.DisplayName ?? model.ModelId)
-.ToList();
-var assignmentProvider = AvailableProviders.FirstOrDefault(provider => provider.Id == assignment.ProviderId);
-var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupportedReasoningEfforts(assignmentProvider) : [];
-var linkedProfile = assignment.ProfileId is Guid linkedId ? Profiles.FirstOrDefault(profile => profile.Id == linkedId) : null;
-var profileSelectId = $"team-profile-{assignment.AgentId}";
-
 <div class="rounded border bg-body p-5">
 <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
 <div class="min-w-0 flex-grow-1">
@@ -83,95 +70,9 @@ var profileSelectId = $"team-profile-{assignment.AgentId}";
 </button>
 </div>
 
-@if (Profiles.Count > 0)
-{
-<div class="mt-5">
-<label for="@profileSelectId" class="form-label small mb-1">Profile</label>
-<select id="@profileSelectId" class="form-control form-control-sm" value="@(linkedProfile?.Id.ToString() ?? string.Empty)"
-		@onchange="args => HandleProfileChanged(assignment.AgentId, args)">
-<option value="">Custom</option>
-@foreach (var profile in Profiles)
-{
-<option value="@profile.Id">@profile.Name</option>
-}
-</select>
-@if (linkedProfile != null)
-{
-<div class="form-text">@ProfileRow.Describe(linkedProfile). Editing the profile updates this too.</div>
-}
-</div>
-}
-
-@if (linkedProfile == null)
-{
-<div class="row g-5 mt-1">
-<div class="col-12 lg:col-6">
-<label for="@providerSelectId" class="form-label small mb-1">
-Provider
-</label>
-<InputSelect TValue="Guid" id="@providerSelectId"
- Value="assignment.ProviderId"
- ValueChanged="@(async (Guid value) => await HandleProviderChanged(assignment.AgentId, value))"
- ValueExpression="@(() => assignment.ProviderId)"
- class="form-control form-control-sm">
-@foreach (var provider in AvailableProviders)
-{
-<option value="@provider.Id">@provider.Name</option>
-}
-</InputSelect>
-</div>
-<div class="col-12 lg:col-6">
-<label for="@modelSelectId" class="form-label small mb-1">
-Default model
-</label>
-<div class="input-group input-group-sm">
-<InputSelect TValue="string" id="@modelSelectId"
- Value="@(assignment.PreferredModelId ?? string.Empty)"
- ValueChanged="@(async (string? value) => await HandlePreferredSelectionChanged(assignment.AgentId, value, assignment.PreferredReasoningEffort))"
- ValueExpression="@(() => assignment.PreferredModelId)"
- class="form-control form-control-sm"
- disabled="@(!models.Any())">
-<option value="">Provider default</option>
-@foreach (var model in models)
-{
-<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
-}
-</InputSelect>
-<ModelRefreshButton ProviderId="@assignment.ProviderId" Small="true"
- OnRefreshed="() => OnModelsRefreshed.InvokeAsync(assignment.ProviderId)" />
-</div>
-<div class="form-text">
-@if (!models.Any())
-{
-<span>No cached models yet — the provider default is used.</span>
-}
-</div>
-</div>
-<div class="col-12 lg:col-6">
-<label for="@reasoningSelectId" class="form-label small mb-1">
-Default reasoning
-</label>
-<InputSelect TValue="string" id="@reasoningSelectId"
- Value="@(assignment.PreferredReasoningEffort ?? string.Empty)"
- ValueChanged="@(async (string? value) => await HandlePreferredSelectionChanged(assignment.AgentId, assignment.PreferredModelId, value))"
- ValueExpression="@(() => assignment.PreferredReasoningEffort)"
- class="form-control form-control-sm"
- disabled="@(!reasoningOptions.Any())">
-<option value="">Provider default</option>
-@foreach (var reasoning in reasoningOptions)
-{
-<option value="@reasoning">@reasoning</option>
-}
-</InputSelect>
-<div class="form-text">
-@if (!reasoningOptions.Any())
-{
-<span>This provider has no configurable reasoning levels.</span>
-}
-</div>
-</div>
-</div>
-}
+<ProfilePicker Id="@($"team-profile-{assignment.AgentId}")" Class="mt-5" Label="Runs on" Profiles="Profiles" Allowed="ProfileRoles.CanBuild"
+			   SelectedProfileId="assignment.ProfileId"
+			   OnSelected="profile => OnProfileChanged.InvokeAsync((assignment.AgentId, profile))" />
 </div>
 }
 </div>
@@ -209,22 +110,9 @@ var isAssigned = IsAgentAssigned(agent.Id);
 										{
 											<span class="fg-1 sm:ms-3 d-block sm:d-inline">@agent.Description</span>
 										}
-										@if (agent.DefaultProvider != null || !string.IsNullOrWhiteSpace(agent.DefaultModelId) || !string.IsNullOrWhiteSpace(agent.DefaultReasoningEffort))
+										@if (Profiles.FirstOrDefault(profile => profile.Id == agent.ProfileId) is { } agentProfile)
 										{
-											<span class="d-block small fg-1 mt-1">
-												@if (agent.DefaultProvider != null)
-												{
-													<span><i class="bi bi-cpu me-1"></i>@agent.DefaultProvider.Name</span>
-												}
-												@if (!string.IsNullOrWhiteSpace(agent.DefaultModelId))
-												{
-													<span class="sm:ms-3 d-block sm:d-inline"><i class="bi bi-diagram-3 me-1"></i>@agent.DefaultModelId</span>
-												}
-												@if (!string.IsNullOrWhiteSpace(agent.DefaultReasoningEffort))
-												{
-													<span class="sm:ms-3 d-block sm:d-inline"><i class="bi bi-lightning-charge me-1"></i>@agent.DefaultReasoningEffort</span>
-												}
-											</span>
+											<span class="d-block small fg-1 mt-1"><i class="bi bi-person-badge me-1"></i>@agentProfile.Name</span>
 										}
 									</span>
 									@if (isAssigned)
@@ -249,17 +137,11 @@ public ProjectModalFormModel Project { get; set; } = default!;
 [Parameter]
 public IReadOnlyList<Agent> AvailableAgents { get; set; } = [];
 
-[Parameter]
-public IReadOnlyList<Provider> AvailableProviders { get; set; } = [];
-
 [Parameter, EditorRequired]
 public Func<Guid, Agent?> ResolveAgent { get; set; } = _ => null;
 
 [Parameter, EditorRequired]
 public Func<Guid, bool> IsAgentAssigned { get; set; } = _ => false;
-
-[Parameter, EditorRequired]
-public Func<Guid, IReadOnlyList<ProviderModel>> ResolveProviderModels { get; set; } = _ => [];
 
 [Parameter]
 public EventCallback<Guid> OnRemove { get; set; }
@@ -267,45 +149,11 @@ public EventCallback<Guid> OnRemove { get; set; }
 [Parameter]
 public EventCallback<Agent> OnAdd { get; set; }
 
-[Parameter]
-public EventCallback<ProjectAgentProviderChange> OnProviderChanged { get; set; }
-
-[Parameter]
-public EventCallback<ProjectAgentModelSelectionChange> OnPreferredModelChanged { get; set; }
-
-[Parameter]
-public EventCallback<Guid> OnModelsRefreshed { get; set; }
-
-/// <summary>Coding profiles on providers the project can use.</summary>
+/// <summary>Every profile; an agent runs on one that can run jobs.</summary>
 [Parameter]
 public IReadOnlyList<Profile> Profiles { get; set; } = [];
 
-/// <summary>Raised with the agent and the profile picked for it, or null for Custom.</summary>
+/// <summary>Raised with the agent and the profile picked for it.</summary>
 [Parameter]
 public EventCallback<(Guid AgentId, Profile? Profile)> OnProfileChanged { get; set; }
-
-private Task HandleProfileChanged(Guid agentId, ChangeEventArgs args)
-{
-var profile = Guid.TryParse(args.Value?.ToString(), out var id) ? Profiles.FirstOrDefault(candidate => candidate.Id == id) : null;
-return OnProfileChanged.InvokeAsync((agentId, profile));
-}
-
-private Task HandleProviderChanged(Guid agentId, Guid providerId)
-{
-return OnProviderChanged.InvokeAsync(new ProjectAgentProviderChange
-{
-AgentId = agentId,
-ProviderId = providerId
-});
-}
-
-private Task HandlePreferredSelectionChanged(Guid agentId, string? preferredModelId, string? preferredReasoningEffort)
-{
-return OnPreferredModelChanged.InvokeAsync(new ProjectAgentModelSelectionChange
-{
-AgentId = agentId,
-PreferredModelId = string.IsNullOrWhiteSpace(preferredModelId) ? null : preferredModelId,
-PreferredReasoningEffort = string.IsNullOrWhiteSpace(preferredReasoningEffort) ? null : preferredReasoningEffort
-});
-}
 }

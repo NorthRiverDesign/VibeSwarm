@@ -473,7 +473,8 @@ public partial class JobService
 	/// <summary>
 	/// Decides what a new job runs on, once, for every way of creating one:
 	/// a profile the job names wins over anything else it was sent; a job that names neither a
-	/// profile nor a provider takes the project's Build profile; a job that names only a
+	/// profile nor a provider takes the project's Build profile (the first it lists, or the
+	/// default provider's own when it lists none); a job that names only a
 	/// provider (an older client) is left as sent. A profile that is gone, or whose provider is
 	/// off, counts as not named, so a schedule or auto-pilot run falls through instead of failing.
 	/// An agent's job keeps the agent's own settings and only records which profile they are.
@@ -489,12 +490,21 @@ public partial class JobService
 		var resolved = await ResolveJobProfileAsync(job.ProfileId, cancellationToken);
 		if (resolved == null && job.ProviderId == Guid.Empty)
 		{
-			var buildProfileId = await _dbContext.ProjectProviders
+			var buildOrder = await _dbContext.ProjectProviders
 				.Where(entry => entry.ProjectId == job.ProjectId && entry.IsEnabled
 					&& _dbContext.Providers.Any(provider => provider.Id == entry.ProviderId && provider.IsEnabled))
 				.OrderBy(entry => entry.Priority)
 				.Select(entry => entry.ProfileId)
-				.FirstOrDefaultAsync(cancellationToken);
+				.ToListAsync(cancellationToken);
+			var buildProfileId = buildOrder.Count > 0
+				? buildOrder[0]
+				// A project that lists nothing builds with the default provider's own profile.
+				: await _dbContext.Profiles
+					.Where(profile => profile.IsProviderDefault && profile.Provider != null && profile.Provider.IsEnabled)
+					.OrderByDescending(profile => profile.Provider!.IsDefault)
+					.ThenBy(profile => profile.Provider!.Name)
+					.Select(profile => (Guid?)profile.Id)
+					.FirstOrDefaultAsync(cancellationToken);
 			resolved = await ResolveJobProfileAsync(buildProfileId, cancellationToken);
 		}
 
