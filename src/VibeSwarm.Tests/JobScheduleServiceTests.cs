@@ -124,6 +124,56 @@ public sealed class JobScheduleServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ProcessDueSchedulesAsync_RunsOnTheSchedulesProfile_AndFallsBackWhenItCanNoLongerRun()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = CreateProject();
+		var provider = CreateProvider();
+		var switchedOff = CreateProvider();
+		switchedOff.Name = "Switched off";
+		switchedOff.IsDefault = false;
+		switchedOff.IsEnabled = false;
+		var build = new Profile { Id = Guid.NewGuid(), Name = "Build", ProviderId = provider.Id, ModelId = "build-model" };
+		var nightly = new Profile { Id = Guid.NewGuid(), Name = "Nightly", ProviderId = provider.Id, ModelId = "night-model" };
+		var stranded = new Profile { Id = Guid.NewGuid(), Name = "Stranded", ProviderId = switchedOff.Id };
+		project.ProviderSelections.Add(new ProjectProvider { ProviderId = provider.Id, ProfileId = build.Id, PreferredModelId = "build-model", Priority = 0, IsEnabled = true });
+		dbContext.Projects.Add(project);
+		dbContext.Providers.AddRange(provider, switchedOff);
+		dbContext.ProviderModels.AddRange(
+			new ProviderModel { Id = Guid.NewGuid(), ProviderId = provider.Id, ModelId = "build-model", IsAvailable = true },
+			new ProviderModel { Id = Guid.NewGuid(), ProviderId = provider.Id, ModelId = "night-model", IsAvailable = true });
+		dbContext.Profiles.AddRange(build, nightly, stranded);
+
+		var dueTime = DateTime.UtcNow.AddMinutes(-2);
+		JobSchedule Due(string prompt, Guid? profileId, Guid? providerId) => new()
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProfileId = profileId,
+			ProviderId = providerId,
+			Prompt = prompt,
+			Frequency = JobScheduleFrequency.Hourly,
+			MinuteUtc = dueTime.Minute,
+			NextRunAtUtc = dueTime,
+			IsEnabled = true
+		};
+		// The provider beside each profile is the copy the schedule keeps.
+		dbContext.JobSchedules.AddRange(Due("on a profile", nightly.Id, provider.Id), Due("names nothing", null, null), Due("profile switched off", stranded.Id, switchedOff.Id));
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+		var processor = new JobScheduleProcessor(dbContext, jobService, new FakeIdeaService(), NullLogger<JobScheduleProcessor>.Instance);
+
+		Assert.Equal(3, await processor.ProcessDueSchedulesAsync());
+
+		var jobs = await dbContext.Jobs.AsNoTracking().ToDictionaryAsync(job => job.GoalPrompt);
+		Assert.Equal(("Nightly", "night-model"), (jobs["on a profile"].ProfileName, jobs["on a profile"].ModelUsed));
+		// Naming nothing, and naming a profile whose provider is off, both run as the project builds.
+		Assert.Equal(("Build", "build-model"), (jobs["names nothing"].ProfileName, jobs["names nothing"].ModelUsed));
+		Assert.Equal(("Build", provider.Id), (jobs["profile switched off"].ProfileName, jobs["profile switched off"].ProviderId));
+	}
+
+	[Fact]
 	public async Task ProcessDueSchedulesAsync_CreatesOnlyOneJobPerScheduledRun()
 	{
 		await using var dbContext = CreateDbContext();

@@ -112,8 +112,9 @@ Deploys are always manual.
 
 A **profile** names one provider, one model and one reasoning level, such as *Deep thinker* or
 *Quick fixer*. Wherever VibeSwarm asks who should run something (a job, a retry, a template, a
-schedule, auto-pilot, Start All, a role in a project) it asks for a profile, never for a provider
-and a model. Every provider has a
+schedule, auto-pilot, Start All, a role in a project) it asks for a profile rather than for a
+provider and a model. One dialog still asks the old way: expanding an idea into a plan, whose
+inference option names a local model with no provider behind it. Every provider has a
 default profile that follows its own default model and reasoning. Add more on the **Profiles**
 page, or pick **New profile…** from any profile list. Editing a profile updates everything that
 uses it; deleting one moves what used it to its provider's default profile.

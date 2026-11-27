@@ -136,10 +136,14 @@ public class JobScheduleProcessor
 	{
 		if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
-			// With neither a profile nor a provider the job runs on the project's Build profile.
+			// A profile is all the job names: the provider and model kept beside it are for
+			// display, and sending them too would hold the job to a provider that has since been
+			// turned off instead of letting it fall back to the project's Build profile. With
+			// neither a profile nor a provider the job runs on that Build profile as well.
+			var namesProvider = !schedule.ProfileId.HasValue && schedule.ProviderId.HasValue;
 			return new ScheduledExecutionSelection(
-				schedule.ProviderId ?? Guid.Empty,
-				schedule.ProviderId.HasValue ? schedule.ModelId : null,
+				namesProvider ? schedule.ProviderId!.Value : Guid.Empty,
+				namesProvider ? schedule.ModelId : null,
 				null,
 				null);
 		}
