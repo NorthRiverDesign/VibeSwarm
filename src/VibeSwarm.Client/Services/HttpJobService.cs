@@ -195,9 +195,9 @@ public class HttpJobService : IJobService
         return await response.Content.ReadFromJsonAsync<string?>(ct);
     }
 
-    public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken ct = default)
+    public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, Guid? profileId = null, CancellationToken ct = default)
     {
-        var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/retry", new { ProviderId = providerId, ModelId = modelId, ReasoningEffort = reasoningEffort }, ct);
+        var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/retry", new { ProviderId = providerId, ModelId = modelId, ReasoningEffort = reasoningEffort, ProfileId = profileId }, ct);
         return response.IsSuccessStatusCode;
     }
 

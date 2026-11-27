@@ -1028,23 +1028,65 @@ public class ProjectService : IProjectService
 
 	/// <summary>
 	/// Fills every setting linked to a profile from that profile, so what's saved always matches
-	/// it whatever the client sent. Links to profiles that no longer exist are dropped.
+	/// it whatever the client sent, then gives each setting that came with a provider but no
+	/// profile the profile matching its values. A link to a profile that no longer exists is
+	/// dropped; one to a profile its role can't run on is refused.
 	/// </summary>
 	private async Task ApplyProfileLinksAsync(Project project, CancellationToken cancellationToken)
 	{
 		var ids = ProfileLinks.GetLinkedProfileIds(project);
-		if (ids.Count == 0)
+		if (ids.Count > 0)
 		{
-			return;
+			var profiles = await _dbContext.Profiles
+				.AsNoTracking()
+				.Include(profile => profile.Provider)
+				.Include(profile => profile.InferenceProvider)
+				.Where(profile => ids.Contains(profile.Id))
+				.ToDictionaryAsync(profile => profile.Id, cancellationToken);
+			RejectProfilesTheirRoleCannotUse(project, profiles);
+			ApplyProfileLinks(project, profiles);
 		}
 
-		var profiles = await _dbContext.Profiles
-			.AsNoTracking()
-			.Include(profile => profile.Provider)
-			.Include(profile => profile.InferenceProvider)
-			.Where(profile => ids.Contains(profile.Id))
-			.ToDictionaryAsync(profile => profile.Id, cancellationToken);
+		await ProfileService.LinkProjectAsync(_dbContext, project, cancellationToken);
+	}
 
+	/// <summary>
+	/// A profile in a role it can't fill would otherwise be dropped quietly, leaving the role
+	/// running on whatever it held before.
+	/// </summary>
+	private static void RejectProfilesTheirRoleCannotUse(Project project, IReadOnlyDictionary<Guid, Profile> profiles)
+	{
+		Profile? Linked(Guid? profileId) => profileId is Guid id && profiles.TryGetValue(id, out var profile) ? profile : null;
+
+		foreach (var (role, profileId) in new[] { ("Plan first", project.PlanningProfileId), ("Lead", project.LeadProfileId) })
+		{
+			if (Linked(profileId) is { } profile && !ProfileRoles.CanRunReadOnly(profile))
+			{
+				throw new InvalidOperationException($"{role} needs a Claude or Copilot profile, and '{profile.Name}' isn't one.");
+			}
+		}
+
+		foreach (var (role, profileId) in new[] { ("Review", project.ReviewProfileId), ("Decisions", project.DecisionsProfileId), ("Research", project.ResearchProfileId) })
+		{
+			if (Linked(profileId) is { } profile && !ProfileRoles.CanHelpJobs(profile))
+			{
+				throw new InvalidOperationException($"{role} needs a Claude, Copilot or inference profile, and '{profile.Name}' isn't one.");
+			}
+		}
+
+		var runners = (project.ProviderSelections ?? []).Select(entry => entry.ProfileId)
+			.Concat((project.AgentAssignments ?? []).Select(assignment => assignment.ProfileId));
+		foreach (var profileId in runners)
+		{
+			if (Linked(profileId) is { ProviderId: null } profile)
+			{
+				throw new InvalidOperationException($"'{profile.Name}' only answers questions, so it can't run jobs.");
+			}
+		}
+	}
+
+	private static void ApplyProfileLinks(Project project, IReadOnlyDictionary<Guid, Profile> profiles)
+	{
 		ProfileLinks.ApplyRoleLinks(project, profiles);
 		ProfileLinks.ApplyHelperLinks(project, profiles);
 		foreach (var entry in project.ProviderSelections ?? [])

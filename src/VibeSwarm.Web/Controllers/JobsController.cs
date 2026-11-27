@@ -183,7 +183,7 @@ public class JobsController : ControllerBase
 
     [HttpPost("{id:guid}/retry")]
     public async Task<IActionResult> RetryWithOptions(Guid id, [FromBody] RetryRequest req, CancellationToken ct)
-        => await _jobService.ResetJobWithOptionsAsync(id, req.ProviderId, req.ModelId, req.ReasoningEffort, ct) ? Ok() : BadRequest();
+        => await _jobService.ResetJobWithOptionsAsync(id, req.ProviderId, req.ModelId, req.ReasoningEffort, req.ProfileId, ct) ? Ok() : BadRequest();
 
     [HttpPut("{id:guid}/prompt")]
     public async Task<IActionResult> UpdatePrompt(Guid id, [FromBody] UpdatePromptRequest req, CancellationToken ct)
@@ -256,7 +256,7 @@ public class JobsController : ControllerBase
     public record PauseInteractionRequest(string InteractionPrompt, string InteractionType, string? Choices);
     public record ContinueJobRequest(string FollowUpPrompt);
     public record AgentMessageRequest(string Message);
-    public record RetryRequest(Guid? ProviderId, string? ModelId, string? ReasoningEffort);
+    public record RetryRequest(Guid? ProviderId, string? ModelId, string? ReasoningEffort, Guid? ProfileId = null);
     public record UpdatePromptRequest(string Prompt);
     public record SelectedJobsRequest(List<Guid> JobIds);
 }

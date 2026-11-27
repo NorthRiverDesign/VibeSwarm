@@ -93,20 +93,23 @@ public sealed class ProfileServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task UpdateAsync_UnlinksSettingsTheNewProviderCannotFill()
+	public async Task UpdateAsync_RefusesAMoveASettingUsingTheProfileCannotFollow()
 	{
-		var (claude, copilot, openCode) = await SeedProvidersAsync();
-		Guid profileId;
+		var (claude, _, openCode) = await SeedProvidersAsync();
+		Guid plannerId;
+		Guid builderId;
 		Guid projectId;
 		await using (var dbContext = CreateDbContext())
 		{
 			var service = new ProfileService(dbContext);
-			profileId = (await service.CreateAsync(new Profile { Name = "Planner", ProviderId = claude.Id, ModelId = "opus" })).Id;
+			plannerId = (await service.CreateAsync(new Profile { Name = "Planner", ProviderId = claude.Id, ModelId = "opus" })).Id;
+			builderId = (await service.CreateAsync(new Profile { Name = "Builder", ProviderId = claude.Id, ModelId = "sonnet" })).Id;
 			var project = NewProject("Mixed");
-			project.PlanningProfileId = profileId;
+			project.PlanningEnabled = true;
+			project.PlanningProfileId = plannerId;
 			project.PlanningProviderId = claude.Id;
 			project.PlanningModelId = "opus";
-			project.ProviderSelections.Add(new ProjectProvider { ProviderId = claude.Id, ProfileId = profileId, PreferredModelId = "opus", Priority = 0 });
+			project.ProviderSelections.Add(new ProjectProvider { ProviderId = claude.Id, ProfileId = builderId, PreferredModelId = "sonnet", Priority = 0 });
 			project.ProviderSelections.Add(new ProjectProvider { ProviderId = openCode.Id, PreferredModelId = "other", Priority = 1 });
 			dbContext.Projects.Add(project);
 			await dbContext.SaveChangesAsync();
@@ -115,25 +118,34 @@ public sealed class ProfileServiceTests : IDisposable
 
 		await using (var dbContext = CreateDbContext())
 		{
-			await new ProfileService(dbContext).UpdateAsync(new Profile { Id = profileId, Name = "Planner", ProviderId = openCode.Id, ModelId = "big" });
+			var service = new ProfileService(dbContext);
+
+			// OpenCode can't plan.
+			var cannotPlan = await Assert.ThrowsAsync<InvalidOperationException>(
+				() => service.UpdateAsync(new Profile { Id = plannerId, Name = "Planner", ProviderId = openCode.Id, ModelId = "big" }));
+			Assert.Contains("Plan first in Mixed", cannotPlan.Message);
+
+			// The project already lists OpenCode, and it lists a provider once.
+			var alreadyListed = await Assert.ThrowsAsync<InvalidOperationException>(
+				() => service.UpdateAsync(new Profile { Id = builderId, Name = "Builder", ProviderId = openCode.Id, ModelId = "big" }));
+			Assert.Contains("Mixed", alreadyListed.Message);
+			Assert.Contains("already lists OpenCode", alreadyListed.Message);
 		}
 
 		await using (var dbContext = CreateDbContext())
 		{
+			// Nothing moved, and nothing was unlinked.
 			var project = await dbContext.Projects.Include(p => p.ProviderSelections).SingleAsync(p => p.Id == projectId);
-
-			// OpenCode can't plan, so planning keeps Claude and drops the link.
-			Assert.Null(project.PlanningProfileId);
-			Assert.Equal((claude.Id, "opus"), (project.PlanningProviderId!.Value, project.PlanningModelId));
-
-			// The project already lists OpenCode, so the linked Claude entry stays as it was, unlinked.
+			Assert.Equal((plannerId, claude.Id, "opus"), (project.PlanningProfileId!.Value, project.PlanningProviderId!.Value, project.PlanningModelId));
 			var claudeEntry = project.ProviderSelections.Single(entry => entry.ProviderId == claude.Id);
-			Assert.Null(claudeEntry.ProfileId);
-			Assert.Equal("opus", claudeEntry.PreferredModelId);
-			Assert.Equal("other", project.ProviderSelections.Single(entry => entry.ProviderId == openCode.Id).PreferredModelId);
-		}
+			Assert.Equal((builderId, "sonnet"), (claudeEntry.ProfileId!.Value, claudeEntry.PreferredModelId));
+			Assert.Equal(claude.Id, (await dbContext.Profiles.SingleAsync(profile => profile.Id == plannerId)).ProviderId);
 
-		Assert.NotEqual(Guid.Empty, copilot.Id);
+			// Model and reasoning alone can always change.
+			await new ProfileService(dbContext).UpdateAsync(new Profile { Id = plannerId, Name = "Planner", ProviderId = claude.Id, ModelId = "sonnet", ReasoningEffort = "high" });
+			var replanned = await dbContext.Projects.AsNoTracking().SingleAsync(p => p.Id == projectId);
+			Assert.Equal(("sonnet", "high"), (replanned.PlanningModelId, replanned.PlanningReasoningEffort));
+		}
 	}
 
 	[Fact]
@@ -174,7 +186,56 @@ public sealed class ProfileServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task DeleteAsync_UnlinksSettingsAndKeepsTheirValues()
+	public async Task DeleteAsync_MovesEverySettingToTheProvidersDefaultProfile()
+	{
+		var (claude, _, _) = await SeedProvidersAsync();
+		Guid profileId;
+		Guid defaultId;
+		Guid projectId;
+		Guid templateId;
+		await using (var dbContext = CreateDbContext())
+		{
+			await ProfileService.EnsureProviderDefaultsAsync(dbContext);
+			defaultId = (await dbContext.Profiles.SingleAsync(profile => profile.ProviderId == claude.Id && profile.IsProviderDefault)).Id;
+			var service = new ProfileService(dbContext);
+			profileId = (await service.CreateAsync(new Profile { Name = "Lead", ProviderId = claude.Id, ModelId = "opus", ReasoningEffort = "high" })).Id;
+			var project = NewProject("Deleting");
+			project.LeadProfileId = profileId;
+			project.LeadProviderId = claude.Id;
+			project.LeadModelId = "opus";
+			project.LeadReasoningEffort = "high";
+			project.ResearchProfileId = profileId;
+			project.ProviderSelections.Add(new ProjectProvider { ProviderId = claude.Id, ProfileId = profileId, PreferredModelId = "opus", PreferredReasoningEffort = "high", Priority = 0 });
+			dbContext.Projects.Add(project);
+			var template = new JobTemplate { Id = Guid.NewGuid(), Name = "Tidy", GoalPrompt = "Tidy up", ProviderId = claude.Id, ModelId = "opus", ReasoningEffort = "high", ProfileId = profileId };
+			dbContext.JobTemplates.Add(template);
+			await dbContext.SaveChangesAsync();
+			projectId = project.Id;
+			templateId = template.Id;
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			await new ProfileService(dbContext).DeleteAsync(profileId);
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			Assert.False(await dbContext.Profiles.AnyAsync(profile => profile.Id == profileId));
+
+			// Each setting now follows the default profile, which leaves model and reasoning open.
+			var project = await dbContext.Projects.Include(p => p.ProviderSelections).SingleAsync(p => p.Id == projectId);
+			Assert.Equal((defaultId, claude.Id, null, null), (project.LeadProfileId!.Value, project.LeadProviderId!.Value, project.LeadModelId, project.LeadReasoningEffort));
+			Assert.Equal(defaultId, project.ResearchProfileId);
+			var entry = Assert.Single(project.ProviderSelections);
+			Assert.Equal(((Guid?)defaultId, claude.Id, null, null), (entry.ProfileId, entry.ProviderId, entry.PreferredModelId, entry.PreferredReasoningEffort));
+			var template = await dbContext.JobTemplates.SingleAsync(item => item.Id == templateId);
+			Assert.Equal(((Guid?)defaultId, (Guid?)claude.Id, null, null), (template.ProfileId, template.ProviderId, template.ModelId, template.ReasoningEffort));
+		}
+	}
+
+	[Fact]
+	public async Task DeleteAsync_WithNoDefaultProfileToMoveTo_UnlinksAndKeepsTheValues()
 	{
 		var (claude, _, _) = await SeedProvidersAsync();
 		Guid profileId;
@@ -211,7 +272,7 @@ public sealed class ProfileServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task ProjectSave_TakesLinkedValuesFromTheProfileAndDropsMissingLinks()
+	public async Task ProjectSave_TakesLinkedValuesFromTheProfile_AndGivesAnUnlinkedSettingItsMatchingProfile()
 	{
 		var (claude, copilot, _) = await SeedProvidersAsync();
 		Guid profileId;
@@ -244,10 +305,15 @@ public sealed class ProfileServiceTests : IDisposable
 			Assert.Equal((claude.Id, "opus", "high"), (project.PlanningProviderId!.Value, project.PlanningModelId, project.PlanningReasoningEffort));
 			Assert.Equal((claude.Id, "opus", "high"), (project.ReviewProviderId!.Value, project.ReviewModelId, project.ReviewReasoningEffort));
 			Assert.Null(project.ReviewInferenceProviderId);
-			Assert.Null(project.LeadProfileId);
-			Assert.Equal(copilot.Id, project.LeadProviderId);
 			var entry = Assert.Single(project.ProviderSelections);
 			Assert.Equal((claude.Id, "opus", "high", (Guid?)profileId), (entry.ProviderId, entry.PreferredModelId, entry.PreferredReasoningEffort, entry.ProfileId));
+
+			// The Lead came pointing at a profile that is gone. It keeps what it was sent, under a
+			// profile made to hold exactly that.
+			Assert.Equal(copilot.Id, project.LeadProviderId);
+			var leadProfile = await dbContext.Profiles.SingleAsync(profile => profile.Id == project.LeadProfileId);
+			Assert.Equal((copilot.Id, null, null), (leadProfile.ProviderId!.Value, leadProfile.ModelId, leadProfile.ReasoningEffort));
+			Assert.Equal("Copilot (provider defaults)", leadProfile.Name);
 		}
 	}
 
@@ -364,7 +430,7 @@ public sealed class ProfileServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task ProjectSave_TakesAnInferenceReviewer_AndKeepsOnlyHelpersThatCanAnswer()
+	public async Task ProjectSave_TakesAnInferenceReviewer_AndRefusesAHelperThatCannotAnswer()
 	{
 		var (claude, _, openCode) = await SeedProvidersAsync();
 		var grok = await SeedGrokAsync();
@@ -377,6 +443,15 @@ public sealed class ProfileServiceTests : IDisposable
 			openCodeProfileId = (await service.CreateAsync(new Profile { Name = "OpenCode", ProviderId = openCode.Id })).Id;
 		}
 
+		await using (var dbContext = CreateDbContext())
+		{
+			// OpenCode can't answer read-only, so it can't help.
+			var refused = NewProject("Refused");
+			refused.DecisionsProfileId = openCodeProfileId;
+			var error = await Assert.ThrowsAsync<InvalidOperationException>(() => CreateProjectService(dbContext).CreateAsync(refused));
+			Assert.Contains("Decisions", error.Message);
+		}
+
 		Project saved;
 		await using (var dbContext = CreateDbContext())
 		{
@@ -384,7 +459,6 @@ public sealed class ProfileServiceTests : IDisposable
 			project.ReviewEnabled = true;
 			project.ReviewProfileId = researchId;
 			project.ReviewProviderId = claude.Id;
-			project.DecisionsProfileId = openCodeProfileId;
 			project.ResearchProfileId = researchId;
 			saved = await CreateProjectService(dbContext).CreateAsync(project);
 		}
@@ -393,14 +467,102 @@ public sealed class ProfileServiceTests : IDisposable
 		{
 			var project = await dbContext.Projects.SingleAsync(p => p.Id == saved.Id);
 			Assert.Equal((null, grok.Id, "grok-4"), (project.ReviewProviderId, project.ReviewInferenceProviderId!.Value, project.ReviewModelId));
-			// OpenCode can't answer read-only, so it can't help.
-			Assert.Null(project.DecisionsProfileId);
 			Assert.Equal(researchId, project.ResearchProfileId);
 
 			project.DecisionsProfileId = decisionsId;
 			await dbContext.SaveChangesAsync();
 			await new ProfileService(dbContext).DeleteAsync(decisionsId);
 			Assert.Null((await dbContext.Projects.AsNoTracking().SingleAsync(p => p.Id == saved.Id)).DecisionsProfileId);
+		}
+	}
+
+	[Fact]
+	public async Task EnsureSettingsHaveProfiles_LinksEachSettingToTheProfileHoldingItsValues()
+	{
+		var (claude, copilot, _) = await SeedProvidersAsync();
+		var grok = await SeedGrokAsync();
+		Guid projectId, offProjectId, agentId, pinnedTemplateId, openTemplateId;
+		await using (var dbContext = CreateDbContext())
+		{
+			await ProfileService.EnsureProviderDefaultsAsync(dbContext);
+
+			var project = NewProject("Older");
+			project.ProviderSelections.Add(new ProjectProvider { ProviderId = claude.Id, Priority = 0 });
+			project.ProviderSelections.Add(new ProjectProvider { ProviderId = copilot.Id, PreferredModelId = "gpt-5", PreferredReasoningEffort = "high", Priority = 1 });
+			project.PlanningEnabled = true;
+			project.PlanningProviderId = claude.Id;
+			project.PlanningModelId = "opus";
+			project.ReviewEnabled = true;
+			project.ReviewInferenceProviderId = grok.Id;
+			project.ReviewModelId = "grok-4";
+			project.LeadProviderId = copilot.Id;
+			project.LeadModelId = "gpt-5";
+			project.LeadReasoningEffort = "high";
+			project.DecisionsProfileId = Guid.NewGuid();
+			dbContext.Projects.Add(project);
+
+			var off = NewProject("Switched off");
+			off.PlanningProviderId = claude.Id;
+			off.PlanningModelId = "sonnet";
+			off.ReviewEnabled = true;
+			dbContext.Projects.Add(off);
+
+			var agent = new Agent { Id = Guid.NewGuid(), Name = "Tester", DefaultProviderId = claude.Id, DefaultModelId = "opus" };
+			dbContext.Agents.Add(agent);
+			var pinned = new JobTemplate { Id = Guid.NewGuid(), Name = "Pinned", GoalPrompt = "Tidy up", ProviderId = copilot.Id, ModelId = "gpt-5", ReasoningEffort = "high" };
+			var open = new JobTemplate { Id = Guid.NewGuid(), Name = "Open", GoalPrompt = "Tidy up" };
+			dbContext.JobTemplates.AddRange(pinned, open);
+			await dbContext.SaveChangesAsync();
+			(projectId, offProjectId, agentId, pinnedTemplateId, openTemplateId) = (project.Id, off.Id, agent.Id, pinned.Id, open.Id);
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			await ProfileService.EnsureSettingsHaveProfilesAsync(dbContext);
+		}
+
+		int profileCount;
+		await using (var dbContext = CreateDbContext())
+		{
+			var profiles = await dbContext.Profiles.AsNoTracking().ToListAsync();
+			profileCount = profiles.Count;
+			Profile ById(Guid? id) => profiles.Single(profile => profile.Id == id);
+
+			var project = await dbContext.Projects.Include(p => p.ProviderSelections).SingleAsync(p => p.Id == projectId);
+
+			// A setting that leaves model and reasoning open is what the default profile says.
+			var claudeEntry = project.ProviderSelections.Single(entry => entry.ProviderId == claude.Id);
+			Assert.True(ById(claudeEntry.ProfileId).IsProviderDefault);
+
+			// Values no profile holds get one named after them.
+			var copilotEntry = project.ProviderSelections.Single(entry => entry.ProviderId == copilot.Id);
+			Assert.Equal("Copilot · gpt-5 · high", ById(copilotEntry.ProfileId).Name);
+			Assert.Equal("Claude · opus", ById(project.PlanningProfileId).Name);
+			var reviewer = ById(project.ReviewProfileId);
+			Assert.Equal(("Grok · grok-4", (Guid?)grok.Id, "grok-4"), (reviewer.Name, reviewer.InferenceProviderId, reviewer.ModelId));
+
+			// One profile serves every setting holding the same values.
+			Assert.Equal(copilotEntry.ProfileId, project.LeadProfileId);
+			Assert.Equal(copilotEntry.ProfileId, (await dbContext.JobTemplates.SingleAsync(template => template.Id == pinnedTemplateId)).ProfileId);
+			Assert.Equal(project.PlanningProfileId, (await dbContext.Agents.SingleAsync(agent => agent.Id == agentId)).ProfileId);
+
+			// A template that leaves the choice to each project stays that way, and a link to a
+			// profile that is gone is cleared.
+			Assert.Null((await dbContext.JobTemplates.SingleAsync(template => template.Id == openTemplateId)).ProfileId);
+			Assert.Null(project.DecisionsProfileId);
+
+			// Planning that is off keeps its old values without a profile made for them, and a
+			// reviewer switched on with nothing to run on is switched off.
+			var off = await dbContext.Projects.SingleAsync(p => p.Id == offProjectId);
+			Assert.Null(off.PlanningProfileId);
+			Assert.DoesNotContain(profiles, profile => profile.ModelId == "sonnet");
+			Assert.False(off.ReviewEnabled);
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			await ProfileService.EnsureSettingsHaveProfilesAsync(dbContext);
+			Assert.Equal(profileCount, await dbContext.Profiles.CountAsync());
 		}
 	}
 

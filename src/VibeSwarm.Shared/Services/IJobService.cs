@@ -92,7 +92,7 @@ public interface IJobService
     /// <param name="providerId">New provider ID (null to keep current)</param>
     /// <param name="modelId">Model ID to use (null for default)</param>
     /// <param name="reasoningEffort">Reasoning effort to use (null for default)</param>
-    Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default);
+    Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, Guid? profileId = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates the goal prompt for a job that hasn't started yet

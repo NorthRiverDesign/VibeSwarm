@@ -1119,6 +1119,13 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<int?>("ProcessId")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ProfileName")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("char(36)");
 
@@ -1589,6 +1596,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
+
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("char(36)");
 
                     b.Property<Guid?>("ProviderId")
                         .HasColumnType("char(36)");

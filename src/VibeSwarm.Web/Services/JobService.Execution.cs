@@ -4,6 +4,7 @@ using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Validation;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -94,15 +95,19 @@ public partial class JobService
         var (nextIndex, target) = next.Value;
         var previousProviderName = plan[Math.Clamp(job.ActiveExecutionIndex, 0, plan.Count - 1)].ProviderName;
         var savedPlan = job.ExecutionPlan;
+        var (askedProfileId, askedProfileName) = (job.ProfileId, job.ProfileName);
 
-        if (!await ResetJobWithOptionsInternalAsync(job, target.ProviderId, target.ModelId, target.ReasoningEffort, cancellationToken))
+        if (!await ResetJobWithOptionsInternalAsync(job, target.ProviderId, target.ModelId, target.ReasoningEffort, null, cancellationToken))
         {
             return false;
         }
 
         // The reset clears the plan so a manual retry starts fresh; a failover has to keep
         // it and step forward, otherwise the job would start again on the provider that
-        // just failed.
+        // just failed. It also keeps the profile the job was asked to run on: the switch is
+        // the app's doing, and a later retry goes back to what was asked for.
+        job.ProfileId = askedProfileId;
+        job.ProfileName = askedProfileName;
         job.ExecutionPlan = savedPlan;
         job.ActiveExecutionIndex = nextIndex;
         job.LastSwitchAt = DateTime.UtcNow;
@@ -321,9 +326,12 @@ public partial class JobService
             .OrderBy(pp => pp.Priority)
             .ToListAsync(cancellationToken);
 
+        // A job run on a profile was given its model by that profile, so nothing the project
+        // prefers for the same provider may replace it. An agent's job keeps the older rule.
+        var runsOnProfile = job.ProfileId.HasValue && !job.AgentId.HasValue;
         var providerOrder = job.AgentId.HasValue && job.ProviderId != Guid.Empty
             ? enabledProviders.Where(provider => provider.Id == job.ProviderId).ToList()
-            : BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections);
+            : BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections, runsOnProfile);
 
         var modelLookup = await _dbContext.ProviderModels
             .Where(m => providerIds.Contains(m.ProviderId) && m.IsAvailable)
@@ -354,7 +362,7 @@ public partial class JobService
                 {
                     plannedTargets.Add((job.ModelUsed, selectedReasoning, "job-selected-model"));
                 }
-                else if (!string.IsNullOrWhiteSpace(selection?.PreferredModelId))
+                else if (!runsOnProfile && !string.IsNullOrWhiteSpace(selection?.PreferredModelId))
                 {
                     plannedTargets.Add((selection.PreferredModelId, selectedReasoning, "project-preferred-model"));
                 }
@@ -462,6 +470,119 @@ public partial class JobService
         }
     }
 
+	/// <summary>
+	/// Decides what a new job runs on, once, for every way of creating one:
+	/// a profile the job names wins over anything else it was sent; a job that names neither a
+	/// profile nor a provider takes the project's Build profile; a job that names only a
+	/// provider (an older client) is left as sent. A profile that is gone, or whose provider is
+	/// off, counts as not named, so a schedule or auto-pilot run falls through instead of failing.
+	/// An agent's job keeps the agent's own settings and only records which profile they are.
+	/// </summary>
+	private async Task ApplyJobProfileAsync(Job job, CancellationToken cancellationToken)
+	{
+		if (job.AgentId.HasValue)
+		{
+			await RecordAgentProfileAsync(job, cancellationToken);
+			return;
+		}
+
+		var resolved = await ResolveJobProfileAsync(job.ProfileId, cancellationToken);
+		if (resolved == null && job.ProviderId == Guid.Empty)
+		{
+			var buildProfileId = await _dbContext.ProjectProviders
+				.Where(entry => entry.ProjectId == job.ProjectId && entry.IsEnabled
+					&& _dbContext.Providers.Any(provider => provider.Id == entry.ProviderId && provider.IsEnabled))
+				.OrderBy(entry => entry.Priority)
+				.Select(entry => entry.ProfileId)
+				.FirstOrDefaultAsync(cancellationToken);
+			resolved = await ResolveJobProfileAsync(buildProfileId, cancellationToken);
+		}
+
+		ApplyResolvedProfile(job, resolved);
+	}
+
+	/// <summary>Puts the profile's values on the job, or clears the job's profile when there is none.</summary>
+	private static void ApplyResolvedProfile(Job job, ResolvedJobProfile? resolved)
+	{
+		if (resolved is not { } profile)
+		{
+			job.ProfileId = null;
+			job.ProfileName = null;
+			return;
+		}
+
+		job.ProfileId = profile.Id;
+		job.ProfileName = profile.Name;
+		job.ProviderId = profile.ProviderId;
+		job.ModelUsed = profile.ModelId;
+		job.ReasoningEffort = profile.ReasoningEffort;
+	}
+
+	/// <summary>
+	/// The provider, model and reasoning a job gets from a profile. Null when the profile is
+	/// missing, answers questions only, or sits on a provider that is turned off.
+	/// </summary>
+	private async Task<ResolvedJobProfile?> ResolveJobProfileAsync(Guid? profileId, CancellationToken cancellationToken)
+	{
+		if (profileId is not Guid id)
+		{
+			return null;
+		}
+
+		var profile = await _dbContext.Profiles
+			.AsNoTracking()
+			.Include(candidate => candidate.Provider)
+			.FirstOrDefaultAsync(candidate => candidate.Id == id, cancellationToken);
+		if (profile == null || !ProfileRoles.CanBuild(profile))
+		{
+			return null;
+		}
+
+		var defaultModelId = string.IsNullOrWhiteSpace(profile.ModelId)
+			? await _dbContext.ProviderModels
+				.Where(model => model.ProviderId == profile.ProviderId && model.IsAvailable && model.IsDefault)
+				.Select(model => model.ModelId)
+				.FirstOrDefaultAsync(cancellationToken)
+			: null;
+		var (providerId, modelId, reasoningEffort) = ProfileLinks.ResolveForJob(profile, defaultModelId);
+		return new ResolvedJobProfile(profile.Id, profile.Name, providerId, modelId, reasoningEffort);
+	}
+
+	private readonly record struct ResolvedJobProfile(Guid Id, string Name, Guid ProviderId, string? ModelId, string? ReasoningEffort);
+
+	/// <summary>
+	/// Names the profile an agent's job runs on: the one its project assignment links, else the
+	/// agent's own, when it is on the provider the job ended up with.
+	/// </summary>
+	private async Task RecordAgentProfileAsync(Job job, CancellationToken cancellationToken)
+	{
+		job.ProfileId = null;
+		job.ProfileName = null;
+		var assignmentProfileId = await _dbContext.ProjectAgents
+			.Where(assignment => assignment.ProjectId == job.ProjectId && assignment.AgentId == job.AgentId)
+			.Select(assignment => assignment.ProfileId)
+			.FirstOrDefaultAsync(cancellationToken);
+		var agentProfileId = await _dbContext.Agents
+			.Where(agent => agent.Id == job.AgentId)
+			.Select(agent => agent.ProfileId)
+			.FirstOrDefaultAsync(cancellationToken);
+		foreach (var profileId in new[] { assignmentProfileId, agentProfileId })
+		{
+			if (profileId is not Guid id)
+			{
+				continue;
+			}
+
+			var profile = await _dbContext.Profiles.AsNoTracking().FirstOrDefaultAsync(candidate => candidate.Id == id, cancellationToken);
+			if (profile != null && profile.ProviderId == job.ProviderId)
+			{
+				job.ProfileId = profile.Id;
+				job.ProfileName = profile.Name;
+				return;
+			}
+		}
+	}
+
 	private async Task ApplySelectedAgentDefaultsAsync(Job job, CancellationToken cancellationToken)
 	{
 		if (!job.AgentId.HasValue || job.AgentId == Guid.Empty)
@@ -527,7 +648,7 @@ public partial class JobService
             : agent.DefaultCycleReviewPrompt.Trim();
     }
 
-    private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections)
+    private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections, bool runsOnProfile)
     {
         if (projectSelections.Count == 0)
         {
@@ -539,6 +660,15 @@ public partial class JobService
             .Where(pp => providerById.ContainsKey(pp.ProviderId))
             .Select(pp => providerById[pp.ProviderId])
             .ToList();
+
+        // A profile picked for this job runs first even on a provider the project doesn't list.
+        // Switching away from it afterwards still follows the project's list alone.
+        if (runsOnProfile
+            && orderedProviders.All(provider => provider.Id != selectedProviderId)
+            && providerById.TryGetValue(selectedProviderId, out var pickedProvider))
+        {
+            return [pickedProvider, .. orderedProviders];
+        }
 
         return OrderProvidersWithSelectionFirst(selectedProviderId, orderedProviders);
     }

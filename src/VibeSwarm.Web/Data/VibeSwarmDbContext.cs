@@ -332,6 +332,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.AttachedFilesJson).HasMaxLength(4000);
 			entity.Property(e => e.ModelUsed).HasMaxLength(200);
 			entity.Property(e => e.ReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
+			entity.Property(e => e.ProfileName).HasMaxLength(ValidationLimits.ProfileNameMaxLength);
 			entity.Property(e => e.PlanningModelUsed).HasMaxLength(200);
 			entity.Property(e => e.PlanningReasoningEffortUsed).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.BuildCheckedTreeHash).HasMaxLength(100);
@@ -486,8 +487,9 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasIndex(e => e.Name).IsUnique();
 		});
 
-		// Projects and their provider entries point at a profile by id alone, as they do at
-		// providers: deleting a profile clears the links (ProfileService) and leaves the values.
+		// Settings and jobs point at a profile by id alone, as they do at providers: deleting a
+		// profile moves each setting to its provider's default profile (ProfileService), and a
+		// job keeps the id and the name it ran under.
 		modelBuilder.Entity<Profile>(entity =>
 		{
 			entity.HasKey(e => e.Id);

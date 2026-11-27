@@ -1110,6 +1110,13 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<int?>("ProcessId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProfileName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("TEXT");
 
@@ -1579,6 +1586,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ProfileId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("ProviderId")

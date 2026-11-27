@@ -96,6 +96,21 @@ public class Job
     public string? ReasoningEffort { get; set; }
 
     /// <summary>
+    /// The profile the job was asked to run on. Its provider, model and reasoning are copied into
+    /// the fields above when the job is created or retried; the id is kept so a retry can read the
+    /// profile again. Points by id alone, so it may outlive the profile.
+    /// </summary>
+    public Guid? ProfileId { get; set; }
+
+    /// <summary>
+    /// The name <see cref="ProfileId"/> had when the job last took its values. It stays what was
+    /// asked for: the provider and model beside it show what ran, which can differ after a
+    /// switch to another provider.
+    /// </summary>
+    [StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ProfileNameMaxLength)]
+    public string? ProfileName { get; set; }
+
+    /// <summary>
     /// Planning output generated before execution when project planning is enabled.
     /// Persisted so execution and retries can reuse the reviewed plan without regenerating it.
     /// </summary>

@@ -47,7 +47,7 @@ public class AgentService : IAgentService
 		}
 
 		await ValidateSkillsAsync(agent.SkillLinks, cancellationToken);
-		await ApplyProfileLinkAsync(agent, cancellationToken);
+		await ApplyProfileAsync(agent, cancellationToken);
 		await ValidateDefaultProviderAsync(agent, cancellationToken);
 
 		var persistedAgent = new Agent
@@ -104,7 +104,7 @@ public class AgentService : IAgentService
 		}
 
 		await ValidateSkillsAsync(agent.SkillLinks, cancellationToken);
-		await ApplyProfileLinkAsync(agent, cancellationToken);
+		await ApplyProfileAsync(agent, cancellationToken);
 		await ValidateDefaultProviderAsync(agent, cancellationToken);
 
 		existing.Name = agent.Name;
@@ -268,6 +268,16 @@ public class AgentService : IAgentService
 			.Where(profile => profile.Id == profileId)
 			.ToDictionaryAsync(profile => profile.Id, cancellationToken);
 		ProfileLinks.ApplyAgentLink(agent, profiles);
+	}
+
+	/// <summary>
+	/// Fills the agent's defaults from its profile, then gives an agent sent with a provider but
+	/// no profile the profile matching what it was sent.
+	/// </summary>
+	private async Task ApplyProfileAsync(Agent agent, CancellationToken cancellationToken)
+	{
+		await ApplyProfileLinkAsync(agent, cancellationToken);
+		await ProfileService.LinkAgentAsync(_dbContext, agent, cancellationToken);
 	}
 
 	private async Task ValidateDefaultProviderAsync(Agent agent, CancellationToken cancellationToken)

@@ -83,7 +83,7 @@ public partial class JobProcessingService
 
 		void AddHelper(string name, string purpose, Guid? profileId)
 		{
-			if (profileId is not Guid id || !profiles.TryGetValue(id, out var profile) || !ProfileLinks.CanHelpJobs(profile))
+			if (profileId is not Guid id || !profiles.TryGetValue(id, out var profile) || !ProfileRoles.CanHelpJobs(profile))
 			{
 				return;
 			}

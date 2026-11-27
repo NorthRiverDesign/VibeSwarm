@@ -35,7 +35,7 @@ else
 
 <ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete profile"
 				   Message="@($"Delete {_deleting?.Name}?")"
-				   SubMessage="Project settings that use it keep its provider, model and reasoning."
+				   SubMessage="Anything that uses it switches to its provider's default profile."
 				   ConfirmText="Delete" ButtonClass="btn-solid theme-danger" IsProcessing="_isDeleting"
 				   OnConfirm="ConfirmDelete" OnCancel="CancelDelete" />
 

@@ -532,6 +532,10 @@ public class DatabaseService : IDatabaseService
 			}
 		}
 
+		// An export names profiles but not which setting used which, so imported settings are
+		// matched to the profile holding their values.
+		await ProfileService.EnsureSettingsHaveProfilesAsync(_db, ct);
+
 		return result;
 	}
 

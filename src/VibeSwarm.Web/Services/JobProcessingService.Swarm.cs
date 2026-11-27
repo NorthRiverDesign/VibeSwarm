@@ -327,12 +327,20 @@ public partial class JobProcessingService
 				: null;
 			agentName ??= job.InstanceNumber is int instanceNumber ? $"instance {instanceNumber}" : null;
 
+			// The merge names the member's profile only while the member still runs where that
+			// profile says; after a switch to another provider it follows the provider instead.
+			var memberProfileId = job.ProfileId is Guid profileId
+				&& await dbContext.Profiles.AsNoTracking().AnyAsync(profile => profile.Id == profileId && profile.ProviderId == job.ProviderId)
+					? job.ProfileId
+					: null;
+
 			Job BuildMergeJob(bool sameProvider) => new()
 			{
 				ProjectId = job.ProjectId,
 				ProviderId = sameProvider ? job.ProviderId : Guid.Empty,
 				ModelUsed = sameProvider ? job.ModelUsed : null,
 				ReasoningEffort = sameProvider ? job.ReasoningEffort : null,
+				ProfileId = sameProvider ? memberProfileId : null,
 				Title = $"Merge {agentName ?? "an agent"}'s work: {job.Title ?? job.GoalPrompt}",
 				GoalPrompt = BuildSwarmMergeGoalPrompt(agentName, job.GoalPrompt, branch, conflictedFiles),
 				Branch = job.Branch,

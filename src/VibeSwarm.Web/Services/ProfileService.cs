@@ -127,6 +127,10 @@ public class ProfileService : IProfileService
 
 		await EnsureNameIsFreeAsync(profile.Name, profile.Id, cancellationToken);
 		var (provider, inferenceProvider) = await ValidateTargetAsync(profile, cancellationToken);
+		if (profile.ProviderId != existing.ProviderId || profile.InferenceProviderId != existing.InferenceProviderId)
+		{
+			await EnsureLinksCanFollowAsync(existing.Id, provider, inferenceProvider, cancellationToken);
+		}
 
 		existing.Name = profile.Name;
 		existing.Description = profile.Description;
@@ -158,33 +162,63 @@ public class ProfileService : IProfileService
 			throw new InvalidOperationException("A provider's default profile is removed with its provider.");
 		}
 
-		// Linked settings keep the values they last copied and become ordinary custom settings.
+		// Nothing is left without a profile: every setting that used this one moves to its
+		// provider's default profile and takes that profile's values.
+		var fallback = await _dbContext.Profiles
+			.Include(candidate => candidate.Provider)
+			.Include(candidate => candidate.InferenceProvider)
+			.FirstOrDefaultAsync(candidate => candidate.IsProviderDefault && candidate.Id != id
+				&& ((profile.ProviderId != null && candidate.ProviderId == profile.ProviderId)
+					|| (profile.InferenceProviderId != null && candidate.InferenceProviderId == profile.InferenceProviderId)),
+				cancellationToken);
+		var fallbackId = fallback?.Id;
+		var lookup = new Dictionary<Guid, Profile>();
+		if (fallback != null)
+		{
+			lookup[fallback.Id] = fallback;
+		}
+
 		var projects = await _dbContext.Projects
 			.Where(project => project.PlanningProfileId == id || project.ReviewProfileId == id || project.LeadProfileId == id
 				|| project.DecisionsProfileId == id || project.ResearchProfileId == id)
 			.ToListAsync(cancellationToken);
 		foreach (var project in projects)
 		{
-			project.PlanningProfileId = project.PlanningProfileId == id ? null : project.PlanningProfileId;
-			project.ReviewProfileId = project.ReviewProfileId == id ? null : project.ReviewProfileId;
-			project.LeadProfileId = project.LeadProfileId == id ? null : project.LeadProfileId;
-			project.DecisionsProfileId = project.DecisionsProfileId == id ? null : project.DecisionsProfileId;
-			project.ResearchProfileId = project.ResearchProfileId == id ? null : project.ResearchProfileId;
+			project.PlanningProfileId = project.PlanningProfileId == id ? fallbackId : project.PlanningProfileId;
+			project.ReviewProfileId = project.ReviewProfileId == id ? fallbackId : project.ReviewProfileId;
+			project.LeadProfileId = project.LeadProfileId == id ? fallbackId : project.LeadProfileId;
+			project.DecisionsProfileId = project.DecisionsProfileId == id ? fallbackId : project.DecisionsProfileId;
+			project.ResearchProfileId = project.ResearchProfileId == id ? fallbackId : project.ResearchProfileId;
+			if (fallback != null)
+			{
+				ApplyRoleLinksFor(project, fallback);
+			}
+
+			project.UpdatedAt = DateTime.UtcNow;
 		}
 
 		foreach (var entry in await _dbContext.ProjectProviders.Where(entry => entry.ProfileId == id).ToListAsync(cancellationToken))
 		{
-			entry.ProfileId = null;
+			entry.ProfileId = fallbackId;
+			ProfileLinks.ApplyEntryLink(entry, lookup);
 		}
 
 		foreach (var agent in await _dbContext.Agents.Where(agent => agent.ProfileId == id).ToListAsync(cancellationToken))
 		{
-			agent.ProfileId = null;
+			agent.ProfileId = fallbackId;
+			ProfileLinks.ApplyAgentLink(agent, lookup);
 		}
 
 		foreach (var assignment in await _dbContext.ProjectAgents.Where(assignment => assignment.ProfileId == id).ToListAsync(cancellationToken))
 		{
-			assignment.ProfileId = null;
+			assignment.ProfileId = fallbackId;
+			ProfileLinks.ApplyAssignmentLink(assignment, lookup);
+		}
+
+		foreach (var template in await _dbContext.JobTemplates.Where(template => template.ProfileId == id).ToListAsync(cancellationToken))
+		{
+			template.ProfileId = fallbackId;
+			ProfileLinks.ApplyTemplateLink(template, lookup);
 		}
 
 		_dbContext.Profiles.Remove(profile);
@@ -257,41 +291,24 @@ public class ProfileService : IProfileService
 	}
 
 	/// <summary>
-	/// Copies the profile's values into every setting linked to it. A link whose slot the profile
-	/// can no longer fill is dropped instead, as is a priority entry whose new provider the
-	/// project already lists: the setting keeps its old values.
+	/// Copies the profile's values into every setting linked to it. Every link can take them:
+	/// <see cref="EnsureLinksCanFollowAsync"/> has already refused a change one couldn't follow.
 	/// </summary>
 	private async Task WriteThroughAsync(Profile profile, CancellationToken cancellationToken)
 	{
 		var id = profile.Id;
 		var lookup = new Dictionary<Guid, Profile> { [id] = profile };
 		var projects = await _dbContext.Projects
-			.Where(project => project.PlanningProfileId == id || project.ReviewProfileId == id || project.LeadProfileId == id
-				|| project.DecisionsProfileId == id || project.ResearchProfileId == id)
+			.Where(project => project.PlanningProfileId == id || project.ReviewProfileId == id || project.LeadProfileId == id)
 			.ToListAsync(cancellationToken);
 		foreach (var project in projects)
 		{
 			ApplyRoleLinksFor(project, profile);
-			if (!ProfileLinks.CanHelpJobs(profile))
-			{
-				project.DecisionsProfileId = project.DecisionsProfileId == id ? null : project.DecisionsProfileId;
-				project.ResearchProfileId = project.ResearchProfileId == id ? null : project.ResearchProfileId;
-			}
-
 			project.UpdatedAt = DateTime.UtcNow;
 		}
 
 		foreach (var entry in await _dbContext.ProjectProviders.Where(entry => entry.ProfileId == id).ToListAsync(cancellationToken))
 		{
-			if (entry.ProviderId != profile.ProviderId
-				&& await _dbContext.ProjectProviders.AnyAsync(
-					other => other.ProjectId == entry.ProjectId && other.ProviderId == profile.ProviderId && other.Id != entry.Id,
-					cancellationToken))
-			{
-				entry.ProfileId = null;
-				continue;
-			}
-
 			ProfileLinks.ApplyEntryLink(entry, lookup);
 			entry.UpdatedAt = DateTime.UtcNow;
 		}
@@ -306,6 +323,275 @@ public class ProfileService : IProfileService
 		{
 			ProfileLinks.ApplyAssignmentLink(assignment, lookup);
 			assignment.UpdatedAt = DateTime.UtcNow;
+		}
+
+		foreach (var template in await _dbContext.JobTemplates.Where(template => template.ProfileId == id).ToListAsync(cancellationToken))
+		{
+			ProfileLinks.ApplyTemplateLink(template, lookup);
+			template.UpdatedAt = DateTime.UtcNow;
+		}
+	}
+
+	/// <summary>
+	/// Refuses to move a profile onto a provider that a setting using it can't run on, naming the
+	/// first setting in the way. A link is never dropped quietly: that would leave the setting
+	/// running on values no profile describes.
+	/// </summary>
+	private async Task EnsureLinksCanFollowAsync(Guid id, Provider? provider, InferenceProvider? inferenceProvider, CancellationToken cancellationToken)
+	{
+		var moved = new Profile
+		{
+			ProviderId = provider?.Id,
+			Provider = provider,
+			InferenceProviderId = inferenceProvider?.Id,
+			InferenceProvider = inferenceProvider,
+		};
+		var providerName = provider?.Name ?? inferenceProvider?.Name ?? "that provider";
+		var projects = await _dbContext.Projects
+			.AsNoTracking()
+			.Where(project => project.PlanningProfileId == id || project.ReviewProfileId == id || project.LeadProfileId == id
+				|| project.DecisionsProfileId == id || project.ResearchProfileId == id)
+			.Select(project => new { project.Name, project.PlanningProfileId, project.ReviewProfileId, project.LeadProfileId, project.DecisionsProfileId, project.ResearchProfileId })
+			.ToListAsync(cancellationToken);
+		foreach (var project in projects)
+		{
+			var role = !ProfileRoles.CanRunReadOnly(moved) && project.PlanningProfileId == id ? "Plan first"
+				: !ProfileRoles.CanRunReadOnly(moved) && project.LeadProfileId == id ? "Lead"
+				: !ProfileRoles.CanHelpJobs(moved) && project.ReviewProfileId == id ? "Review"
+				: !ProfileRoles.CanHelpJobs(moved) && project.DecisionsProfileId == id ? "Decisions"
+				: !ProfileRoles.CanHelpJobs(moved) && project.ResearchProfileId == id ? "Research"
+				: null;
+			if (role != null)
+			{
+				throw new InvalidOperationException(
+					$"{role} in {project.Name} uses this profile and can't run on {providerName}. Pick another profile there first, or add a new profile for {providerName}.");
+			}
+		}
+
+		if (provider == null)
+		{
+			return;
+		}
+
+		// A project lists a provider once, so its entry can't move onto one it already lists.
+		var crowded = await _dbContext.ProjectProviders
+			.AsNoTracking()
+			.Where(entry => entry.ProfileId == id && entry.ProviderId != provider.Id
+				&& _dbContext.ProjectProviders.Any(other => other.ProjectId == entry.ProjectId && other.ProviderId == provider.Id && other.Id != entry.Id))
+			.Select(entry => entry.Project!.Name)
+			.FirstOrDefaultAsync(cancellationToken);
+		if (crowded != null)
+		{
+			throw new InvalidOperationException(
+				$"{crowded} builds with this profile and already lists {providerName}. Remove one of the two there first, or add a new profile for {providerName}.");
+		}
+	}
+
+	/// <summary>
+	/// Links every setting that holds a provider, model and reasoning but no profile to the
+	/// profile with exactly those values, adding one where none exists, and clears links to
+	/// profiles that are gone. Settings from before profiles, an import, or a deleted provider
+	/// all end up described by a profile, which is the only way the app shows them. A planner or
+	/// reviewer left switched on with nothing to run on is switched off, since it never ran.
+	/// Safe to call any number of times.
+	/// </summary>
+	public static async Task EnsureSettingsHaveProfilesAsync(VibeSwarmDbContext dbContext, CancellationToken cancellationToken = default)
+	{
+		await DefaultsGate.WaitAsync(cancellationToken);
+		try
+		{
+			var catalog = await ProfileCatalog.LoadAsync(dbContext, cancellationToken);
+			var projects = await dbContext.Projects
+				.Include(project => project.ProviderSelections)
+				.Include(project => project.AgentAssignments)
+				.ToListAsync(cancellationToken);
+			foreach (var project in projects)
+			{
+				catalog.LinkProject(project, switchOffRolesWithNothingToRunOn: true);
+			}
+
+			foreach (var agent in await dbContext.Agents.ToListAsync(cancellationToken))
+			{
+				catalog.LinkAgent(agent);
+			}
+
+			foreach (var template in await dbContext.JobTemplates.ToListAsync(cancellationToken))
+			{
+				catalog.LinkTemplate(template);
+			}
+
+			await dbContext.SaveChangesAsync(cancellationToken);
+		}
+		finally
+		{
+			DefaultsGate.Release();
+		}
+	}
+
+	/// <summary>
+	/// Gives each of the project's settings that came without a profile the one matching its
+	/// values, before the project is saved. The caller saves; a profile added here is saved with it.
+	/// </summary>
+	public static async Task LinkProjectAsync(VibeSwarmDbContext dbContext, Project project, CancellationToken cancellationToken = default)
+		=> (await ProfileCatalog.LoadAsync(dbContext, cancellationToken)).LinkProject(project, switchOffRolesWithNothingToRunOn: false);
+
+	/// <summary>As <see cref="LinkProjectAsync"/>, for an agent's defaults.</summary>
+	public static async Task LinkAgentAsync(VibeSwarmDbContext dbContext, Agent agent, CancellationToken cancellationToken = default)
+		=> (await ProfileCatalog.LoadAsync(dbContext, cancellationToken)).LinkAgent(agent);
+
+	/// <summary>As <see cref="LinkProjectAsync"/>, for a job template that pins a provider.</summary>
+	public static async Task LinkTemplateAsync(VibeSwarmDbContext dbContext, JobTemplate template, CancellationToken cancellationToken = default)
+		=> (await ProfileCatalog.LoadAsync(dbContext, cancellationToken)).LinkTemplate(template);
+
+	/// <summary>
+	/// Every profile, read once, so a pass over many settings finds or adds profiles without a
+	/// query each. Added profiles join the context and are saved by whoever saves it next.
+	/// </summary>
+	private sealed class ProfileCatalog
+	{
+		private readonly VibeSwarmDbContext _dbContext;
+		private readonly List<Profile> _profiles;
+		private readonly HashSet<string> _names;
+		private readonly Dictionary<Guid, string> _providerNames;
+		private readonly Dictionary<Guid, string> _inferenceProviderNames;
+
+		private ProfileCatalog(VibeSwarmDbContext dbContext, List<Profile> profiles, Dictionary<Guid, string> providerNames, Dictionary<Guid, string> inferenceProviderNames)
+		{
+			_dbContext = dbContext;
+			_profiles = profiles;
+			_names = profiles.Select(profile => profile.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+			_providerNames = providerNames;
+			_inferenceProviderNames = inferenceProviderNames;
+		}
+
+		public static async Task<ProfileCatalog> LoadAsync(VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+			=> new(
+				dbContext,
+				await dbContext.Profiles.AsNoTracking().ToListAsync(cancellationToken),
+				await dbContext.Providers.AsNoTracking().ToDictionaryAsync(provider => provider.Id, provider => provider.Name, cancellationToken),
+				await dbContext.InferenceProviders.AsNoTracking().ToDictionaryAsync(provider => provider.Id, provider => provider.Name, cancellationToken));
+
+		public void LinkProject(Project project, bool switchOffRolesWithNothingToRunOn)
+		{
+			project.PlanningProfileId = Existing(project.PlanningProfileId);
+			project.ReviewProfileId = Existing(project.ReviewProfileId);
+			project.LeadProfileId = Existing(project.LeadProfileId);
+			project.DecisionsProfileId = Existing(project.DecisionsProfileId);
+			project.ResearchProfileId = Existing(project.ResearchProfileId);
+
+			if (switchOffRolesWithNothingToRunOn)
+			{
+				project.PlanningEnabled = project.PlanningEnabled && project.PlanningProviderId.HasValue;
+				project.ReviewEnabled = project.ReviewEnabled && (project.ReviewProviderId.HasValue || project.ReviewInferenceProviderId.HasValue);
+			}
+
+			// Only a role that is on needs a profile; values left behind a switched-off one are
+			// just what it last ran on.
+			if (project.PlanningEnabled)
+			{
+				project.PlanningProfileId ??= FindOrAdd(project.PlanningProviderId, null, project.PlanningModelId, project.PlanningReasoningEffort);
+			}
+
+			if (project.ReviewEnabled)
+			{
+				project.ReviewProfileId ??= project.ReviewProviderId.HasValue
+					? FindOrAdd(project.ReviewProviderId, null, project.ReviewModelId, project.ReviewReasoningEffort)
+					: FindOrAdd(null, project.ReviewInferenceProviderId, project.ReviewModelId, null);
+			}
+
+			// The Lead has no switch: it runs whenever it has a provider.
+			project.LeadProfileId ??= FindOrAdd(project.LeadProviderId, null, project.LeadModelId, project.LeadReasoningEffort);
+
+			foreach (var entry in project.ProviderSelections ?? [])
+			{
+				entry.ProfileId = Existing(entry.ProfileId)
+					?? FindOrAdd(entry.ProviderId, null, entry.PreferredModelId, entry.PreferredReasoningEffort);
+			}
+
+			foreach (var assignment in project.AgentAssignments ?? [])
+			{
+				assignment.ProfileId = Existing(assignment.ProfileId)
+					?? FindOrAdd(assignment.ProviderId, null, assignment.PreferredModelId, assignment.PreferredReasoningEffort);
+			}
+		}
+
+		public void LinkAgent(Agent agent)
+			=> agent.ProfileId = Existing(agent.ProfileId)
+				?? FindOrAdd(agent.DefaultProviderId, null, agent.DefaultModelId, agent.DefaultReasoningEffort);
+
+		public void LinkTemplate(JobTemplate template)
+			=> template.ProfileId = Existing(template.ProfileId)
+				?? FindOrAdd(template.ProviderId, null, template.ModelId, template.ReasoningEffort);
+
+		private Guid? Existing(Guid? profileId)
+			=> profileId is Guid id && _profiles.Any(profile => profile.Id == id) ? id : null;
+
+		/// <summary>
+		/// The profile holding exactly these values, the provider's default first, or a new one
+		/// named after them. Null when there is no such provider to run on.
+		/// </summary>
+		private Guid? FindOrAdd(Guid? providerId, Guid? inferenceProviderId, string? modelId, string? reasoningEffort)
+		{
+			providerId = providerId == Guid.Empty ? null : providerId;
+			var providerName = providerId is Guid coding ? _providerNames.GetValueOrDefault(coding)
+				: inferenceProviderId is Guid inference ? _inferenceProviderNames.GetValueOrDefault(inference)
+				: null;
+			if (providerName == null)
+			{
+				return null;
+			}
+
+			inferenceProviderId = providerId.HasValue ? null : inferenceProviderId;
+			modelId = string.IsNullOrWhiteSpace(modelId) ? null : modelId.Trim();
+			reasoningEffort = providerId.HasValue ? ProviderCapabilities.NormalizeReasoningEffort(reasoningEffort) : null;
+
+			var match = _profiles
+				.Where(profile => profile.ProviderId == providerId && profile.InferenceProviderId == inferenceProviderId
+					&& string.Equals(profile.ModelId, modelId, StringComparison.Ordinal)
+					&& string.Equals(profile.ReasoningEffort, reasoningEffort, StringComparison.Ordinal))
+				.OrderByDescending(profile => profile.IsProviderDefault)
+				.ThenBy(profile => profile.CreatedAt)
+				.FirstOrDefault();
+			if (match != null)
+			{
+				return match.Id;
+			}
+
+			var added = new Profile
+			{
+				Id = Guid.NewGuid(),
+				Name = PickName(providerName, modelId, reasoningEffort),
+				ProviderId = providerId,
+				InferenceProviderId = inferenceProviderId,
+				ModelId = modelId,
+				ReasoningEffort = reasoningEffort,
+				CreatedAt = DateTime.UtcNow,
+			};
+			_dbContext.Profiles.Add(added);
+			_profiles.Add(added);
+			return added.Id;
+		}
+
+		/// <summary>Names a profile after what it runs on, such as "Claude Code · opus · xhigh".</summary>
+		private string PickName(string providerName, string? modelId, string? reasoningEffort)
+		{
+			var baseName = modelId == null && reasoningEffort == null
+				? $"{providerName.Trim()} (provider defaults)"
+				: string.Join(" · ", new[] { providerName.Trim(), modelId, reasoningEffort }.Where(part => !string.IsNullOrWhiteSpace(part)));
+			const int roomForNumber = 4;
+			if (baseName.Length > ValidationLimits.ProfileNameMaxLength - roomForNumber)
+			{
+				baseName = baseName[..(ValidationLimits.ProfileNameMaxLength - roomForNumber)].TrimEnd();
+			}
+
+			var candidate = baseName;
+			for (var number = 2; _names.Contains(candidate); number++)
+			{
+				candidate = $"{baseName} {number}";
+			}
+
+			_names.Add(candidate);
+			return candidate;
 		}
 	}
 

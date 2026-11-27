@@ -160,7 +160,11 @@ public class JobTemplateService : IJobTemplateService
 				continue;
 			}
 
-			if (template.ProviderId is Guid pinned &&
+			// A template on a profile runs wherever it is sent, like a job given that profile.
+			// Only one still pinned to a bare provider is held to the project's list, since
+			// such a job is planned from that list alone.
+			if (template.ProfileId == null &&
+				template.ProviderId is Guid pinned &&
 				allowedProvidersByProject[project.Id].Any() &&
 				!allowedProvidersByProject[project.Id].Contains(pinned))
 			{
@@ -208,6 +212,7 @@ public class JobTemplateService : IJobTemplateService
 			JobTemplateId = template.Id,
 			Title = template.Name,
 			GoalPrompt = template.GoalPrompt,
+			ProfileId = template.ProfileId,
 			ProviderId = template.ProviderId ?? Guid.Empty,
 			ModelUsed = pinsProvider ? template.ModelId : null,
 			ReasoningEffort = pinsProvider ? template.ReasoningEffort : null,
@@ -234,6 +239,7 @@ public class JobTemplateService : IJobTemplateService
 		ArgumentNullException.ThrowIfNull(template);
 
 		NormalizeTemplate(template);
+		await ApplyProfileLinkAsync(template, cancellationToken);
 		ValidationHelper.ValidateObject(template);
 		await ValidateReferencesAsync(template, cancellationToken);
 		await EnsureNameIsUniqueAsync(template.Name, null, cancellationToken);
@@ -265,6 +271,7 @@ public class JobTemplateService : IJobTemplateService
 		existing.ProviderId = template.ProviderId;
 		existing.ModelId = template.ModelId;
 		existing.ReasoningEffort = template.ReasoningEffort;
+		existing.ProfileId = template.ProfileId;
 		existing.Branch = template.Branch;
 		existing.GitChangeDeliveryMode = template.GitChangeDeliveryMode;
 		existing.TargetBranch = template.TargetBranch;
@@ -275,6 +282,7 @@ public class JobTemplateService : IJobTemplateService
 		existing.UpdatedAt = DateTime.UtcNow;
 
 		NormalizeTemplate(existing);
+		await ApplyProfileLinkAsync(existing, cancellationToken);
 		ValidationHelper.ValidateObject(existing);
 		await ValidateReferencesAsync(existing, cancellationToken);
 		await EnsureNameIsUniqueAsync(existing.Name, existing.Id, cancellationToken);
@@ -325,6 +333,24 @@ public class JobTemplateService : IJobTemplateService
 		{
 			throw new ValidationException($"A job template named '{name}' already exists.");
 		}
+	}
+
+	/// <summary>
+	/// Fills the template's provider, model and reasoning from its linked profile, whatever the
+	/// client sent, and gives a template that pins a provider without a profile the matching one.
+	/// </summary>
+	private async Task ApplyProfileLinkAsync(JobTemplate template, CancellationToken cancellationToken)
+	{
+		if (template.ProfileId is Guid profileId)
+		{
+			var profiles = await _dbContext.Profiles
+				.AsNoTracking()
+				.Where(profile => profile.Id == profileId)
+				.ToDictionaryAsync(profile => profile.Id, cancellationToken);
+			ProfileLinks.ApplyTemplateLink(template, profiles);
+		}
+
+		await ProfileService.LinkTemplateAsync(_dbContext, template, cancellationToken);
 	}
 
 	private async Task ValidateReferencesAsync(JobTemplate template, CancellationToken cancellationToken)

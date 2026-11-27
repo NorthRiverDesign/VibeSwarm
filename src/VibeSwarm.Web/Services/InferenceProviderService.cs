@@ -81,6 +81,9 @@ public class InferenceProviderService : IInferenceProviderService
 
 		_db.InferenceProviders.Remove(provider);
 		await _db.SaveChangesAsync(ct);
+
+		// Its profiles went with it; settings that pointed at them are cleared.
+		await ProfileService.EnsureSettingsHaveProfilesAsync(_db, ct);
 	}
 
 	public async Task ReorderAsync(IReadOnlyList<Guid> orderedProviderIds, CancellationToken ct = default)

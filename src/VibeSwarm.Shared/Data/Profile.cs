@@ -6,8 +6,9 @@ namespace VibeSwarm.Shared.Data;
 
 /// <summary>
 /// A named combination of a coding provider, a model and a reasoning level, picked wherever a job,
-/// a planner, a reviewer or the Lead needs one. Project settings that link a profile copy its
-/// values, and saving the profile writes the new values through to every link.
+/// a planner, a reviewer or the Lead needs one. A setting that links a profile copies its values,
+/// and saving the profile writes the new values through to every link. Every setting that runs
+/// on a provider links one, so the app never shows a bare provider, model and reasoning.
 /// </summary>
 public class Profile
 {

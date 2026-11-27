@@ -399,6 +399,7 @@ public partial class JobService : IJobService
         job.RequestedInstances = 1;
         NormalizeJobForPersistence(job);
         await ApplySelectedAgentDefaultsAsync(job, cancellationToken);
+        await ApplyJobProfileAsync(job, cancellationToken);
         NormalizeJobForPersistence(job);
         await ValidateRequestedExecutionAsync(job, cancellationToken);
 
@@ -535,6 +536,8 @@ public partial class JobService : IJobService
                 ProviderId = primaryJob.ProviderId,
                 ModelUsed = primaryJob.ModelUsed,
                 ReasoningEffort = primaryJob.ReasoningEffort,
+                ProfileId = primaryJob.ProfileId,
+                ProfileName = primaryJob.ProfileName,
                 ExecutionPlan = primaryJob.ExecutionPlan,
                 ActiveExecutionIndex = 0,
                 Branch = primaryJob.Branch,
@@ -598,6 +601,23 @@ public partial class JobService : IJobService
         var swarmId = Guid.NewGuid();
         var createdJobs = new List<Job>();
 
+        // Each role's job names the profile its assignment runs on, replacing whatever profile
+        // the job was created with.
+        var assignmentProfileIds = enabledAssignments
+            .Where(assignment => assignment.ProfileId.HasValue)
+            .Select(assignment => assignment.ProfileId!.Value)
+            .Distinct()
+            .ToList();
+        var profileNames = await _dbContext.Profiles
+            .Where(profile => assignmentProfileIds.Contains(profile.Id))
+            .ToDictionaryAsync(profile => profile.Id, profile => profile.Name, cancellationToken);
+        void RecordProfile(Job roleJob, ProjectAgent assignment)
+        {
+            var named = assignment.ProfileId is Guid id && profileNames.ContainsKey(id);
+            roleJob.ProfileId = named ? assignment.ProfileId : null;
+            roleJob.ProfileName = named ? profileNames[assignment.ProfileId!.Value] : null;
+        }
+
         // Assign the first role to the primary job
         var primaryJobDb = await _dbContext.Jobs.FindAsync(new object[] { primaryJob.Id }, cancellationToken);
         if (primaryJobDb != null)
@@ -608,12 +628,14 @@ public partial class JobService : IJobService
 			primaryJobDb.ModelUsed = null;
 			primaryJobDb.ReasoningEffort = null;
 			AgentPresetHelper.ApplyExecutionDefaults(primaryJobDb, firstAssignment);
+            RecordProfile(primaryJobDb, firstAssignment);
             // Update the in-memory job so callers see the changes
             primaryJob.SwarmId = swarmId;
 			primaryJob.ProviderId = Guid.Empty;
 			primaryJob.ModelUsed = null;
 			primaryJob.ReasoningEffort = null;
 			AgentPresetHelper.ApplyExecutionDefaults(primaryJob, firstAssignment);
+            RecordProfile(primaryJob, firstAssignment);
         }
 
         // Create sibling jobs for each remaining role
@@ -643,6 +665,7 @@ public partial class JobService : IJobService
             };
 
 			AgentPresetHelper.ApplyExecutionDefaults(roleJob, assignment);
+            RecordProfile(roleJob, assignment);
             await InitializeExecutionPlanAsync(roleJob, cancellationToken);
 
             _dbContext.Jobs.Add(roleJob);

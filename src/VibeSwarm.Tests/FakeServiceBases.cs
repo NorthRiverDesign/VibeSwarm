@@ -185,7 +185,7 @@ internal abstract class FakeJobServiceBase : IJobService
 	public virtual Task<FollowUpDraft> DraftFollowUpAsync(Guid id, FollowUpDraftRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, Guid? profileId = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<bool> UpdateJobPromptAsync(Guid id, string newPrompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<int> DeleteCompletedByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();

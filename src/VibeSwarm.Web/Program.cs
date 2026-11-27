@@ -284,6 +284,18 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine($"Could not create default profiles: {ex.Message}");
     }
 
+    // The app only shows profiles, so settings saved as a bare provider, model and reasoning
+    // (from before profiles, or left by an import) are linked to the profile that matches them.
+    try
+    {
+        await VibeSwarm.Web.Services.ProfileService.EnsureSettingsHaveProfilesAsync(
+            scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>());
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Could not link settings to profiles: {ex.Message}");
+    }
+
     // Serve HTTP only unless HTTPS is turned on in Settings, so LAN and VPN browsers don't
     // hit a self-signed certificate warning. Read once here; changing it needs a restart.
     var enableHttps = await scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>().AppSettings

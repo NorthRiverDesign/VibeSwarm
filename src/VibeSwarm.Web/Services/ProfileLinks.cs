@@ -1,4 +1,5 @@
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Services;
@@ -6,24 +7,26 @@ namespace VibeSwarm.Web.Services;
 /// <summary>
 /// Copies a linked profile's provider, model and reasoning into the settings that point at it:
 /// a project's planning, review and Lead, its provider-priority entries and agent assignments,
-/// and an agent's defaults. Every consumer keeps reading the copied values, so a profile only
-/// ever changes what a setting holds, never how it is read. Only coding profiles fill these
-/// slots, apart from review, which an inference provider can also do.
+/// an agent's defaults and a job template. Every consumer keeps reading the copied values, so a
+/// profile only ever changes what a setting holds, never how it is read. Only coding profiles
+/// fill these slots, apart from review, which an inference provider can also do. Which profile
+/// may fill which role is decided by <see cref="ProfileRoles"/>.
 /// </summary>
 public static class ProfileLinks
 {
 	/// <summary>
-	/// Planning, review and the Lead run read-only, which only Claude and Copilot can do.
+	/// What a job run on the profile gets. A model or reasoning level the profile leaves open
+	/// falls to its provider's default, so the answer never depends on who asks. The profile's
+	/// provider must be loaded.
 	/// </summary>
-	public static bool CanRunReadOnly(Profile profile)
-		=> profile.ProviderId.HasValue && profile.Provider != null && ProviderPlanningHelper.SupportsPlanningMode(profile.Provider.Type);
-
-	/// <summary>
-	/// Whether a running job can put questions to the profile: a Claude or Copilot profile reads
-	/// the repository read-only, an inference profile sees only the question.
-	/// </summary>
-	public static bool CanHelpJobs(Profile profile)
-		=> CanRunReadOnly(profile) || (profile.InferenceProviderId.HasValue && profile.InferenceProvider != null);
+	public static (Guid ProviderId, string? ModelId, string? ReasoningEffort) ResolveForJob(Profile profile, string? providerDefaultModelId)
+	{
+		var provider = profile.Provider ?? throw new InvalidOperationException("The profile's provider is not loaded.");
+		return (
+			provider.Id,
+			string.IsNullOrWhiteSpace(profile.ModelId) ? providerDefaultModelId : profile.ModelId,
+			ProviderCapabilities.NormalizeReasoningEffort(profile.ReasoningEffort ?? provider.DefaultReasoningEffort));
+	}
 
 	/// <summary>
 	/// Fills the project's planning, review and Lead settings from their linked profiles. A link
@@ -87,12 +90,12 @@ public static class ProfileLinks
 	/// <summary>Drops a Decisions or Research link to a profile that is missing or can't help a job.</summary>
 	public static void ApplyHelperLinks(Project project, IReadOnlyDictionary<Guid, Profile> profiles)
 	{
-		if (project.DecisionsProfileId is Guid decisionsId && !(profiles.TryGetValue(decisionsId, out var decisions) && CanHelpJobs(decisions)))
+		if (project.DecisionsProfileId is Guid decisionsId && !(profiles.TryGetValue(decisionsId, out var decisions) && ProfileRoles.CanHelpJobs(decisions)))
 		{
 			project.DecisionsProfileId = null;
 		}
 
-		if (project.ResearchProfileId is Guid researchId && !(profiles.TryGetValue(researchId, out var research) && CanHelpJobs(research)))
+		if (project.ResearchProfileId is Guid researchId && !(profiles.TryGetValue(researchId, out var research) && ProfileRoles.CanHelpJobs(research)))
 		{
 			project.ResearchProfileId = null;
 		}
@@ -155,6 +158,25 @@ public static class ProfileLinks
 		assignment.PreferredReasoningEffort = profile.ReasoningEffort;
 	}
 
+	/// <summary>Fills a job template's provider, model and reasoning from its linked coding profile, or drops the link.</summary>
+	public static void ApplyTemplateLink(JobTemplate template, IReadOnlyDictionary<Guid, Profile> profiles)
+	{
+		if (template.ProfileId is not Guid profileId)
+		{
+			return;
+		}
+
+		if (!profiles.TryGetValue(profileId, out var profile) || profile.ProviderId is not Guid providerId)
+		{
+			template.ProfileId = null;
+			return;
+		}
+
+		template.ProviderId = providerId;
+		template.ModelId = profile.ModelId;
+		template.ReasoningEffort = profile.ReasoningEffort;
+	}
+
 	/// <summary>Every profile id the project, its provider entries and its agent assignments link to.</summary>
 	public static HashSet<Guid> GetLinkedProfileIds(Project project)
 	{
@@ -187,5 +209,5 @@ public static class ProfileLinks
 	}
 
 	private static Profile? TryGetReadOnlyProfile(IReadOnlyDictionary<Guid, Profile> profiles, Guid id)
-		=> profiles.TryGetValue(id, out var profile) && CanRunReadOnly(profile) ? profile : null;
+		=> profiles.TryGetValue(id, out var profile) && ProfileRoles.CanRunReadOnly(profile) ? profile : null;
 }

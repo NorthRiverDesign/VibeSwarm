@@ -297,7 +297,7 @@ public partial class JobService
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default)
+    public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, Guid? profileId = null, CancellationToken cancellationToken = default)
     {
         var job = await _dbContext.Jobs
             .Include(j => j.Statistics)
@@ -310,7 +310,7 @@ public partial class JobService
             return false;
         }
 
-        var success = await ResetJobWithOptionsInternalAsync(job, providerId, modelId, reasoningEffort, cancellationToken);
+        var success = await ResetJobWithOptionsInternalAsync(job, providerId, modelId, reasoningEffort, profileId, cancellationToken);
         if (!success)
         {
             return false;
@@ -357,7 +357,7 @@ public partial class JobService
         var retriedJobs = new List<Job>();
         foreach (var job in jobs)
         {
-            var success = await ResetJobWithOptionsInternalAsync(job, null, null, null, cancellationToken);
+            var success = await ResetJobWithOptionsInternalAsync(job, null, null, null, null, cancellationToken);
             if (success)
             {
                 retriedJobs.Add(job);
@@ -394,14 +394,24 @@ public partial class JobService
         return retriedJobs.Count;
     }
 
-    private async Task<bool> ResetJobWithOptionsInternalAsync(Job job, Guid? providerId, string? modelId, string? reasoningEffort, CancellationToken cancellationToken)
+    private async Task<bool> ResetJobWithOptionsInternalAsync(Job job, Guid? providerId, string? modelId, string? reasoningEffort, Guid? profileId, CancellationToken cancellationToken)
     {
         if (job.Status == JobStatus.Completed)
         {
             return false;
         }
 
-        if (providerId.HasValue && providerId.Value != job.ProviderId)
+        // What the retry runs on: the profile it names; else whatever provider, model or
+        // reasoning it spells out (an older client); else the job's own profile again, so a plain
+        // retry keeps the model and reasoning the job was given.
+        var spellsOutExecution = providerId.HasValue || !string.IsNullOrWhiteSpace(modelId) || !string.IsNullOrWhiteSpace(reasoningEffort);
+        var profile = await ResolveJobProfileAsync(profileId, cancellationToken);
+        if (profile == null && !spellsOutExecution)
+        {
+            profile = await ResolveJobProfileAsync(job.ProfileId, cancellationToken);
+        }
+
+        if (profile == null && providerId.HasValue && providerId.Value != job.ProviderId)
         {
             var provider = await _dbContext.Providers
                 .FirstOrDefaultAsync(p => p.Id == providerId.Value && p.IsEnabled, cancellationToken);
@@ -452,6 +462,7 @@ public partial class JobService
         job.SessionId = null;
         job.ModelUsed = modelId;
         job.ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(reasoningEffort);
+        ApplyResolvedProfile(job, profile);
         job.RetryCount++;
         job.ActiveExecutionIndex = 0;
         job.ExecutionPlan = null;

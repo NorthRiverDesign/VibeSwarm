@@ -211,6 +211,32 @@ public sealed class JobTemplateRunTests : IDisposable
 	}
 
 	[Fact]
+	public async Task RunAsync_OnAProfile_RunsEvenWhereTheProjectDoesntListItsProvider()
+	{
+		using var scope = _rootProvider.CreateScope();
+		var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+		var claude = SeedProvider(dbContext);
+		var copilot = SeedProvider(dbContext);
+		copilot.Name = "Copilot only";
+		copilot.IsDefault = false;
+		var copilotOnly = SeedProject(dbContext, copilot.Id, "Beta");
+		await dbContext.SaveChangesAsync();
+		var service = CreateService(dbContext, scope);
+
+		// Saving a template that pins a provider gives it the profile matching what it pins.
+		var template = await service.CreateAsync(new JobTemplate { Name = "Update dependencies", GoalPrompt = "Bring every dependency up to date.", ProviderId = claude.Id, ModelId = "gpt-5" });
+		Assert.NotNull(template.ProfileId);
+
+		var result = await service.RunAsync(template.Id, [copilotOnly.Id]);
+
+		var jobId = result.Projects.Single().JobId;
+		Assert.NotNull(jobId);
+		var job = await dbContext.Jobs.AsNoTracking().SingleAsync(item => item.Id == jobId);
+		Assert.Equal((claude.Id, "gpt-5", template.ProfileId), (job.ProviderId, job.ModelUsed, job.ProfileId));
+		Assert.Contains($"\"ProviderId\":\"{claude.Id}\"", job.ExecutionPlan![..120]);
+	}
+
+	[Fact]
 	public async Task GetRunsAsync_ReturnsTheLatestTopLevelJobPerProject()
 	{
 		using var scope = _rootProvider.CreateScope();
@@ -250,16 +276,21 @@ public sealed class JobTemplateRunTests : IDisposable
 				var migrations = dbContext.Database.GetMigrations().ToList();
 				var index = migrations.FindIndex(id => id.EndsWith("_ClearProjectSettingsFromTemplates", StringComparison.Ordinal));
 				migrator.Migrate(migrations[index - 1]);
-				dbContext.JobTemplates.Add(new JobTemplate
+
+				// Seeded with SQL against the schema as it was then: the current model has
+				// columns later migrations add, which an EF insert would name.
+				var connection = dbContext.Database.GetDbConnection();
+				connection.Open();
+				MigrationSeed.InsertRow(connection, "JobTemplates", new()
 				{
-					Id = Guid.NewGuid(),
-					Name = "Saved from a job",
-					GoalPrompt = "Fix the bug",
-					Branch = "develop",
-					TargetBranch = "main",
-					GitChangeDeliveryMode = GitChangeDeliveryMode.PullRequest
+					["Id"] = MigrationSeed.SqliteGuid(Guid.NewGuid()),
+					["Name"] = "Saved from a job",
+					["GoalPrompt"] = "Fix the bug",
+					["Branch"] = "develop",
+					["TargetBranch"] = "main",
+					["GitChangeDeliveryMode"] = (int)GitChangeDeliveryMode.PullRequest,
+					["CreatedAt"] = "2026-11-18 12:00:00",
 				});
-				dbContext.SaveChanges();
 
 				migrator.Migrate();
 			}

@@ -34,6 +34,12 @@ public class JobTemplate
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? ReasoningEffort { get; set; }
 
+	/// <summary>
+	/// The profile the provider, model and reasoning above come from. Saving the profile updates
+	/// them. Null leaves the choice to each project.
+	/// </summary>
+	public Guid? ProfileId { get; set; }
+
 	[StringLength(ValidationLimits.JobTemplateBranchMaxLength)]
 	public string? Branch { get; set; }
 
