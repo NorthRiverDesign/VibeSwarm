@@ -162,6 +162,34 @@ public sealed class ProfilePickerTests
 	}
 
 	[Fact]
+	public void RetryDialog_ForAJobFromBeforeProfiles_StartsOnWhatItsProjectBuildsWith()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
+		context.Services.AddSingleton<IProfileService>(new FakeProfileService(All));
+		// A job is read without its project's Build order, so the dialog reads the project itself.
+		var projectId = Guid.NewGuid();
+		var project = new Project
+		{
+			Id = projectId,
+			ProviderSelections = [new ProjectProvider { ProviderId = Claude.Id, ProfileId = Deep.Id, IsEnabled = true }]
+		};
+		context.Services.AddSingleton<IProjectService>(new ProjectWithBuildOrder(project));
+		var job = new Job { Id = Guid.NewGuid(), ProjectId = projectId, Project = new Project { Id = projectId }, ProviderId = Claude.Id, ModelUsed = "claude-opus-reported" };
+
+		var cut = context.Render<RetryJobModal>(parameters => parameters.Add(modal => modal.IsVisible, true).Add(modal => modal.Job, job));
+
+		cut.WaitForAssertion(() => Assert.Equal(Deep.Id.ToString(), cut.Find("#retryProfile").GetAttribute("value")));
+		Assert.Equal("Deep thinker", cut.FindAll("#retryProfile option")[0].TextContent);
+	}
+
+	private sealed class ProjectWithBuildOrder(Project project) : FakeProjectServiceBase
+	{
+		public override Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+			=> Task.FromResult(id == project.Id ? project : null);
+	}
+
+	[Fact]
 	public void TemplateEditor_PicksAProfileOrLeavesItToEachProject()
 	{
 		using var context = new BunitContext();

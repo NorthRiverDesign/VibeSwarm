@@ -149,6 +149,36 @@ public sealed class ProfileServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task UpdateAsync_IsNotHeldBackByARoleThatIsSwitchedOff()
+	{
+		var (claude, _, openCode) = await SeedProvidersAsync();
+		Guid profileId;
+		await using (var dbContext = CreateDbContext())
+		{
+			profileId = (await new ProfileService(dbContext).CreateAsync(new Profile { Name = "Was the planner", ProviderId = claude.Id, ModelId = "opus" })).Id;
+			// Planning and review are off; they only remember the profile they last used.
+			var project = NewProject("Quiet");
+			project.PlanningProfileId = profileId;
+			project.PlanningProviderId = claude.Id;
+			project.ReviewProfileId = profileId;
+			project.ReviewProviderId = claude.Id;
+			dbContext.Projects.Add(project);
+			await dbContext.SaveChangesAsync();
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			var moved = await new ProfileService(dbContext).UpdateAsync(new Profile { Id = profileId, Name = "Was the planner", ProviderId = openCode.Id, ModelId = "big" });
+			Assert.Equal(openCode.Id, moved.ProviderId);
+
+			// Saving that project again isn't refused either.
+			var project = await dbContext.Projects.AsNoTracking().SingleAsync();
+			project.Description = "Edited";
+			await CreateProjectService(dbContext).UpdateAsync(project);
+		}
+	}
+
+	[Fact]
 	public async Task UpdateAsync_LeavesLinksToOtherProfilesAlone()
 	{
 		var (claude, copilot, _) = await SeedProvidersAsync();

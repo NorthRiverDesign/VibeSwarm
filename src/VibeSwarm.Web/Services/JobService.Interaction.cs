@@ -403,12 +403,18 @@ public partial class JobService
 
         // What the retry runs on: the profile it names; else whatever provider, model or
         // reasoning it spells out (an older client); else the job's own profile again, so a plain
-        // retry keeps the model and reasoning the job was given.
+        // retry keeps the model and reasoning the job was given. A job from before jobs kept a
+        // profile retries on the one its project builds with, as a new job there would; an
+        // agent's job keeps the agent's settings.
         var spellsOutExecution = providerId.HasValue || !string.IsNullOrWhiteSpace(modelId) || !string.IsNullOrWhiteSpace(reasoningEffort);
         var profile = await ResolveJobProfileAsync(profileId, cancellationToken);
         if (profile == null && !spellsOutExecution)
         {
             profile = await ResolveJobProfileAsync(job.ProfileId, cancellationToken);
+            if (profile == null && !job.AgentId.HasValue)
+            {
+                profile = await ResolveBuildProfileAsync(job.ProjectId, cancellationToken);
+            }
         }
 
         if (profile == null && providerId.HasValue && providerId.Value != job.ProviderId)

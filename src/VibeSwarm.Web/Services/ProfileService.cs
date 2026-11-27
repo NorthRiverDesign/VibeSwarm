@@ -351,13 +351,15 @@ public class ProfileService : IProfileService
 			.AsNoTracking()
 			.Where(project => project.PlanningProfileId == id || project.ReviewProfileId == id || project.LeadProfileId == id
 				|| project.DecisionsProfileId == id || project.ResearchProfileId == id)
-			.Select(project => new { project.Name, project.PlanningProfileId, project.ReviewProfileId, project.LeadProfileId, project.DecisionsProfileId, project.ResearchProfileId })
+			.Select(project => new { project.Name, project.PlanningEnabled, project.ReviewEnabled, project.PlanningProfileId, project.ReviewProfileId, project.LeadProfileId, project.DecisionsProfileId, project.ResearchProfileId })
 			.ToListAsync(cancellationToken);
 		foreach (var project in projects)
 		{
-			var role = !ProfileRoles.CanRunReadOnly(moved) && project.PlanningProfileId == id ? "Plan first"
+			// A planner or reviewer that is switched off keeps its last profile without using
+			// it, so it never stands in the way.
+			var role = !ProfileRoles.CanRunReadOnly(moved) && project.PlanningEnabled && project.PlanningProfileId == id ? "Plan first"
 				: !ProfileRoles.CanRunReadOnly(moved) && project.LeadProfileId == id ? "Lead"
-				: !ProfileRoles.CanHelpJobs(moved) && project.ReviewProfileId == id ? "Review"
+				: !ProfileRoles.CanHelpJobs(moved) && project.ReviewEnabled && project.ReviewProfileId == id ? "Review"
 				: !ProfileRoles.CanHelpJobs(moved) && project.DecisionsProfileId == id ? "Decisions"
 				: !ProfileRoles.CanHelpJobs(moved) && project.ResearchProfileId == id ? "Research"
 				: null;

@@ -5,7 +5,7 @@
 @implements IDisposable
 @inject IServiceProvider Services
 
-<div class="d-flex flex-column gap-3 mb-7">
+<div class="d-flex flex-column gap-3 my-7">
 	<SectionHeader Title="Workflow" Subtitle="Who does what on this project. Each role runs on a profile." />
 	<div class="list-group rounded-9">
 		<ListRow Icon="hammer" Title="Build" Subtitle="@BuildSummary">
@@ -45,7 +45,7 @@
 			<Trailing>@OffLabel(Project.PlanningEnabled)</Trailing>
 			<ChildContent>
 				<p class="small fg-1 mb-0">Before a job builds, this profile reads the code and writes the plan the builder follows. It also turns an idea into a plan you can check. Needs Claude Code or Copilot.</p>
-				<ProfilePicker Id="workflow-plan" Label="Plan with" Profiles="Known" Allowed="ProfileRoles.CanRunReadOnly"
+				<ProfilePicker Id="workflow-plan" Label="Plan with" Profiles="Known" Allowed="CanReadCode"
 							   SelectedProfileId="PlanProfileId" EmptyLabel="Off" OnSelected="SetPlan" />
 			</ChildContent>
 		</ListRow>
@@ -54,7 +54,7 @@
 			<Trailing>@OffLabel(Project.ReviewEnabled)</Trailing>
 			<ChildContent>
 				<p class="small fg-1 mb-0">When the builder finishes, the build and tests run, then this profile reads the change against the goal. Problems go back to the builder for up to @JobReview.MaxRounds fixes. If the reviewer can't run, the work is delivered as it is.</p>
-				<ProfilePicker Id="workflow-review" Label="Review with" Profiles="Known" Allowed="ProfileRoles.CanHelpJobs"
+				<ProfilePicker Id="workflow-review" Label="Review with" Profiles="Known" Allowed="CanAnswer"
 							   SelectedProfileId="ReviewProfileId" EmptyLabel="Off" OnSelected="SetReview"
 							   EmptyHint="A different model from the builder gives the most independent check." />
 				@if (DescribeAccess(ReviewProfileId, "Reads the code as well as the change.", "Reads the change only.") is { } reviewAccess)
@@ -68,7 +68,7 @@
 			<Trailing>@OffLabel(Project.ResearchProfileId.HasValue)</Trailing>
 			<ChildContent>
 				<p class="small fg-1 mb-0">While a job runs, the builder can ask this profile to look things up: libraries, APIs, current facts and how others solve a problem. A run can ask @ValidationLimits.JobHelperQuestionsPerRun questions across its helpers.</p>
-				<ProfilePicker Id="workflow-research" Label="Research with" Profiles="Known" Allowed="ProfileRoles.CanHelpJobs"
+				<ProfilePicker Id="workflow-research" Label="Research with" Profiles="Known" Allowed="CanAnswer"
 							   SelectedProfileId="Project.ResearchProfileId" EmptyLabel="Off"
 							   OnSelected="profile => Project.ResearchProfileId = profile?.Id" />
 				@if (DescribeAccess(Project.ResearchProfileId, "Reads the repository to answer.", "Sees only the question, not the code.") is { } researchAccess)
@@ -82,7 +82,7 @@
 			<Trailing>@OffLabel(Project.DecisionsProfileId.HasValue)</Trailing>
 			<ChildContent>
 				<p class="small fg-1 mb-0">While a job runs, the builder can ask this profile for a second opinion before it settles a design or an approach.</p>
-				<ProfilePicker Id="workflow-decisions" Label="Decide with" Profiles="Known" Allowed="ProfileRoles.CanHelpJobs"
+				<ProfilePicker Id="workflow-decisions" Label="Decide with" Profiles="Known" Allowed="CanAnswer"
 							   SelectedProfileId="Project.DecisionsProfileId" EmptyLabel="Off"
 							   OnSelected="profile => Project.DecisionsProfileId = profile?.Id" />
 				@if (DescribeAccess(Project.DecisionsProfileId, "Reads the repository to answer.", "Sees only the question, not the code.") is { } decisionsAccess)
@@ -96,7 +96,7 @@
 			<Trailing>@OffLabel(Project.LeadProviderId.HasValue)</Trailing>
 			<ChildContent>
 				<p class="small fg-1 mb-0">The Lead reads the latest code, the project memory and how recent jobs went, then suggests the next ideas with a goal and acceptance criteria. Nothing runs until you approve it. Needs Claude Code or Copilot.</p>
-				<ProfilePicker Id="workflow-lead" Label="Lead with" Profiles="Known" Allowed="ProfileRoles.CanRunReadOnly"
+				<ProfilePicker Id="workflow-lead" Label="Lead with" Profiles="Known" Allowed="CanReadCode"
 							   SelectedProfileId="LeadProfileId" EmptyLabel="Off" OnSelected="SetLead"
 							   EmptyHint="A strong model works best here. It runs only when you ask, or when auto-pilot runs out of approved ideas." />
 				@if (Project.LeadProviderId.HasValue)
@@ -169,6 +169,14 @@
 		: Fallbacks.Count == 0
 			? "With no fallback, a job waits when this profile's provider is out of usage."
 			: string.Empty;
+
+	// A role is only offered a profile whose provider is turned on: one that is off would be
+	// refused on save, or skipped without a word when a job asks it for help.
+	private static bool IsOn(Profile profile) => profile.Provider?.IsEnabled ?? profile.InferenceProvider?.IsEnabled ?? false;
+
+	private static bool CanReadCode(Profile profile) => ProfileRoles.CanRunReadOnly(profile) && IsOn(profile);
+
+	private static bool CanAnswer(Profile profile) => ProfileRoles.CanHelpJobs(profile) && IsOn(profile);
 
 	// A project lists a provider once, so a fallback has to sit on one the list doesn't hold yet.
 	private bool CanBeFallback(Profile profile)
@@ -273,12 +281,12 @@
 	private void SetPlan(Profile? profile)
 	{
 		Project.PlanningEnabled = profile != null;
+		Project.PlanningProfileId = profile?.Id;
 		if (profile == null)
 		{
 			return;
 		}
 
-		Project.PlanningProfileId = profile.Id;
 		Project.PlanningProviderId = profile.ProviderId;
 		Project.PlanningModelId = profile.ModelId;
 		Project.PlanningReasoningEffort = profile.ReasoningEffort;
@@ -287,12 +295,12 @@
 	private void SetReview(Profile? profile)
 	{
 		Project.ReviewEnabled = profile != null;
+		Project.ReviewProfileId = profile?.Id;
 		if (profile == null)
 		{
 			return;
 		}
 
-		Project.ReviewProfileId = profile.Id;
 		Project.ReviewProviderId = profile.ProviderId;
 		Project.ReviewInferenceProviderId = profile.ProviderId.HasValue ? null : profile.InferenceProviderId;
 		Project.ReviewModelId = profile.ModelId;

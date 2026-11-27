@@ -48,12 +48,15 @@ public sealed class ProfilesUiTests
 		var thinker = new Profile { Id = Guid.NewGuid(), Name = "Deep thinker", ProviderId = Claude.Id, Provider = Claude, ModelId = "opus", ReasoningEffort = "high" };
 		var openCoder = new Profile { Id = Guid.NewGuid(), Name = "Open coder", ProviderId = OpenCode.Id, Provider = OpenCode };
 		var grokProfile = new Profile { Id = Guid.NewGuid(), Name = "Grok research", InferenceProviderId = grok.Id, InferenceProvider = grok, ModelId = "grok-4" };
+		// A provider that is turned off can't plan, review, answer or lead, whatever its kind.
+		var copilotOff = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = false };
+		var switchedOff = new Profile { Id = Guid.NewGuid(), Name = "Switched off", ProviderId = copilotOff.Id, Provider = copilotOff };
 		var project = new ProjectModalFormModel();
 		project.ProviderSelections.Add(new ProjectProvider { ProviderId = Claude.Id, ProfileId = claudeDefault.Id, IsEnabled = true });
 
 		var cut = context.Render<ProjectWorkflowSection>(parameters => parameters
 			.Add(section => section.Project, project)
-			.Add(section => section.Profiles, [claudeDefault, thinker, openCoder, grokProfile]));
+			.Add(section => section.Profiles, [claudeDefault, thinker, openCoder, grokProfile, switchedOff]));
 
 		// Closed, the list reads as who does what: the builder by name, every other role Off.
 		Assert.Equal(["Build", "Plan first", "Review", "Research", "Decisions", "Lead"], RowTitles(cut));
@@ -89,6 +92,7 @@ public sealed class ProfilesUiTests
 		Assert.Equal((true, thinker.Id, Claude.Id), (project.PlanningEnabled, project.PlanningProfileId!.Value, project.PlanningProviderId!.Value));
 		cut.Find("#workflow-plan").Change(string.Empty);
 		Assert.False(project.PlanningEnabled);
+		Assert.Null(project.PlanningProfileId);
 
 		OpenRow(cut, "Research");
 		OpenRow(cut, "Decisions");

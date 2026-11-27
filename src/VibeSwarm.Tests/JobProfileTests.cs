@@ -161,6 +161,28 @@ public sealed class JobProfileTests : IDisposable
 	}
 
 	[Fact]
+	public async Task Retry_OfAJobFromBeforeJobsKeptAProfile_RunsOnTheOneItsProjectBuildsWith()
+	{
+		// As an older client made it: a provider and model, no profile.
+		var job = await CreateAsync(new Job { ProviderId = _claude.Id, ModelUsed = "opus" });
+		Assert.Null(job.ProfileId);
+		using (var scope = _rootProvider.CreateScope())
+		{
+			var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+			var saved = await dbContext.Jobs.SingleAsync(item => item.Id == job.Id);
+			saved.Status = JobStatus.Failed;
+			saved.ModelUsed = "claude-opus-reported";
+			await dbContext.SaveChangesAsync();
+		}
+
+		Assert.True(await RetryAsync(job.Id));
+
+		// Not the reported model with no reasoning, which is what a plain retry used to leave.
+		var retried = await ReadAsync(job.Id);
+		Assert.Equal(((Guid?)_build.Id, "Build", "sonnet", "low"), (retried.ProfileId, retried.ProfileName, retried.ModelUsed, retried.ReasoningEffort));
+	}
+
+	[Fact]
 	public async Task Retry_OnAnotherProfile_SwitchesToIt()
 	{
 		var job = await CreateFailedAsync(_deep);

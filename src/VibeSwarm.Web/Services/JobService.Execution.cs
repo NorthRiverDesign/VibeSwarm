@@ -490,25 +490,33 @@ public partial class JobService
 		var resolved = await ResolveJobProfileAsync(job.ProfileId, cancellationToken);
 		if (resolved == null && job.ProviderId == Guid.Empty)
 		{
-			var buildOrder = await _dbContext.ProjectProviders
-				.Where(entry => entry.ProjectId == job.ProjectId && entry.IsEnabled
-					&& _dbContext.Providers.Any(provider => provider.Id == entry.ProviderId && provider.IsEnabled))
-				.OrderBy(entry => entry.Priority)
-				.Select(entry => entry.ProfileId)
-				.ToListAsync(cancellationToken);
-			var buildProfileId = buildOrder.Count > 0
-				? buildOrder[0]
-				// A project that lists nothing builds with the default provider's own profile.
-				: await _dbContext.Profiles
-					.Where(profile => profile.IsProviderDefault && profile.Provider != null && profile.Provider.IsEnabled)
-					.OrderByDescending(profile => profile.Provider!.IsDefault)
-					.ThenBy(profile => profile.Provider!.Name)
-					.Select(profile => (Guid?)profile.Id)
-					.FirstOrDefaultAsync(cancellationToken);
-			resolved = await ResolveJobProfileAsync(buildProfileId, cancellationToken);
+			resolved = await ResolveBuildProfileAsync(job.ProjectId, cancellationToken);
 		}
 
 		ApplyResolvedProfile(job, resolved);
+	}
+
+	/// <summary>
+	/// The profile the project builds with: its first enabled Build entry's, or the default
+	/// provider's own when the project lists nothing.
+	/// </summary>
+	private async Task<ResolvedJobProfile?> ResolveBuildProfileAsync(Guid projectId, CancellationToken cancellationToken)
+	{
+		var buildOrder = await _dbContext.ProjectProviders
+			.Where(entry => entry.ProjectId == projectId && entry.IsEnabled
+				&& _dbContext.Providers.Any(provider => provider.Id == entry.ProviderId && provider.IsEnabled))
+			.OrderBy(entry => entry.Priority)
+			.Select(entry => entry.ProfileId)
+			.ToListAsync(cancellationToken);
+		var buildProfileId = buildOrder.Count > 0
+			? buildOrder[0]
+			: await _dbContext.Profiles
+				.Where(profile => profile.IsProviderDefault && profile.Provider != null && profile.Provider.IsEnabled)
+				.OrderByDescending(profile => profile.Provider!.IsDefault)
+				.ThenBy(profile => profile.Provider!.Name)
+				.Select(profile => (Guid?)profile.Id)
+				.FirstOrDefaultAsync(cancellationToken);
+		return await ResolveJobProfileAsync(buildProfileId, cancellationToken);
 	}
 
 	/// <summary>Puts the profile's values on the job, or clears the job's profile when there is none.</summary>
@@ -561,35 +569,28 @@ public partial class JobService
 	private readonly record struct ResolvedJobProfile(Guid Id, string Name, Guid ProviderId, string? ModelId, string? ReasoningEffort);
 
 	/// <summary>
-	/// Names the profile an agent's job runs on: the one its project assignment links, else the
-	/// agent's own, when it is on the provider the job ended up with.
+	/// Names the profile an agent's job runs on. The job takes the agent's own defaults, so that
+	/// is the agent's own profile, and only while it sits on the provider the job ended up with.
+	/// (A team swarm hands each role its project assignment's profile instead, and records that.)
 	/// </summary>
 	private async Task RecordAgentProfileAsync(Job job, CancellationToken cancellationToken)
 	{
 		job.ProfileId = null;
 		job.ProfileName = null;
-		var assignmentProfileId = await _dbContext.ProjectAgents
-			.Where(assignment => assignment.ProjectId == job.ProjectId && assignment.AgentId == job.AgentId)
-			.Select(assignment => assignment.ProfileId)
-			.FirstOrDefaultAsync(cancellationToken);
 		var agentProfileId = await _dbContext.Agents
 			.Where(agent => agent.Id == job.AgentId)
 			.Select(agent => agent.ProfileId)
 			.FirstOrDefaultAsync(cancellationToken);
-		foreach (var profileId in new[] { assignmentProfileId, agentProfileId })
+		if (agentProfileId is not Guid id)
 		{
-			if (profileId is not Guid id)
-			{
-				continue;
-			}
+			return;
+		}
 
-			var profile = await _dbContext.Profiles.AsNoTracking().FirstOrDefaultAsync(candidate => candidate.Id == id, cancellationToken);
-			if (profile != null && profile.ProviderId == job.ProviderId)
-			{
-				job.ProfileId = profile.Id;
-				job.ProfileName = profile.Name;
-				return;
-			}
+		var profile = await _dbContext.Profiles.AsNoTracking().FirstOrDefaultAsync(candidate => candidate.Id == id, cancellationToken);
+		if (profile != null && profile.ProviderId == job.ProviderId)
+		{
+			job.ProfileId = profile.Id;
+			job.ProfileName = profile.Name;
 		}
 	}
 

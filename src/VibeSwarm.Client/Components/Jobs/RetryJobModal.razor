@@ -1,5 +1,6 @@
 @* Retries a failed job, on the profile it ran on or on another one. *@
 @inject IProfileService ProfileService
+@inject IServiceProvider Services
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Retry Job" Icon="arrow-repeat"
 	Size="ModalDialog.ModalSize.Default">
@@ -71,7 +72,11 @@
 	private bool IsSubmitting { get; set; }
 	private string? ErrorMessage { get; set; }
 
-	private IReadOnlyList<Profile> JobProfiles => ProjectExecutionDefaults.OrderJobProfiles(Job?.Project, Profiles);
+	// The job's project as the server has it now: a job is read without its project's Build
+	// order, and that order decides where a job with no profile of its own starts.
+	private Project? _buildProject;
+
+	private IReadOnlyList<Profile> JobProfiles => ProjectExecutionDefaults.OrderJobProfiles(_buildProject ?? Job?.Project, Profiles);
 
 	protected override async Task OnParametersSetAsync()
 	{
@@ -90,6 +95,7 @@
 		try
 		{
 			Profiles = (await ProfileService.GetAllAsync()).ToList();
+			_buildProject = await ProjectExecutionDefaults.LoadWithBuildOrderAsync(Services, Job?.Project ?? (Job == null ? null : new Project { Id = Job.ProjectId }));
 			SelectedProfileId = PickStartingProfileId();
 		}
 		catch (Exception ex)
@@ -118,7 +124,7 @@
 			?? runnable.FirstOrDefault(profile => profile.ProviderId == Job.ProviderId
 				&& string.Equals(profile.ModelId, Job.ModelUsed, StringComparison.Ordinal)
 				&& string.Equals(profile.ReasoningEffort, Job.ReasoningEffort, StringComparison.Ordinal)))?.Id
-			?? ProjectExecutionDefaults.GetBuildProfileId(Job.Project, Profiles);
+			?? ProjectExecutionDefaults.GetBuildProfileId(_buildProject ?? Job.Project, Profiles);
 	}
 
 	private async Task Submit()

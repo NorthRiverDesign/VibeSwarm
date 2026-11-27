@@ -26,6 +26,29 @@ public static class ProjectExecutionDefaults
 	}
 
 	/// <summary>
+	/// Reads the project again for its Build order. A caller's own copy is often a list row or a
+	/// job's project, loaded without it; such a copy would start every job on the default
+	/// provider's profile instead of the one the project builds with. Falls back to the copy given.
+	/// </summary>
+	public static async Task<Project?> LoadWithBuildOrderAsync(IServiceProvider services, Project? project)
+	{
+		// Resolved lazily so pages and tests that never open a job form need no registration.
+		if (project == null || project.Id == Guid.Empty || services.GetService(typeof(IProjectService)) is not IProjectService projectService)
+		{
+			return project;
+		}
+
+		try
+		{
+			return await projectService.GetByIdAsync(project.Id) ?? project;
+		}
+		catch (HttpRequestException)
+		{
+			return project;
+		}
+	}
+
+	/// <summary>
 	/// The profile a new job on the project starts on: its first Build entry's, as the server
 	/// picks for a job that names none. A project with no Build order starts on the default
 	/// provider's own profile.

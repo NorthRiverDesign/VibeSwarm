@@ -1058,7 +1058,8 @@ public class ProjectService : IProjectService
 	{
 		Profile? Linked(Guid? profileId) => profileId is Guid id && profiles.TryGetValue(id, out var profile) ? profile : null;
 
-		foreach (var (role, profileId) in new[] { ("Plan first", project.PlanningProfileId), ("Lead", project.LeadProfileId) })
+		// A planner or reviewer that is switched off keeps its last profile without using it.
+		foreach (var (role, profileId) in new[] { ("Plan first", project.PlanningEnabled ? project.PlanningProfileId : null), ("Lead", project.LeadProfileId) })
 		{
 			if (Linked(profileId) is { } profile && !ProfileRoles.CanRunReadOnly(profile))
 			{
@@ -1066,7 +1067,7 @@ public class ProjectService : IProjectService
 			}
 		}
 
-		foreach (var (role, profileId) in new[] { ("Review", project.ReviewProfileId), ("Decisions", project.DecisionsProfileId), ("Research", project.ResearchProfileId) })
+		foreach (var (role, profileId) in new[] { ("Review", project.ReviewEnabled ? project.ReviewProfileId : null), ("Decisions", project.DecisionsProfileId), ("Research", project.ResearchProfileId) })
 		{
 			if (Linked(profileId) is { } profile && !ProfileRoles.CanHelpJobs(profile))
 			{

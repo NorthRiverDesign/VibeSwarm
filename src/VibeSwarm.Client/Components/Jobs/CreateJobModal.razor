@@ -320,8 +320,12 @@ private bool ShowAdvancedOptions { get; set; }
 private bool _openInstancesSection;
 private List<Profile> _profiles = [];
 
+// The project as the server has it now. The page's own copy may be a list row without its
+// Build order, and that order decides which profile a new job starts on.
+private Project? _buildProject;
+
 /// <summary>Profiles a job can run on, the project's own Build order first.</summary>
-private IReadOnlyList<Profile> JobProfiles => ProjectExecutionDefaults.OrderJobProfiles(Project, _profiles);
+private IReadOnlyList<Profile> JobProfiles => ProjectExecutionDefaults.OrderJobProfiles(_buildProject ?? Project, _profiles);
 
 private string? InstancesSummary => FormModel.Instances > 1 ? $"×{FormModel.Instances}" : null;
 
@@ -361,12 +365,13 @@ if (IsVisible && !_previousIsVisible)
 {
 await RefreshAgentProjectAsync();
 await LoadProfilesAsync();
+_buildProject = await ProjectExecutionDefaults.LoadWithBuildOrderAsync(Services, Project);
 FormModel = CreateJobFormModel.FromJob(JobModel);
 // A new job starts on the project's Build profile, which is also what the server gives a
 // job that names none.
 if (JobProfiles.All(profile => profile.Id != FormModel.ProfileId))
 {
-	FormModel.ProfileId = ProjectExecutionDefaults.GetBuildProfileId(Project, _profiles);
+	FormModel.ProfileId = ProjectExecutionDefaults.GetBuildProfileId(_buildProject ?? Project, _profiles);
 }
 _openInstancesSection = FormModel.Instances > 1;
 _selectedTemplateId = JobModel.JobTemplateId;
@@ -495,7 +500,7 @@ private async Task SaveAsTemplateAsync()
 			GoalPrompt = JobModel.GoalPrompt,
 			// A job left on this project's own Build profile makes a template that leaves the
 			// profile to each project; only a profile picked instead is kept.
-			ProfileId = JobModel.ProfileId == ProjectExecutionDefaults.GetBuildProfileId(Project, _profiles) ? null : JobModel.ProfileId,
+			ProfileId = JobModel.ProfileId == ProjectExecutionDefaults.GetBuildProfileId(_buildProject ?? Project, _profiles) ? null : JobModel.ProfileId,
 			// Branch and delivery belong to this project, so the template leaves them to whichever
 			// project runs it.
 			CycleMode = JobModel.CycleMode,
