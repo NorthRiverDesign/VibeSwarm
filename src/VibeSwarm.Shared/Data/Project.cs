@@ -243,6 +243,12 @@ public class Project
 	public Guid? IdeasProcessingProviderId { get; set; }
 
 	/// <summary>
+	/// The profile queued ideas run on while Start All is active; the provider and model beside it
+	/// are copied from it. Null, with no provider either, runs them on the project's Build profile.
+	/// </summary>
+	public Guid? IdeasProcessingProfileId { get; set; }
+
+	/// <summary>
 	/// Optional model override used while Start All idea auto-processing is active.
 	/// </summary>
 	[StringLength(ValidationLimits.JobScheduleModelIdMaxLength)]

@@ -8,9 +8,39 @@
 	var selected = SelectedProfileId is Guid selectedId ? options.FirstOrDefault(profile => profile.Id == selectedId) : null;
 }
 
-<div class="@Class">
-	<label for="@Id" class="form-label">@Label</label>
-	<select @key="_resetCount" id="@Id" class="form-control" value="@(selected?.Id.ToString() ?? string.Empty)"
+@if (Bare)
+{
+	@Select(options, selected)
+}
+else
+{
+	<div class="@Class">
+		<label for="@Id" class="form-label">@Label</label>
+		@Select(options, selected)
+		@if (selected != null)
+		{
+			// A profile named after what it runs on needs no second line saying so.
+			var runsOn = ProfileRow.Describe(selected);
+			@if (!string.Equals(runsOn, selected.Name, StringComparison.OrdinalIgnoreCase))
+			{
+				<div class="form-text">@runsOn</div>
+			}
+		}
+		else if (options.Count == 0 && EmptyLabel == null)
+		{
+			<div class="form-text">No profile can do this yet. <a href="/providers">Add a provider</a> first.</div>
+		}
+		else if (!string.IsNullOrEmpty(EmptyHint))
+		{
+			<div class="form-text">@EmptyHint</div>
+		}
+	</div>
+}
+
+@code {
+	private const string NewProfileValue = "new";
+
+	private RenderFragment Select(List<Profile> options, Profile? selected) => @<select @key="_resetCount" id="@Id" class="@SelectClass" value="@(selected?.Id.ToString() ?? string.Empty)"
 			@onchange="HandleChanged" disabled="@Disabled">
 		@if (EmptyLabel != null)
 		{
@@ -28,28 +58,7 @@
 		{
 			<option value="@NewProfileValue">New profile…</option>
 		}
-	</select>
-	@if (selected != null)
-	{
-		// A profile named after what it runs on needs no second line saying so.
-		var runsOn = ProfileRow.Describe(selected);
-		@if (!string.Equals(runsOn, selected.Name, StringComparison.OrdinalIgnoreCase))
-		{
-			<div class="form-text">@runsOn</div>
-		}
-	}
-	else if (options.Count == 0 && EmptyLabel == null)
-	{
-		<div class="form-text">No profile can do this yet. <a href="/providers">Add a provider</a> first.</div>
-	}
-	else if (!string.IsNullOrEmpty(EmptyHint))
-	{
-		<div class="form-text">@EmptyHint</div>
-	}
-</div>
-
-@code {
-	private const string NewProfileValue = "new";
+	</select>;
 
 	[Parameter, EditorRequired]
 	public string Id { get; set; } = string.Empty;
@@ -85,6 +94,16 @@
 
 	[Parameter]
 	public bool Disabled { get; set; }
+
+	/// <summary>
+	/// Renders only the select, for a settings row that carries its own label (which must point
+	/// at <see cref="Id"/>) and has no room for a hint.
+	/// </summary>
+	[Parameter]
+	public bool Bare { get; set; }
+
+	[Parameter]
+	public string SelectClass { get; set; } = "form-control";
 
 	/// <summary>
 	/// For a picker that adds what is picked to a list instead of holding it: the select goes

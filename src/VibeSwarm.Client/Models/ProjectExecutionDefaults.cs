@@ -94,35 +94,4 @@ public static Provider? GetPreferredProvider(Project? project, IEnumerable<Provi
 {
 return GetAllowedProviders(project, providers).FirstOrDefault();
 }
-
-public static string ResolveModelId(Project? project, Guid providerId, IReadOnlyList<ProviderModel> models)
-{
-var availableModels = models
-.Where(model => model.IsAvailable)
-.ToList();
-var preferredModelId = project?.ProviderSelections?
-.Where(selection => selection.IsEnabled && selection.ProviderId == providerId)
-.OrderBy(selection => selection.Priority)
-.Select(selection => selection.PreferredModelId)
-.FirstOrDefault(modelId => !string.IsNullOrWhiteSpace(modelId));
-
-if (!string.IsNullOrWhiteSpace(preferredModelId) &&
-availableModels.Any(model => string.Equals(model.ModelId, preferredModelId, StringComparison.Ordinal)))
-{
-return preferredModelId;
-}
-
-	return availableModels.FirstOrDefault(model => model.IsDefault)?.ModelId ?? string.Empty;
-}
-
-public static string ResolveReasoningEffort(Project? project, Provider provider)
-{
-	var preferredReasoning = project?.ProviderSelections?
-		.Where(selection => selection.IsEnabled && selection.ProviderId == provider.Id)
-		.OrderBy(selection => selection.Priority)
-		.Select(selection => selection.PreferredReasoningEffort)
-		.FirstOrDefault(reasoning => !string.IsNullOrWhiteSpace(reasoning));
-
-	return ProviderCapabilities.NormalizeReasoningEffort(preferredReasoning ?? provider.DefaultReasoningEffort) ?? string.Empty;
-}
 }

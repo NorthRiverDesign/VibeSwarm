@@ -66,16 +66,23 @@ public partial class IdeaService
 				goalPrompt = BuildPromptWithAttachments(goalPrompt, idea.Attachments, attachmentPaths);
 			}
 
+			// Who runs it is the job service's call: the profile named here, else the profile the
+			// project builds with. Only an older caller that spells out a provider or a model
+			// without a profile has them worked out here, as before.
+			var spellsOutExecution = options?.ProfileId == null
+				&& (options?.ProviderId.HasValue == true || !string.IsNullOrWhiteSpace(options?.ModelId));
+
 			// Create the job with the original idea as the title
 			var job = new Job
 			{
 				ProjectId = idea.ProjectId,
-				ProviderId = defaultProvider.Id,
+				ProfileId = options?.ProfileId,
+				ProviderId = spellsOutExecution ? defaultProvider.Id : Guid.Empty,
 				Title = idea.Description,  // Use the original idea text as the title
 				GoalPrompt = goalPrompt,
 				Branch = branch,
-				ModelUsed = await ResolveJobModelAsync(idea.ProjectId, defaultProvider.Id, options, cancellationToken),
-				ReasoningEffort = await ResolveJobReasoningAsync(idea.ProjectId, defaultProvider.Id, cancellationToken),
+				ModelUsed = spellsOutExecution ? await ResolveJobModelAsync(idea.ProjectId, defaultProvider.Id, options, cancellationToken) : null,
+				ReasoningEffort = spellsOutExecution ? await ResolveJobReasoningAsync(idea.ProjectId, defaultProvider.Id, cancellationToken) : null,
 				AttachedFilesJson = attachmentPaths.Count > 0 ? JsonSerializer.Serialize(attachmentPaths) : null,
 				IterationLoopId = options?.IterationLoopId,
 				CommitModeOverride = options?.CommitModeOverride,
@@ -257,6 +264,7 @@ public partial class IdeaService
 				if (project?.IdeasProcessingActive == true)
 				{
 					project.IdeasProcessingActive = false;
+					project.IdeasProcessingProfileId = null;
 					project.IdeasProcessingProviderId = null;
 					project.IdeasProcessingModelId = null;
 					stoppedProcessing = true;

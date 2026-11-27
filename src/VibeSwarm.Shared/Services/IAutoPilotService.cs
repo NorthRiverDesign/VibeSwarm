@@ -27,7 +27,12 @@ public class AutoPilotConfig
 	public string? InferenceModelId { get; set; }
 
 	/// <summary>
-	/// CLI coding provider for job execution (e.g., Claude, Copilot).
+	/// The profile auto-pilot's jobs run on. Null runs them on the project's Build profile.
+	/// </summary>
+	public Guid? ProfileId { get; set; }
+
+	/// <summary>
+	/// A coding provider named instead of a profile, by an older client.
 	/// Null = use the project's default provider selection.
 	/// </summary>
 	public Guid? ProviderId { get; set; }

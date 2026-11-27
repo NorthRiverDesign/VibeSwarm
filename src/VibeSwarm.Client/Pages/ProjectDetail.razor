@@ -94,8 +94,6 @@ else
                                 HasActiveJobs="@HasActiveJobs" IsAddingIdea="@_isAddingIdea" ProcessingIdeaIds="@ProcessingIdeaIds"
                                 CurrentAutoCommitMode="@(Project?.AutoCommitMode ?? AutoCommitMode.Off)"
                                 IsGitRepository="@IsGitRepository"
-                                DefaultProcessingProviderId="@GetDefaultIdeasProcessingProviderId()"
-                                DefaultProcessingModelId="@GetDefaultIdeasProcessingModelId()"
                                 OnStartProcessing="StartIdeasProcessing" OnStartProcessingWithOptions="StartIdeasProcessingWithOptions"
                                 OnStopProcessing="StopIdeasProcessing" OnAddIdea="AddIdea" OnUpdateIdea="UpdateIdea"
                                 OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea"
@@ -243,7 +241,6 @@ else
         {
             <div class="tab-pane fade show active">
                 <AutoPilotPanel @ref="_autoPilotPanel" ProjectId="@ProjectId"
-                                AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()"
                                 AvailableInferenceProviders="@_availableInferenceProviders"
                                 Project="@Project" />
             </div>

@@ -827,6 +827,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<int>("PolishEveryIterations")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("TEXT");
 
@@ -1479,6 +1482,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<DateTime>("NextRunAtUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("TEXT");
 
@@ -1804,6 +1810,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<string>("IdeasProcessingModelId")
                         .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("IdeasProcessingProfileId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("IdeasProcessingProviderId")

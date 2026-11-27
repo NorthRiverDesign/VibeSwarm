@@ -172,7 +172,8 @@ public sealed class ProjectDetailTabMergeTests
 		{
 			var job = Assert.Single(jobService.CreatedJobs);
 			Assert.Equal(TestProject.Id, job.ProjectId);
-			Assert.Equal(Guid.Parse("22222222-2222-2222-2222-222222222222"), job.ProviderId);
+			// It names no provider: the server runs it on the project's Build profile.
+			Assert.Equal(Guid.Empty, job.ProviderId);
 			Assert.True(LocalEnvironmentSetup.IsSetupJob(job));
 			Assert.EndsWith($"/jobs/view/{job.Id}", navigation.Uri);
 		});

@@ -596,6 +596,102 @@ public sealed class ProfileServiceTests : IDisposable
 		}
 	}
 
+	[Fact]
+	public async Task EnsureSettingsHaveProfiles_TurnsAnOlderProviderPickIntoWhatItRan()
+	{
+		var (claude, copilot, _) = await SeedProvidersAsync();
+		Guid projectId, sameAsProject, withModel, loopWithModel, loopOnFallback, finishedLoop;
+		await using (var dbContext = CreateDbContext())
+		{
+			await ProfileService.EnsureProviderDefaultsAsync(dbContext);
+			// The project builds on Claude with opus at high reasoning, then falls back to Copilot.
+			var project = NewProject("Older picks");
+			project.ProviderSelections.Add(new ProjectProvider { ProviderId = claude.Id, PreferredModelId = "opus", PreferredReasoningEffort = "high", Priority = 0 });
+			project.ProviderSelections.Add(new ProjectProvider { ProviderId = copilot.Id, Priority = 1 });
+			project.IdeasProcessingActive = true;
+			project.IdeasProcessingProviderId = claude.Id;
+			dbContext.Projects.Add(project);
+			JobSchedule Schedule(string? modelId) => new() { Id = Guid.NewGuid(), ProjectId = project.Id, Prompt = "Tidy", ProviderId = claude.Id, ModelId = modelId };
+			IterationLoop Loop(Guid providerId, string? modelId, IterationLoopStatus status) => new() { Id = Guid.NewGuid(), ProjectId = project.Id, ProviderId = providerId, ModelId = modelId, Status = status };
+			var schedules = new[] { Schedule(null), Schedule("sonnet") };
+			var loops = new[] { Loop(claude.Id, "opus", IterationLoopStatus.Running), Loop(copilot.Id, null, IterationLoopStatus.Paused), Loop(claude.Id, "sonnet", IterationLoopStatus.Stopped) };
+			dbContext.JobSchedules.AddRange(schedules);
+			dbContext.IterationLoops.AddRange(loops);
+			await dbContext.SaveChangesAsync();
+			(projectId, sameAsProject, withModel) = (project.Id, schedules[0].Id, schedules[1].Id);
+			(loopWithModel, loopOnFallback, finishedLoop) = (loops[0].Id, loops[1].Id, loops[2].Id);
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			await ProfileService.EnsureSettingsHaveProfilesAsync(dbContext);
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			var profiles = await dbContext.Profiles.AsNoTracking().ToListAsync();
+			string? Name(Guid? id) => profiles.SingleOrDefault(profile => profile.Id == id)?.Name;
+			var project = await dbContext.Projects.Include(p => p.ProviderSelections).SingleAsync(p => p.Id == projectId);
+			var buildProfileId = project.ProviderSelections.Single(entry => entry.ProviderId == claude.Id).ProfileId;
+			Assert.Equal("Claude · opus · high", Name(buildProfileId));
+
+			// Naming the provider the project builds with, and no model, meant "as the project
+			// builds": that is no profile at all, not the provider's bare default.
+			var same = await dbContext.JobSchedules.SingleAsync(schedule => schedule.Id == sameAsProject);
+			Assert.Equal((null, null, null), (same.ProfileId, same.ProviderId, same.ModelId));
+			Assert.Equal((null, null), (project.IdeasProcessingProfileId, project.IdeasProcessingProviderId));
+
+			// A schedule never took the project's reasoning; auto-pilot did.
+			Assert.Equal("Claude · sonnet", Name((await dbContext.JobSchedules.SingleAsync(schedule => schedule.Id == withModel)).ProfileId));
+			Assert.Equal(buildProfileId, (await dbContext.IterationLoops.SingleAsync(loop => loop.Id == loopWithModel)).ProfileId);
+
+			// Naming a fallback's provider meant that fallback.
+			var fallbackProfileId = project.ProviderSelections.Single(entry => entry.ProviderId == copilot.Id).ProfileId;
+			Assert.Equal(fallbackProfileId, (await dbContext.IterationLoops.SingleAsync(loop => loop.Id == loopOnFallback)).ProfileId);
+
+			// A finished run is history and stays as it was.
+			var finished = await dbContext.IterationLoops.SingleAsync(loop => loop.Id == finishedLoop);
+			Assert.Equal((null, (Guid?)claude.Id, "sonnet"), (finished.ProfileId, finished.ProviderId, finished.ModelId));
+		}
+	}
+
+	[Fact]
+	public async Task DeleteAsync_MovesSchedulesAutoPilotAndTheIdeasQueueToo()
+	{
+		var (claude, _, _) = await SeedProvidersAsync();
+		Guid profileId, defaultId;
+		await using (var dbContext = CreateDbContext())
+		{
+			await ProfileService.EnsureProviderDefaultsAsync(dbContext);
+			defaultId = (await dbContext.Profiles.SingleAsync(profile => profile.ProviderId == claude.Id && profile.IsProviderDefault)).Id;
+			profileId = (await new ProfileService(dbContext).CreateAsync(new Profile { Name = "Nightly", ProviderId = claude.Id, ModelId = "sonnet" })).Id;
+			var project = NewProject("Runners");
+			project.IdeasProcessingActive = true;
+			project.IdeasProcessingProfileId = profileId;
+			project.IdeasProcessingProviderId = claude.Id;
+			project.IdeasProcessingModelId = "sonnet";
+			dbContext.Projects.Add(project);
+			dbContext.JobSchedules.Add(new JobSchedule { Id = Guid.NewGuid(), ProjectId = project.Id, Prompt = "Tidy", ProfileId = profileId, ProviderId = claude.Id, ModelId = "sonnet" });
+			dbContext.IterationLoops.Add(new IterationLoop { Id = Guid.NewGuid(), ProjectId = project.Id, Status = IterationLoopStatus.Running, ProfileId = profileId, ProviderId = claude.Id, ModelId = "sonnet" });
+			await dbContext.SaveChangesAsync();
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			await new ProfileService(dbContext).DeleteAsync(profileId);
+		}
+
+		await using (var dbContext = CreateDbContext())
+		{
+			var schedule = await dbContext.JobSchedules.SingleAsync();
+			var loop = await dbContext.IterationLoops.SingleAsync();
+			var project = await dbContext.Projects.SingleAsync();
+			Assert.Equal(((Guid?)defaultId, (Guid?)claude.Id, null), (schedule.ProfileId, schedule.ProviderId, schedule.ModelId));
+			Assert.Equal(((Guid?)defaultId, (Guid?)claude.Id, null), (loop.ProfileId, loop.ProviderId, loop.ModelId));
+			Assert.Equal(((Guid?)defaultId, (Guid?)claude.Id, null), (project.IdeasProcessingProfileId, project.IdeasProcessingProviderId, project.IdeasProcessingModelId));
+		}
+	}
+
 	private async Task<InferenceProvider> SeedGrokAsync()
 	{
 		var grok = new InferenceProvider { Id = Guid.NewGuid(), Name = "Grok", ProviderType = VibeSwarm.Shared.Inference.InferenceProviderType.Grok, Endpoint = "https://api.x.ai", IsEnabled = true };

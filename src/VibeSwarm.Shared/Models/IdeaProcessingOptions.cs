@@ -9,6 +9,10 @@ public sealed class IdeaProcessingOptions
 {
 	public AutoCommitMode AutoCommitMode { get; set; } = AutoCommitMode.Off;
 
+	/// <summary>The profile the idea's job runs on. Null runs it on the project's Build profile.</summary>
+	public Guid? ProfileId { get; set; }
+
+	/// <summary>A provider named instead of a profile, by an older client.</summary>
 	public Guid? ProviderId { get; set; }
 
 	[StringLength(ValidationLimits.JobScheduleModelIdMaxLength)]

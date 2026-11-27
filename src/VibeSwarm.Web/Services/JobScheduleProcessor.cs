@@ -93,6 +93,8 @@ public class JobScheduleProcessor
 				await _jobService.CreateAsync(new Job
 				{
 					ProjectId = schedule.ProjectId,
+					// A profile decides the provider, model and reasoning when the job is created.
+					ProfileId = schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider ? schedule.ProfileId : null,
 					ProviderId = resolvedExecution.ProviderId,
 					GoalPrompt = schedule.Prompt,
 					ModelUsed = resolvedExecution.ModelId,
@@ -134,14 +136,10 @@ public class JobScheduleProcessor
 	{
 		if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
-			if (!schedule.ProviderId.HasValue || schedule.ProviderId == Guid.Empty)
-			{
-				throw new InvalidOperationException("The selected provider is not enabled.");
-			}
-
+			// With neither a profile nor a provider the job runs on the project's Build profile.
 			return new ScheduledExecutionSelection(
-				schedule.ProviderId.Value,
-				schedule.ModelId,
+				schedule.ProviderId ?? Guid.Empty,
+				schedule.ProviderId.HasValue ? schedule.ModelId : null,
 				null,
 				null);
 		}

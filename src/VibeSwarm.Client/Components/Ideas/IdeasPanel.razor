@@ -4,6 +4,7 @@
 @inject IJobService JobService
 @inject IJSRuntime JSRuntime
 @inject NotificationService NotificationService
+@inject IServiceProvider ServiceProvider
 @using System.Diagnostics.CodeAnalysis
 @using System.Globalization
 @using System.Threading
@@ -247,40 +248,9 @@
 					</div>
 				}
 
-				<div class="mb-3">
-					<label for="startAllProvider" class="form-label fw-medium">Provider</label>
-					<select id="startAllProvider" class="form-control" @bind="SelectedStartAllProviderIdValue"
-							disabled="@(!StartAllProviders.Any())">
-						@foreach (var provider in StartAllProviders)
-						{
-							<option value="@provider.Id">@provider.Name</option>
-						}
-					</select>
-					<div class="form-text">
-						Choose which provider queued ideas should use. Defaults to the project's current priority.
-					</div>
-				</div>
-
-				<div class="mb-0">
-					<label for="startAllModel" class="form-label fw-medium">
-						Model
-						<span class="fg-1 fw-normal">(optional)</span>
-					</label>
-					<div class="input-group">
-						<select id="startAllModel" class="form-control" @bind="SelectedStartAllModelIdValue"
-								disabled="@(!SelectedStartAllProviderId.HasValue || !SelectedStartAllProviderModels.Any())">
-							<option value="">Use project/provider default model</option>
-							@foreach (var model in SelectedStartAllProviderModels)
-							{
-								<option value="@model.ModelId">@GetStartAllModelDisplayName(model)</option>
-							}
-						</select>
-						<ModelRefreshButton ProviderId="@SelectedStartAllProviderId" OnRefreshed="HandleStartAllModelsRefreshed" />
-					</div>
-					<div class="form-text">
-						Leave blank to keep the project's default model for the selected provider.
-					</div>
-				</div>
+				<ProfilePicker Id="startAllProfile" Label="Run with" Profiles="_profiles" Allowed="ProfileRoles.CanBuild"
+							   SelectedProfileId="_startAllProfileId" EmptyLabel="Project's Build profile"
+							   OnSelected="profile => _startAllProfileId = profile?.Id" />
 			</ChildContent>
 			<FooterContent>
 				<button type="button" class="btn-solid theme-secondary" @onclick="CloseStartAllModal">Cancel</button>
@@ -436,12 +406,6 @@
 	public List<Provider> AvailableProviders { get; set; } = new();
 
 	[Parameter]
-	public Guid? DefaultProcessingProviderId { get; set; }
-
-	[Parameter]
-	public string? DefaultProcessingModelId { get; set; }
-
-	[Parameter]
 	public List<InferenceProvider> AvailableInferenceProviders { get; set; } = new();
 
 	[Parameter]
@@ -478,8 +442,8 @@
 	// Start All confirmation modal state
 	private bool _showStartAllModal { get; set; }
 	private AutoCommitMode _startAllAutoCommitMode { get; set; }
-	private Guid? _selectedStartAllProviderId;
-	private string? _selectedStartAllModelId;
+	private Guid? _startAllProfileId;
+	private List<Profile> _profiles = [];
 
 	// Modal state
 	private bool ShowCopyModal { get; set; }
@@ -784,41 +748,6 @@
 	private string ActiveProcessingMessage => "Ideas queue automatically from their current text.";
 
 	private bool CanSuggestIdeas => HasInference || AvailableProviders.Any();
-
-	private IReadOnlyList<Provider> StartAllProviders => AvailableProviders
-		.Where(provider => provider.IsEnabled)
-		.OrderBy(provider => provider.Name)
-		.ToList();
-
-	private Guid? SelectedStartAllProviderId => _selectedStartAllProviderId;
-
-	private IReadOnlyList<ProviderModel> SelectedStartAllProviderModels => StartAllProviders
-		.FirstOrDefault(provider => provider.Id == SelectedStartAllProviderId)?
-		.AvailableModels?
-		.Where(model => model.IsAvailable)
-		.OrderByDescending(model => model.IsDefault)
-		.ThenBy(model => model.DisplayName ?? model.ModelId)
-		.ToList() ?? [];
-
-	private string SelectedStartAllProviderIdValue
-	{
-		get => SelectedStartAllProviderId?.ToString() ?? string.Empty;
-		set
-		{
-			Guid? providerId = Guid.TryParse(value, out var parsed) ? parsed : null;
-			if (SelectedStartAllProviderId != providerId)
-			{
-				_selectedStartAllProviderId = providerId;
-				ResetStartAllModelIfUnavailable();
-			}
-		}
-	}
-
-	private string SelectedStartAllModelIdValue
-	{
-		get => _selectedStartAllModelId ?? string.Empty;
-		set => _selectedStartAllModelId = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-	}
 
 	private Guid? SelectedSuggestProviderId => _suggestUseInference
 		? _selectedInferenceProviderId
@@ -1386,17 +1315,23 @@
 		}
 	}
 
-	private void OpenStartAllModal()
+	private async Task OpenStartAllModal()
 	{
 		_startAllAutoCommitMode = CurrentAutoCommitMode;
-		_selectedStartAllProviderId = StartAllProviders.Any(provider => provider.Id == DefaultProcessingProviderId)
-			? DefaultProcessingProviderId
-			: StartAllProviders.Select(provider => (Guid?)provider.Id).FirstOrDefault();
-		_selectedStartAllModelId = _selectedStartAllProviderId == DefaultProcessingProviderId && !string.IsNullOrWhiteSpace(DefaultProcessingModelId)
-			? DefaultProcessingModelId
-			: null;
-		ResetStartAllModelIfUnavailable();
+		_startAllProfileId = null;
 		_showStartAllModal = true;
+
+		// Resolved lazily so pages and tests that never open the dialog need no registration.
+		try
+		{
+			_profiles = ServiceProvider.GetService<IProfileService>() is { } profileService
+				? (await profileService.GetAllAsync()).ToList()
+				: [];
+		}
+		catch (HttpRequestException)
+		{
+			_profiles = [];
+		}
 	}
 
 	private void CloseStartAllModal()
@@ -1410,8 +1345,7 @@
 		await OnStartProcessingWithOptions.InvokeAsync(new IdeaProcessingOptions
 		{
 			AutoCommitMode = _startAllAutoCommitMode,
-			ProviderId = _selectedStartAllProviderId,
-			ModelId = _selectedStartAllModelId
+			ProfileId = _startAllProfileId
 		});
 	}
 
@@ -1441,37 +1375,6 @@
 			.OrderBy(provider => provider.Name)
 			.Select(provider => (Guid?)provider.Id)
 			.FirstOrDefault();
-	}
-
-	private void HandleStartAllModelsRefreshed(List<ProviderModel> models)
-	{
-		var provider = StartAllProviders.FirstOrDefault(provider => provider.Id == SelectedStartAllProviderId);
-		if (provider != null)
-		{
-			provider.AvailableModels = models;
-		}
-
-		ResetStartAllModelIfUnavailable();
-	}
-
-	private void ResetStartAllModelIfUnavailable()
-	{
-		var validModelIds = SelectedStartAllProviderModels
-			.Select(model => model.ModelId)
-			.ToHashSet(StringComparer.Ordinal);
-
-		if (!string.IsNullOrWhiteSpace(_selectedStartAllModelId) && !validModelIds.Contains(_selectedStartAllModelId))
-		{
-			_selectedStartAllModelId = null;
-		}
-	}
-
-	private static string GetStartAllModelDisplayName(ProviderModel model)
-	{
-		var label = model.DisplayName ?? model.ModelId;
-		return model.IsDefault
-			? $"{label} (Default)"
-			: label;
 	}
 
 	public async ValueTask DisposeAsync()

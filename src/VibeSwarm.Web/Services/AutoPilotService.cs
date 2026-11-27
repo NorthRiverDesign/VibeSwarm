@@ -112,6 +112,7 @@ public class AutoPilotService : IAutoPilotService
 			StartedAt = DateTime.UtcNow
 		};
 		ApplyConfig(loop, config);
+		await ApplyProfileAsync(loop, cancellationToken);
 		await ValidateProvidersAsync(loop, cancellationToken);
 
 		_dbContext.IterationLoops.Add(loop);
@@ -221,6 +222,7 @@ public class AutoPilotService : IAutoPilotService
 			throw new InvalidOperationException($"Can only update config on a paused loop (current: {loop.Status}).");
 
 		ApplyConfig(loop, config);
+		await ApplyProfileAsync(loop, cancellationToken);
 		await ValidateProvidersAsync(loop, cancellationToken);
 
 		await _dbContext.SaveChangesAsync(cancellationToken);
@@ -396,8 +398,10 @@ public class AutoPilotService : IAutoPilotService
 			// 10. CREATE JOB FROM IDEA
 			var job = await _ideaService.ConvertToJobAsync(ideaResult.Idea.Id, new IdeaProcessingOptions
 			{
-				ProviderId = loop.ProviderId,
-				ModelId = loop.ModelId,
+				// A profile decides the provider, model and reasoning when the job is created.
+				ProfileId = loop.ProfileId,
+				ProviderId = loop.ProfileId.HasValue ? null : loop.ProviderId,
+				ModelId = loop.ProfileId.HasValue ? null : loop.ModelId,
 				IterationLoopId = loop.Id,
 				CommitModeOverride = GetCommitMode(loop)
 			}, cancellationToken);
@@ -435,6 +439,7 @@ public class AutoPilotService : IAutoPilotService
 		loop.UseInferenceForIdeas = config.UseInferenceForIdeas || config.InferenceProviderId.HasValue;
 		loop.InferenceProviderId = config.InferenceProviderId;
 		loop.InferenceModelId = string.IsNullOrWhiteSpace(config.InferenceModelId) ? null : config.InferenceModelId.Trim();
+		loop.ProfileId = config.ProfileId;
 		loop.ProviderId = config.ProviderId;
 		loop.ModelId = string.IsNullOrWhiteSpace(config.ModelId) ? null : config.ModelId.Trim();
 		loop.MaxIterations = Math.Clamp(config.MaxIterations, 0, AutoPilotConfig.MaxIterationsLimit);
@@ -445,6 +450,25 @@ public class AutoPilotService : IAutoPilotService
 		loop.AutoPush = config.AutoPush;
 		loop.IdeaSource = config.IdeaSource;
 		loop.ApprovalNudgeSentAt = null;
+	}
+
+	/// <summary>
+	/// Fills the loop's provider and model from its profile, whatever the client sent, and gives a
+	/// loop sent with a provider but no profile the profile that runs the same thing. The provider
+	/// stays on the loop because waiting out usage limits is decided per provider.
+	/// </summary>
+	private async Task ApplyProfileAsync(IterationLoop loop, CancellationToken cancellationToken)
+	{
+		if (loop.ProfileId is Guid profileId)
+		{
+			var profiles = await _dbContext.Profiles
+				.AsNoTracking()
+				.Where(profile => profile.Id == profileId)
+				.ToDictionaryAsync(profile => profile.Id, cancellationToken);
+			ProfileLinks.ApplyLoopLink(loop, profiles);
+		}
+
+		await ProfileService.LinkLoopAsync(_dbContext, loop, cancellationToken);
 	}
 
 	/// <summary>
@@ -830,8 +854,9 @@ public class AutoPilotService : IAutoPilotService
 			job = await _jobService.CreateAsync(new Job
 			{
 				ProjectId = loop.ProjectId,
-				ProviderId = loop.ProviderId ?? Guid.Empty,
-				ModelUsed = loop.ModelId,
+				ProfileId = loop.ProfileId,
+				ProviderId = loop.ProfileId.HasValue ? Guid.Empty : loop.ProviderId ?? Guid.Empty,
+				ModelUsed = loop.ProfileId.HasValue ? null : loop.ModelId,
 				Branch = recentChanges[0].Branch,
 				Title = AutoPilotPrompts.BuildPolishTitle(recentChanges.Count),
 				GoalPrompt = AutoPilotPrompts.BuildPolishGoal(recentChanges.Select(c => c.Title ?? string.Empty).ToList()),

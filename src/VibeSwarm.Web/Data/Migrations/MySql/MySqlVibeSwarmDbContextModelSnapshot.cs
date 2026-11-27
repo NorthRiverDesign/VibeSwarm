@@ -836,6 +836,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<int>("PolishEveryIterations")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("char(36)");
 
@@ -1488,6 +1491,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<DateTime>("NextRunAtUtc")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("char(36)");
 
@@ -1814,6 +1820,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<string>("IdeasProcessingModelId")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
+
+                    b.Property<Guid?>("IdeasProcessingProfileId")
+                        .HasColumnType("char(36)");
 
                     b.Property<Guid?>("IdeasProcessingProviderId")
                         .HasColumnType("char(36)");

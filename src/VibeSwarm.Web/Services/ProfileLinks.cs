@@ -177,6 +177,67 @@ public static class ProfileLinks
 		template.ReasoningEffort = profile.ReasoningEffort;
 	}
 
+	/// <summary>
+	/// What a schedule, an auto-pilot loop or the ideas queue keeps beside its profile's id: the
+	/// provider and model, which their own scheduling and usage-limit checks read. Null when the
+	/// profile is missing or only answers questions, which drops the link.
+	/// </summary>
+	public static (Guid ProviderId, string? ModelId)? RunnerValues(Guid? profileId, IReadOnlyDictionary<Guid, Profile> profiles)
+		=> profileId is Guid id && profiles.TryGetValue(id, out var profile) && profile.ProviderId is Guid providerId
+			? (providerId, profile.ModelId)
+			: null;
+
+	/// <summary>Fills a schedule's provider and model from its linked coding profile, or drops the link.</summary>
+	public static void ApplyScheduleLink(JobSchedule schedule, IReadOnlyDictionary<Guid, Profile> profiles)
+	{
+		if (!schedule.ProfileId.HasValue)
+		{
+			return;
+		}
+
+		if (RunnerValues(schedule.ProfileId, profiles) is not { } values)
+		{
+			schedule.ProfileId = null;
+			return;
+		}
+
+		(schedule.ProviderId, schedule.ModelId) = values;
+	}
+
+	/// <summary>Fills an auto-pilot loop's provider and model from its linked coding profile, or drops the link.</summary>
+	public static void ApplyLoopLink(IterationLoop loop, IReadOnlyDictionary<Guid, Profile> profiles)
+	{
+		if (!loop.ProfileId.HasValue)
+		{
+			return;
+		}
+
+		if (RunnerValues(loop.ProfileId, profiles) is not { } values)
+		{
+			loop.ProfileId = null;
+			return;
+		}
+
+		(loop.ProviderId, loop.ModelId) = values;
+	}
+
+	/// <summary>Fills the ideas queue's provider and model from its linked coding profile, or drops the link.</summary>
+	public static void ApplyIdeasQueueLink(Project project, IReadOnlyDictionary<Guid, Profile> profiles)
+	{
+		if (!project.IdeasProcessingProfileId.HasValue)
+		{
+			return;
+		}
+
+		if (RunnerValues(project.IdeasProcessingProfileId, profiles) is not { } values)
+		{
+			project.IdeasProcessingProfileId = null;
+			return;
+		}
+
+		(project.IdeasProcessingProviderId, project.IdeasProcessingModelId) = values;
+	}
+
 	/// <summary>Every profile id the project, its provider entries and its agent assignments link to.</summary>
 	public static HashSet<Guid> GetLinkedProfileIds(Project project)
 	{

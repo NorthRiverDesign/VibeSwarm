@@ -105,6 +105,12 @@ public class IterationLoop
 	public Guid? ProviderId { get; set; }
 
 	/// <summary>
+	/// The profile auto-pilot's jobs run on; <see cref="ProviderId"/> and <see cref="ModelId"/> are
+	/// copied from it. Null, with no provider either, runs them on the project's Build profile.
+	/// </summary>
+	public Guid? ProfileId { get; set; }
+
+	/// <summary>
 	/// Optional model override for the coding provider.
 	/// </summary>
 	[StringLength(200)]

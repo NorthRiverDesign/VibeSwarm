@@ -39,6 +39,16 @@ public class JobSchedule : IValidatableObject
 	public Guid? ProviderId { get; set; }
 	public Provider? Provider { get; set; }
 
+	/// <summary>
+	/// The profile the scheduled job runs on; <see cref="ProviderId"/> and <see cref="ModelId"/>
+	/// are copied from it. Null, with no provider either, runs on the project's Build profile.
+	/// </summary>
+	public Guid? ProfileId { get; set; }
+
+	/// <summary>The name of <see cref="ProfileId"/>. Filled in when a schedule is read; not stored.</summary>
+	[System.ComponentModel.DataAnnotations.Schema.NotMapped]
+	public string? ProfileName { get; set; }
+
 	public Guid? AgentId { get; set; }
 	public Agent? Agent { get; set; }
 

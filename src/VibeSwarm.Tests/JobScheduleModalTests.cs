@@ -274,6 +274,56 @@ public sealed class JobScheduleModalTests
 		Assert.Contains("Code Reviewer (Claude Code)", cut.Markup);
 	}
 
+	[Fact]
+	public void JobScheduleModal_AScheduledJob_RunsOnAProfile_WithNoProviderOrModelToPick()
+	{
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Claude Code", Type = ProviderType.Claude, IsEnabled = true, IsDefault = true };
+		var nightly = new Profile { Id = Guid.NewGuid(), Name = "Nightly", ProviderId = provider.Id, Provider = provider, ModelId = "sonnet" };
+		var project = new Project { Id = Guid.NewGuid(), Name = "VibeSwarm", WorkingPath = "/tmp/vibeswarm" };
+		var editSchedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ExecutionTarget = JobScheduleExecutionTarget.Provider,
+			ProfileId = nightly.Id,
+			ProviderId = provider.Id,
+			ModelId = "sonnet",
+			ScheduleType = JobScheduleType.RunJob,
+			Prompt = "Tidy up",
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9,
+			IsEnabled = true
+		};
+
+		using var context = new BunitContext();
+		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([new Agent { Id = Guid.NewGuid(), Name = "Reviewer", IsEnabled = true }]));
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IProfileService>(new FakeProfileService(nightly));
+		context.Services.AddSingleton<AppTimeZoneService>();
+		context.Services.AddSingleton<NotificationService>();
+
+		var cut = context.Render<JobScheduleModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditSchedule, editSchedule));
+
+		cut.WaitForAssertion(() => Assert.Equal(nightly.Id.ToString(), cut.Find("#schedule-profile").GetAttribute("value")));
+		Assert.Equal(["Project's Build profile", "Nightly"], cut.FindAll("#schedule-profile option").Select(option => option.TextContent));
+		Assert.Empty(cut.FindAll("#schedule-provider, #schedule-model"));
+	}
+
+	private sealed class FakeProfileService(params Profile[] profiles) : IProfileService
+	{
+		public Task<IEnumerable<Profile>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Profile>>(profiles);
+		public Task<Profile?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(profiles.FirstOrDefault(profile => profile.Id == id));
+		public Task<Profile> CreateAsync(Profile profile, CancellationToken cancellationToken = default) => Task.FromResult(profile);
+		public Task<Profile> UpdateAsync(Profile profile, CancellationToken cancellationToken = default) => Task.FromResult(profile);
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
+	}
+
 	private sealed class FakeSettingsService : ISettingsService
 	{
 		public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default)

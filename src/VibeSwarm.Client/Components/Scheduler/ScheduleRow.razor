@@ -24,10 +24,11 @@
 				<dd class="mb-0 text-end text-break">@(Schedule.Project?.Name ?? "Unknown project")</dd>
 			</div>
 			<div class="d-flex justify-content-between gap-5">
-				<dt class="fw-normal fg-1 flex-shrink-0">@(IsIdeas ? "Inference" : Schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent ? "Agent" : "Provider")</dt>
+				<dt class="fw-normal fg-1 flex-shrink-0">@(IsIdeas ? "Inference" : Schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent ? "Agent" : "Profile")</dt>
 				<dd class="mb-0 text-end text-break">@GetRunner()</dd>
 			</div>
-			@if (!string.IsNullOrWhiteSpace(Schedule.ModelId))
+			@* A job's model comes with its profile; only an idea schedule names one of its own. *@
+			@if (IsIdeas && !string.IsNullOrWhiteSpace(Schedule.ModelId))
 			{
 				<div class="d-flex justify-content-between gap-5">
 					<dt class="fw-normal fg-1 flex-shrink-0">Model</dt>
@@ -133,7 +134,7 @@
 
 		return Schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent
 			? Schedule.Agent?.Name ?? "Unknown agent"
-			: Schedule.Provider?.Name ?? "Unknown provider";
+			: Schedule.ProfileName ?? Schedule.Provider?.Name ?? "The project's Build profile";
 	}
 
 	private string DescribeCadence()

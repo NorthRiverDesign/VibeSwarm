@@ -221,6 +221,24 @@ public class ProfileService : IProfileService
 			ProfileLinks.ApplyTemplateLink(template, lookup);
 		}
 
+		foreach (var schedule in await _dbContext.JobSchedules.Where(schedule => schedule.ProfileId == id).ToListAsync(cancellationToken))
+		{
+			schedule.ProfileId = fallbackId;
+			ProfileLinks.ApplyScheduleLink(schedule, lookup);
+		}
+
+		foreach (var loop in await _dbContext.IterationLoops.Where(loop => loop.ProfileId == id).ToListAsync(cancellationToken))
+		{
+			loop.ProfileId = fallbackId;
+			ProfileLinks.ApplyLoopLink(loop, lookup);
+		}
+
+		foreach (var project in await _dbContext.Projects.Where(project => project.IdeasProcessingProfileId == id).ToListAsync(cancellationToken))
+		{
+			project.IdeasProcessingProfileId = fallbackId;
+			ProfileLinks.ApplyIdeasQueueLink(project, lookup);
+		}
+
 		_dbContext.Profiles.Remove(profile);
 		await _dbContext.SaveChangesAsync(cancellationToken);
 	}
@@ -330,6 +348,21 @@ public class ProfileService : IProfileService
 			ProfileLinks.ApplyTemplateLink(template, lookup);
 			template.UpdatedAt = DateTime.UtcNow;
 		}
+
+		foreach (var schedule in await _dbContext.JobSchedules.Where(schedule => schedule.ProfileId == id).ToListAsync(cancellationToken))
+		{
+			ProfileLinks.ApplyScheduleLink(schedule, lookup);
+		}
+
+		foreach (var loop in await _dbContext.IterationLoops.Where(loop => loop.ProfileId == id).ToListAsync(cancellationToken))
+		{
+			ProfileLinks.ApplyLoopLink(loop, lookup);
+		}
+
+		foreach (var project in await _dbContext.Projects.Where(project => project.IdeasProcessingProfileId == id).ToListAsync(cancellationToken))
+		{
+			ProfileLinks.ApplyIdeasQueueLink(project, lookup);
+		}
 	}
 
 	/// <summary>
@@ -410,6 +443,18 @@ public class ProfileService : IProfileService
 			foreach (var project in projects)
 			{
 				catalog.LinkProject(project, switchOffRolesWithNothingToRunOn: true);
+				catalog.LinkIdeasQueue(project, project.ProviderSelections);
+			}
+
+			var buildOrders = projects.ToDictionary(project => project.Id, project => project.ProviderSelections);
+			foreach (var schedule in await dbContext.JobSchedules.ToListAsync(cancellationToken))
+			{
+				catalog.LinkSchedule(schedule, buildOrders.GetValueOrDefault(schedule.ProjectId) ?? []);
+			}
+
+			foreach (var loop in await dbContext.IterationLoops.ToListAsync(cancellationToken))
+			{
+				catalog.LinkLoop(loop, buildOrders.GetValueOrDefault(loop.ProjectId) ?? []);
 			}
 
 			foreach (var agent in await dbContext.Agents.ToListAsync(cancellationToken))
@@ -440,6 +485,21 @@ public class ProfileService : IProfileService
 	/// <summary>As <see cref="LinkProjectAsync"/>, for an agent's defaults.</summary>
 	public static async Task LinkAgentAsync(VibeSwarmDbContext dbContext, Agent agent, CancellationToken cancellationToken = default)
 		=> (await ProfileCatalog.LoadAsync(dbContext, cancellationToken)).LinkAgent(agent);
+
+	/// <summary>As <see cref="LinkProjectAsync"/>, for a schedule saved with a provider and no profile.</summary>
+	public static async Task LinkScheduleAsync(VibeSwarmDbContext dbContext, JobSchedule schedule, CancellationToken cancellationToken = default)
+		=> (await ProfileCatalog.LoadAsync(dbContext, cancellationToken)).LinkSchedule(schedule, await LoadBuildOrderAsync(dbContext, schedule.ProjectId, cancellationToken));
+
+	/// <summary>As <see cref="LinkProjectAsync"/>, for an auto-pilot loop started with a provider and no profile.</summary>
+	public static async Task LinkLoopAsync(VibeSwarmDbContext dbContext, IterationLoop loop, CancellationToken cancellationToken = default)
+		=> (await ProfileCatalog.LoadAsync(dbContext, cancellationToken)).LinkLoop(loop, await LoadBuildOrderAsync(dbContext, loop.ProjectId, cancellationToken));
+
+	/// <summary>As <see cref="LinkProjectAsync"/>, for an ideas queue started with a provider and no profile.</summary>
+	public static async Task LinkIdeasQueueAsync(VibeSwarmDbContext dbContext, Project project, CancellationToken cancellationToken = default)
+		=> (await ProfileCatalog.LoadAsync(dbContext, cancellationToken)).LinkIdeasQueue(project, await LoadBuildOrderAsync(dbContext, project.Id, cancellationToken));
+
+	private static async Task<List<ProjectProvider>> LoadBuildOrderAsync(VibeSwarmDbContext dbContext, Guid projectId, CancellationToken cancellationToken)
+		=> await dbContext.ProjectProviders.AsNoTracking().Where(entry => entry.ProjectId == projectId).ToListAsync(cancellationToken);
 
 	/// <summary>As <see cref="LinkProjectAsync"/>, for a job template that pins a provider.</summary>
 	public static async Task LinkTemplateAsync(VibeSwarmDbContext dbContext, JobTemplate template, CancellationToken cancellationToken = default)
@@ -524,6 +584,79 @@ public class ProfileService : IProfileService
 		public void LinkTemplate(JobTemplate template)
 			=> template.ProfileId = Existing(template.ProfileId)
 				?? FindOrAdd(template.ProviderId, null, template.ModelId, template.ReasoningEffort);
+
+		/// <summary>
+		/// A scheduled job never took the project's reasoning for its provider, so a schedule's
+		/// model keeps the provider's own.
+		/// </summary>
+		public void LinkSchedule(JobSchedule schedule, IEnumerable<ProjectProvider> buildOrder)
+		{
+			schedule.ProfileId = Existing(schedule.ProfileId);
+			if (schedule.ScheduleType != JobScheduleType.RunJob || schedule.ExecutionTarget != JobScheduleExecutionTarget.Provider
+				|| schedule.ProfileId.HasValue || schedule.ProviderId is not Guid providerId)
+			{
+				return;
+			}
+
+			schedule.ProfileId = RunnerProfileFor(buildOrder, providerId, schedule.ModelId, takesProjectReasoning: false);
+			if (!schedule.ProfileId.HasValue)
+			{
+				(schedule.ProviderId, schedule.ModelId) = (null, null);
+			}
+		}
+
+		public void LinkLoop(IterationLoop loop, IEnumerable<ProjectProvider> buildOrder)
+		{
+			loop.ProfileId = Existing(loop.ProfileId);
+
+			// A finished run is history: it keeps the provider and model it ran on as they are.
+			var canStillRun = loop.Status is IterationLoopStatus.Idle or IterationLoopStatus.Running or IterationLoopStatus.Paused or IterationLoopStatus.Stopping;
+			if (!canStillRun || loop.ProfileId.HasValue || loop.ProviderId is not Guid providerId)
+			{
+				return;
+			}
+
+			loop.ProfileId = RunnerProfileFor(buildOrder, providerId, loop.ModelId, takesProjectReasoning: true);
+			if (!loop.ProfileId.HasValue)
+			{
+				(loop.ProviderId, loop.ModelId) = (null, null);
+			}
+		}
+
+		public void LinkIdeasQueue(Project project, IEnumerable<ProjectProvider> buildOrder)
+		{
+			project.IdeasProcessingProfileId = Existing(project.IdeasProcessingProfileId);
+			if (project.IdeasProcessingProfileId.HasValue || project.IdeasProcessingProviderId is not Guid providerId)
+			{
+				return;
+			}
+
+			project.IdeasProcessingProfileId = RunnerProfileFor(buildOrder, providerId, project.IdeasProcessingModelId, takesProjectReasoning: true);
+			if (!project.IdeasProcessingProfileId.HasValue)
+			{
+				(project.IdeasProcessingProviderId, project.IdeasProcessingModelId) = (null, null);
+			}
+		}
+
+		/// <summary>
+		/// The profile that runs what an older "this provider, maybe this model" pick ran. Such a
+		/// pick took its missing pieces from the project's own entry for that provider, so:
+		/// naming the provider the project builds with and no model meant "as the project
+		/// builds", which is no profile at all; naming a fallback's provider and no model meant
+		/// that fallback's profile; anything else is the profile holding the provider, the model
+		/// and, where the pick took it, the reasoning the project set for that provider.
+		/// </summary>
+		private Guid? RunnerProfileFor(IEnumerable<ProjectProvider> buildOrder, Guid providerId, string? modelId, bool takesProjectReasoning)
+		{
+			var order = buildOrder.Where(entry => entry.IsEnabled).OrderBy(entry => entry.Priority).ToList();
+			var entry = order.FirstOrDefault(candidate => candidate.ProviderId == providerId);
+			if (string.IsNullOrWhiteSpace(modelId) && entry != null)
+			{
+				return ReferenceEquals(entry, order[0]) ? null : Existing(entry.ProfileId);
+			}
+
+			return FindOrAdd(providerId, null, modelId, takesProjectReasoning ? entry?.PreferredReasoningEffort : null);
+		}
 
 		private Guid? Existing(Guid? profileId)
 			=> profileId is Guid id && _profiles.Any(profile => profile.Id == id) ? id : null;

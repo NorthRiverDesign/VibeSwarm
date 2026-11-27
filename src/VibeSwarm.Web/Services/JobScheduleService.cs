@@ -16,17 +16,62 @@ public class JobScheduleService : IJobScheduleService
 
 	public async Task<IEnumerable<JobSchedule>> GetAllAsync(CancellationToken cancellationToken = default)
 	{
-		return await BuildQuery()
+		var schedules = await BuildQuery()
 			.OrderBy(schedule => schedule.IsEnabled ? 0 : 1)
 			.ThenBy(schedule => schedule.NextRunAtUtc)
 			.ThenBy(schedule => schedule.CreatedAt)
 			.ToListAsync(cancellationToken);
+		await NameProfilesAsync(schedules, cancellationToken);
+		return schedules;
 	}
 
 	public async Task<JobSchedule?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
 	{
-		return await BuildQuery()
+		var schedule = await BuildQuery()
 			.FirstOrDefaultAsync(schedule => schedule.Id == id, cancellationToken);
+		if (schedule != null)
+		{
+			await NameProfilesAsync([schedule], cancellationToken);
+		}
+
+		return schedule;
+	}
+
+	/// <summary>Fills each schedule's profile name, which the list shows instead of a provider and model.</summary>
+	private async Task NameProfilesAsync(IReadOnlyCollection<JobSchedule> schedules, CancellationToken cancellationToken)
+	{
+		var profileIds = schedules.Where(schedule => schedule.ProfileId.HasValue).Select(schedule => schedule.ProfileId!.Value).Distinct().ToList();
+		if (profileIds.Count == 0)
+		{
+			return;
+		}
+
+		var names = await _dbContext.Profiles
+			.AsNoTracking()
+			.Where(profile => profileIds.Contains(profile.Id))
+			.ToDictionaryAsync(profile => profile.Id, profile => profile.Name, cancellationToken);
+		foreach (var schedule in schedules)
+		{
+			schedule.ProfileName = schedule.ProfileId is Guid id ? names.GetValueOrDefault(id) : null;
+		}
+	}
+
+	/// <summary>
+	/// Fills the schedule's provider and model from its profile, whatever the client sent, and
+	/// gives a schedule sent with a provider but no profile the profile that runs the same thing.
+	/// </summary>
+	private async Task ApplyProfileAsync(JobSchedule schedule, CancellationToken cancellationToken)
+	{
+		if (schedule.ProfileId is Guid profileId)
+		{
+			var profiles = await _dbContext.Profiles
+				.AsNoTracking()
+				.Where(profile => profile.Id == profileId)
+				.ToDictionaryAsync(profile => profile.Id, cancellationToken);
+			VibeSwarm.Web.Services.ProfileLinks.ApplyScheduleLink(schedule, profiles);
+		}
+
+		await VibeSwarm.Web.Services.ProfileService.LinkScheduleAsync(_dbContext, schedule, cancellationToken);
 	}
 
 	public async Task<JobSchedule> CreateAsync(JobSchedule schedule, CancellationToken cancellationToken = default)
@@ -34,6 +79,7 @@ public class JobScheduleService : IJobScheduleService
 		ArgumentNullException.ThrowIfNull(schedule);
 
 		NormalizeSchedule(schedule);
+		await ApplyProfileAsync(schedule, cancellationToken);
 		ValidationHelper.ValidateObject(schedule);
 		await ValidateReferencesAsync(schedule, cancellationToken);
 		var schedulerTimeZone = await GetSchedulerTimeZoneAsync(cancellationToken);
@@ -65,6 +111,7 @@ public class JobScheduleService : IJobScheduleService
 		existing.ScheduleType = schedule.ScheduleType;
 		existing.ExecutionTarget = schedule.ExecutionTarget;
 		existing.ProviderId = schedule.ProviderId;
+		existing.ProfileId = schedule.ProfileId;
 		existing.AgentId = schedule.AgentId;
 		existing.InferenceProviderId = schedule.InferenceProviderId;
 		existing.Prompt = schedule.Prompt;
@@ -79,6 +126,7 @@ public class JobScheduleService : IJobScheduleService
 		existing.UpdatedAt = DateTime.UtcNow;
 
 		NormalizeSchedule(existing);
+		await ApplyProfileAsync(existing, cancellationToken);
 		ValidationHelper.ValidateObject(existing);
 		await ValidateReferencesAsync(existing, cancellationToken);
 		var schedulerTimeZone = await GetSchedulerTimeZoneAsync(cancellationToken);
@@ -180,16 +228,18 @@ public class JobScheduleService : IJobScheduleService
 
 		if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
-			if (!schedule.ProviderId.HasValue || schedule.ProviderId == Guid.Empty)
+			// Naming neither a profile nor a provider runs the job on the project's Build profile.
+			if (schedule.ProviderId is Guid scheduledProviderId
+				&& !await _dbContext.Providers.AnyAsync(provider => provider.Id == scheduledProviderId && provider.IsEnabled, cancellationToken))
 			{
-				throw new InvalidOperationException("The selected provider is not enabled.");
+				throw new InvalidOperationException(schedule.ProfileId.HasValue
+					? "The selected profile's provider is not enabled."
+					: "The selected provider is not enabled.");
 			}
 
-			var providerExists = await _dbContext.Providers
-				.AnyAsync(provider => provider.Id == schedule.ProviderId.Value && provider.IsEnabled, cancellationToken);
-			if (!providerExists)
+			if (!schedule.ProviderId.HasValue)
 			{
-				throw new InvalidOperationException("The selected provider is not enabled.");
+				return;
 			}
 		}
 		else
@@ -250,6 +300,7 @@ public class JobScheduleService : IJobScheduleService
 		if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 		{
 			schedule.ProviderId = null;
+			schedule.ProfileId = null;
 			schedule.AgentId = null;
 			schedule.Prompt = string.Empty;
 			schedule.ExecutionTarget = JobScheduleExecutionTarget.Provider;
@@ -260,10 +311,16 @@ public class JobScheduleService : IJobScheduleService
 		if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
 			schedule.AgentId = null;
+			// A model belongs to a provider; with neither a profile nor a provider there is none.
+			if (!schedule.ProfileId.HasValue && !schedule.ProviderId.HasValue)
+			{
+				schedule.ModelId = null;
+			}
 		}
 		else
 		{
 			schedule.ProviderId = null;
+			schedule.ProfileId = null;
 		}
 	}
 

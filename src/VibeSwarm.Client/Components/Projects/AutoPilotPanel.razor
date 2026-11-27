@@ -1,4 +1,5 @@
 @* Auto-Pilot panel for autonomous project iteration *@
+@inject IServiceProvider Services
 @inject IAutoPilotService AutoPilotService
 @inject ISettingsService SettingsService
 @inject NavigationManager NavigationManager
@@ -45,14 +46,10 @@
 				</div>
 				<div class="list-group-item d-flex align-items-center gap-5">
 					<i class="bi bi-terminal fg-primary flex-shrink-0"></i>
-					<label for="ap-coding-provider" class="flex-grow-1 min-w-0 fw-medium">Built by</label>
-					<select id="ap-coding-provider" class="form-control w-auto min-w-0" @bind="_config.ProviderId">
-						<option value="">Project default</option>
-						@foreach (var provider in AvailableProviders)
-						{
-							<option value="@provider.Id">@provider.Name</option>
-						}
-					</select>
+					<label for="ap-coding-profile" class="flex-grow-1 min-w-0 fw-medium">Built by</label>
+					<ProfilePicker Id="ap-coding-profile" Bare="true" SelectClass="form-control w-auto min-w-0"
+								   Profiles="_profiles" Allowed="ProfileRoles.CanBuild" SelectedProfileId="_config.ProfileId"
+								   EmptyLabel="Project's Build profile" OnSelected="profile => _config.ProfileId = profile?.Id" />
 				</div>
 				<div class="list-group-item d-flex align-items-center gap-5">
 					<i class="bi bi-flag fg-primary flex-shrink-0"></i>
@@ -84,22 +81,6 @@
 								</select>
 								<ModelRefreshButton ProviderId="@_config.InferenceProviderId" IsInference="true"
 													OnInferenceRefreshed="HandleInferenceModelsRefreshed" />
-							</div>
-						</div>
-					}
-					@if (_config.ProviderId.HasValue)
-					{
-						<div class="form-field mb-0">
-							<label for="ap-coding-model">Coding model</label>
-							<div class="input-group">
-								<select id="ap-coding-model" class="form-control" @bind="_config.ModelId">
-									<option value="">Provider default</option>
-									@foreach (var model in GetCodingModelsForSelectedProvider())
-									{
-										<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
-									}
-								</select>
-								<ModelRefreshButton ProviderId="@_config.ProviderId" OnRefreshed="HandleCodingModelsRefreshed" />
 							</div>
 						</div>
 					}
@@ -263,9 +244,6 @@
 	public Guid ProjectId { get; set; }
 
 	[Parameter]
-	public List<Provider> AvailableProviders { get; set; } = [];
-
-	[Parameter]
 	public List<InferenceProvider> AvailableInferenceProviders { get; set; } = [];
 
 	[Parameter]
@@ -273,6 +251,7 @@
 
 	private IterationLoop? _loop;
 	private AutoPilotConfig _config = new();
+	private List<Profile> _profiles = [];
 	private bool _isLoading = true;
 	private bool _isStarting;
 	private bool _isToggling;
@@ -288,6 +267,18 @@
 	protected override async Task OnInitializedAsync()
 	{
 		await LoadStatusAsync();
+
+		// Resolved lazily so pages and tests that never start auto-pilot need no registration.
+		try
+		{
+			_profiles = Services.GetService<IProfileService>() is { } profileService
+				? (await profileService.GetAllAsync()).ToList()
+				: [];
+		}
+		catch (HttpRequestException)
+		{
+			_profiles = [];
+		}
 
 		try
 		{
@@ -466,27 +457,11 @@
 		}
 	}
 
-	private void HandleCodingModelsRefreshed(List<ProviderModel> models)
-	{
-		var provider = AvailableProviders.FirstOrDefault(p => p.Id == _config.ProviderId);
-		if (provider != null)
-		{
-			provider.AvailableModels = models;
-		}
-	}
-
 	private List<InferenceModel> GetInferenceModelsForSelectedProvider()
 	{
 		if (_config.InferenceProviderId == null) return [];
 		var provider = AvailableInferenceProviders.FirstOrDefault(p => p.Id == _config.InferenceProviderId);
 		return provider?.Models?.Where(m => m.IsAvailable).ToList() ?? [];
-	}
-
-	private List<ProviderModel> GetCodingModelsForSelectedProvider()
-	{
-		if (_config.ProviderId == null) return [];
-		var provider = AvailableProviders.FirstOrDefault(p => p.Id == _config.ProviderId);
-		return provider?.AvailableModels?.Where(m => m.IsAvailable).ToList() ?? [];
 	}
 
 	private string GetMoreOptionsSummary()

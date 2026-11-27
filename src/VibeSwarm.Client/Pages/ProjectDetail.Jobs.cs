@@ -132,29 +132,6 @@ public partial class ProjectDetail
         return ProjectExecutionDefaults.GetPreferredProvider(Project, Providers);
     }
 
-    private Guid? GetDefaultIdeasProcessingProviderId()
-    {
-        return GetPreferredJobProvider()?.Id;
-    }
-
-    private string? GetDefaultIdeasProcessingModelId()
-    {
-        var provider = GetPreferredJobProvider();
-        if (provider == null)
-        {
-            return null;
-        }
-
-        var models = provider.AvailableModels
-            .Where(model => model.IsAvailable)
-            .OrderByDescending(model => model.IsDefault)
-            .ThenBy(model => model.DisplayName ?? model.ModelId)
-            .ToList();
-
-        var resolvedModelId = ProjectExecutionDefaults.ResolveModelId(Project, provider.Id, models);
-        return string.IsNullOrWhiteSpace(resolvedModelId) ? null : resolvedModelId;
-    }
-
     private async Task DeleteSelectedJobs(List<Guid> jobIds)
     {
         var deleted = 0;
@@ -446,9 +423,8 @@ public partial class ProjectDetail
     {
         await StartIdeasProcessingWithOptions(new IdeaProcessingOptions
         {
-            AutoCommitMode = Project?.AutoCommitMode ?? AutoCommitMode.Off,
-            ProviderId = GetDefaultIdeasProcessingProviderId(),
-            ModelId = GetDefaultIdeasProcessingModelId()
+            // No profile named: queued ideas run on the project's Build profile.
+            AutoCommitMode = Project?.AutoCommitMode ?? AutoCommitMode.Off
         });
     }
 
@@ -473,22 +449,15 @@ public partial class ProjectDetail
             IsIdeasProcessingActive = true;
             if (Project != null)
             {
-                Project.IdeasProcessingProviderId = options.ProviderId;
-                Project.IdeasProcessingModelId = string.IsNullOrWhiteSpace(options.ModelId) ? null : options.ModelId.Trim();
+                Project.IdeasProcessingProfileId = options.ProfileId;
             }
             await QueuePanelStateService.RequestRefreshAsync();
 
             var autoCommit = autoCommitMode != AutoCommitMode.Off;
             var commitMessage = autoCommit ? " Auto-commit is enabled." : "";
             var queueMessage = hasRunningJob ? " New ideas will queue behind the current job." : string.Empty;
-            var providerName = options.ProviderId.HasValue
-                ? GetAllowedJobProviders().FirstOrDefault(provider => provider.Id == options.ProviderId.Value)?.Name
-                : null;
-            var providerMessage = providerName == null
-                ? string.Empty
-                : $" Queued ideas will use {providerName}{(string.IsNullOrWhiteSpace(options.ModelId) ? string.Empty : $" ({options.ModelId})")}.";
             NotificationService.ShowInfo(
-                $"Ideas will be converted to jobs automatically.{queueMessage}{commitMessage}{providerMessage}",
+                $"Ideas will be converted to jobs automatically.{queueMessage}{commitMessage}",
                 "Auto-Processing Started");
         }
         catch (Exception ex)
@@ -759,7 +728,8 @@ public partial class ProjectDetail
 
         try
         {
-            var job = LocalEnvironmentSetup.CreateJob(ProjectId, provider.Id, GetDefaultIdeasProcessingModelId(), CurrentBranch);
+            // No provider named: the job runs on the project's Build profile.
+            var job = LocalEnvironmentSetup.CreateJob(ProjectId, Guid.Empty, null, CurrentBranch);
             var createdJob = await JobService.CreateAsync(job);
             NavigationManager.NavigateTo($"/jobs/view/{createdJob.Id}");
         }

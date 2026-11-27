@@ -2967,6 +2967,42 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 
 
 	[Fact]
+	public async Task ConvertToJobAsync_RunsOnTheProjectsBuildProfile_OrOnTheProfileNamed()
+	{
+		await using var dbContext = CreateDbContext();
+		var claude = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true, IsDefault = true };
+		var build = new Profile { Id = Guid.NewGuid(), Name = "Deep thinker", ProviderId = claude.Id, ModelId = "opus", ReasoningEffort = "high" };
+		var quick = new Profile { Id = Guid.NewGuid(), Name = "Quick fixer", ProviderId = claude.Id, ModelId = "haiku" };
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Profiled ideas",
+			WorkingPath = "/tmp/profiled-ideas",
+			ProviderSelections = [new ProjectProvider { ProviderId = claude.Id, ProfileId = build.Id, PreferredModelId = "opus", PreferredReasoningEffort = "high", Priority = 0, IsEnabled = true }]
+		};
+		var ideas = new[] { "First idea", "Second idea" }
+			.Select((text, index) => new Idea { Id = Guid.NewGuid(), ProjectId = project.Id, Description = text, SortOrder = index })
+			.ToList();
+		dbContext.Providers.Add(claude);
+		dbContext.ProviderModels.AddRange(
+			new ProviderModel { Id = Guid.NewGuid(), ProviderId = claude.Id, ModelId = "opus", IsAvailable = true, IsDefault = true },
+			new ProviderModel { Id = Guid.NewGuid(), ProviderId = claude.Id, ModelId = "haiku", IsAvailable = true });
+		dbContext.Profiles.AddRange(build, quick);
+		dbContext.Projects.Add(project);
+		dbContext.Ideas.AddRange(ideas);
+		await dbContext.SaveChangesAsync();
+		var ideaService = CreateIdeaService(dbContext, claude);
+
+		// An idea names nothing, so its job is the project's to place.
+		var asTheProjectBuilds = await ideaService.ConvertToJobAsync(ideas[0].Id);
+		Assert.Equal(((Guid?)build.Id, "Deep thinker", "opus", "high"), (asTheProjectBuilds!.ProfileId, asTheProjectBuilds.ProfileName, asTheProjectBuilds.ModelUsed, asTheProjectBuilds.ReasoningEffort));
+
+		// Start All, auto-pilot and the like can name another profile for the run.
+		var onAnother = await ideaService.ConvertToJobAsync(ideas[1].Id, new IdeaProcessingOptions { ProfileId = quick.Id });
+		Assert.Equal(((Guid?)quick.Id, "Quick fixer", "haiku"), (onAnother!.ProfileId, onAnother.ProfileName, onAnother.ModelUsed));
+	}
+
+	[Fact]
 	public async Task StartProcessingAsync_PersistsQueueProviderAndModelOverrides()
 	{
 		await using var dbContext = CreateDbContext();
