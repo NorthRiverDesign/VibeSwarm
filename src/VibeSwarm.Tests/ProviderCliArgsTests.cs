@@ -782,6 +782,21 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void Copilot_NewSession_CutsANameTheCliWouldReject()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 112);
+        // A job's title, which names its session, runs to 200 characters.
+        provider.ApplyOptions(new ExecutionOptions { SessionName = "Add three functions " + new string('x', 180) });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var name = args[args.IndexOf("--name") + 1];
+        Assert.Equal(CopilotProvider.MaxSessionNameLength, name.Length);
+        Assert.StartsWith("Add three functions", name);
+    }
+
+    [Fact]
     public void Copilot_ResumedSession_OmitsSessionIdAndName()
     {
         // Since 1.0.71 the CLI rejects --name alongside an existing session.

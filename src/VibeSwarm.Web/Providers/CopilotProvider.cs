@@ -27,6 +27,12 @@ public class CopilotProvider : CliProviderBase
 
     // Release numbers from the CLI's own changelog.json, not inferred.
     private static readonly Version SessionNameVersion = new(1, 0, 35);
+
+    /// <summary>
+    /// The longest session name the CLI takes. A longer one fails the run before it starts
+    /// ("Session name must be 100 characters or less"), and a job's title can be twice that.
+    /// </summary>
+    internal const int MaxSessionNameLength = 100;
     private static readonly Version SessionIdVersion = new(1, 0, 51);
 
     // Flags first confirmed present on the verified release (see ProviderVersionReference).
@@ -490,8 +496,9 @@ public class CopilotProvider : CliProviderBase
                 && _cachedCliVersion != null
                 && _cachedCliVersion >= SessionNameVersion)
             {
+                var sessionName = CurrentSessionName.Trim();
                 args.Add("--name");
-                args.Add(CurrentSessionName.Trim());
+                args.Add(sessionName.Length <= MaxSessionNameLength ? sessionName : sessionName[..MaxSessionNameLength].TrimEnd());
             }
         }
 
