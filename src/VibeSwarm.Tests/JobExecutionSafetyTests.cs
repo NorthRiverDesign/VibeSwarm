@@ -1329,6 +1329,41 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ProcessJobAsync_AResumedChain_CarriesOnAtTheStepItWasOn_InThatStepsSession()
+	{
+		var agent = new ScriptedProvider((run, _) => Task.FromResult(Reply($"Turn {run} done.\n\n## Handoff\npower is in.")));
+
+		// Interrupted during step two: step one is done, and the job remembers where it was.
+		var (jobId, _, _) = await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				project.TeamEnabled = true;
+				project.LeadProviderId = provider.Id;
+			},
+			configureJob: job =>
+			{
+				job.TeamRun = true;
+				job.PlanningOutput = "Outcome: two functions.";
+				job.ResumeFromStatus = JobStatus.Processing;
+				job.RecoveryPrompt = "The step two prompt, as it was running.";
+				job.Steps.Add(new JobStep { Order = 1, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Done, Summary = "divide is in." });
+				job.Steps.Add(new JobStep { Order = 2, Title = "Add power", Instructions = "Add power.", Status = JobStepStatus.Running });
+			});
+
+		// One run only: step one is not built again, and step two resumes its own session.
+		var run = Assert.Single(agent.Runs);
+		Assert.Equal("session-1", run.SessionId);
+		await using var db = CreateDbContext();
+		var steps = await db.JobSteps.Where(step => step.JobId == jobId).OrderBy(step => step.Order).ToListAsync();
+		Assert.Equal([JobStepStatus.Done, JobStepStatus.Done], steps.Select(step => step.Status));
+		Assert.Equal("divide is in.", steps[0].Summary);
+		Assert.Equal("power is in.", steps[1].Summary);
+		Assert.Equal(JobStatus.Completed, (await db.Jobs.SingleAsync(j => j.Id == jobId)).Status);
+	}
+
+	[Fact]
 	public async Task ProcessJobAsync_StepsAlreadyDone_AreBuiltAgain_WhenTheirWorkIsNotInTheTree()
 	{
 		var agent = new ScriptedProvider((run, _) => Task.FromResult(Reply($"Turn {run} done.")));
