@@ -430,6 +430,20 @@ public partial class JobProcessingService
             return restored;
         }
 
+        // A chain taken up again without its interrupted work (a retry, another provider, a wait
+        // for usage) carries on from its last finished step. The job's own snapshot is not used
+        // here: it can hold the unfinished step too, and that step starts over.
+        var finishedStep = job.TeamRun
+            ? await dbContext.JobSteps
+                .Where(step => step.JobId == job.Id && step.Status == JobStepStatus.Done && step.SnapshotCommit != null)
+                .OrderByDescending(step => step.Order)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+        if (finishedStep != null)
+        {
+            return await RestoreFinishedStepsAsync(job, finishedStep, workingDirectory, dbContext, cancellationToken);
+        }
+
         var priorRuns = await dbContext.JobChangeSets
             .AsNoTracking()
             .Where(cs => cs.JobId == job.Id)
@@ -478,6 +492,42 @@ public partial class JobProcessingService
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Puts back the work of a chain's finished steps, which the last of them saved.
+    /// </summary>
+    private async Task<JobWorkRestoreResult> RestoreFinishedStepsAsync(
+        Job job,
+        JobStep lastFinished,
+        string workingDirectory,
+        VibeSwarmDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        const string activity = "Restoring the finished steps...";
+        await UpdateHeartbeatAsync(job.Id, activity, dbContext, cancellationToken);
+        await NotifyJobActivityAsync(job.Id, activity, DateTime.UtcNow);
+
+        var restored = await _workSnapshots!.RestoreAsync(workingDirectory, lastFinished.SnapshotCommit!, cancellationToken);
+        _logger.LogInformation("Restored the finished steps {Snapshot} of job {JobId}: {Outcome}",
+            lastFinished.SnapshotCommit, job.Id, restored.Outcome);
+        if (restored.Outcome == JobWorkRestoreOutcome.Failed)
+        {
+            return restored;
+        }
+
+        // The branch may have moved on since the step was saved. Saved again on top of it, the
+        // snapshot stays the line the next step's change is measured from.
+        var head = await _versionControlService.GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
+        var resaved = await SaveRunWorkSnapshotAsync(job, workingDirectory, head, cancellationToken);
+        if (resaved != null)
+        {
+            lastFinished.SnapshotCommit = resaved;
+            job.WorkSnapshotCommit = resaved;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        return restored;
     }
 
     /// <summary>

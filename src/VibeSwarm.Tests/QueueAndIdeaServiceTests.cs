@@ -684,10 +684,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		{
 			Id = Guid.NewGuid(),
 			Name = "Planning Project",
-			WorkingPath = "/tmp/planning-project",
-			PlanningEnabled = true,
-			PlanningProviderId = Guid.NewGuid(),
-			PlanningModelId = "claude-sonnet-4"
+			WorkingPath = "/tmp/planning-project"
 		};
 		var provider = new Provider
 		{
@@ -925,15 +922,16 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	public async Task ResumeJobAsync_ReturnsPlanningStatus_WhenPlanIsStillPending()
 	{
 		await using var dbContext = CreateDbContext();
-		var planningProviderId = Guid.NewGuid();
+		// A team job on a project with a Lead still waits for its plan.
+		var leadProviderId = Guid.NewGuid();
 		var project = new Project
 		{
 			Id = Guid.NewGuid(),
 			Name = "Planning Resume Project",
 			WorkingPath = "/tmp/planning-resume-project",
-			PlanningEnabled = true,
-			PlanningProviderId = planningProviderId,
-			PlanningModelId = "claude-sonnet-4"
+			TeamEnabled = true,
+			LeadProviderId = leadProviderId,
+			LeadModelId = "claude-sonnet-4"
 		};
 		var provider = new Provider
 		{
@@ -950,6 +948,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Project = project,
 			ProviderId = provider.Id,
 			GoalPrompt = "Implement the feature",
+			TeamRun = true,
 			Status = JobStatus.Paused,
 			PendingInteractionPrompt = "Continue?",
 			InteractionType = "confirmation",
@@ -1010,7 +1009,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			BuildVerified = true,
 			BuildOutput = "build ok",
 			SessionSummary = "Previous summary",
-			CurrentCycle = 3,
 			InputTokens = 120,
 			OutputTokens = 80,
 			TotalCostUsd = 1.23m
@@ -1051,7 +1049,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Null(savedJob.BuildVerified);
 		Assert.Null(savedJob.BuildOutput);
 		Assert.Null(savedJob.SessionSummary);
-		Assert.Equal(1, savedJob.CurrentCycle);
 		Assert.Null(savedJob.InputTokens);
 		Assert.Null(savedJob.OutputTokens);
 		Assert.Null(savedJob.TotalCostUsd);
@@ -1064,6 +1061,48 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal(MessageRole.User, followUpMessage.Role);
 		Assert.Equal("Address the remaining failing tests.", followUpMessage.Content);
 		Assert.Empty(await dbContext.JobProviderAttempts.Where(attempt => attempt.JobId == job.Id).ToListAsync());
+	}
+
+	[Fact]
+	public async Task ContinueJobAsync_KeepsTheStepsAlreadyBuiltAsTheJobsRecord_AndPlansTheFollowUpAfresh()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Chain Project", WorkingPath = "/tmp/chain-project" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true, IsDefault = true };
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Two functions.",
+			TeamRun = true,
+			Status = JobStatus.Failed,
+			PlanningOutput = "Outcome: two functions.",
+			LeadChecks = 1,
+			Steps =
+			[
+				new JobStep { Order = 1, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Done, Summary = "divide is in.", SnapshotCommit = "aaaa" },
+				new JobStep { Order = 2, Title = "Dropped", Instructions = "Not needed.", Status = JobStepStatus.Skipped },
+				new JobStep { Order = 3, Title = "Add power", Instructions = "Add power.", Status = JobStepStatus.Running },
+				new JobStep { Order = 4, Title = "Document both", Instructions = "Write the docs." }
+			]
+		};
+		dbContext.AddRange(project, provider, job);
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+		Assert.True(await jobService.ContinueJobAsync(job.Id, "Add modulo as well."));
+
+		// The old plan is gone and so are the steps it never built. What was built stays on the
+		// job's page, marked as belonging to an earlier run, so no later run takes it up again.
+		dbContext.ChangeTracker.Clear();
+		var saved = await dbContext.Jobs.Include(j => j.Steps).SingleAsync(j => j.Id == job.Id);
+		Assert.Equal((JobStatus.New, null, 0), (saved.Status, saved.PlanningOutput, saved.LeadChecks));
+		Assert.Equal(
+			[("Add divide", JobStepStatus.Earlier), ("Dropped", JobStepStatus.Skipped)],
+			saved.Steps.OrderBy(step => step.Order).Select(step => (step.Title, step.Status)));
+		var kept = saved.Steps.Single(step => step.Status == JobStepStatus.Earlier);
+		Assert.Equal(("divide is in.", null), (kept.Summary, kept.SnapshotCommit));
 	}
 
 	[Fact]
@@ -2823,8 +2862,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			ProjectId = project.Id,
 			Description = "Improve mobile navigation",
-			ExpandedDescription = "Create a bottom navigation bar with clear project and job shortcuts.",
-			ExpansionStatus = IdeaExpansionStatus.Approved,
+			Specification = "Create a bottom navigation bar with clear project and job shortcuts.",
 			SortOrder = 0
 		};
 
@@ -2839,7 +2877,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.NotNull(job);
 		Assert.Contains("## Detailed Specification", job!.GoalPrompt);
 		Assert.Contains("Use the approved specification as the source of truth", job.GoalPrompt);
-		Assert.Contains(idea.ExpandedDescription, job.GoalPrompt);
+		Assert.Contains(idea.Specification, job.GoalPrompt);
 		Assert.DoesNotContain("Work directly from the idea below", job.GoalPrompt);
 	}
 
@@ -2965,6 +3003,42 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal("high", job.ReasoningEffort);
 	}
 
+
+	[Fact]
+	public async Task ConvertToJobAsync_RunsOnTheProjectsBuildProfile_OrOnTheProfileNamed()
+	{
+		await using var dbContext = CreateDbContext();
+		var claude = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true, IsDefault = true };
+		var build = new Profile { Id = Guid.NewGuid(), Name = "Deep thinker", ProviderId = claude.Id, ModelId = "opus", ReasoningEffort = "high" };
+		var quick = new Profile { Id = Guid.NewGuid(), Name = "Quick fixer", ProviderId = claude.Id, ModelId = "haiku" };
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Profiled ideas",
+			WorkingPath = "/tmp/profiled-ideas",
+			ProviderSelections = [new ProjectProvider { ProviderId = claude.Id, ProfileId = build.Id, PreferredModelId = "opus", PreferredReasoningEffort = "high", Priority = 0, IsEnabled = true }]
+		};
+		var ideas = new[] { "First idea", "Second idea" }
+			.Select((text, index) => new Idea { Id = Guid.NewGuid(), ProjectId = project.Id, Description = text, SortOrder = index })
+			.ToList();
+		dbContext.Providers.Add(claude);
+		dbContext.ProviderModels.AddRange(
+			new ProviderModel { Id = Guid.NewGuid(), ProviderId = claude.Id, ModelId = "opus", IsAvailable = true, IsDefault = true },
+			new ProviderModel { Id = Guid.NewGuid(), ProviderId = claude.Id, ModelId = "haiku", IsAvailable = true });
+		dbContext.Profiles.AddRange(build, quick);
+		dbContext.Projects.Add(project);
+		dbContext.Ideas.AddRange(ideas);
+		await dbContext.SaveChangesAsync();
+		var ideaService = CreateIdeaService(dbContext, claude);
+
+		// An idea names nothing, so its job is the project's to place.
+		var asTheProjectBuilds = await ideaService.ConvertToJobAsync(ideas[0].Id);
+		Assert.Equal(((Guid?)build.Id, "Deep thinker", "opus", "high"), (asTheProjectBuilds!.ProfileId, asTheProjectBuilds.ProfileName, asTheProjectBuilds.ModelUsed, asTheProjectBuilds.ReasoningEffort));
+
+		// Start All, auto-pilot and the like can name another profile for the run.
+		var onAnother = await ideaService.ConvertToJobAsync(ideas[1].Id, new IdeaProcessingOptions { ProfileId = quick.Id });
+		Assert.Equal(((Guid?)quick.Id, "Quick fixer", "haiku"), (onAnother!.ProfileId, onAnother.ProfileName, onAnother.ModelUsed));
+	}
 
 	[Fact]
 	public async Task StartProcessingAsync_PersistsQueueProviderAndModelOverrides()
@@ -4229,210 +4303,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task ProjectService_UpdateAsync_PersistsPlanningSettings()
-	{
-		await using var dbContext = CreateDbContext();
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "Claude Planner",
-			Type = ProviderType.Claude,
-			IsEnabled = true
-		};
-		var project = new Project
-		{
-			Id = Guid.NewGuid(),
-			Name = "Planning Project",
-			WorkingPath = "/tmp/planning-project"
-		};
-		var model = new ProviderModel
-		{
-			Id = Guid.NewGuid(),
-			ProviderId = provider.Id,
-			ModelId = "claude-sonnet-4.6",
-			DisplayName = "Claude Sonnet 4.6",
-			IsAvailable = true,
-			IsDefault = true
-		};
-
-		dbContext.Providers.Add(provider);
-		dbContext.ProviderModels.Add(model);
-		dbContext.Projects.Add(project);
-		await dbContext.SaveChangesAsync();
-
-		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService(), new FakeVersionControlService());
-		var updated = await projectService.UpdateAsync(new Project
-		{
-			Id = project.Id,
-			Name = project.Name,
-			WorkingPath = project.WorkingPath,
-			PlanningEnabled = true,
-			PlanningProviderId = provider.Id,
-			PlanningModelId = model.ModelId
-		});
-
-		Assert.True(updated.PlanningEnabled);
-		Assert.Equal(provider.Id, updated.PlanningProviderId);
-		Assert.Equal(model.ModelId, updated.PlanningModelId);
-
-		var stored = await dbContext.Projects.AsNoTracking().SingleAsync(p => p.Id == project.Id);
-		Assert.True(stored.PlanningEnabled);
-		Assert.Equal(provider.Id, stored.PlanningProviderId);
-		Assert.Equal(model.ModelId, stored.PlanningModelId);
-	}
-
-	[Fact]
-	public async Task ProjectService_CreateAsync_RejectsUnsupportedPlanningProvider()
-	{
-		await using var dbContext = CreateDbContext();
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "OpenCode Planner",
-			Type = ProviderType.OpenCode,
-			IsEnabled = true
-		};
-
-		dbContext.Providers.Add(provider);
-		await dbContext.SaveChangesAsync();
-
-		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService(), new FakeVersionControlService());
-
-		var error = await Assert.ThrowsAsync<InvalidOperationException>(() => projectService.CreateAsync(new Project
-		{
-			Name = "Unsupported Planning",
-			WorkingPath = "/tmp/unsupported-planning",
-			PlanningEnabled = true,
-			PlanningProviderId = provider.Id
-		}));
-
-		Assert.Contains("supports only Claude and GitHub Copilot", error.Message);
-	}
-
-	[Fact]
-	public async Task ExpandIdeaAsync_UsesProjectPlanningProviderAndModel()
-	{
-		await using var dbContext = CreateDbContext();
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "Claude Planner",
-			Type = ProviderType.Claude,
-			IsEnabled = true,
-			IsDefault = true
-		};
-		var project = new Project
-		{
-			Id = Guid.NewGuid(),
-			Name = "Planned Ideas Project",
-			WorkingPath = "/tmp/planned-ideas",
-			PlanningEnabled = true,
-			PlanningProviderId = provider.Id,
-			PlanningModelId = "claude-sonnet-4.6",
-			PlanningReasoningEffort = "high"
-		};
-		var idea = new Idea
-		{
-			Id = Guid.NewGuid(),
-			ProjectId = project.Id,
-			Description = "Add a planning settings card to the project page",
-			SortOrder = 0
-		};
-		var providerInstance = new FakeProviderInstance
-		{
-			ExecutionResult = new ExecutionResult
-			{
-				Success = true,
-				ModelUsed = "claude-sonnet-4.6",
-				Messages =
-				[
-					new ExecutionMessage
-					{
-						Role = "plan",
-						Content = "Overview: Add project planning controls.\nAcceptance Criteria: Users can configure planning.",
-					}
-				]
-			}
-		};
-
-		dbContext.Projects.Add(project);
-		dbContext.Providers.Add(provider);
-		dbContext.Ideas.Add(idea);
-		await dbContext.SaveChangesAsync();
-
-		var ideaService = CreateIdeaService(dbContext, provider, providerInstance);
-		var result = await ideaService.ExpandIdeaAsync(idea.Id);
-
-		Assert.NotNull(result);
-		Assert.Equal(IdeaExpansionStatus.PendingReview, result!.ExpansionStatus);
-		Assert.Contains("Overview: Add project planning controls.", result.ExpandedDescription);
-		Assert.NotNull(providerInstance.LastExecutePrompt);
-		Assert.DoesNotContain("/plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
-		Assert.StartsWith("Explore the codebase and write an implementation-ready plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
-		Assert.Equal(project.PlanningModelId, providerInstance.LastExecutionOptions?.Model);
-		Assert.Equal(project.PlanningReasoningEffort, providerInstance.LastExecutionOptions?.ReasoningEffort);
-		Assert.NotNull(providerInstance.LastExecutionOptions?.DisallowedTools);
-		Assert.Contains("Bash", providerInstance.LastExecutionOptions!.DisallowedTools!);
-		Assert.Contains("Edit", providerInstance.LastExecutionOptions.DisallowedTools!);
-		Assert.Contains("Write", providerInstance.LastExecutionOptions.DisallowedTools!);
-	}
-
-	[Fact]
-	public async Task ExpandIdeaAsync_UsesConfiguredIdeaExpansionPromptTemplate()
-	{
-		await using var dbContext = CreateDbContext();
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "Copilot",
-			Type = ProviderType.Copilot,
-			IsEnabled = true,
-			IsDefault = true
-		};
-		var project = new Project
-		{
-			Id = Guid.NewGuid(),
-			Name = "Idea Prompt Project",
-			WorkingPath = "/tmp/idea-prompt-project"
-		};
-		var idea = new Idea
-		{
-			Id = Guid.NewGuid(),
-			ProjectId = project.Id,
-			Description = "Ship a settings editor for prompt templates",
-			SortOrder = 0
-		};
-		var inferenceService = new FakeInferenceService
-		{
-			Response = new InferenceResponse
-			{
-				Success = true,
-				Response = "Overview: Add settings editor.\nAcceptance Criteria: Users can save templates."
-			}
-		};
-
-		dbContext.Providers.Add(provider);
-		dbContext.Projects.Add(project);
-		dbContext.Ideas.Add(idea);
-		dbContext.AppSettings.Add(new AppSettings
-		{
-			Id = Guid.NewGuid(),
-			TimeZoneId = "UTC",
-			IdeaExpansionPromptTemplate = "Explore first:\n{{idea}}\nThen produce a spec."
-		});
-		await dbContext.SaveChangesAsync();
-
-		var ideaService = CreateIdeaService(dbContext, provider, inferenceService: inferenceService);
-		var result = await ideaService.ExpandIdeaAsync(idea.Id, new IdeaExpansionRequest { UseInference = true });
-
-		Assert.NotNull(result);
-		Assert.NotNull(inferenceService.LastRequest);
-		Assert.Contains("Explore first:", inferenceService.LastRequest!.Prompt);
-		Assert.Contains(idea.Description, inferenceService.LastRequest.Prompt);
-		Assert.DoesNotContain("implementation-ready engineering specification", inferenceService.LastRequest.Prompt);
-	}
-
-	[Fact]
 	public async Task ConvertToJobAsync_UsesConfiguredIdeaImplementationPromptTemplate()
 	{
 		await using var dbContext = CreateDbContext();
@@ -4501,9 +4371,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			ProjectId = project.Id,
 			Description = "Add prompt template settings",
-			ExpandedDescription = "Persist app-level templates and render them in Settings.",
-			ExpansionStatus = IdeaExpansionStatus.Approved,
-			ExpandedAt = DateTime.UtcNow,
+			Specification = "Persist app-level templates and render them in Settings.",
 			SortOrder = 0
 		};
 
@@ -4524,7 +4392,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.NotNull(job);
 		Assert.Contains("Original:", job!.GoalPrompt);
 		Assert.Contains(idea.Description, job.GoalPrompt);
-		Assert.Contains(idea.ExpandedDescription, job.GoalPrompt);
+		Assert.Contains(idea.Specification, job.GoalPrompt);
 		Assert.Contains("Ship it.", job.GoalPrompt);
 		Assert.DoesNotContain("This specification was reviewed and approved", job.GoalPrompt);
 	}
@@ -4536,7 +4404,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			Name = "Swarm Project",
 			WorkingPath = "/tmp/swarm-project",
-			EnableTeamSwarm = true
 		};
 		var firstProvider = new Provider
 		{
@@ -4811,7 +4678,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task NotifyJobGitDiffUpdated(Guid jobId, bool hasChanges) => Task.CompletedTask;
 		public Task NotifyJobInteractionRequired(Guid jobId, string prompt, string interactionType, List<string>? choices = null, string? defaultResponse = null) => Task.CompletedTask;
 		public Task NotifyJobResumed(Guid jobId) => Task.CompletedTask;
-		public Task NotifyJobCycleProgress(Guid jobId, int currentCycle, int maxCycles) => Task.CompletedTask;
+		public Task NotifyJobStepsChanged(Guid jobId) => Task.CompletedTask;
 		public bool? LastQueuePausedState { get; private set; }
 
 		public Task NotifyJobQueuePausedChanged(bool isPaused)

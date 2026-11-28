@@ -782,6 +782,21 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void Copilot_NewSession_CutsANameTheCliWouldReject()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 112);
+        // A job's title, which names its session, runs to 200 characters.
+        provider.ApplyOptions(new ExecutionOptions { SessionName = "Add three functions " + new string('x', 180) });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var name = args[args.IndexOf("--name") + 1];
+        Assert.Equal(CopilotProvider.MaxSessionNameLength, name.Length);
+        Assert.StartsWith("Add three functions", name);
+    }
+
+    [Fact]
     public void Copilot_ResumedSession_OmitsSessionIdAndName()
     {
         // Since 1.0.71 the CLI rejects --name alongside an existing session.
@@ -2235,16 +2250,18 @@ public sealed class ProviderCliArgsTests
     }
 
     [Theory]
-    [InlineData("""{"type":"error","timestamp":1,"sessionID":"ses_abc","error":{"name":"ProviderAuthError","data":{"providerID":"anthropic","message":"Invalid API key"}}}""")]
-    [InlineData("""{"type":"error","timestamp":1,"sessionID":"ses_abc","error":{"type":"provider","message":"Invalid API key"}}""")]
-    public void OpenCode_StreamErrorEvent_FailsTheRunWithItsMessage(string line)
+    [InlineData("""{"type":"error","timestamp":1,"sessionID":"ses_abc","error":{"name":"ProviderAuthError","data":{"providerID":"anthropic","message":"Invalid API key"}}}""", "Invalid API key")]
+    [InlineData("""{"type":"error","timestamp":1,"sessionID":"ses_abc","error":{"type":"provider","message":"Invalid API key"}}""", "Invalid API key")]
+    // From a real 2.4.2 run given a model it can't route.
+    [InlineData("""{"type":"error","timestamp":1795860449290,"sessionID":"ses_dde603e4effe1UzNzfzEBS5RjY","error":{"type":"provider.no-route","message":"Model unavailable: bogusprov/bogus-model"}}""", "Model unavailable: bogusprov/bogus-model")]
+    public void OpenCode_StreamErrorEvent_FailsTheRunWithItsMessage(string line, string expectedMessage)
     {
         var result = new ExecutionResult { Success = true, Messages = new List<ExecutionMessage>() };
 
         Assert.True(OpenCodeProvider.TryProcessStreamLine(line, result, new System.Text.StringBuilder(), null));
 
         Assert.False(result.Success);
-        Assert.Equal("Invalid API key", result.ErrorMessage);
+        Assert.Equal(expectedMessage, result.ErrorMessage);
         Assert.Equal("system", Assert.Single(result.Messages).Role);
     }
 

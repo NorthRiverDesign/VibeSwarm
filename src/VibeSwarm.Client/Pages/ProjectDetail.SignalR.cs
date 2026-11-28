@@ -543,24 +543,13 @@ public partial class ProjectDetail
 			Providers = (await ProviderService.GetAllAsync()).ToList();
 
 			var suggestionTask = LoadSuggestionProviderModels();
-			var defaultProviderTask = LoadDefaultProvider();
 			var inferenceTask = LoadInferenceModels();
 
-			await Task.WhenAll(suggestionTask, defaultProviderTask, inferenceTask);
+			await Task.WhenAll(suggestionTask, inferenceTask);
 		}
 		catch
 		{
 			Providers = new List<Provider>();
-		}
-	}
-
-	private async Task LoadDefaultProvider()
-	{
-		var defaultProvider = await ProviderService.GetDefaultAsync();
-		if (defaultProvider != null)
-		{
-			NewJob.ProviderId = defaultProvider.Id;
-			await LoadModelsForProvider(defaultProvider.Id);
 		}
 	}
 

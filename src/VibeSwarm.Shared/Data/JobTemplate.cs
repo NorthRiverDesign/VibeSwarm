@@ -34,6 +34,12 @@ public class JobTemplate
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? ReasoningEffort { get; set; }
 
+	/// <summary>
+	/// The profile the provider, model and reasoning above come from. Saving the profile updates
+	/// them. Null leaves the choice to each project.
+	/// </summary>
+	public Guid? ProfileId { get; set; }
+
 	[StringLength(ValidationLimits.JobTemplateBranchMaxLength)]
 	public string? Branch { get; set; }
 
@@ -43,21 +49,15 @@ public class JobTemplate
 	[StringLength(ValidationLimits.JobTemplateBranchMaxLength)]
 	public string? TargetBranch { get; set; }
 
-	public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
-
-	public CycleSessionMode CycleSessionMode { get; set; } = CycleSessionMode.ContinueSession;
-
-	[Range(1, 100)]
-	public int MaxCycles { get; set; } = 1;
-
-	[StringLength(ValidationLimits.JobTemplatePromptMaxLength)]
-	public string? CycleReviewPrompt { get; set; }
-
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
 	public DateTime? UpdatedAt { get; set; }
 
 	public int UseCount { get; set; }
+
+	/// <summary>The name of <see cref="ProfileId"/>. Filled in when a template is read; not stored.</summary>
+	[NotMapped]
+	public string? ProfileName { get; set; }
 
 	/// <summary>When a job was last created from this template. Filled in by the template list; not stored.</summary>
 	[NotMapped]

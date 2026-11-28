@@ -56,9 +56,9 @@ public partial class IdeaService
 
 			var branch = await ProjectJobBranch.ResolveDefaultAsync(idea.Project, _versionControlService, _logger, cancellationToken);
 
-			// Use an approved expansion when available; otherwise send directly to implementation.
-			var goalPrompt = idea.HasExpandedDescription
-				? BuildPromptFromExpanded(idea.Description, idea.ExpandedDescription!, await GetApprovedIdeaImplementationPromptTemplateAsync(cancellationToken))
+			// An idea the Lead suggested carries its goal and acceptance criteria with it.
+			var goalPrompt = idea.HasSpecification
+				? BuildPromptFromSpecification(idea.Description, idea.Specification!, await GetApprovedIdeaImplementationPromptTemplateAsync(cancellationToken))
 				: BuildImplementationPrompt(idea.Description, await GetIdeaImplementationPromptTemplateAsync(cancellationToken));
 			var attachmentPaths = ResolveAttachmentPaths(idea.Project.WorkingPath, idea.Attachments);
 			if (attachmentPaths.Count > 0)
@@ -66,16 +66,23 @@ public partial class IdeaService
 				goalPrompt = BuildPromptWithAttachments(goalPrompt, idea.Attachments, attachmentPaths);
 			}
 
+			// Who runs it is the job service's call: the profile named here, else the profile the
+			// project builds with. Only an older caller that spells out a provider or a model
+			// without a profile has them worked out here, as before.
+			var spellsOutExecution = options?.ProfileId == null
+				&& (options?.ProviderId.HasValue == true || !string.IsNullOrWhiteSpace(options?.ModelId));
+
 			// Create the job with the original idea as the title
 			var job = new Job
 			{
 				ProjectId = idea.ProjectId,
-				ProviderId = defaultProvider.Id,
+				ProfileId = options?.ProfileId,
+				ProviderId = spellsOutExecution ? defaultProvider.Id : Guid.Empty,
 				Title = idea.Description,  // Use the original idea text as the title
 				GoalPrompt = goalPrompt,
 				Branch = branch,
-				ModelUsed = await ResolveJobModelAsync(idea.ProjectId, defaultProvider.Id, options, cancellationToken),
-				ReasoningEffort = await ResolveJobReasoningAsync(idea.ProjectId, defaultProvider.Id, cancellationToken),
+				ModelUsed = spellsOutExecution ? await ResolveJobModelAsync(idea.ProjectId, defaultProvider.Id, options, cancellationToken) : null,
+				ReasoningEffort = spellsOutExecution ? await ResolveJobReasoningAsync(idea.ProjectId, defaultProvider.Id, cancellationToken) : null,
 				AttachedFilesJson = attachmentPaths.Count > 0 ? JsonSerializer.Serialize(attachmentPaths) : null,
 				IterationLoopId = options?.IterationLoopId,
 				CommitModeOverride = options?.CommitModeOverride,
@@ -180,8 +187,8 @@ public partial class IdeaService
 		return ProviderCapabilities.NormalizeReasoningEffort(provider?.DefaultReasoningEffort);
 	}
 
-	private static string BuildPromptFromExpanded(string originalIdea, string expandedDescription, string? template)
-		=> PromptBuilder.BuildApprovedIdeaImplementationPrompt(originalIdea, expandedDescription, template);
+	private static string BuildPromptFromSpecification(string originalIdea, string specification, string? template)
+		=> PromptBuilder.BuildApprovedIdeaImplementationPrompt(originalIdea, specification, template);
 
 	private static string BuildImplementationPrompt(string ideaDescription, string? template)
 		=> PromptBuilder.BuildIdeaImplementationPrompt(ideaDescription, template);
@@ -257,6 +264,7 @@ public partial class IdeaService
 				if (project?.IdeasProcessingActive == true)
 				{
 					project.IdeasProcessingActive = false;
+					project.IdeasProcessingProfileId = null;
 					project.IdeasProcessingProviderId = null;
 					project.IdeasProcessingModelId = null;
 					stoppedProcessing = true;

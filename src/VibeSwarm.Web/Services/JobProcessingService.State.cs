@@ -210,12 +210,7 @@ public partial class JobProcessingService
             job.SessionId = sessionId ?? job.SessionId;
             job.Output = output ?? job.Output;
             job.ErrorMessage = errorMessage;
-            job.ExecutionInputTokens = inputTokens ?? job.ExecutionInputTokens;
-            job.ExecutionOutputTokens = outputTokens ?? job.ExecutionOutputTokens;
-            job.ExecutionCostUsd = costUsd ?? job.ExecutionCostUsd;
-            job.InputTokens = SumUsage(job.PlanningInputTokens, job.ExecutionInputTokens);
-            job.OutputTokens = SumUsage(job.PlanningOutputTokens, job.ExecutionOutputTokens);
-            job.TotalCostUsd = SumCost(SumCost(job.PlanningCostUsd, job.ExecutionCostUsd), job.ReviewCostUsd);
+            StoreExecutionUsage(job, inputTokens, outputTokens, costUsd, executionContext);
             job.IsTokenEstimate = isTokenEstimate;
             job.ModelUsed = modelUsed ?? job.ModelUsed;
             JobRecoveryHelper.ClearRecoveryState(job);
@@ -340,6 +335,21 @@ public partial class JobProcessingService
         }
 
         return hasGitChanges;
+    }
+
+    /// <summary>
+    /// Writes a run's usage to the job. A run that carries a chain on adds what the steps
+    /// finished by earlier runs used, so the job's totals are the whole chain's.
+    /// </summary>
+    private static void StoreExecutionUsage(Job job, int? inputTokens, int? outputTokens, decimal? costUsd, JobExecutionContext executionContext)
+    {
+        var carried = executionContext.CarriedOverUsage;
+        job.ExecutionInputTokens = SumUsage(inputTokens, carried.Input > 0 ? carried.Input : null) ?? job.ExecutionInputTokens;
+        job.ExecutionOutputTokens = SumUsage(outputTokens, carried.Output > 0 ? carried.Output : null) ?? job.ExecutionOutputTokens;
+        job.ExecutionCostUsd = SumCost(costUsd, carried.Cost > 0 ? carried.Cost : null) ?? job.ExecutionCostUsd;
+        job.InputTokens = SumUsage(job.PlanningInputTokens, job.ExecutionInputTokens);
+        job.OutputTokens = SumUsage(job.PlanningOutputTokens, job.ExecutionOutputTokens);
+        job.TotalCostUsd = SumCost(SumCost(job.PlanningCostUsd, job.ExecutionCostUsd), job.ReviewCostUsd);
     }
 
     private static int? SumUsage(int? first, int? second)

@@ -30,6 +30,58 @@ public sealed class JobScheduleServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task CreateAsync_TakesAProfileOrNothing_AndAnIdeaScheduleTakesAnInferenceProfile()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = CreateProject();
+		var provider = CreateProvider();
+		var grok = new InferenceProvider { Id = Guid.NewGuid(), Name = "Grok", ProviderType = VibeSwarm.Shared.Inference.InferenceProviderType.Grok, Endpoint = "https://api.x.ai", IsEnabled = true };
+		var nightly = new Profile { Id = Guid.NewGuid(), Name = "Nightly", ProviderId = provider.Id, ModelId = "night-model" };
+		var ideas = new Profile { Id = Guid.NewGuid(), Name = "Grok ideas", InferenceProviderId = grok.Id, ModelId = "grok-4" };
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.InferenceProviders.Add(grok);
+		dbContext.ProviderModels.Add(new ProviderModel { Id = Guid.NewGuid(), ProviderId = provider.Id, ModelId = "night-model", IsAvailable = true });
+		dbContext.InferenceModels.Add(new InferenceModel { InferenceProviderId = grok.Id, ModelId = "grok-4", IsAvailable = true });
+		dbContext.Profiles.AddRange(nightly, ideas);
+		await dbContext.SaveChangesAsync();
+		var service = new JobScheduleService(dbContext);
+
+		// Each is checked the way the API checks it on arrival, before the service fills anything in:
+		// the editor sends a profile and never a provider.
+		static bool ArrivesValid(JobSchedule schedule)
+			=> System.ComponentModel.DataAnnotations.Validator.TryValidateObject(schedule, new System.ComponentModel.DataAnnotations.ValidationContext(schedule), null, validateAllProperties: true);
+		JobSchedule Daily(JobScheduleType type, Guid? profileId) => new()
+		{
+			ProjectId = project.Id,
+			ScheduleType = type,
+			ProfileId = profileId,
+			Prompt = type == JobScheduleType.RunJob ? "update dependencies" : string.Empty,
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9
+		};
+
+		var onAProfile = Daily(JobScheduleType.RunJob, nightly.Id);
+		Assert.True(ArrivesValid(onAProfile));
+		var saved = await service.CreateAsync(onAProfile);
+		Assert.Equal(((Guid?)nightly.Id, "Nightly", (Guid?)provider.Id, "night-model"), (saved.ProfileId, saved.ProfileName, saved.ProviderId, saved.ModelId));
+
+		// Naming nothing leaves the job to the project's Build profile.
+		var namesNothing = Daily(JobScheduleType.RunJob, null);
+		Assert.True(ArrivesValid(namesNothing));
+		saved = await service.CreateAsync(namesNothing);
+		Assert.Equal((null, null, null), (saved.ProfileId, saved.ProviderId, saved.ModelId));
+
+		var ideaSchedule = Daily(JobScheduleType.GenerateIdeas, ideas.Id);
+		Assert.True(ArrivesValid(ideaSchedule));
+		saved = await service.CreateAsync(ideaSchedule);
+		Assert.Equal(((Guid?)ideas.Id, "Grok ideas", (Guid?)grok.Id, "grok-4"), (saved.ProfileId, saved.ProfileName, saved.InferenceProviderId, saved.ModelId));
+
+		// Ideas have to come from somewhere.
+		Assert.False(ArrivesValid(Daily(JobScheduleType.GenerateIdeas, null)));
+	}
+
+	[Fact]
 	public async Task CreateAsync_ComputesNextRunForDailySchedule()
 	{
 		await using var dbContext = CreateDbContext();
@@ -124,6 +176,56 @@ public sealed class JobScheduleServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ProcessDueSchedulesAsync_RunsOnTheSchedulesProfile_AndFallsBackWhenItCanNoLongerRun()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = CreateProject();
+		var provider = CreateProvider();
+		var switchedOff = CreateProvider();
+		switchedOff.Name = "Switched off";
+		switchedOff.IsDefault = false;
+		switchedOff.IsEnabled = false;
+		var build = new Profile { Id = Guid.NewGuid(), Name = "Build", ProviderId = provider.Id, ModelId = "build-model" };
+		var nightly = new Profile { Id = Guid.NewGuid(), Name = "Nightly", ProviderId = provider.Id, ModelId = "night-model" };
+		var stranded = new Profile { Id = Guid.NewGuid(), Name = "Stranded", ProviderId = switchedOff.Id };
+		project.ProviderSelections.Add(new ProjectProvider { ProviderId = provider.Id, ProfileId = build.Id, PreferredModelId = "build-model", Priority = 0, IsEnabled = true });
+		dbContext.Projects.Add(project);
+		dbContext.Providers.AddRange(provider, switchedOff);
+		dbContext.ProviderModels.AddRange(
+			new ProviderModel { Id = Guid.NewGuid(), ProviderId = provider.Id, ModelId = "build-model", IsAvailable = true },
+			new ProviderModel { Id = Guid.NewGuid(), ProviderId = provider.Id, ModelId = "night-model", IsAvailable = true });
+		dbContext.Profiles.AddRange(build, nightly, stranded);
+
+		var dueTime = DateTime.UtcNow.AddMinutes(-2);
+		JobSchedule Due(string prompt, Guid? profileId, Guid? providerId) => new()
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProfileId = profileId,
+			ProviderId = providerId,
+			Prompt = prompt,
+			Frequency = JobScheduleFrequency.Hourly,
+			MinuteUtc = dueTime.Minute,
+			NextRunAtUtc = dueTime,
+			IsEnabled = true
+		};
+		// The provider beside each profile is the copy the schedule keeps.
+		dbContext.JobSchedules.AddRange(Due("on a profile", nightly.Id, provider.Id), Due("names nothing", null, null), Due("profile switched off", stranded.Id, switchedOff.Id));
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+		var processor = new JobScheduleProcessor(dbContext, jobService, new FakeIdeaService(), NullLogger<JobScheduleProcessor>.Instance);
+
+		Assert.Equal(3, await processor.ProcessDueSchedulesAsync());
+
+		var jobs = await dbContext.Jobs.AsNoTracking().ToDictionaryAsync(job => job.GoalPrompt);
+		Assert.Equal(("Nightly", "night-model"), (jobs["on a profile"].ProfileName, jobs["on a profile"].ModelUsed));
+		// Naming nothing, and naming a profile whose provider is off, both run as the project builds.
+		Assert.Equal(("Build", "build-model"), (jobs["names nothing"].ProfileName, jobs["names nothing"].ModelUsed));
+		Assert.Equal(("Build", provider.Id), (jobs["profile switched off"].ProfileName, jobs["profile switched off"].ProviderId));
+	}
+
+	[Fact]
 	public async Task ProcessDueSchedulesAsync_CreatesOnlyOneJobPerScheduledRun()
 	{
 		await using var dbContext = CreateDbContext();
@@ -160,94 +262,6 @@ public sealed class JobScheduleServiceTests : IDisposable
 		var savedJob = await dbContext.Jobs.SingleAsync(job => job.JobScheduleId == schedule.Id);
 		Assert.True(savedJob.IsScheduled);
 		Assert.Equal(dueTime, savedJob.ScheduledForUtc);
-	}
-
-	[Fact]
-	public async Task CreateAsync_RejectsAgentWithoutEnabledDefaultProvider()
-	{
-		await using var dbContext = CreateDbContext();
-		var project = CreateProject();
-		var provider = CreateProvider();
-		var agent = CreateAgent();
-		dbContext.Projects.Add(project);
-		dbContext.Providers.Add(provider);
-		dbContext.Agents.Add(agent);
-		await dbContext.SaveChangesAsync();
-
-		var service = new JobScheduleService(dbContext);
-
-		var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(new JobSchedule
-		{
-			ProjectId = project.Id,
-			ExecutionTarget = JobScheduleExecutionTarget.Agent,
-			AgentId = agent.Id,
-			Prompt = "review security findings",
-			Frequency = JobScheduleFrequency.Daily,
-			HourUtc = 9,
-			MinuteUtc = 0
-		}));
-
-		Assert.Equal("The selected agent does not have an enabled default provider.", exception.Message);
-	}
-
-	[Fact]
-	public async Task ProcessDueSchedulesAsync_CreatesAgentJobFromGlobalAgentWithoutSwarmFanout()
-	{
-		await using var dbContext = CreateDbContext();
-		var project = CreateProject();
-		project.EnableTeamSwarm = true;
-		var primaryProvider = CreateProvider();
-		var reviewerRole = CreateAgent("Security Reviewer");
-		reviewerRole.DefaultProviderId = primaryProvider.Id;
-		reviewerRole.DefaultModelId = "copilot-reviewer";
-		reviewerRole.DefaultReasoningEffort = "high";
-		dbContext.Projects.Add(project);
-		dbContext.Providers.Add(primaryProvider);
-		dbContext.Agents.Add(reviewerRole);
-
-		dbContext.ProviderModels.Add(
-			new ProviderModel
-			{
-				Id = Guid.NewGuid(),
-				ProviderId = primaryProvider.Id,
-				ModelId = "copilot-reviewer",
-				DisplayName = "Copilot Reviewer",
-				IsAvailable = true,
-				IsDefault = true,
-				UpdatedAt = DateTime.UtcNow
-			});
-
-		var dueTime = DateTime.UtcNow.AddMinutes(-2);
-		dbContext.JobSchedules.Add(new JobSchedule
-		{
-			Id = Guid.NewGuid(),
-			ProjectId = project.Id,
-			ExecutionTarget = JobScheduleExecutionTarget.Agent,
-			AgentId = reviewerRole.Id,
-			Prompt = "review for security issues",
-			Frequency = JobScheduleFrequency.Hourly,
-			MinuteUtc = dueTime.Minute,
-			NextRunAtUtc = dueTime,
-			IsEnabled = true
-		});
-		await dbContext.SaveChangesAsync();
-
-		var serviceProvider = new ServiceCollection().BuildServiceProvider();
-		var jobService = new JobService(dbContext, serviceProvider);
-		var processor = new JobScheduleProcessor(dbContext, jobService, new FakeIdeaService(), NullLogger<JobScheduleProcessor>.Instance);
-
-		var createdCount = await processor.ProcessDueSchedulesAsync();
-
-		Assert.Equal(1, createdCount);
-		var jobs = await dbContext.Jobs.ToListAsync();
-		Assert.Single(jobs);
-		var job = jobs[0];
-		Assert.True(job.IsScheduled);
-		Assert.Equal(reviewerRole.Id, job.AgentId);
-		Assert.Equal(primaryProvider.Id, job.ProviderId);
-		Assert.Equal("copilot-reviewer", job.ModelUsed);
-		Assert.Equal("high", job.ReasoningEffort);
-		Assert.Null(job.SwarmId);
 	}
 
 	[Fact]
@@ -371,13 +385,6 @@ public sealed class JobScheduleServiceTests : IDisposable
 		Type = ProviderType.Copilot,
 		IsEnabled = true,
 		IsDefault = true
-	};
-
-	private static Agent CreateAgent(string? name = null) => new()
-	{
-		Id = Guid.NewGuid(),
-		Name = name ?? $"Role-{Guid.NewGuid():N}",
-		IsEnabled = true
 	};
 
 	private class FakeIdeaService : FakeIdeaServiceBase

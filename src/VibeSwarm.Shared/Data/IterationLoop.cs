@@ -95,6 +95,12 @@ public class IterationLoop
 	/// </summary>
 	public Guid? InferenceProviderId { get; set; }
 
+	/// <summary>
+	/// The inference profile that suggests this run's ideas; the inference provider and model
+	/// beside it are copied from it.
+	/// </summary>
+	public Guid? IdeasProfileId { get; set; }
+
 	[StringLength(200)]
 	public string? InferenceModelId { get; set; }
 
@@ -103,6 +109,12 @@ public class IterationLoop
 	/// If null, uses the project's default provider selection.
 	/// </summary>
 	public Guid? ProviderId { get; set; }
+
+	/// <summary>
+	/// The profile auto-pilot's jobs run on; <see cref="ProviderId"/> and <see cref="ModelId"/> are
+	/// copied from it. Null, with no provider either, runs them on the project's Build profile.
+	/// </summary>
+	public Guid? ProfileId { get; set; }
 
 	/// <summary>
 	/// Optional model override for the coding provider.

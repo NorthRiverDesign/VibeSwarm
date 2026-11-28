@@ -59,7 +59,27 @@ public class JobTemplateService : IJobTemplateService
 			template.LastRunAt = templateRuns.Count > 0 ? templateRuns.Max(run => run.CreatedAt) : null;
 		}
 
+		await NameProfilesAsync(templates, cancellationToken);
 		return templates;
+	}
+
+	/// <summary>Fills each template's profile name, which the list shows instead of a provider and model.</summary>
+	private async Task NameProfilesAsync(IReadOnlyCollection<JobTemplate> templates, CancellationToken cancellationToken)
+	{
+		var profileIds = templates.Where(template => template.ProfileId.HasValue).Select(template => template.ProfileId!.Value).Distinct().ToList();
+		if (profileIds.Count == 0)
+		{
+			return;
+		}
+
+		var names = await _dbContext.Profiles
+			.AsNoTracking()
+			.Where(profile => profileIds.Contains(profile.Id))
+			.ToDictionaryAsync(profile => profile.Id, profile => profile.Name, cancellationToken);
+		foreach (var template in templates)
+		{
+			template.ProfileName = template.ProfileId is Guid id ? names.GetValueOrDefault(id) : null;
+		}
 	}
 
 	public async Task<IReadOnlyList<JobTemplateProjectRun>> GetRunsAsync(Guid templateId, CancellationToken cancellationToken = default)
@@ -160,7 +180,11 @@ public class JobTemplateService : IJobTemplateService
 				continue;
 			}
 
-			if (template.ProviderId is Guid pinned &&
+			// A template on a profile runs wherever it is sent, like a job given that profile.
+			// Only one still pinned to a bare provider is held to the project's list, since
+			// such a job is planned from that list alone.
+			if (template.ProfileId == null &&
+				template.ProviderId is Guid pinned &&
 				allowedProvidersByProject[project.Id].Any() &&
 				!allowedProvidersByProject[project.Id].Contains(pinned))
 			{
@@ -208,6 +232,7 @@ public class JobTemplateService : IJobTemplateService
 			JobTemplateId = template.Id,
 			Title = template.Name,
 			GoalPrompt = template.GoalPrompt,
+			ProfileId = template.ProfileId,
 			ProviderId = template.ProviderId ?? Guid.Empty,
 			ModelUsed = pinsProvider ? template.ModelId : null,
 			ReasoningEffort = pinsProvider ? template.ReasoningEffort : null,
@@ -215,18 +240,20 @@ public class JobTemplateService : IJobTemplateService
 				?? await ProjectJobBranch.ResolveDefaultAsync(project, _versionControlService!, _logger, cancellationToken),
 			GitChangeDeliveryMode = template.GitChangeDeliveryMode ?? project.GitChangeDeliveryMode,
 			TargetBranch = template.TargetBranch ?? project.DefaultTargetBranch,
-			CycleMode = template.CycleMode,
-			CycleSessionMode = template.CycleSessionMode,
-			MaxCycles = template.MaxCycles,
-			CycleReviewPrompt = template.CycleReviewPrompt,
 			Status = JobStatus.New
 		};
 	}
 
 	public async Task<JobTemplate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
 	{
-		return await BuildQuery()
+		var template = await BuildQuery()
 			.FirstOrDefaultAsync(template => template.Id == id, cancellationToken);
+		if (template != null)
+		{
+			await NameProfilesAsync([template], cancellationToken);
+		}
+
+		return template;
 	}
 
 	public async Task<JobTemplate> CreateAsync(JobTemplate template, CancellationToken cancellationToken = default)
@@ -234,6 +261,7 @@ public class JobTemplateService : IJobTemplateService
 		ArgumentNullException.ThrowIfNull(template);
 
 		NormalizeTemplate(template);
+		await ApplyProfileLinkAsync(template, cancellationToken);
 		ValidationHelper.ValidateObject(template);
 		await ValidateReferencesAsync(template, cancellationToken);
 		await EnsureNameIsUniqueAsync(template.Name, null, cancellationToken);
@@ -265,16 +293,14 @@ public class JobTemplateService : IJobTemplateService
 		existing.ProviderId = template.ProviderId;
 		existing.ModelId = template.ModelId;
 		existing.ReasoningEffort = template.ReasoningEffort;
+		existing.ProfileId = template.ProfileId;
 		existing.Branch = template.Branch;
 		existing.GitChangeDeliveryMode = template.GitChangeDeliveryMode;
 		existing.TargetBranch = template.TargetBranch;
-		existing.CycleMode = template.CycleMode;
-		existing.CycleSessionMode = template.CycleSessionMode;
-		existing.MaxCycles = template.MaxCycles;
-		existing.CycleReviewPrompt = template.CycleReviewPrompt;
 		existing.UpdatedAt = DateTime.UtcNow;
 
 		NormalizeTemplate(existing);
+		await ApplyProfileLinkAsync(existing, cancellationToken);
 		ValidationHelper.ValidateObject(existing);
 		await ValidateReferencesAsync(existing, cancellationToken);
 		await EnsureNameIsUniqueAsync(existing.Name, existing.Id, cancellationToken);
@@ -325,6 +351,24 @@ public class JobTemplateService : IJobTemplateService
 		{
 			throw new ValidationException($"A job template named '{name}' already exists.");
 		}
+	}
+
+	/// <summary>
+	/// Fills the template's provider, model and reasoning from its linked profile, whatever the
+	/// client sent, and gives a template that pins a provider without a profile the matching one.
+	/// </summary>
+	private async Task ApplyProfileLinkAsync(JobTemplate template, CancellationToken cancellationToken)
+	{
+		if (template.ProfileId is Guid profileId)
+		{
+			var profiles = await _dbContext.Profiles
+				.AsNoTracking()
+				.Where(profile => profile.Id == profileId)
+				.ToDictionaryAsync(profile => profile.Id, cancellationToken);
+			ProfileLinks.ApplyTemplateLink(template, profiles);
+		}
+
+		await ProfileService.LinkTemplateAsync(_dbContext, template, cancellationToken);
 	}
 
 	private async Task ValidateReferencesAsync(JobTemplate template, CancellationToken cancellationToken)
@@ -384,7 +428,5 @@ public class JobTemplateService : IJobTemplateService
 		template.ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(template.ReasoningEffort);
 		template.Branch = string.IsNullOrWhiteSpace(template.Branch) ? null : template.Branch.Trim();
 		template.TargetBranch = string.IsNullOrWhiteSpace(template.TargetBranch) ? null : template.TargetBranch.Trim();
-		template.CycleReviewPrompt = string.IsNullOrWhiteSpace(template.CycleReviewPrompt) ? null : template.CycleReviewPrompt.Trim();
-		template.MaxCycles = Math.Clamp(template.MaxCycles, 1, 100);
 	}
 }

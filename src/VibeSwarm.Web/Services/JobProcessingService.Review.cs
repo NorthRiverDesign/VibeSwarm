@@ -19,10 +19,13 @@ public partial class JobProcessingService
 		string? baseCommit,
 		string? sessionId,
 		bool canSkipFinalBuild,
-		CancellationToken cancellationToken)
+		CancellationToken cancellationToken,
+		ReviewScope? reviewScope = null)
 	{
 		var project = job.Project;
+		// Only a job worked by the team is reviewed; one its builder works alone is delivered as it is.
 		if (project is not { ReviewEnabled: true }
+			|| !job.TeamRun
 			|| job.ReviewStatus is JobReviewStatus.Approved or JobReviewStatus.Unresolved or JobReviewStatus.Skipped
 			|| !string.IsNullOrWhiteSpace(job.MergeFromBranch)
 			|| LocalEnvironmentSetup.IsSetupJob(job))
@@ -62,7 +65,11 @@ public partial class JobProcessingService
 				}
 			}
 
-			var diff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, baseCommit, cancellationToken);
+			// A step is judged on its own change: what the tree holds beyond the step before it.
+			var diff = reviewScope != null && _workSnapshots != null && !string.IsNullOrWhiteSpace(baseCommit)
+				? await _workSnapshots.DiffWorkingTreeAgainstAsync(workingDirectory, baseCommit, cancellationToken)
+				: null;
+			diff ??= await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, baseCommit, cancellationToken);
 			if (string.IsNullOrWhiteSpace(diff))
 			{
 				await SaveReviewAsync(job, JobReviewStatus.Skipped, "No changes to review", cancellationToken);
@@ -81,7 +88,7 @@ public partial class JobProcessingService
 			var result = await consult.ConsultAsync(new ConsultRequest
 			{
 				Target = target,
-				Prompt = ReviewPrompts.BuildReviewPrompt(job.GoalPrompt, job.PlanningOutput, diff, canOpenFiles: target.ProviderId.HasValue),
+				Prompt = ReviewPrompts.BuildReviewPrompt(reviewScope?.Goal ?? job.GoalPrompt, job.PlanningOutput, diff, canOpenFiles: target.ProviderId.HasValue, reviewScope?.Note),
 				SystemPrompt = ReviewPrompts.SystemPrompt,
 				WorkingDirectory = workingDirectory,
 				JobId = job.Id,

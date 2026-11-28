@@ -48,9 +48,8 @@ public interface IJobUpdateService
 
     Task NotifyJobResumed(Guid jobId);
 
-    /// <param name="currentCycle">Current cycle number (1-based)</param>
-    /// <param name="maxCycles">Maximum number of cycles</param>
-    Task NotifyJobCycleProgress(Guid jobId, int currentCycle, int maxCycles);
+    /// <summary>A team job's steps changed: one was added, started, finished or skipped.</summary>
+    Task NotifyJobStepsChanged(Guid jobId);
 
     /// <param name="jobId">The created job ID</param>
     Task NotifyIdeaStarted(Guid ideaId, Guid projectId, Guid jobId);

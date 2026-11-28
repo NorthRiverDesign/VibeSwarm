@@ -36,6 +36,7 @@ public static class DataServiceExtensions
 		services.AddScoped<IJobTemplateService, JobTemplateService>();
 		services.AddScoped<ISettingsService, SettingsService>();
 		services.AddSingleton<ProjectQueueHolds>();
+		services.AddSingleton<JobHelperSessions>();
 		services.AddScoped<IJobQueueControlService, JobQueueControlService>();
 		services.AddScoped<ICriticalErrorLogService, CriticalErrorLogService>();
 		services.AddScoped<ISkillService, SkillService>();
@@ -54,7 +55,7 @@ public static class DataServiceExtensions
 			client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
 			client.Timeout = TimeSpan.FromSeconds(30);
 		});
-		services.AddScoped<IAgentService, AgentService>();
+		services.AddScoped<IProfileService, ProfileService>();
 		services.AddScoped<IMcpConfigService, McpConfigService>();
 		services.AddScoped<IProjectMemoryService, ProjectMemoryService>();
 		services.AddScoped<ILocalEnvironmentSetupService, LocalEnvironmentSetupService>();

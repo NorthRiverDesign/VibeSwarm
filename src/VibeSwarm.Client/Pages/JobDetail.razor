@@ -30,7 +30,7 @@ else
                       GitHubRepository="@Job.Project?.GitHubRepository" BranchName="@_branchName" ProjectId="@Job.ProjectId"
                       ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@Job.Provider?.Name"
                       ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
-					   ExecutionDuration="@Job.ExecutionDuration" ModelUsed="@Job.ModelUsed" RetryCount="@Job.RetryCount"
+					   ExecutionDuration="@Job.ExecutionDuration" ModelUsed="@Job.ModelUsed" ProfileName="@Job.ProfileName" RetryCount="@Job.RetryCount"
 					   PlanningProviderName="@Job.PlanningProvider?.Name" PlanningModelUsed="@Job.PlanningModelUsed"
 					   InputTokens="@Job.InputTokens" OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd"
 					   IsTokenEstimate="@Job.IsTokenEstimate"
@@ -49,12 +49,14 @@ else
 					   CanEdit="@CanEditJob" OnEdit="ShowEditJobModal"
 					   CanRunNext="@CanRunNext" IsRunningNext="@IsRunningNext" OnRunNext="RunNext"
 					   CanForceReset="@CanForceReset" IsForceResetting="@IsForceResetting" OnForceReset="ForceResetJob"
-					   CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" CurrentCycle="@Job.CurrentCycle"
-					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" AgentName="@Job.Agent?.Name"
+					   CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt"
 					   PlaywrightEnabled="@Job.PlaywrightEnabled" EnvironmentCount="@Job.EnvironmentSnapshots.Count"
 					   EnvironmentTooltip="@BuildEnvironmentTooltip()" />
 
 	<JobStatusSection Job="@Job" IsPushed="@_changesPushed" BranchName="@_branchName" />
+
+	<JobStepsSection JobId="@Job.Id" RefreshKey="@_stepsVersion" CanChange="@JobChain.IsOpen(Job.Status)"
+					 Working="@(Job.Status is JobStatus.Started or JobStatus.Planning or JobStatus.Processing)" />
 
     @* Main Content - Column Layout *@
     <div class="row g-5 lg:g-7">

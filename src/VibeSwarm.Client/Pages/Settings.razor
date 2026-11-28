@@ -25,6 +25,8 @@
 else
 {
 	<div class="d-flex flex-column gap-7">
+		<TeamSection Settings="_settings" />
+
 		@if (_developerModeStatus?.IsEnabled == true)
 		{
 			<section class="d-flex flex-column gap-3" aria-label="Developer mode">
@@ -334,8 +336,7 @@ else
 		: null;
 
 	private bool HasCustomIdeaPrompts =>
-		!IsDefaultTemplate(_settings.IdeaExpansionPromptTemplate, PromptBuilder.DefaultIdeaExpansionPromptTemplate)
-		|| !IsDefaultTemplate(_settings.IdeaImplementationPromptTemplate, PromptBuilder.DefaultIdeaImplementationPromptTemplate)
+		!IsDefaultTemplate(_settings.IdeaImplementationPromptTemplate, PromptBuilder.DefaultIdeaImplementationPromptTemplate)
 		|| !IsDefaultTemplate(_settings.ApprovedIdeaImplementationPromptTemplate, PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate);
 
 	private string CurrentTimeZoneLabel => _timeZoneOptions.FirstOrDefault(o => o.Zone.Id == _settings.TimeZoneId)?.Label
@@ -474,7 +475,6 @@ else
 
 	private async Task RestoreIdeaPromptDefaults()
 	{
-		_settings.IdeaExpansionPromptTemplate = PromptBuilder.DefaultIdeaExpansionPromptTemplate;
 		_settings.IdeaImplementationPromptTemplate = PromptBuilder.DefaultIdeaImplementationPromptTemplate;
 		_settings.ApprovedIdeaImplementationPromptTemplate = PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate;
 		await SaveAsync();

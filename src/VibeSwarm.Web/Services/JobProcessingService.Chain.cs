@@ -1,0 +1,589 @@
+using Microsoft.EntityFrameworkCore;
+using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.VersionControl.Models;
+
+namespace VibeSwarm.Web.Services;
+
+/// <summary>
+/// A team job's chain. The project's Lead plans the job into steps, reading the repository
+/// read-only through <see cref="IReadOnlyConsultService"/> like the reviewer; the builder then
+/// carries the steps out one at a time, each in a session of its own, inside the run loop in
+/// <c>ProcessJobAsync</c>. Nothing the Lead does can stop the job: when it can't plan, the builder
+/// works from the goal and the job says why.
+/// </summary>
+public partial class JobProcessingService
+{
+	/// <summary>How long the Lead may take to plan a job before the builder starts without a plan.</summary>
+	private static readonly TimeSpan LeadPlanTimeout = TimeSpan.FromMinutes(30);
+
+	/// <summary>How long the Lead may take to check the finished steps before the work is delivered as it is.</summary>
+	private static readonly TimeSpan LeadCheckTimeout = TimeSpan.FromMinutes(20);
+
+	/// <summary>
+	/// Whether the job still waits for the Lead's plan: a team job on a project with a Lead that
+	/// has neither a plan nor a recorded reason for going without one.
+	/// </summary>
+	internal static bool NeedsLeadPlan(Job job) =>
+		job.TeamRun
+		&& job.Project is { LeadProviderId: not null }
+		&& string.IsNullOrWhiteSpace(job.PlanningOutput)
+		&& string.IsNullOrWhiteSpace(job.PlanSkippedReason);
+
+	/// <summary>
+	/// Asks the project's Lead to plan the job and records the answer on it. Returns the plan,
+	/// or null when the Lead couldn't give one; the job then keeps the reason in
+	/// <see cref="Job.PlanSkippedReason"/> and is built from its goal alone.
+	/// </summary>
+	internal async Task<string?> PlanWithLeadAsync(
+		Job job,
+		string? workingDirectory,
+		string? systemPrompt,
+		VibeSwarmDbContext dbContext,
+		CancellationToken cancellationToken)
+	{
+		var project = job.Project!;
+		ConsultResult result;
+		using (var scope = _scopeFactory.CreateScope())
+		{
+			var consult = scope.ServiceProvider.GetService<IReadOnlyConsultService>();
+			result = consult == null
+				? ConsultResult.Skip("No Lead is available")
+				: await consult.ConsultAsync(new ConsultRequest
+				{
+					Target = new ConsultTarget(project.LeadProviderId, null, project.LeadModelId, project.LeadReasoningEffort),
+					Prompt = ChainPrompts.BuildPlanPrompt(job.GoalPrompt),
+					SystemPrompt = systemPrompt,
+					WorkingDirectory = workingDirectory,
+					JobId = job.Id,
+					Title = string.IsNullOrWhiteSpace(job.Title) ? "Plan" : $"Plan: {job.Title}",
+					TaskType = "plan",
+					Timeout = LeadPlanTimeout
+				}, cancellationToken);
+		}
+
+		cancellationToken.ThrowIfCancellationRequested();
+
+		var plan = result.Success ? result.Text?.Trim() : null;
+		if (string.IsNullOrWhiteSpace(plan))
+		{
+			var reason = string.IsNullOrWhiteSpace(result.Error) ? "The Lead gave no plan" : result.Error.Trim();
+			job.PlanSkippedReason = reason.Length > 500 ? reason[..500] : reason;
+			_logger.LogWarning("Job {JobId} is built without a plan: {Reason}", job.Id, job.PlanSkippedReason);
+			await dbContext.SaveChangesAsync(cancellationToken);
+			return null;
+		}
+
+		// The brief is what every step is given; the steps follow any the job already has, which
+		// are the record of an earlier run.
+		var parsed = ChainPrompts.ParsePlan(plan, job.GoalPrompt);
+		job.PlanningOutput = parsed.Brief;
+		var lastOrder = await dbContext.JobSteps
+			.Where(step => step.JobId == job.Id)
+			.Select(step => (int?)step.Order)
+			.MaxAsync(cancellationToken) ?? 0;
+		foreach (var planned in parsed.Steps)
+		{
+			dbContext.JobSteps.Add(new JobStep
+			{
+				JobId = job.Id,
+				Order = ++lastOrder,
+				Title = planned.Title,
+				Instructions = planned.Instructions,
+				DoneWhen = planned.DoneWhen,
+				Source = JobStepSource.Lead
+			});
+		}
+
+		job.PlanningProviderId = project.LeadProviderId;
+		job.PlanningModelUsed = result.ModelUsed ?? project.LeadModelId;
+		job.PlanningReasoningEffortUsed = project.LeadReasoningEffort;
+		job.PlanningGeneratedAt = DateTime.UtcNow;
+		job.PlanningInputTokens = result.InputTokens;
+		job.PlanningOutputTokens = result.OutputTokens;
+		job.PlanningCostUsd = result.CostUsd;
+		await dbContext.SaveChangesAsync(cancellationToken);
+		await NotifyStepsChangedAsync(job.Id);
+		return parsed.Brief;
+	}
+
+	/// <summary>
+	/// The step a run of the job starts on, or null when the job has no steps, or none left to
+	/// build (see <see cref="ChainIsBuiltAsync"/>). A step a restart cut off is handed back as it
+	/// is, for the resumed run to carry on; any other run starts the first step still waiting.
+	/// </summary>
+	private async Task<JobStep?> BeginChainAsync(
+		Job job,
+		JobExecutionContext executionContext,
+		bool resuming,
+		VibeSwarmDbContext dbContext,
+		CancellationToken cancellationToken)
+	{
+		if (!job.TeamRun)
+		{
+			return null;
+		}
+
+		var steps = await LoadStepsAsync(dbContext, job.Id, cancellationToken);
+		if (steps.Count == 0)
+		{
+			return null;
+		}
+
+		// A step is Done only while its work is in the tree this run starts from. Every run
+		// resets the checkout and then puts the saved work back (RestorePriorRunWorkAsync); when
+		// that didn't happen the steps are built again rather than skipped over an empty tree.
+		// Steps that saved nothing changed nothing, so there is nothing of theirs to miss.
+		var builtSteps = steps.Where(step => step.Status is JobStepStatus.Done or JobStepStatus.Running).ToList();
+		var workWasSaved = builtSteps.Any(step => step.SnapshotCommit != null)
+			|| (resuming && !string.IsNullOrWhiteSpace(job.WorkSnapshotCommit));
+		var workIsBack = !workWasSaved || executionContext.PriorWorkRestore is { Outcome: not JobWorkRestoreOutcome.Failed };
+
+		// Only a resumed run carries on a step that was cut off; a retry starts that step over.
+		var startOver = builtSteps
+			.Where(step => !workIsBack || (step.Status == JobStepStatus.Running && !resuming))
+			.ToList();
+		if (startOver.Count > 0)
+		{
+			foreach (var step in startOver)
+			{
+				step.Status = JobStepStatus.Waiting;
+				step.Summary = null;
+				step.ReviewStatus = JobReviewStatus.None;
+				step.ReviewRounds = 0;
+				step.ReviewNotes = null;
+				step.SessionId = null;
+				step.SnapshotCommit = null;
+				step.StartedAt = null;
+				step.CompletedAt = null;
+			}
+
+			await dbContext.SaveChangesAsync(cancellationToken);
+			await NotifyStepsChangedAsync(job.Id);
+		}
+
+		return steps.FirstOrDefault(step => step.Status == JobStepStatus.Running)
+			?? steps.FirstOrDefault(step => step.Status == JobStepStatus.Waiting);
+	}
+
+	/// <summary>
+	/// Whether every step of the job was already built when this run began: it was stopped while
+	/// the Lead checked the result, or failed while delivering. Nothing is built again; the run
+	/// goes to the Lead's check and on to delivery.
+	/// </summary>
+	private static async Task<bool> ChainIsBuiltAsync(Job job, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+	{
+		if (!job.TeamRun)
+		{
+			return false;
+		}
+
+		var statuses = await dbContext.JobSteps
+			.Where(step => step.JobId == job.Id)
+			.Select(step => step.Status)
+			.ToListAsync(cancellationToken);
+		return statuses.Contains(JobStepStatus.Done)
+			&& !statuses.Contains(JobStepStatus.Waiting)
+			&& !statuses.Contains(JobStepStatus.Running);
+	}
+
+	/// <summary>
+	/// What the job's finished steps used, for a run that carries a chain on: the job's totals
+	/// are then the whole chain's, not only this run's share of it.
+	/// </summary>
+	private static async Task<(int Input, int Output, decimal Cost)> SumFinishedStepsAsync(Job job, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+	{
+		var finished = await dbContext.JobSteps
+			.Where(step => step.JobId == job.Id && step.Status == JobStepStatus.Done)
+			.Select(step => new { step.InputTokens, step.OutputTokens, step.CostUsd })
+			.ToListAsync(cancellationToken);
+		return (
+			finished.Sum(step => step.InputTokens ?? 0),
+			finished.Sum(step => step.OutputTokens ?? 0),
+			finished.Sum(step => step.CostUsd ?? 0m));
+	}
+
+	/// <summary>
+	/// Before the next step starts, asks what a job about to start is asked: would it be made to
+	/// wait for the builder's usage? Returns the hold when it would. The chain then stops at this
+	/// step boundary and is queued again, to carry on with another Build profile or once the
+	/// usage resets, instead of running dry in the middle of a step. The step that just ran
+	/// reported the usage as it went, so no request is spent on a reading.
+	/// </summary>
+	private async Task<SessionLimitHold?> CheckUsageBetweenStepsAsync(
+		Job job,
+		IProvider provider,
+		ExecutionResult stepResult,
+		VibeSwarmDbContext dbContext,
+		CancellationToken cancellationToken)
+	{
+		try
+		{
+			var reported = (await RefreshProviderUsageAsync(provider, stepResult, cancellationToken)).DetectedUsageLimits;
+			if (ShouldApplyProviderUsage(reported))
+			{
+				using var usageScope = _scopeFactory.CreateScope();
+				var providerUsageService = usageScope.ServiceProvider.GetService<IProviderUsageService>();
+				if (providerUsageService != null)
+				{
+					await providerUsageService.ApplyDetectedLimitsAsync(job.ProviderId, reported!, cancellationToken);
+				}
+			}
+
+			// Running jobs are not counted: this one is the job that is running.
+			return await ProviderSessionLimitGuard.GetHoldAsync(dbContext, job.ProviderId, DateTime.UtcNow, cancellationToken);
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			_logger.LogWarning(ex, "Could not check usage between the steps of job {JobId}; carrying on", job.Id);
+			return null;
+		}
+	}
+
+	/// <summary>
+	/// Queues a chain again between two steps. Its finished steps and their saved work stay, and
+	/// the next start does what it does for any job on a provider short of usage: it carries on
+	/// with another Build profile, or waits for the usage to reset.
+	/// </summary>
+	private async Task RequeueChainBetweenStepsAsync(
+		Guid jobId,
+		string reason,
+		ExecutionResult result,
+		JobExecutionContext executionContext,
+		VibeSwarmDbContext dbContext,
+		CancellationToken cancellationToken)
+	{
+		// The run's checkpoints are written through contexts of their own, so the run's context
+		// doesn't know the job holds one. A fresh context reads the row as it is and can clear it.
+		await dbContext.SaveChangesAsync(cancellationToken);
+		using var scope = _scopeFactory.CreateScope();
+		var requeueDb = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+		var job = await requeueDb.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+		if (job == null)
+		{
+			return;
+		}
+
+		var transition = JobStateMachine.TryTransition(job, JobStatus.New, reason);
+		if (!transition.Success)
+		{
+			_logger.LogWarning("Failed to queue job {JobId} again between two steps: {Error}", jobId, transition.ErrorMessage);
+			return;
+		}
+
+		// Nothing is half done, so this is not a recovery: the next run starts the next step afresh.
+		JobRecoveryHelper.ClearRecoveryState(job, clearSessionId: true);
+		job.ErrorMessage = $"Stopped between two steps. {reason}";
+		job.CurrentActivity = null;
+		job.LastActivityAt = DateTime.UtcNow;
+		job.LastHeartbeatAt = null;
+		job.ProcessId = null;
+		if (executionContext.GetConsoleOutput() is { Length: > 0 } consoleOutput)
+		{
+			job.ConsoleOutput = consoleOutput;
+		}
+
+		StoreExecutionUsage(job, result.InputTokens, result.OutputTokens, result.CostUsd, executionContext);
+		await requeueDb.SaveChangesAsync(cancellationToken);
+	}
+
+	/// <summary>
+	/// Marks the step as the one being built and gives it a clean slate: the job's review state
+	/// is the step's while it runs, and its session is its own, so a crash can't resume the
+	/// session of the step before it.
+	/// </summary>
+	internal async Task StartStepAsync(Job job, JobStep step, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+	{
+		step.Status = JobStepStatus.Running;
+		step.StartedAt = DateTime.UtcNow;
+		step.CompletedAt = null;
+		job.SessionId = null;
+		// What the reviews of earlier steps cost, and who gave them, stays on the job.
+		job.ReviewStatus = JobReviewStatus.None;
+		job.ReviewRounds = 0;
+		job.ReviewNotes = null;
+		job.BuildCheckedTreeHash = null;
+		await dbContext.SaveChangesAsync(cancellationToken);
+
+		// The review state is also written straight to the row (SaveReviewAsync does), so clear it there too.
+		using (var scope = _scopeFactory.CreateScope())
+		{
+			var reviewDb = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+			await reviewDb.Jobs
+				.Where(j => j.Id == job.Id)
+				.ExecuteUpdateAsync(setters => setters
+					.SetProperty(j => j.ReviewStatus, JobReviewStatus.None)
+					.SetProperty(j => j.ReviewRounds, 0)
+					.SetProperty(j => j.ReviewNotes, (string?)null)
+					.SetProperty(j => j.BuildCheckedTreeHash, (string?)null),
+					CancellationToken.None);
+		}
+
+		await NotifyStepsChangedAsync(job.Id);
+	}
+
+	/// <summary>
+	/// Closes the step the builder just finished: keeps its handoff note and what the reviewer
+	/// made of it, and saves the work so the next step, or a resumed run, starts from it.
+	/// Returns the step to build next, or null when none is waiting.
+	/// </summary>
+	internal async Task<JobStep?> FinishStepAsync(
+		Job job,
+		JobStep step,
+		ExecutionResult result,
+		string? workingDirectory,
+		string? baseCommit,
+		VibeSwarmDbContext dbContext,
+		CancellationToken cancellationToken)
+	{
+		step.Status = JobStepStatus.Done;
+		step.CompletedAt = DateTime.UtcNow;
+		step.Summary = ChainPrompts.ExtractHandoff(ProviderPlanningHelper.ExtractExecutionText(result));
+		step.SessionId = result.SessionId ?? job.SessionId;
+		step.ReviewStatus = job.ReviewStatus;
+		step.ReviewRounds = job.ReviewRounds;
+		step.ReviewNotes = job.ReviewNotes;
+
+		if (!string.IsNullOrEmpty(workingDirectory))
+		{
+			var snapshot = await SaveRunWorkSnapshotAsync(job, workingDirectory, baseCommit, cancellationToken);
+			if (snapshot != null)
+			{
+				step.SnapshotCommit = snapshot;
+				job.WorkSnapshotCommit = snapshot;
+			}
+		}
+
+		await dbContext.SaveChangesAsync(cancellationToken);
+		await NotifyStepsChangedAsync(job.Id);
+
+		// Read afresh: a step may have been added or skipped from the job's page meanwhile.
+		return await dbContext.JobSteps
+			.Where(next => next.JobId == job.Id && next.Status == JobStepStatus.Waiting)
+			.OrderBy(next => next.Order)
+			.FirstOrDefaultAsync(cancellationToken);
+	}
+
+	/// <summary>
+	/// Once the last step is built, asks the Lead whether the job is done. Returns the first of
+	/// the steps it adds, or null when it passed the job, has had its say
+	/// (<see cref="JobChain.MaxChecks"/>) or couldn't be asked: the work is delivered either way.
+	/// A job of one step is not checked; its review already read the whole change.
+	/// </summary>
+	internal async Task<JobStep?> CheckWithLeadAsync(
+		Job job,
+		string? workingDirectory,
+		string? systemPrompt,
+		string? jobBaseCommit,
+		VibeSwarmDbContext dbContext,
+		CancellationToken cancellationToken)
+	{
+		var project = job.Project;
+		var steps = await LoadStepsAsync(dbContext, job.Id, cancellationToken);
+		if (project is not { LeadProviderId: not null }
+			|| job.LeadChecks >= JobChain.MaxChecks
+			|| steps.Count(step => step.Status == JobStepStatus.Done) < 2)
+		{
+			return null;
+		}
+
+		const string activity = "The Lead is checking the result...";
+		await UpdateHeartbeatAsync(job.Id, activity, dbContext, cancellationToken);
+		await NotifyJobActivityAsync(job.Id, activity, DateTime.UtcNow);
+
+		IReadOnlyList<string> changedFiles = [];
+		if (!string.IsNullOrEmpty(workingDirectory))
+		{
+			try
+			{
+				changedFiles = await _versionControlService.GetChangedFilesAsync(workingDirectory, jobBaseCommit, cancellationToken);
+			}
+			catch (Exception ex) when (ex is not OperationCanceledException)
+			{
+				_logger.LogDebug(ex, "Could not list the files job {JobId} changed for the Lead's check", job.Id);
+			}
+		}
+
+		ConsultResult result;
+		using (var scope = _scopeFactory.CreateScope())
+		{
+			var consult = scope.ServiceProvider.GetService<IReadOnlyConsultService>();
+			if (consult == null)
+			{
+				return null;
+			}
+
+			result = await consult.ConsultAsync(new ConsultRequest
+			{
+				Target = new ConsultTarget(project.LeadProviderId, null, project.LeadModelId, project.LeadReasoningEffort),
+				Prompt = ChainPrompts.BuildCheckPrompt(job.GoalPrompt, job.PlanningOutput, steps, changedFiles),
+				SystemPrompt = systemPrompt,
+				WorkingDirectory = workingDirectory,
+				JobId = job.Id,
+				Title = string.IsNullOrWhiteSpace(job.Title) ? "Check" : $"Check: {job.Title}",
+				TaskType = "check",
+				Timeout = LeadCheckTimeout
+			}, cancellationToken);
+		}
+
+		cancellationToken.ThrowIfCancellationRequested();
+
+		// The check is the Lead's work, so it is counted with the plan.
+		if (result.InputTokens.HasValue)
+		{
+			job.PlanningInputTokens = (job.PlanningInputTokens ?? 0) + result.InputTokens.Value;
+		}
+
+		if (result.OutputTokens.HasValue)
+		{
+			job.PlanningOutputTokens = (job.PlanningOutputTokens ?? 0) + result.OutputTokens.Value;
+		}
+
+		if (result.CostUsd.HasValue)
+		{
+			job.PlanningCostUsd = (job.PlanningCostUsd ?? 0) + result.CostUsd.Value;
+		}
+
+		var more = result.Success ? ChainPrompts.ParseCheck(result.Text) : [];
+		if (more.Count == 0)
+		{
+			if (!result.Success)
+			{
+				_logger.LogWarning("The Lead could not check job {JobId}; delivering it as built: {Reason}", job.Id, result.Error);
+			}
+
+			await dbContext.SaveChangesAsync(cancellationToken);
+			return null;
+		}
+
+		job.LeadChecks++;
+		var lastOrder = steps.Max(step => step.Order);
+		JobStep? first = null;
+		foreach (var planned in more)
+		{
+			var added = new JobStep
+			{
+				JobId = job.Id,
+				Order = ++lastOrder,
+				Title = planned.Title,
+				Instructions = planned.Instructions,
+				DoneWhen = planned.DoneWhen,
+				Source = JobStepSource.Check
+			};
+			first ??= added;
+			dbContext.JobSteps.Add(added);
+		}
+
+		await dbContext.SaveChangesAsync(cancellationToken);
+		await NotifyStepsChangedAsync(job.Id);
+		return first;
+	}
+
+	/// <summary>
+	/// What running the step takes: its prompt (the job's own prompt, then the brief, the list of
+	/// steps and the step), the commit its change is measured from, and the reviewer's scope.
+	/// </summary>
+	internal async Task<StepRun> DescribeStepAsync(
+		Job job,
+		string jobPrompt,
+		JobStep step,
+		string? jobBaseCommit,
+		VibeSwarmDbContext dbContext,
+		CancellationToken cancellationToken)
+	{
+		var steps = await LoadStepsAsync(dbContext, job.Id, cancellationToken);
+		var counted = steps.Where(other => other.Status != JobStepStatus.Skipped || other.Id == step.Id).ToList();
+		var position = counted.FindIndex(other => other.Id == step.Id) + 1;
+
+		// The step's change is what differs from the step before it; one that saved nothing
+		// leaves the base where it was.
+		var baseCommit = steps
+			.Where(other => other.Order < step.Order && other.Status == JobStepStatus.Done && other.SnapshotCommit != null)
+			.OrderByDescending(other => other.Order)
+			.Select(other => other.SnapshotCommit)
+			.FirstOrDefault() ?? jobBaseCommit;
+
+		return new StepRun(
+			$"{jobPrompt.TrimEnd()}\n\n{ChainPrompts.BuildStepSection(job.PlanningOutput, steps, step)}",
+			baseCommit,
+			ScopeReviewToStep(step, position, counted.Count),
+			position,
+			counted.Count);
+	}
+
+	/// <summary>
+	/// Sums the steps' reviews up on the job, which its page and the Lead read: every fix round
+	/// counted, and the findings of any step whose review ran out of rounds.
+	/// </summary>
+	internal async Task SummariseStepReviewsAsync(Job job, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+	{
+		var steps = (await LoadStepsAsync(dbContext, job.Id, cancellationToken))
+			.Where(step => step.Status == JobStepStatus.Done)
+			.ToList();
+		if (steps.Count == 0)
+		{
+			return;
+		}
+
+		job.ReviewRounds = steps.Sum(step => step.ReviewRounds);
+		var unresolved = steps.Where(step => step.ReviewStatus == JobReviewStatus.Unresolved).ToList();
+		if (unresolved.Count > 0)
+		{
+			var notes = string.Join("\n\n", unresolved.Select(step => $"Step {step.Order}, {step.Title}:\n{step.ReviewNotes}"));
+			await SaveReviewAsync(job, JobReviewStatus.Unresolved, notes, cancellationToken);
+		}
+		else if (steps.Any(step => step.ReviewStatus == JobReviewStatus.Approved))
+		{
+			await SaveReviewAsync(job, JobReviewStatus.Approved, null, cancellationToken);
+		}
+		else
+		{
+			// Nothing was reviewed: the job keeps whatever the last step recorded, such as why not.
+			await SaveReviewAsync(job, job.ReviewStatus, job.ReviewNotes, cancellationToken);
+		}
+	}
+
+	/// <summary>What the reviewer is told when it judges one step rather than the whole job.</summary>
+	internal static ReviewScope ScopeReviewToStep(JobStep step, int position, int count)
+	{
+		var goal = string.IsNullOrWhiteSpace(step.DoneWhen)
+			? $"{step.Title}\n{step.Instructions}"
+			: $"{step.Title}\n{step.Instructions}\nDone when: {step.DoneWhen}";
+		return new ReviewScope(goal, $"This change is step {position} of {count} of a larger job. Judge only this step: later steps cover the rest of the job, so work that belongs to them is not missing.");
+	}
+
+	/// <summary>The steps of the plan being worked. Those an earlier run built are the job's record, not part of it.</summary>
+	private static Task<List<JobStep>> LoadStepsAsync(VibeSwarmDbContext dbContext, Guid jobId, CancellationToken cancellationToken)
+		=> dbContext.JobSteps
+			.Where(step => step.JobId == jobId && step.Status != JobStepStatus.Earlier)
+			.OrderBy(step => step.Order)
+			.ToListAsync(cancellationToken);
+
+	private async Task NotifyStepsChangedAsync(Guid jobId)
+	{
+		if (_jobUpdateService == null)
+		{
+			return;
+		}
+
+		try
+		{
+			await _jobUpdateService.NotifyJobStepsChanged(jobId);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogDebug(ex, "Could not announce a step change for job {JobId}", jobId);
+		}
+	}
+}
+
+/// <summary>Narrows a review to one step: what the step was to do, and a note on what lies outside it.</summary>
+internal sealed record ReviewScope(string Goal, string Note);
+
+/// <summary>What a step's run needs: its prompt, the commit its change is measured from, and where it sits.</summary>
+internal sealed record StepRun(string Prompt, string? BaseCommit, ReviewScope Scope, int Position, int Count);

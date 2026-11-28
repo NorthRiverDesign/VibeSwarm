@@ -136,37 +136,6 @@ public interface IIdeaService
 	Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default);
 
 	/// <summary>
-	/// Uses AI to expand a brief idea into a detailed specification.
-	/// The expanded spec is stored for user review before converting to a job.
-	/// Supports both CLI coding providers and inference providers.
-	/// </summary>
-	/// <param name="ideaId">The idea to expand</param>
-	/// <param name="request">Optional expansion options (inference, model selection)</param>
-	Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken cancellationToken = default);
-
-	/// <summary>
-	/// Cancels an in-progress idea expansion and resets the status.
-	/// Used when the expansion times out, errors, or the user explicitly cancels.
-	/// </summary>
-	/// <param name="ideaId">The idea to cancel expansion for</param>
-	/// <returns>The reset idea, or null if not found</returns>
-	Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default);
-
-	/// <summary>
-	/// Approves an expanded idea specification, allowing it to be converted to a job.
-	/// </summary>
-	/// <param name="ideaId">The idea to approve</param>
-	/// <param name="editedDescription">Optional edited description to use instead of the AI-generated one</param>
-	/// <returns>The approved idea</returns>
-	Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default);
-
-	/// <summary>
-	/// Rejects an expanded idea specification and resets it for re-expansion or manual editing.
-	/// </summary>
-	/// <param name="ideaId">The idea to reject</param>
-	Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default);
-
-	/// <summary>
 	/// Gets a summary of ideas processing status across all projects
 	/// </summary>
 	Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default);

@@ -1,0 +1,309 @@
+@* Adds or edits a profile: a name for one provider and model, plus a reasoning level on a coding
+   provider. Inference providers, such as Grok, answer questions for jobs but never run one. *@
+@inject IProfileService ProfileService
+@inject IProviderService ProviderService
+@inject IServiceProvider Services
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged"
+			 Title="@(IsEdit ? "Edit profile" : "New profile")" Icon="@(IsEdit ? "pencil" : "person-badge")"
+			 OnClose="HandleClose">
+	<ChildContent>
+		<EditForm Model="@_form" OnValidSubmit="HandleValidSubmit">
+			<DataAnnotationsValidator />
+
+			<div class="d-flex flex-column gap-5">
+				<div>
+					<label for="profile-name" class="form-label">Name</label>
+					<InputText id="profile-name" @bind-Value="_form.Name" class="form-control" placeholder="Deep thinker" />
+					<ValidationMessage For="@(() => _form.Name)" class="fg-danger small" />
+				</div>
+
+				<div>
+					<label for="profile-description" class="form-label">Description <span class="fg-1 fw-normal">(optional)</span></label>
+					<InputText id="profile-description" @bind-Value="_form.Description" class="form-control"
+							   placeholder="Careful work on hard problems" />
+					<ValidationMessage For="@(() => _form.Description)" class="fg-danger small" />
+				</div>
+
+				<div>
+					<label for="profile-provider" class="form-label">Provider</label>
+					@if (_providers.Count == 0 && _inferenceProviders.Count == 0)
+					{
+						<div class="small fg-1">No enabled providers yet. Add one under Providers or Inference first.</div>
+					}
+					else
+					{
+						<select id="profile-provider" class="form-control" value="@(_form.ProviderKey ?? string.Empty)"
+								@onchange="HandleProviderChanged" disabled="@_form.IsProviderDefault">
+							<option value="">Choose a provider</option>
+							@if (OffersCoding && _providers.Count > 0)
+							{
+								<optgroup label="Coding">
+									@foreach (var provider in _providers)
+									{
+										<option value="@ProfileFormModel.CodingKey(provider.Id)">@provider.Name (@provider.Type)</option>
+									}
+								</optgroup>
+							}
+							@if (OffersInference && _inferenceProviders.Count > 0)
+							{
+								<optgroup label="Inference">
+									@foreach (var provider in _inferenceProviders)
+									{
+										<option value="@ProfileFormModel.InferenceKey(provider.Id)">@provider.Name</option>
+									}
+								</optgroup>
+							}
+						</select>
+						<div class="form-text">
+							@if (_form.IsProviderDefault)
+							{
+								<span>Every provider has a default profile, so this one stays on its provider.</span>
+							}
+							else if (_form.InferenceProviderId.HasValue)
+							{
+								<span>An inference profile answers a job's questions and can review diffs, but can't run a job.</span>
+							}
+						</div>
+					}
+					<ValidationMessage For="@(() => _form.ProviderKey)" class="fg-danger small" />
+				</div>
+
+				<div class="row g-5">
+					<div class="col-12 sm:col-6">
+						<label for="profile-model" class="form-label">Model</label>
+						<div class="input-group">
+							<InputSelect id="profile-model" @bind-Value="_form.ModelId" class="form-control"
+										 disabled="@(_form.ProviderKey == null || _models.Count == 0)">
+								<option value="">Provider default</option>
+								@foreach (var model in _models)
+								{
+									<option value="@model.Id">@model.Label@(model.IsDefault ? " (Default)" : string.Empty)</option>
+								}
+							</InputSelect>
+							@if (_form.InferenceProviderId is Guid inferenceId)
+							{
+								<ModelRefreshButton ProviderId="@inferenceId" IsInference="true" OnInferenceRefreshed="_ => ReloadModelsAsync()" />
+							}
+							else
+							{
+								<ModelRefreshButton ProviderId="@_form.ProviderId" OnRefreshed="_ => ReloadModelsAsync()" />
+							}
+						</div>
+						@if (_form.ProviderKey != null && _models.Count == 0)
+						{
+							<div class="form-text">No cached models yet — the provider default is used.</div>
+						}
+					</div>
+
+					@if (!_form.InferenceProviderId.HasValue)
+					{
+						<div class="col-12 sm:col-6">
+							<label for="profile-reasoning" class="form-label">Reasoning</label>
+							<InputSelect id="profile-reasoning" @bind-Value="_form.ReasoningEffort" class="form-control"
+										 disabled="@(ReasoningOptions.Count == 0)">
+								<option value="">Provider default</option>
+								@foreach (var reasoning in ReasoningOptions)
+								{
+									<option value="@reasoning">@reasoning</option>
+								}
+							</InputSelect>
+							@if (_form.ProviderId.HasValue && ReasoningOptions.Count == 0)
+							{
+								<div class="form-text">This provider has no configurable reasoning levels.</div>
+							}
+						</div>
+					}
+				</div>
+
+				@if (IsEdit)
+				{
+					<div class="form-text mt-0">Projects and agents using this profile pick up the change when you save. Jobs already queued keep what they had.</div>
+				}
+
+				@if (!string.IsNullOrEmpty(_error))
+				{
+					<div class="fg-danger small" role="alert">@_error</div>
+				}
+
+				<div class="d-flex gap-3 justify-content-end">
+					<button type="button" class="btn-solid theme-secondary" @onclick="HandleClose">Cancel</button>
+					<button type="submit" class="btn-solid theme-primary" disabled="@_isSaving">
+						@if (_isSaving)
+						{
+							<span class="spinner-border spinner-sm" role="status"></span>
+						}
+						@(IsEdit ? "Save" : "Add profile")
+					</button>
+				</div>
+			</div>
+		</EditForm>
+	</ChildContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public Profile? EditProfile { get; set; }
+
+	/// <summary>Raised with the profile as it was saved.</summary>
+	[Parameter]
+	public EventCallback<Profile> OnSaved { get; set; }
+
+	/// <summary>
+	/// When a picker opens the dialog to add a profile for one role, the rule that role's
+	/// profiles follow. Only providers a profile could pass it on are offered.
+	/// </summary>
+	[Parameter]
+	public Func<Profile, bool>? Allowed { get; set; }
+
+	private ProfileFormModel _form = new();
+	private List<Provider> _providers = [];
+	private List<InferenceProvider> _inferenceProviders = [];
+	private List<(string Id, string Label, bool IsDefault)> _models = [];
+	private bool _isSaving;
+	private string? _error;
+	private bool _wasVisible;
+
+	private bool IsEdit => EditProfile != null;
+
+	// A saved profile keeps its kind, since the settings linked to it take only that kind.
+	private bool OffersCoding => !IsEdit || EditProfile!.ProviderId.HasValue;
+
+	private bool OffersInference => !IsEdit || EditProfile!.InferenceProviderId.HasValue;
+
+	private IReadOnlyList<string> ReasoningOptions => _form.ProviderId is Guid providerId
+		&& _providers.FirstOrDefault(provider => provider.Id == providerId) is { } selected
+			? ProviderCapabilities.GetSupportedReasoningEfforts(selected)
+			: [];
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (IsVisible && !_wasVisible)
+		{
+			_form = ProfileFormModel.From(EditProfile);
+			_error = null;
+			_models = [];
+			await LoadProvidersAsync();
+			await ReloadModelsAsync();
+		}
+
+		_wasVisible = IsVisible;
+	}
+
+	private async Task LoadProvidersAsync()
+	{
+		try
+		{
+			_providers = (await ProviderService.GetAllAsync())
+				.Where(provider => provider.IsEnabled || provider.Id == _form.ProviderId)
+				.Where(provider => Fits(new Profile { ProviderId = provider.Id, Provider = provider }))
+				.OrderByDescending(provider => provider.IsDefault)
+				.ThenBy(provider => provider.Name)
+				.ToList();
+		}
+		catch
+		{
+			_providers = [];
+		}
+
+		// Resolved lazily so pages and tests that never show inference profiles need no registration.
+		var inferenceService = Services.GetService<IInferenceProviderService>();
+		try
+		{
+			_inferenceProviders = inferenceService == null
+				? []
+				: (await inferenceService.GetAllAsync())
+					.Where(provider => provider.IsEnabled || provider.Id == _form.InferenceProviderId)
+					.Where(provider => Fits(new Profile { InferenceProviderId = provider.Id, InferenceProvider = provider }))
+					.OrderBy(provider => provider.Name)
+					.ToList();
+		}
+		catch
+		{
+			_inferenceProviders = [];
+		}
+	}
+
+	private bool Fits(Profile onProvider) => IsEdit || Allowed == null || Allowed(onProvider);
+
+	private async Task HandleProviderChanged(ChangeEventArgs args)
+	{
+		var key = args.Value?.ToString();
+		_form.ProviderKey = string.IsNullOrWhiteSpace(key) ? null : key;
+		_form.ModelId = null;
+		_form.ReasoningEffort = null;
+		await ReloadModelsAsync();
+	}
+
+	private async Task ReloadModelsAsync()
+	{
+		_models = [];
+		try
+		{
+			if (_form.ProviderId is Guid providerId)
+			{
+				_models = (await ProviderService.GetModelsAsync(providerId))
+					.Where(model => model.IsAvailable)
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName ?? model.ModelId)
+					.Select(model => (model.ModelId, model.DisplayName ?? model.ModelId, model.IsDefault))
+					.ToList();
+			}
+			else if (_form.InferenceProviderId is Guid inferenceId && Services.GetService<IInferenceProviderService>() is { } inferenceService)
+			{
+				_models = (await inferenceService.GetModelsAsync(inferenceId))
+					.Where(model => model.IsAvailable)
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName ?? model.ModelId)
+					.Select(model => (model.ModelId, model.DisplayName ?? model.ModelId, model.IsDefault))
+					.DistinctBy(model => model.ModelId)
+					.ToList();
+			}
+		}
+		catch
+		{
+			_models = [];
+		}
+
+		// Only a model the provider lists can be saved.
+		if (!string.IsNullOrWhiteSpace(_form.ModelId) && !_models.Any(model => model.Id == _form.ModelId))
+		{
+			_form.ModelId = null;
+		}
+	}
+
+	private async Task HandleValidSubmit()
+	{
+		_isSaving = true;
+		_error = null;
+		try
+		{
+			var profile = _form.ToProfile();
+			var saved = IsEdit
+				? await ProfileService.UpdateAsync(profile)
+				: await ProfileService.CreateAsync(profile);
+
+			// Saved first: a host that treats closing as giving up must hear of the save before it.
+			await OnSaved.InvokeAsync(saved);
+			await IsVisibleChanged.InvokeAsync(false);
+		}
+		catch (Exception ex)
+		{
+			_error = ex.Message;
+		}
+		finally
+		{
+			_isSaving = false;
+		}
+	}
+
+	private Task HandleVisibilityChanged(bool visible) => IsVisibleChanged.InvokeAsync(visible);
+
+	private Task HandleClose() => IsVisibleChanged.InvokeAsync(false);
+}

@@ -322,26 +322,17 @@ public class SignalRJobUpdateService : IJobUpdateService
         }
     }
 
-    public async Task NotifyJobCycleProgress(Guid jobId, int currentCycle, int maxCycles)
+    public async Task NotifyJobStepsChanged(Guid jobId)
     {
         try
         {
-            // Notify job-specific subscribers
             await _hubContext.Clients
                 .Group($"job-{jobId}")
-                .SendAsync("JobCycleProgress", jobId.ToString(), currentCycle, maxCycles);
-
-            // Also notify global job list subscribers
-            await _hubContext.Clients
-                .Group("job-list")
-                .SendAsync("JobCycleProgress", jobId.ToString(), currentCycle, maxCycles);
-
-            _logger.LogInformation("Sent JobCycleProgress notification for job {JobId}: Cycle {Current}/{Max}",
-                jobId, currentCycle, maxCycles);
+                .SendAsync("JobStepsChanged", jobId.ToString());
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error sending JobCycleProgress notification for job {JobId}", jobId);
+            _logger.LogError(ex, "Error sending JobStepsChanged notification for job {JobId}", jobId);
         }
     }
 

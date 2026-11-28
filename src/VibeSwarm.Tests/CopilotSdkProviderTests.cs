@@ -1,4 +1,4 @@
-using GitHub.Copilot;
+using Microsoft.Copilot;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
@@ -10,11 +10,11 @@ public sealed class CopilotSdkProviderTests
 	[Fact]
 	public void ApplySessionDefaults_SetsApproveAllPermissionHandler()
 	{
-		var config = new SessionConfig();
+		var config = new CreateSessionOptions();
 
 		CopilotSdkProvider.ApplySessionDefaults(config);
 
-		Assert.NotNull(config.OnPermissionRequest);
+		Assert.NotNull(config.Permissions?.OnRequest);
 	}
 
 	[Fact]
@@ -28,18 +28,19 @@ public sealed class CopilotSdkProviderTests
 			DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools
 		});
 
-		foreach (SessionConfigBase config in new SessionConfigBase[] { new SessionConfig(), new ResumeSessionConfig() })
+		foreach (SessionOptionsBase config in new SessionOptionsBase[] { new CreateSessionOptions(), new ResumeSessionOptions() })
 		{
 			provider.ApplyRunSettings(config, "/repo");
 
 			Assert.Null(config.Model);
 			Assert.Equal("/repo", config.WorkingDirectory);
-			Assert.Equal("high", config.ReasoningEffort);
+			Assert.True(config.Events!.Streaming);
+			Assert.Equal("high", config.Inference!.ReasoningEffort);
 			Assert.Equal(SystemMessageMode.Append, config.SystemMessage!.Mode);
 			Assert.Equal("JOB RULES", config.SystemMessage.Content);
-			Assert.Contains("bash", config.ExcludedTools!);
-			Assert.Contains("edit", config.ExcludedTools!);
-			Assert.DoesNotContain("Bash", config.ExcludedTools!);
+			Assert.Contains("bash", config.Tools!.ExcludedTools!);
+			Assert.Contains("edit", config.Tools.ExcludedTools!);
+			Assert.DoesNotContain("Bash", config.Tools.ExcludedTools!);
 		}
 	}
 
@@ -48,21 +49,21 @@ public sealed class CopilotSdkProviderTests
 	{
 		var provider = new CopilotSdkProvider(CreateConfig());
 		provider.ApplyOptions(new ExecutionOptions());
-		var config = new SessionConfig();
+		var config = new CreateSessionOptions();
 
 		provider.ApplyRunSettings(config, "/repo");
 
-		Assert.Equal(WorkingDirectoryTrust.Session, config.TrustWorkingDirectory);
+		Assert.Equal(WorkingDirectoryTrust.Session, config.Filesystem!.TrustWorkingDirectory);
 	}
 
 	[Fact]
 	public void ApplyResumeSessionDefaults_SetsApproveAllPermissionHandler()
 	{
-		var config = new ResumeSessionConfig();
+		var config = new ResumeSessionOptions();
 
 		CopilotSdkProvider.ApplyResumeSessionDefaults(config);
 
-		Assert.NotNull(config.OnPermissionRequest);
+		Assert.NotNull(config.Permissions?.OnRequest);
 	}
 
 	[Fact]
@@ -70,9 +71,11 @@ public sealed class CopilotSdkProviderTests
 	{
 		var models = CopilotSdkProvider.GetFallbackAvailableModels();
 
+		Assert.Contains("claude-sonnet-5.5", models);
+		Assert.Contains("gemini-4-hydrogen", models);
 		Assert.Contains("gpt-5.4-mini", models);
 		Assert.Contains("gpt-4.1", models);
-		Assert.Contains("claude-opus-4.6-fast", models);
+		Assert.Equal(models.Count, models.Distinct(StringComparer.Ordinal).Count());
 	}
 
 	[Fact]
@@ -83,6 +86,8 @@ public sealed class CopilotSdkProviderTests
 		Assert.DoesNotContain("gpt-5.1-codex", models);
 		Assert.DoesNotContain("gpt-5.1-codex-mini", models);
 		Assert.DoesNotContain("gpt-5.1-codex-max", models);
+		// Deprecated in Copilot CLI 1.0.66.
+		Assert.DoesNotContain("claude-opus-4.6-fast", models);
 	}
 
 	[Fact]
@@ -103,13 +108,15 @@ public sealed class CopilotSdkProviderTests
 		});
 
 		var options = provider.BuildClientOptions("/repo");
+		var runtime = Assert.IsType<SpawnedStdioRuntimeConnection>(options.Runtime);
 
-		Assert.Equal("/repo", options.WorkingDirectory);
-		Assert.NotNull(options.Environment);
-		Assert.Equal("https://app.example.com", options.Environment!["APP_URL"]);
-		Assert.Equal("admin@example.com", options.Environment["APP_USERNAME"]);
-		Assert.Equal("secret", options.Environment["APP_PASSWORD"]);
-		Assert.Equal("/tmp/bash-env.sh", options.Environment["BASH_ENV"]);
+		Assert.Equal(CopilotClientMode.CodingAgent, options.Mode);
+		Assert.Equal("/repo", runtime.WorkingDirectory);
+		Assert.NotNull(runtime.Environment);
+		Assert.Equal("https://app.example.com", runtime.Environment!["APP_URL"]);
+		Assert.Equal("admin@example.com", runtime.Environment["APP_USERNAME"]);
+		Assert.Equal("secret", runtime.Environment["APP_PASSWORD"]);
+		Assert.Equal("/tmp/bash-env.sh", runtime.Environment["BASH_ENV"]);
 		Assert.Equal(
 			[
 				"--bash-env",
@@ -121,7 +128,7 @@ public sealed class CopilotSdkProviderTests
 				"--add-dir",
 				"/tmp/review"
 			],
-			Assert.IsType<StdioRuntimeConnection>(options.Connection).Args!.ToList());
+			runtime.Args!.ToList());
 	}
 
 	[Fact]
@@ -130,10 +137,47 @@ public sealed class CopilotSdkProviderTests
 		var provider = new CopilotSdkProvider(CreateConfig());
 
 		var options = provider.BuildClientOptions("/repo");
+		var runtime = Assert.IsType<SpawnedStdioRuntimeConnection>(options.Runtime);
 
-		Assert.Equal("/repo", options.WorkingDirectory);
-		Assert.Null(options.Environment);
-		Assert.Null(Assert.IsType<StdioRuntimeConnection>(options.Connection).Args);
+		Assert.Equal("/repo", runtime.WorkingDirectory);
+		Assert.Null(runtime.Environment);
+		Assert.Null(runtime.Args);
+	}
+
+	[Fact]
+	public void BuildClientOptions_WithGitHubToken_SignsInWithTheTokenNotTheLoggedInUser()
+	{
+		var config = CreateConfig();
+		config.ApiKey = "github_pat_example";
+		var provider = new CopilotSdkProvider(config);
+
+		var options = provider.BuildClientOptions("/repo");
+
+		Assert.Equal("github_pat_example", options.GitHub!.Token);
+		Assert.False(options.GitHub.UseLoggedInUser);
+	}
+
+	[Fact]
+	public void ApplyRunSettings_WithByokEndpoint_RoutesEveryModelToThatEndpoint()
+	{
+		var config = CreateConfig();
+		config.ApiEndpoint = "https://api.openai.com/v1";
+		config.ApiKey = "sk-example";
+		var provider = new CopilotSdkProvider(config);
+		provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "high" });
+		var session = new CreateSessionOptions();
+
+		provider.ApplyRunSettings(session, "/repo");
+
+#pragma warning disable MCPSDK001 // Named provider connections are marked experimental in the SDK
+		var connection = Assert.Single(session.Inference!.Providers!);
+		Assert.Equal("openai", connection.Type);
+		Assert.Equal("https://api.openai.com/v1", connection.BaseUrl);
+		Assert.Equal("sk-example", connection.ApiKey);
+		Assert.Equal(connection.Name, session.Inference.DefaultProvider);
+#pragma warning restore MCPSDK001
+		Assert.Equal("high", session.Inference.ReasoningEffort);
+		Assert.False(session.GitHub!.Capi!.Enabled);
 	}
 
 	[Fact]

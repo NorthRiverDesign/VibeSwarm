@@ -22,7 +22,7 @@ public sealed class LeadSuggestionsTests
 	[Fact]
 	public void ApprovingASuggestion_MovesItToTheQueue_AndTellsThePage()
 	{
-		var idea = new Idea { Id = Guid.NewGuid(), Description = "Add tests for the parser", ExpandedDescription = "Why: no tests.\nGoal: cover it.", NeedsApproval = true };
+		var idea = new Idea { Id = Guid.NewGuid(), Description = "Add tests for the parser", Specification = "Why: no tests.\nGoal: cover it.", NeedsApproval = true };
 		var lead = new FakeLeadService(new LeadStatus { IsConfigured = true, Suggestions = [idea] });
 		var approvedRaised = false;
 		using var context = CreateContext(lead);

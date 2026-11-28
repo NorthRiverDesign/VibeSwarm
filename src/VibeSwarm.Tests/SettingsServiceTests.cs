@@ -41,7 +41,6 @@ public sealed class SettingsServiceTests : IDisposable
 			EnableBrowserTools = false,
 			CriticalErrorLogRetentionDays = 45,
 			CriticalErrorLogMaxEntries = 350,
-			IdeaExpansionPromptTemplate = "Expand {{idea}}",
 			IdeaImplementationPromptTemplate = "Implement {{idea}}",
 			ApprovedIdeaImplementationPromptTemplate = "Idea {{idea}}\nSpec {{specification}}"
 		});
@@ -58,7 +57,6 @@ public sealed class SettingsServiceTests : IDisposable
 		Assert.False(saved.EnableBrowserTools);
 		Assert.Equal(45, saved.CriticalErrorLogRetentionDays);
 		Assert.Equal(350, saved.CriticalErrorLogMaxEntries);
-		Assert.Equal("Expand {{idea}}", saved.IdeaExpansionPromptTemplate);
 		Assert.Equal("Implement {{idea}}", saved.IdeaImplementationPromptTemplate);
 		Assert.Equal("Idea {{idea}}\nSpec {{specification}}", saved.ApprovedIdeaImplementationPromptTemplate);
 		Assert.NotNull(saved.UpdatedAt);
@@ -85,7 +83,6 @@ public sealed class SettingsServiceTests : IDisposable
 
 		var settings = await service.GetSettingsAsync();
 
-		Assert.Equal(PromptBuilder.DefaultIdeaExpansionPromptTemplate, settings.IdeaExpansionPromptTemplate);
 		Assert.Equal(PromptBuilder.DefaultIdeaImplementationPromptTemplate, settings.IdeaImplementationPromptTemplate);
 		Assert.Equal(PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate, settings.ApprovedIdeaImplementationPromptTemplate);
 		// Every job's system prompt rules ask for the commit summary, so the templates don't repeat it.
@@ -135,12 +132,10 @@ public sealed class SettingsServiceTests : IDisposable
 		var updated = await service.UpdateSettingsAsync(new AppSettings
 		{
 			TimeZoneId = "UTC",
-			IdeaExpansionPromptTemplate = "   ",
 			IdeaImplementationPromptTemplate = "",
 			ApprovedIdeaImplementationPromptTemplate = null
 		});
 
-		Assert.Equal(PromptBuilder.DefaultIdeaExpansionPromptTemplate, updated.IdeaExpansionPromptTemplate);
 		Assert.Equal(PromptBuilder.DefaultIdeaImplementationPromptTemplate, updated.IdeaImplementationPromptTemplate);
 		Assert.Equal(PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate, updated.ApprovedIdeaImplementationPromptTemplate);
 	}
@@ -148,19 +143,6 @@ public sealed class SettingsServiceTests : IDisposable
 	[Fact]
 	public async Task GetSettingsAsync_UpgradesLegacyDefaultIdeaPromptTemplates()
 	{
-		const string legacyIdeaExpansionPromptTemplate =
-			"""
-			You are a staff-level software engineer turning a rough product idea into an implementation-ready specification.
-
-			## Feature Idea
-			{{idea}}
-
-			## Instructions
-			1. Explore the codebase, adjacent workflows, reusable components, and tests before deciding on the solution. Use subagents when they help you investigate in parallel.
-			2. Make pragmatic assumptions from repository patterns and choose the option that best fits the current system.
-			3. Return concise markdown with these sections: Overview, User Flows, Affected Areas, Implementation Plan, Edge Cases, Acceptance Criteria.
-			4. Keep it concrete and brief. No code samples. Do not mention providers, models, or attribution.
-			""";
 		const string legacyIdeaImplementationPromptTemplate =
 			"""
 			You are a staff-level software engineer implementing a feature directly from a product idea.
@@ -218,7 +200,6 @@ public sealed class SettingsServiceTests : IDisposable
 		{
 			Id = Guid.NewGuid(),
 			TimeZoneId = "UTC",
-			IdeaExpansionPromptTemplate = legacyIdeaExpansionPromptTemplate,
 			IdeaImplementationPromptTemplate = legacyIdeaImplementationPromptTemplate,
 			ApprovedIdeaImplementationPromptTemplate = legacyApprovedIdeaImplementationPromptTemplate
 		});
@@ -228,13 +209,11 @@ public sealed class SettingsServiceTests : IDisposable
 		var service = new SettingsService(dbContext);
 		var settings = await service.GetSettingsAsync();
 
-		Assert.Equal(PromptBuilder.DefaultIdeaExpansionPromptTemplate, settings.IdeaExpansionPromptTemplate);
 		Assert.Equal(PromptBuilder.DefaultIdeaImplementationPromptTemplate, settings.IdeaImplementationPromptTemplate);
 		Assert.Equal(PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate, settings.ApprovedIdeaImplementationPromptTemplate);
 
 		await using var verificationContext = CreateDbContext();
 		var saved = await verificationContext.AppSettings.SingleAsync();
-		Assert.Equal(PromptBuilder.DefaultIdeaExpansionPromptTemplate, saved.IdeaExpansionPromptTemplate);
 		Assert.Equal(PromptBuilder.DefaultIdeaImplementationPromptTemplate, saved.IdeaImplementationPromptTemplate);
 		Assert.Equal(PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate, saved.ApprovedIdeaImplementationPromptTemplate);
 	}
@@ -297,7 +276,6 @@ public sealed class SettingsServiceTests : IDisposable
 		{
 			Id = Guid.NewGuid(),
 			TimeZoneId = "UTC",
-			IdeaExpansionPromptTemplate = PromptBuilder.DefaultIdeaExpansionPromptTemplate,
 			IdeaImplementationPromptTemplate = previousIdeaImplementationPromptTemplate.Replace("max 72 chars", limit),
 			ApprovedIdeaImplementationPromptTemplate = previousApprovedIdeaImplementationPromptTemplate.Replace("max 72 chars", limit)
 		});

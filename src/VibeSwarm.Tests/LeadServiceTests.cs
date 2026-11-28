@@ -102,7 +102,8 @@ public sealed class LeadServiceTests : IDisposable
 
 		var approved = await service.ApproveSuggestionAsync(status.Suggestions[0].Id);
 		Assert.NotNull(approved);
-		Assert.Equal(IdeaExpansionStatus.Approved, approved.ExpansionStatus);
+		Assert.False(approved.NeedsApproval);
+		Assert.True(approved.HasSpecification);
 		Assert.Equal(5, approved.SortOrder);
 
 		await service.DismissSuggestionAsync(status.Suggestions[1].Id);

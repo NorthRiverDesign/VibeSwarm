@@ -24,7 +24,7 @@ public static class PromptBuilder
 	/// <summary>
 	/// Default template for the read-only planning stage. Substitutes <see cref="RequestToken"/>.
 	/// Consumed by <see cref="ProviderPlanningHelper.BuildPlanningPrompt"/> so planning-stage agents
-	/// share the same templating mechanism as idea expansion and implementation.
+	/// share the same templating mechanism as idea implementation.
 	/// </summary>
 	public static string DefaultPlanningPromptTemplate =>
 		"""
@@ -44,20 +44,6 @@ public static class PromptBuilder
 		6. Verification
 
 		Return only the plan. Do not implement the feature or include code samples.
-		""";
-
-	public static string DefaultIdeaExpansionPromptTemplate =>
-		"""
-		You are a staff-level software engineer turning a product idea into an implementation-ready specification.
-
-		## Feature Idea
-		{{idea}}
-
-		## Instructions
-		1. Inspect the codebase, related flows, reusable components, and tests first. Use subagents when they help.
-		2. Fill in missing details from repository patterns and choose the option that best fits the current system.
-		3. Return concise markdown with: Overview, User Flows, Affected Areas, Implementation Plan, Edge Cases, Acceptance Criteria.
-		4. Keep it concrete. No code samples or provider/model attribution.
 		""";
 
 	// The implementation templates end without a <commit-summary> block: every job's system
@@ -115,7 +101,6 @@ public static class PromptBuilder
 
 		var linkedProjectsSection = BuildLinkedProjectsSection(job.Project);
 		var environmentSection = BuildEnvironmentSection(job.Project);
-		var teamSection = BuildTeamSection(job.Project);
 		var skillSection = BuildSkillSection(job.Project);
 		var sb = new StringBuilder();
 
@@ -139,11 +124,6 @@ public static class PromptBuilder
 		if (!string.IsNullOrWhiteSpace(environmentSection))
 		{
 			sb.Append(environmentSection);
-		}
-
-		if (!string.IsNullOrWhiteSpace(teamSection))
-		{
-			sb.Append(teamSection);
 		}
 
 		if (!string.IsNullOrWhiteSpace(skillSection))
@@ -333,15 +313,6 @@ public static class PromptBuilder
 		sb.AppendLine();
 		sb.AppendLine(BuildUserMessagesPrompt(messages, interruptedTurn: true));
 		return sb.ToString().TrimEnd();
-	}
-
-	public static string BuildIdeaExpansionPrompt(string ideaDescription, string? template = null)
-	{
-		return ApplyIdeaPromptTemplate(
-			string.IsNullOrWhiteSpace(template) ? DefaultIdeaExpansionPromptTemplate : template,
-			[
-				new TemplateToken(IdeaToken, ideaDescription, "## Feature Idea")
-			]);
 	}
 
 	public static string BuildIdeaImplementationPrompt(string ideaDescription, string? template = null)
@@ -840,82 +811,12 @@ public static class PromptBuilder
 		return null;
 	}
 
-	private static string BuildTeamSection(Project project)
-	{
-		if (project.AgentAssignments == null || project.AgentAssignments.Count == 0)
-		{
-			return string.Empty;
-		}
-
-		var assignments = project.AgentAssignments
-			.Where(assignment => assignment.IsEnabled && assignment.Agent != null)
-			.OrderBy(assignment => assignment.Agent!.Name, StringComparer.OrdinalIgnoreCase)
-			.ToList();
-		if (assignments.Count == 0)
-		{
-			return string.Empty;
-		}
-
-		var sb = new StringBuilder();
-		sb.AppendLine("<agents>");
-		sb.AppendLine("  Configured agent presets available for this repository:");
-		foreach (var assignment in assignments)
-		{
-			var lineBuilder = new StringBuilder();
-			lineBuilder.Append("  - ");
-			lineBuilder.Append(assignment.Agent!.Name);
-
-			if (!string.IsNullOrWhiteSpace(assignment.Agent.Description))
-			{
-				lineBuilder.Append(" | Purpose: ");
-				lineBuilder.Append(assignment.Agent.Description);
-			}
-
-			if (!string.IsNullOrWhiteSpace(assignment.Agent.Responsibilities))
-			{
-				lineBuilder.Append(" | Instructions: ");
-				lineBuilder.Append(assignment.Agent.Responsibilities);
-			}
-
-			if (assignment.Provider != null)
-			{
-				lineBuilder.Append(" | Provider: ");
-				lineBuilder.Append(assignment.Provider.Name);
-			}
-
-			if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId))
-			{
-				lineBuilder.Append(" | Model: ");
-				lineBuilder.Append(assignment.PreferredModelId);
-			}
-
-			var skills = assignment.Agent.SkillLinks
-				.Where(link => link.Skill != null)
-				.Select(link => link.Skill!.Name)
-				.ToList();
-			if (skills.Count > 0)
-			{
-				lineBuilder.Append(" | Skills: ");
-				lineBuilder.Append(string.Join(", ", skills));
-			}
-
-			var cycleDefaults = DescribeAgentCycleDefaults(assignment.Agent);
-			if (!string.IsNullOrWhiteSpace(cycleDefaults))
-			{
-				lineBuilder.Append(" | Execution: ");
-				lineBuilder.Append(cycleDefaults);
-			}
-
-			sb.AppendLine(EscapeXml(lineBuilder.ToString()));
-		}
-
-		sb.AppendLine("</agents>");
-		return sb.ToString();
-	}
-
 	private static string BuildSkillSection(Project project)
 	{
-		var skills = ProjectSkillHelper.GetConfiguredSkills(project);
+		var skills = project.AvailableSkills
+			.Where(skill => skill.IsEnabled)
+			.OrderBy(skill => skill.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
 		if (skills.Count == 0)
 		{
 			return string.Empty;
@@ -980,115 +881,70 @@ public static class PromptBuilder
 	}
 
 	/// <summary>
-	/// Builds a role-specific system prompt context block that is prepended to the agent's
-	/// append-system-prompt when the job is part of a team swarm. This establishes the agent's
-	/// persona, responsibilities, and how to work beside teammates running at the same time,
-	/// each in its own worktree, so their work merges cleanly.
+	/// The system prompt section naming the helpers a job can ask while it works (the project's
+	/// Decisions and Research profiles) and the command that asks them.
 	/// </summary>
-	/// <param name="teammates">The swarm's other agents, so this one knows what they own.</param>
-	public static string BuildRoleSystemPromptContext(Agent role, int totalSwarmSize, IReadOnlyList<Agent>? teammates = null)
+	public static string? BuildHelperRules(string command, IReadOnlyList<(string Name, string Purpose, string Runs, bool ReadsRepository)> helpers, int questionsPerRun)
+	{
+		if (string.IsNullOrWhiteSpace(command) || helpers.Count == 0)
+		{
+			return null;
+		}
+
+		var sb = new StringBuilder();
+		sb.AppendLine("<helpers>");
+		sb.AppendLine($"Other models can help you while you work. Ask one with `{command} <name> <<'EOF'`, then your question on the following lines and `EOF`. It prints the answer. An answer can take several minutes, so give the command a 10-minute timeout. A run can ask {questionsPerRun} questions, one at a time; ask when an answer would change what you do.");
+		foreach (var helper in helpers)
+		{
+			var reads = helper.ReadsRepository
+				? "It can read the repository."
+				: "It sees only your question, so include the context it needs.";
+			sb.AppendLine($"- {helper.Name} ({helper.Runs}): {helper.Purpose} {reads}");
+		}
+
+		sb.Append("</helpers>");
+		return sb.ToString();
+	}
+
+	/// <summary>
+	/// The system prompt section for one of several instances of a job: copies on the same
+	/// provider and model, each in its own worktree. A goal written as a list is divided between
+	/// them (<see cref="JobInstanceSplitter"/>); otherwise each is told which share to take.
+	/// A follow-up is about this instance's own work, so it gets no split.
+	/// </summary>
+	public static string BuildInstanceSystemPromptContext(string? goalPrompt, int instanceNumber, int instanceCount, bool isFollowUp = false)
 	{
 		var sb = new StringBuilder();
+		sb.AppendLine($"You are instance {instanceNumber} of {instanceCount} of this job, running at the same time as the others, each in its own copy of the repository, so you won't see their changes while you work.");
 
-		sb.AppendLine($"You are acting as the {role.Name} agent for this project.");
-
-		if (!string.IsNullOrWhiteSpace(role.Description))
+		if (!isFollowUp)
 		{
-			sb.AppendLine($"Agent purpose: {role.Description.Trim()}");
-		}
-
-		if (!string.IsNullOrWhiteSpace(role.Responsibilities))
-		{
-			sb.AppendLine($"Your instructions: {role.Responsibilities.Trim()}");
-		}
-
-		var skills = role.SkillLinks
-			.Where(link => link.Skill != null && link.Skill.IsEnabled)
-			.Select(link => link.Skill!)
-			.GroupBy(skill => skill.Id)
-			.Select(group => group.First())
-			.OrderBy(skill => skill.Name, StringComparer.OrdinalIgnoreCase)
-			.ToList();
-		if (skills.Count > 0)
-		{
-			sb.AppendLine($"Skills installed for this agent: {string.Join("; ", skills.Select(FormatSkillReference))}");
-			sb.AppendLine("Read each skill's SKILL.md from the path shown before acting on it, and honor any allowed-tools restrictions declared there.");
-		}
-
-		if (totalSwarmSize > 1)
-		{
-			sb.AppendLine();
-			sb.AppendLine($"You are one of {totalSwarmSize} specialized agents working on this goal at the same time, each in its own copy of the repository, so you won't see the others' changes while you work.");
-			var others = (teammates ?? [])
-				.Where(teammate => !string.IsNullOrWhiteSpace(teammate.Name))
-				.Select(teammate => string.IsNullOrWhiteSpace(teammate.Description)
-					? teammate.Name.Trim()
-					: $"{teammate.Name.Trim()} ({Truncate(teammate.Description.Trim(), 120)})")
-				.Distinct(StringComparer.OrdinalIgnoreCase)
-				.ToList();
-			if (others.Count > 0)
+			var part = JobInstanceSplitter.GetPart(goalPrompt, instanceNumber, instanceCount);
+			if (part is { Count: > 0 })
 			{
-				sb.AppendLine($"Your teammates: {string.Join("; ", others)}.");
-			}
+				sb.AppendLine("The goal's list is divided between the instances. Your part:");
+				foreach (var item in part)
+				{
+					sb.AppendLine($"- {Truncate(item, 300)}");
+				}
 
-			sb.AppendLine("When you finish, VibeSwarm commits your work and replays it onto the branch with theirs. To keep that merge clean:");
-			sb.AppendLine("- Do only your part of the goal, and leave files and areas a teammate owns to them.");
-			sb.AppendLine("- Don't reformat, rename or move code your change doesn't need.");
-			sb.AppendLine("- Work in this directory on its current branch; don't switch branches or rewrite history.");
+				sb.AppendLine("Do only your part; the other instances do the rest. Read the whole goal for context.");
+			}
+			else
+			{
+				sb.AppendLine($"Divide the goal into {instanceCount} parts of similar size, in the order it describes them, and do only part {instanceNumber}. If it doesn't divide that far and no part is left for you, change nothing and say so.");
+			}
 		}
 
+		sb.AppendLine("When you finish, VibeSwarm commits your work and replays it onto the branch with theirs. To keep that merge clean:");
+		sb.AppendLine("- Leave files and areas another instance's part needs to that instance.");
+		sb.AppendLine("- Don't reformat, rename or move code your change doesn't need.");
+		sb.AppendLine("- Work in this directory on its current branch; don't switch branches or rewrite history.");
 		return sb.ToString().TrimEnd();
 	}
 
 	private static string Truncate(string text, int maxLength) =>
 		text.Length <= maxLength ? text : text[..(maxLength - 1)].TrimEnd() + "…";
-
-	private static string FormatSkillReference(Skill skill)
-	{
-		var parts = new List<string> { skill.Name };
-
-		var summary = BuildSkillSummary(skill);
-		if (!string.IsNullOrWhiteSpace(summary))
-		{
-			parts.Add(summary);
-		}
-
-		if (!string.IsNullOrWhiteSpace(skill.StoragePath))
-		{
-			parts.Add($"SKILL.md: {Path.Combine(skill.StoragePath, "SKILL.md")}");
-		}
-
-		if (!string.IsNullOrWhiteSpace(skill.AllowedTools))
-		{
-			parts.Add($"allowed-tools: {skill.AllowedTools.Trim()}");
-		}
-
-		return string.Join(" - ", parts);
-	}
-
-	private static string? DescribeAgentCycleDefaults(Agent role)
-	{
-		if (role.DefaultCycleMode == CycleMode.SingleCycle)
-		{
-			return null;
-		}
-
-		var cycleMode = role.DefaultCycleMode switch
-		{
-			CycleMode.FixedCount => $"fixed-count ({role.DefaultMaxCycles} cycles)",
-			CycleMode.Autonomous => $"autonomous (max {role.DefaultMaxCycles} cycles)",
-			_ => null
-		};
-		if (string.IsNullOrWhiteSpace(cycleMode))
-		{
-			return null;
-		}
-
-		var sessionMode = role.DefaultCycleSessionMode == CycleSessionMode.ContinueSession
-			? "resume session"
-			: "fresh session";
-		return $"{cycleMode}, {sessionMode}";
-	}
 
 	private static string? BuildSkillSummary(Skill skill)
 	{

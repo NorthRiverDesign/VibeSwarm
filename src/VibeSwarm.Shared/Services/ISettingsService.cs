@@ -22,6 +22,13 @@ public interface ISettingsService
 	Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Sets the team: the profile that leads and the profile that reviews, or null for a role
+	/// the team goes without. Every project working as a team takes the change at once, except
+	/// where it picked its own profile for the role.
+	/// </summary>
+	Task<AppSettings> UpdateTeamAsync(Guid? leadProfileId, Guid? reviewProfileId, CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Gets the default projects directory, if configured.
 	/// </summary>
 	Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default);

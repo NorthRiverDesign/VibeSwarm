@@ -147,12 +147,7 @@
 			@if (!string.IsNullOrEmpty(ProviderModelDisplay))
 			{
 				<span class="fg-2" aria-hidden="true">·</span>
-				<span class="text-break" title="Provider chain and model">@ProviderModelDisplay</span>
-			}
-			@if (MaxCycles > 1)
-			{
-				<span class="fg-2" aria-hidden="true">·</span>
-				<span title="@GetCycleModeTitle()">Cycle @CurrentCycle of @MaxCycles</span>
+				<span class="text-break" title="@(string.IsNullOrWhiteSpace(ProfileName) ? "Provider and model" : "Profile, then the provider and model that ran")">@ProviderModelDisplay</span>
 			}
 			<span class="d-inline-flex align-items-center gap-1 fg-primary">
 				Details<i class="bi bi-chevron-right details-chevron small"></i>
@@ -165,13 +160,6 @@
 				<div class="d-flex justify-content-between gap-5">
 					<dt class="fw-normal fg-1 flex-shrink-0">Branch</dt>
 					<dd class="mb-0 text-end text-break font-monospace">@BranchName</dd>
-				</div>
-			}
-			@if (!string.IsNullOrEmpty(AgentName))
-			{
-				<div class="d-flex justify-content-between gap-5">
-					<dt class="fw-normal fg-1 flex-shrink-0">Team role</dt>
-					<dd class="mb-0 text-end text-break">@AgentName</dd>
 				</div>
 			}
 			@if (RetryCount > 0)
@@ -304,6 +292,10 @@
 
 	[Parameter]
 	public string? ModelUsed { get; set; }
+
+	/// <summary>The profile the job was asked to run on, shown ahead of what ran.</summary>
+	[Parameter]
+	public string? ProfileName { get; set; }
 
 	[Parameter]
 	public string? PlanningProviderName { get; set; }
@@ -447,18 +439,6 @@
 	public DateTime? LastActivityAt { get; set; }
 
 	[Parameter]
-	public int CurrentCycle { get; set; } = 1;
-
-	[Parameter]
-	public int MaxCycles { get; set; } = 1;
-
-	[Parameter]
-	public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
-
-	[Parameter]
-	public string? AgentName { get; set; }
-
-	[Parameter]
 	public bool PlaywrightEnabled { get; set; }
 
 	[Parameter]
@@ -541,17 +521,18 @@
 
 	private bool ShowExecutionBreakdown => HasStageUsage(ExecutionInputTokens, ExecutionOutputTokens, ExecutionCostUsd);
 
-	private string GetCycleModeTitle()
+	private string? BuildProviderModelDisplay()
 	{
-		return CycleMode switch
-		{
-			CycleMode.FixedCount => $"Fixed Count Mode: {CurrentCycle} of {MaxCycles} cycles",
-			CycleMode.Autonomous => $"Autonomous Mode: {CurrentCycle} of {MaxCycles} max cycles",
-			_ => $"Cycle {CurrentCycle} of {MaxCycles}"
-		};
+		var stages = BuildStagesDisplay();
+
+		// The profile is what was asked for; the provider and model after it are what ran, which
+		// differ once the job has switched provider.
+		return string.IsNullOrWhiteSpace(ProfileName)
+			? stages
+			: string.IsNullOrWhiteSpace(stages) ? ProfileName : $"{ProfileName} · {stages}";
 	}
 
-	private string? BuildProviderModelDisplay()
+	private string? BuildStagesDisplay()
 	{
 		var planningDisplay = BuildStageProviderDisplay(PlanningProviderName, PlanningModelUsed);
 		var executionDisplay = BuildStageProviderDisplay(ProviderName, ModelUsed);

@@ -87,17 +87,6 @@ internal abstract class FakeInferenceProviderServiceBase : IInferenceProviderSer
 	public virtual Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => throw new NotSupportedException();
 }
 
-internal abstract class FakeAgentServiceBase : IAgentService
-{
-	public virtual Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Agent> CreateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Agent> UpdateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-}
-
 internal abstract class FakeVersionControlServiceBase : IVersionControlService
 {
 	public virtual Task<bool> IsGitAvailableAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -185,7 +174,7 @@ internal abstract class FakeJobServiceBase : IJobService
 	public virtual Task<FollowUpDraft> DraftFollowUpAsync(Guid id, FollowUpDraftRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, Guid? profileId = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<bool> UpdateJobPromptAsync(Guid id, string newPrompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<int> DeleteCompletedByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -198,6 +187,9 @@ internal abstract class FakeJobServiceBase : IJobService
 	public virtual Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
 	public virtual Task<bool> TryFailOverToNextExecutionTargetAsync(Guid id, string? reason, CancellationToken cancellationToken = default) => Task.FromResult(false);
+	public virtual Task<IReadOnlyList<JobStep>> GetStepsAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<JobStep>>([]);
+	public virtual Task<JobStep?> AddStepAsync(Guid jobId, string instructions, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public virtual Task<bool> SkipStepAsync(Guid jobId, Guid stepId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<JobLiveOutput?> GetLiveOutputAsync(Guid id, long afterSequence = 0, CancellationToken cancellationToken = default) => Task.FromResult<JobLiveOutput?>(null);
 }
@@ -226,10 +218,6 @@ internal abstract class FakeIdeaServiceBase : IIdeaService
 	public virtual Task ReorderIdeasAsync(Guid projectId, IEnumerable<Guid> ideaIdsInOrder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<Idea> CopyToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();

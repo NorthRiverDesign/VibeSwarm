@@ -831,28 +831,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 				{
 					Name = "Copilot App",
 					WorkingPath = workingDirectory,
-					AgentAssignments =
-					[
-						new ProjectAgent
-						{
-							AgentId = Guid.NewGuid(),
-							IsEnabled = true,
-							Agent = new Agent
-							{
-								Id = Guid.NewGuid(),
-								Name = "Code Reviewer",
-								IsEnabled = true,
-								SkillLinks =
-								[
-									new AgentSkill
-									{
-										SkillId = repoMapSkill.Id,
-										Skill = repoMapSkill
-									}
-								]
-							}
-						}
-					],
+					AvailableSkills = [repoMapSkill],
 					Environments =
 					[
 						new ProjectEnvironment
@@ -1648,28 +1627,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		{
 			Name = "CLI App",
 			WorkingPath = "/tmp/cli-app",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					AgentId = Guid.NewGuid(),
-					IsEnabled = true,
-					Agent = new Agent
-					{
-						Id = Guid.NewGuid(),
-						Name = "CLI Reviewer",
-						IsEnabled = true,
-						SkillLinks =
-						[
-							new AgentSkill
-							{
-								SkillId = testSkill.Id,
-								Skill = testSkill
-							}
-						]
-					}
-				}
-			],
+			AvailableSkills = [testSkill],
 			Environments =
 			[
 				new ProjectEnvironment
@@ -1706,28 +1664,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		{
 			Name = "Scoped Skills",
 			WorkingPath = "/tmp/scoped-skills",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					AgentId = Guid.NewGuid(),
-					IsEnabled = true,
-					Agent = new Agent
-					{
-						Id = Guid.NewGuid(),
-						Name = "Frontend",
-						IsEnabled = true,
-						SkillLinks =
-						[
-							new AgentSkill
-							{
-								SkillId = assignedSkill.Id,
-								Skill = assignedSkill
-							}
-						]
-					}
-				}
-			],
+			AvailableSkills = [assignedSkill],
 			Environments =
 			[
 				// Web env exists so we still generate a Playwright MCP entry — giving us a

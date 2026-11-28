@@ -33,6 +33,7 @@ builder.Services.AddScoped(sp =>
 });
 
 // HTTP service implementations
+builder.Services.AddScoped<ProfileComposer>();
 builder.Services.AddScoped<IJobService, HttpJobService>();
 builder.Services.AddScoped<IJobScheduleService, HttpJobScheduleService>();
 builder.Services.AddScoped<IJobTemplateService, HttpJobTemplateService>();
@@ -46,7 +47,7 @@ builder.Services.AddScoped<IProviderSignInService, HttpProviderSignInService>();
 builder.Services.AddScoped<ISkillService, HttpSkillService>();
 builder.Services.AddScoped<HttpSkillInstallerService>();
 builder.Services.AddScoped<ISkillInstallerService>(sp => sp.GetRequiredService<HttpSkillInstallerService>());
-builder.Services.AddScoped<IAgentService, HttpAgentService>();
+builder.Services.AddScoped<IProfileService, HttpProfileService>();
 builder.Services.AddScoped<ISettingsService, HttpSettingsService>();
 builder.Services.AddScoped<IPushNotificationService, HttpPushNotificationService>();
 builder.Services.AddScoped<IJobQueueControlService, HttpJobQueueControlService>();

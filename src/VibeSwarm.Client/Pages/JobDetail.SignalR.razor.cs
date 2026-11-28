@@ -102,6 +102,18 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
                     catch { }
                 });
 
+            _hubConnection.On<string>("JobStepsChanged", async (jobId) =>
+            {
+                if (_disposed || !IsCurrentRouteJob(jobId)) return;
+                try
+                {
+                    _stepsVersion++;
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (ObjectDisposedException) { }
+                catch { }
+            });
+
             _hubConnection.On<string>("JobResumed", async (jobId) =>
             {
                 if (_disposed) return;
@@ -114,14 +126,6 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
             {
                 if (_disposed) return;
                 try { await OnJobCompleted(jobId, success, errorMessage); }
-                catch (ObjectDisposedException) { }
-                catch { }
-            });
-
-            _hubConnection.On<string, int, int>("JobCycleProgress", async (jobId, currentCycle, maxCycles) =>
-            {
-                if (_disposed) return;
-                try { await OnJobCycleProgress(jobId, currentCycle, maxCycles); }
                 catch (ObjectDisposedException) { }
                 catch { }
             });
@@ -264,6 +268,9 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
 		{
 		}
 	}
+
+	/// <summary>Counts the server's "steps changed" notices; the Steps list reloads when it moves.</summary>
+	private int _stepsVersion;
 
 	private bool IsCurrentRouteJob(string jobId)
 		=> Guid.TryParse(jobId, out var parsedJobId) && parsedJobId == JobId;
@@ -428,21 +435,6 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
             _interactionChoices = null;
             _interactionError = null;
             _isSubmittingResponse = false;
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-	private async Task OnJobCycleProgress(string jobId, int currentCycle, int maxCycles)
-	{
-		if (!IsCurrentRouteJob(jobId) || Job == null)
-		{
-			return;
-		}
-
-		if (Job != null)
-		{
-			Job.CurrentCycle = currentCycle;
-			Job.MaxCycles = maxCycles;
             await InvokeAsync(StateHasChanged);
         }
     }

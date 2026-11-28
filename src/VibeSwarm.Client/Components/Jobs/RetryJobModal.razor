@@ -1,5 +1,6 @@
-@* Modal dialog for retrying a failed job with provider/model selection *@
-@inject IProviderService ProviderService
+@* Retries a failed job, on the profile it ran on or on another one. *@
+@inject IProfileService ProfileService
+@inject IServiceProvider Services
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Retry Job" Icon="arrow-repeat"
 	Size="ModalDialog.ModalSize.Default">
@@ -11,14 +12,8 @@
 					<div class="spinner-border fs-2xl fg-primary" role="status">
 						<span class="visually-hidden">Loading...</span>
 					</div>
-					<p class="fg-1 mt-3 mb-0">Loading providers...</p>
+					<p class="fg-1 mt-3 mb-0">Loading profiles...</p>
 				</div>
-			}
-			else if (Providers.Count == 0)
-			{
-				<Alert Type="Alert.AlertType.Warning" Class="mb-0">
-					No enabled providers available. Please enable at least one provider in settings.
-				</Alert>
 			}
 			else
 			{
@@ -29,98 +24,8 @@
 					</Alert>
 				}
 
-				<div class="mb-5">
-					<label for="retryProvider" class="form-label">Provider</label>
-					<select id="retryProvider" class="form-control" @bind="SelectedProviderId"
-						@bind:after="OnProviderChanged">
-						@foreach (var provider in Providers)
-						{
-							<option value="@provider.Id">
-								@provider.Name
-								@if (provider.Id == Job?.ProviderId)
-								{
-									<text> (current)</text>
-								}
-							</option>
-						}
-					</select>
-					<div class="form-text">Select the provider to use for this retry attempt.</div>
-				</div>
-
-				<div class="mb-5">
-					<label for="retryModel" class="form-label">Model</label>
-					@if (IsLoadingModels)
-					{
-						<div class="d-flex align-items-center gap-3 py-3">
-							<div class="spinner-border spinner-sm fg-secondary" role="status">
-								<span class="visually-hidden">Loading models...</span>
-							</div>
-							<span class="fg-1 small">Loading available models...</span>
-						</div>
-					}
-					else if (AvailableModels.Count == 0)
-					{
-						<div class="input-group">
-							<select id="retryModel" class="form-control" disabled>
-								<option value="">Default (provider decides)</option>
-							</select>
-							<ModelRefreshButton ProviderId="@SelectedProviderId" OnRefreshed="HandleModelsRefreshed" />
-						</div>
-						<div class="form-text fg-warning">
-							<i class="bi bi-exclamation-triangle me-1"></i>
-							No models loaded for this provider. The provider's default model will be used.
-						</div>
-					}
-					else
-					{
-						<div class="input-group">
-							<select id="retryModel" class="form-control" @bind="SelectedModelId">
-								<option value="">Default (provider decides)</option>
-								@foreach (var model in AvailableModels.Where(m => m.IsAvailable))
-								{
-									<option value="@model.ModelId">
-										@(model.DisplayName ?? model.ModelId)
-										@if (model.IsDefault)
-										{
-											<text> ★</text>
-										}
-										@if (model.ModelId == Job?.ModelUsed)
-										{
-											<text> (last used)</text>
-										}
-										@if (model.RetiresOn.HasValue)
-										{
-											<text> — retires @model.RetiresOn.Value.ToString("yyyy-MM-dd")</text>
-										}
-									</option>
-								}
-							</select>
-							<ModelRefreshButton ProviderId="@SelectedProviderId" OnRefreshed="HandleModelsRefreshed" />
-						</div>
-						<div class="form-text">Choose a specific model or use the provider's default.</div>
-					}
-				</div>
-
-				<div class="mb-5">
-					<label for="retryReasoning" class="form-label">Reasoning</label>
-					<select id="retryReasoning" class="form-control" @bind="SelectedReasoningEffort" disabled="@(!ReasoningOptions.Any())">
-						<option value="">Default (provider decides)</option>
-						@foreach (var reasoning in ReasoningOptions)
-						{
-							<option value="@reasoning">@reasoning</option>
-						}
-					</select>
-					<div class="form-text">
-						@if (!ReasoningOptions.Any())
-						{
-							<span>This provider does not expose configurable reasoning levels.</span>
-						}
-						else
-						{
-							<span>Choose a specific reasoning level or use the provider/project default.</span>
-						}
-					</div>
-				</div>
+				<ProfilePicker Id="retryProfile" Class="mb-5" Label="Run with" Profiles="JobProfiles" Allowed="ProfileRoles.CanBuild"
+							   SelectedProfileId="SelectedProfileId" OnSelected="profile => SelectedProfileId = profile?.Id" />
 
 				@if (!string.IsNullOrEmpty(ErrorMessage))
 				{
@@ -133,8 +38,7 @@
 		<button type="button" class="btn-solid theme-secondary" @onclick="Close" disabled="@IsSubmitting">
 			Cancel
 		</button>
-		<button type="button" class="btn-solid theme-primary" @onclick="Submit"
-			disabled="@(IsLoading || Providers.Count == 0 || IsSubmitting || IsLoadingModels)">
+		<button type="button" class="btn-solid theme-primary" @onclick="Submit" disabled="@(IsLoading || IsSubmitting)">
 			@if (IsSubmitting)
 			{
 				<span class="spinner-border spinner-sm me-1" role="status"></span>
@@ -162,30 +66,27 @@
 	[Parameter]
 	public EventCallback<RetryOptions> OnRetry { get; set; }
 
-	private List<Provider> Providers { get; set; } = new();
-	private List<ProviderModel> AvailableModels { get; set; } = new();
-	private Guid SelectedProviderId { get; set; }
-	private string? SelectedModelId { get; set; }
-	private string? SelectedReasoningEffort { get; set; }
+	private List<Profile> Profiles { get; set; } = new();
+	private Guid? SelectedProfileId { get; set; }
 	private bool IsLoading { get; set; } = true;
-	private bool IsLoadingModels { get; set; }
 	private bool IsSubmitting { get; set; }
 	private string? ErrorMessage { get; set; }
-	private IReadOnlyList<string> ReasoningOptions => Providers
-		.Where(provider => provider.Id == SelectedProviderId)
-		.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
-		.Distinct(StringComparer.Ordinal)
-		.ToList();
+
+	// The job's project as the server has it now: a job is read without its project's Build
+	// order, and that order decides where a job with no profile of its own starts.
+	private Project? _buildProject;
+
+	private IReadOnlyList<Profile> JobProfiles => ProjectExecutionDefaults.OrderJobProfiles(_buildProject ?? Job?.Project, Profiles);
 
 	protected override async Task OnParametersSetAsync()
 	{
 		if (IsVisible && IsLoading)
 		{
-			await LoadProviders();
+			await LoadProfiles();
 		}
 	}
 
-	private async Task LoadProviders()
+	private async Task LoadProfiles()
 	{
 		IsLoading = true;
 		ErrorMessage = null;
@@ -193,28 +94,13 @@
 
 		try
 		{
-			var allProviders = await ProviderService.GetAllAsync();
-			Providers = allProviders.Where(p => p.IsEnabled).ToList();
-
-			// Set default selection to current job's provider
-			if (Job != null && Providers.Any(p => p.Id == Job.ProviderId))
-			{
-				SelectedProviderId = Job.ProviderId;
-			}
-			else if (Providers.Count > 0)
-			{
-				SelectedProviderId = Providers.First().Id;
-			}
-
-			// Load models for the selected provider
-			if (SelectedProviderId != Guid.Empty)
-			{
-				await LoadModelsForProvider(SelectedProviderId);
-			}
+			Profiles = (await ProfileService.GetAllAsync()).ToList();
+			_buildProject = await ProjectExecutionDefaults.LoadWithBuildOrderAsync(Services, Job?.Project ?? (Job == null ? null : new Project { Id = Job.ProjectId }));
+			SelectedProfileId = PickStartingProfileId();
 		}
 		catch (Exception ex)
 		{
-			ErrorMessage = $"Failed to load providers: {ex.Message}";
+			ErrorMessage = $"Failed to load profiles: {ex.Message}";
 		}
 		finally
 		{
@@ -222,58 +108,23 @@
 		}
 	}
 
-	private void HandleModelsRefreshed(List<ProviderModel> models)
+	/// <summary>
+	/// The profile the job ran on. A job from before jobs kept one starts on the profile holding
+	/// its provider, model and reasoning, else on its project's Build profile.
+	/// </summary>
+	private Guid? PickStartingProfileId()
 	{
-		AvailableModels = models;
-		if (SelectedModelId != null && !AvailableModels.Any(m => m.IsAvailable && m.ModelId == SelectedModelId))
+		var runnable = JobProfiles;
+		if (Job == null)
 		{
-			SelectedModelId = null;
+			return null;
 		}
-	}
 
-	private async Task LoadModelsForProvider(Guid providerId)
-	{
-		IsLoadingModels = true;
-		StateHasChanged();
-
-		try
-		{
-			var models = await ProviderService.GetModelsAsync(providerId);
-			AvailableModels = models.ToList();
-
-			// Pre-select the last used model if available
-			if (Job?.ModelUsed != null && AvailableModels.Any(m => m.ModelId == Job.ModelUsed))
-			{
-				SelectedModelId = Job.ModelUsed;
-			}
-			else
-			{
-				SelectedModelId = null; // Use default
-			}
-			SelectedReasoningEffort = Job?.ReasoningEffort;
-		}
-		catch (Exception ex)
-		{
-			ErrorMessage = $"Failed to load models: {ex.Message}";
-			AvailableModels.Clear();
-		}
-		finally
-		{
-			IsLoadingModels = false;
-		}
-	}
-
-	private async Task OnProviderChanged()
-	{
-		SelectedModelId = null;
-		if (SelectedProviderId != Guid.Empty)
-		{
-			await LoadModelsForProvider(SelectedProviderId);
-		}
-		else
-		{
-			AvailableModels.Clear();
-		}
+		return (runnable.FirstOrDefault(profile => profile.Id == Job.ProfileId)
+			?? runnable.FirstOrDefault(profile => profile.ProviderId == Job.ProviderId
+				&& string.Equals(profile.ModelId, Job.ModelUsed, StringComparison.Ordinal)
+				&& string.Equals(profile.ReasoningEffort, Job.ReasoningEffort, StringComparison.Ordinal)))?.Id
+			?? ProjectExecutionDefaults.GetBuildProfileId(_buildProject ?? Job.Project, Profiles);
 	}
 
 	private async Task Submit()
@@ -286,14 +137,7 @@
 
 		try
 		{
-			var options = new RetryOptions
-			{
-				ProviderId = SelectedProviderId,
-				ModelId = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId,
-				ReasoningEffort = string.IsNullOrEmpty(SelectedReasoningEffort) ? null : SelectedReasoningEffort
-			};
-
-			await OnRetry.InvokeAsync(options);
+			await OnRetry.InvokeAsync(new RetryOptions { ProfileId = SelectedProfileId });
 			await Close();
 		}
 		catch (Exception ex)
@@ -309,31 +153,29 @@
 	private async Task Close()
 	{
 		await IsVisibleChanged.InvokeAsync(false);
-		// Reset state for next open
-		IsLoading = true;
-		SelectedModelId = null;
-		SelectedReasoningEffort = null;
-		ErrorMessage = null;
+		ResetForNextOpen();
 	}
 
 	private async Task HandleModalVisibilityChanged(bool visible)
 	{
 		if (!visible)
 		{
-			// Modal was closed (e.g., by backdrop click or close button)
-			// Propagate to parent and reset state
+			// Closed by the backdrop or the close button.
 			await IsVisibleChanged.InvokeAsync(false);
-			IsLoading = true;
-			SelectedModelId = null;
-			SelectedReasoningEffort = null;
-			ErrorMessage = null;
+			ResetForNextOpen();
 		}
+	}
+
+	private void ResetForNextOpen()
+	{
+		IsLoading = true;
+		SelectedProfileId = null;
+		ErrorMessage = null;
 	}
 
 	public class RetryOptions
 	{
-		public Guid ProviderId { get; set; }
-		public string? ModelId { get; set; }
-		public string? ReasoningEffort { get; set; }
+		/// <summary>The profile to retry on. Null runs the job on its own profile again.</summary>
+		public Guid? ProfileId { get; set; }
 	}
 }

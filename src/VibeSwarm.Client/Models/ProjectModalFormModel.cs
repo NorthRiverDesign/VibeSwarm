@@ -37,15 +37,11 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(ValidationLimits.ProjectBranchMaxLength)]
 	public string? ReleaseBranch { get; set; }
 
-	public bool PlanningEnabled { get; set; }
+	/// <summary>Whether jobs here are worked by the team: a Lead plans, the builder builds, a reviewer checks.</summary>
+	public bool TeamEnabled { get; set; }
 
-	public Guid? PlanningProviderId { get; set; }
-
-	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
-	public string? PlanningModelId { get; set; }
-
-	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
-	public string? PlanningReasoningEffort { get; set; }
+	/// <summary>The team roles this project fills with its own profile instead of the team's.</summary>
+	public TeamRoles TeamOverrides { get; set; }
 
 	public bool ReviewEnabled { get; set; }
 
@@ -59,6 +55,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? ReviewReasoningEffort { get; set; }
 
+	public Guid? ReviewProfileId { get; set; }
+
 	public Guid? LeadProviderId { get; set; }
 
 	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
@@ -67,10 +65,22 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? LeadReasoningEffort { get; set; }
 
+	public Guid? LeadProfileId { get; set; }
+
+	public Guid? DecisionsProfileId { get; set; }
+
+	public Guid? ResearchProfileId { get; set; }
+
 	[StringLength(LeadReviewLimits.DirectionMaxLength)]
 	public string? LeadDirection { get; set; }
 
 	public Guid? IdeaInferenceProviderId { get; set; }
+
+	/// <summary>The inference profile that suggests ideas; the idea provider and model follow it.</summary>
+	public Guid? IdeasProfileId { get; set; }
+
+	/// <summary>The inference profile that writes commit messages; that provider and model follow it.</summary>
+	public Guid? CommitSummaryProfileId { get; set; }
 
 	[StringLength(200)]
 	public string? IdeaInferenceModelId { get; set; }
@@ -85,8 +95,6 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	public DateTime? UpdatedAt { get; set; }
 
 	public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
-
-	public ICollection<ProjectAgent> AgentAssignments { get; set; } = new List<ProjectAgent>();
 
 	public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
 
@@ -105,8 +113,6 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	public string? Memory { get; set; }
 
 	public bool IsActive { get; set; } = true;
-
-	public bool EnableTeamSwarm { get; set; }
 
 	public bool BuildVerificationEnabled { get; set; }
 
@@ -153,19 +159,23 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			DefaultTargetBranch = source.DefaultTargetBranch,
 			DevelopmentBranch = source.DevelopmentBranch,
 			ReleaseBranch = source.ReleaseBranch,
-			PlanningEnabled = source.PlanningEnabled,
-			PlanningProviderId = source.PlanningProviderId,
-			PlanningModelId = source.PlanningModelId,
-			PlanningReasoningEffort = source.PlanningReasoningEffort,
+			TeamEnabled = source.TeamEnabled,
+			TeamOverrides = source.TeamOverrides,
 			ReviewEnabled = source.ReviewEnabled,
 			ReviewProviderId = source.ReviewProviderId,
 			ReviewInferenceProviderId = source.ReviewInferenceProviderId,
 			ReviewModelId = source.ReviewModelId,
 			ReviewReasoningEffort = source.ReviewReasoningEffort,
+			ReviewProfileId = source.ReviewProfileId,
 			LeadProviderId = source.LeadProviderId,
 			LeadModelId = source.LeadModelId,
 			LeadReasoningEffort = source.LeadReasoningEffort,
+			LeadProfileId = source.LeadProfileId,
+			DecisionsProfileId = source.DecisionsProfileId,
+			ResearchProfileId = source.ResearchProfileId,
 			LeadDirection = source.LeadDirection,
+			IdeasProfileId = source.IdeasProfileId,
+			CommitSummaryProfileId = source.CommitSummaryProfileId,
 			IdeaInferenceProviderId = source.IdeaInferenceProviderId,
 			IdeaInferenceModelId = source.IdeaInferenceModelId,
 			CommitSummaryInferenceProviderId = source.CommitSummaryInferenceProviderId,
@@ -173,14 +183,12 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			CreatedAt = source.CreatedAt,
 			UpdatedAt = source.UpdatedAt,
 			ProviderSelections = source.ProviderSelections.ToList(),
-			AgentAssignments = source.AgentAssignments.ToList(),
 			Environments = source.Environments.ToList(),
 			FolderId = source.FolderId,
 			LinkedProjectIds = (source.Links ?? []).Select(link => link.LinkedProjectId).ToHashSet(),
 			PromptContext = source.PromptContext,
 			Memory = source.Memory,
 			IsActive = source.IsActive,
-			EnableTeamSwarm = source.EnableTeamSwarm,
 			BuildVerificationEnabled = source.BuildVerificationEnabled,
 			BuildCommand = source.BuildCommand,
 			TestCommand = source.TestCommand,
@@ -202,19 +210,23 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			DefaultTargetBranch = string.IsNullOrWhiteSpace(DefaultTargetBranch) ? null : DefaultTargetBranch.Trim(),
 			DevelopmentBranch = string.IsNullOrWhiteSpace(DevelopmentBranch) ? null : DevelopmentBranch.Trim(),
 			ReleaseBranch = string.IsNullOrWhiteSpace(ReleaseBranch) ? null : ReleaseBranch.Trim(),
-			PlanningEnabled = PlanningEnabled,
-			PlanningProviderId = PlanningProviderId,
-			PlanningModelId = string.IsNullOrWhiteSpace(PlanningModelId) ? null : PlanningModelId.Trim(),
-			PlanningReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(PlanningReasoningEffort),
+			TeamEnabled = TeamEnabled,
+			TeamOverrides = TeamOverrides,
 			ReviewEnabled = ReviewEnabled,
 			ReviewProviderId = ReviewProviderId,
 			ReviewInferenceProviderId = ReviewProviderId.HasValue ? null : ReviewInferenceProviderId,
 			ReviewModelId = string.IsNullOrWhiteSpace(ReviewModelId) ? null : ReviewModelId.Trim(),
 			ReviewReasoningEffort = ReviewProviderId.HasValue ? ProviderCapabilities.NormalizeReasoningEffort(ReviewReasoningEffort) : null,
+			ReviewProfileId = ReviewProfileId,
 			LeadProviderId = LeadProviderId,
 			LeadModelId = string.IsNullOrWhiteSpace(LeadModelId) ? null : LeadModelId.Trim(),
 			LeadReasoningEffort = LeadProviderId.HasValue ? ProviderCapabilities.NormalizeReasoningEffort(LeadReasoningEffort) : null,
+			LeadProfileId = LeadProfileId,
+			DecisionsProfileId = DecisionsProfileId,
+			ResearchProfileId = ResearchProfileId,
 			LeadDirection = string.IsNullOrWhiteSpace(LeadDirection) ? null : LeadDirection.Trim(),
+			IdeasProfileId = IdeasProfileId,
+			CommitSummaryProfileId = CommitSummaryProfileId,
 			IdeaInferenceProviderId = IdeaInferenceProviderId,
 			IdeaInferenceModelId = string.IsNullOrWhiteSpace(IdeaInferenceModelId) ? null : IdeaInferenceModelId.Trim(),
 			CommitSummaryInferenceProviderId = CommitSummaryInferenceProviderId,
@@ -230,26 +242,14 @@ public sealed class ProjectModalFormModel : IValidatableObject
 				IsEnabled = s.IsEnabled,
 				PreferredModelId = s.PreferredModelId,
 				PreferredReasoningEffort = s.PreferredReasoningEffort,
+				ProfileId = s.ProfileId,
 				CreatedAt = s.CreatedAt,
 				UpdatedAt = s.UpdatedAt
-			}).ToList(),
-			AgentAssignments = AgentAssignments.Select(a => new ProjectAgent
-			{
-				Id = a.Id,
-				ProjectId = a.ProjectId,
-				AgentId = a.AgentId,
-				ProviderId = a.ProviderId,
-				PreferredModelId = a.PreferredModelId,
-				PreferredReasoningEffort = a.PreferredReasoningEffort,
-				IsEnabled = a.IsEnabled,
-				CreatedAt = a.CreatedAt,
-				UpdatedAt = a.UpdatedAt
 			}).ToList(),
 			Environments = Environments.ToList(),
 			FolderId = FolderId,
 			PromptContext = string.IsNullOrWhiteSpace(PromptContext) ? null : PromptContext.Trim(),
 			Memory = string.IsNullOrWhiteSpace(Memory) ? null : Memory.Trim(),
-			EnableTeamSwarm = EnableTeamSwarm,
 			BuildVerificationEnabled = BuildVerificationEnabled,
 			BuildCommand = string.IsNullOrWhiteSpace(BuildCommand) ? null : BuildCommand.Trim(),
 			TestCommand = string.IsNullOrWhiteSpace(TestCommand) ? null : TestCommand.Trim(),
@@ -286,25 +286,6 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			yield return new ValidationResult(
 				"The development and release branches must be different.",
 				[nameof(ReleaseBranch)]);
-		}
-
-		var duplicateAgentIds = AgentAssignments
-			.GroupBy(assignment => assignment.AgentId)
-			.Where(group => group.Key != Guid.Empty && group.Count() > 1)
-			.Select(group => group.Key)
-			.ToList();
-		if (duplicateAgentIds.Any())
-		{
-			yield return new ValidationResult(
-				"Each agent can only be assigned once per project.",
-				[nameof(AgentAssignments)]);
-		}
-
-		if (AgentAssignments.Any(assignment => assignment.ProviderId == Guid.Empty))
-		{
-			yield return new ValidationResult(
-				"Each assigned agent must have a provider.",
-				[nameof(AgentAssignments)]);
 		}
 
 		if (CreationMode == ProjectCreationMode.ExistingDirectory)

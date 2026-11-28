@@ -62,15 +62,11 @@
                 <span>Jobs</span>
             </NavLink>
 
-            @* Grouped so the eleven destinations read as three short lists rather than one long one. *@
+            @* Grouped so the twelve destinations read as three short lists rather than one long one. *@
             <div class="vs-nav-heading text-eyebrow">Automate</div>
             <NavLink class="nav-link" href="/scheduler">
                 <i class="bi bi-calendar3"></i>
                 <span>Scheduler</span>
-            </NavLink>
-            <NavLink class="nav-link" href="/agents">
-                <i class="bi bi-robot"></i>
-                <span>Agents</span>
             </NavLink>
             <NavLink class="nav-link" href="/skills">
                 <i class="bi bi-stars"></i>
@@ -89,6 +85,10 @@
             <NavLink class="nav-link" href="/inference">
                 <i class="bi bi-cpu"></i>
                 <span>Inference</span>
+            </NavLink>
+            <NavLink class="nav-link" href="/profiles">
+                <i class="bi bi-person-badge"></i>
+                <span>Profiles</span>
             </NavLink>
             <AuthorizeView Roles="Admin">
                 <Authorized>
@@ -215,6 +215,9 @@
 
     @* Global Search Modal *@
     <GlobalSearchModal @bind-IsVisible="_showSearchModal" />
+
+    @* New profile, opened from any profile picker; here so it sits outside every form *@
+    <ProfileComposerHost />
 
     @* Change Password Modal - rendered outside sidebar to avoid stacking context issues *@
     <ModalDialog @bind-IsVisible="_showChangePasswordModal" Title="Change Password" Icon="key"
@@ -370,7 +373,7 @@
         || CurrentPagePath.StartsWith(path + "/", StringComparison.OrdinalIgnoreCase));
 
     private static readonly string[] MoreTabPaths =
-        ["/more", "/scheduler", "/agents", "/skills", "/templates", "/providers", "/inference", "/users", "/settings"];
+        ["/more", "/scheduler", "/skills", "/templates", "/providers", "/inference", "/profiles", "/users", "/settings"];
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

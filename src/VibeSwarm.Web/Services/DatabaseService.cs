@@ -6,6 +6,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore.Metadata;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Services;
@@ -47,10 +48,10 @@ public class DatabaseService : IDatabaseService
 			.OrderBy(s => s.Name)
 			.ToListAsync(ct);
 
-		var agents = await _db.Agents
-			.Include(r => r.SkillLinks)
-				.ThenInclude(sl => sl.Skill)
-			.OrderBy(r => r.Name)
+		var profiles = await _db.Profiles
+			.Include(profile => profile.Provider)
+			.Include(profile => profile.InferenceProvider)
+			.OrderBy(profile => profile.Name)
 			.ToListAsync(ct);
 
 		var schedules = await _db.JobSchedules
@@ -88,12 +89,11 @@ public class DatabaseService : IDatabaseService
 				DefaultTargetBranch = p.DefaultTargetBranch,
 				DevelopmentBranch = p.DevelopmentBranch,
 				ReleaseBranch = p.ReleaseBranch,
-				PlanningEnabled = p.PlanningEnabled,
+				TeamEnabled = p.TeamEnabled,
 				PromptContext = p.PromptContext,
 				IdeasAutoCommit = p.IdeasAutoCommit,
 				IdeasProcessingProviderId = p.IdeasProcessingProviderId,
 				IdeasProcessingModelId = p.IdeasProcessingModelId,
-				EnableTeamSwarm = p.EnableTeamSwarm,
 				BuildVerificationEnabled = p.BuildVerificationEnabled,
 				BuildCommand = p.BuildCommand,
 				TestCommand = p.TestCommand,
@@ -103,8 +103,7 @@ public class DatabaseService : IDatabaseService
 					.Select(i => new IdeaExportDto
 					{
 						Description = i.Description,
-						ExpandedDescription = i.ExpandedDescription,
-						ExpansionStatus = i.ExpansionStatus,
+						Specification = i.Specification,
 						SortOrder = i.SortOrder,
 					}).ToList(),
 				Environments = p.Environments
@@ -128,19 +127,18 @@ public class DatabaseService : IDatabaseService
 				Content = s.Content,
 				IsEnabled = s.IsEnabled,
 			}).ToList(),
-			Agents = agents.Select(r => new AgentExportDto
-			{
-				Name = r.Name,
-				Description = r.Description,
-				Responsibilities = r.Responsibilities,
-				DefaultModelId = r.DefaultModelId,
-				IsEnabled = r.IsEnabled,
-				SkillNames = r.SkillLinks
-					.Where(sl => sl.Skill != null)
-					.Select(sl => sl.Skill!.Name)
-					.OrderBy(n => n)
-					.ToList(),
-			}).ToList(),
+			Profiles = profiles
+				.Where(profile => profile.Provider != null || profile.InferenceProvider != null)
+				.Select(profile => new ProfileExportDto
+				{
+					Name = profile.Name,
+					Description = profile.Description,
+					ProviderName = profile.Provider?.Name ?? string.Empty,
+					InferenceProviderName = profile.InferenceProvider?.Name,
+					ModelId = profile.ModelId,
+					ReasoningEffort = profile.ReasoningEffort,
+					IsProviderDefault = profile.IsProviderDefault,
+				}).ToList(),
 			Schedules = schedules
 				.Where(s => s.Project != null && s.Provider != null)
 				.Select(s => new ScheduleExportDto
@@ -163,9 +161,8 @@ public class DatabaseService : IDatabaseService
 	{
 		var result = new DatabaseImportResult();
 
-		// Import skills first (referenced by team roles)
+		// Import skills
 		var existingSkillNames = await _db.Skills.Select(s => s.Name).ToHashSetAsync(ct);
-		var importedSkillsByName = new Dictionary<string, Skill>(StringComparer.OrdinalIgnoreCase);
 
 		foreach (var skillDto in export.Skills)
 		{
@@ -175,8 +172,6 @@ public class DatabaseService : IDatabaseService
 			if (existingSkillNames.Contains(skillDto.Name))
 			{
 				result.Skipped.Add($"Skill '{skillDto.Name}' already exists");
-				var existing = await _db.Skills.FirstAsync(s => s.Name == skillDto.Name, ct);
-				importedSkillsByName[skillDto.Name] = existing;
 			}
 			else
 			{
@@ -190,54 +185,8 @@ public class DatabaseService : IDatabaseService
 					CreatedAt = DateTime.UtcNow,
 				};
 				_db.Skills.Add(skill);
-				importedSkillsByName[skillDto.Name] = skill;
 				result.Imported.Add($"Skill '{skillDto.Name}'");
 			}
-		}
-
-		await _db.SaveChangesAsync(ct);
-
-		// Import team roles
-		var existingRoleNames = await _db.Agents.Select(r => r.Name).ToHashSetAsync(ct);
-
-		foreach (var roleDto in export.Agents)
-		{
-			if (string.IsNullOrWhiteSpace(roleDto.Name))
-				continue;
-
-			if (existingRoleNames.Contains(roleDto.Name))
-			{
-				result.Skipped.Add($"Team role '{roleDto.Name}' already exists");
-				continue;
-			}
-
-			var role = new Agent
-			{
-				Id = Guid.NewGuid(),
-				Name = roleDto.Name,
-				Description = roleDto.Description,
-				Responsibilities = roleDto.Responsibilities,
-				DefaultModelId = roleDto.DefaultModelId,
-				IsEnabled = roleDto.IsEnabled,
-				CreatedAt = DateTime.UtcNow,
-			};
-
-			foreach (var skillName in roleDto.SkillNames)
-			{
-				if (importedSkillsByName.TryGetValue(skillName, out var skill))
-				{
-					role.SkillLinks.Add(new AgentSkill { AgentId = role.Id, SkillId = skill.Id });
-				}
-				else
-				{
-					var existingSkill = await _db.Skills.FirstOrDefaultAsync(s => s.Name == skillName, ct);
-					if (existingSkill != null)
-						role.SkillLinks.Add(new AgentSkill { AgentId = role.Id, SkillId = existingSkill.Id });
-				}
-			}
-
-			_db.Agents.Add(role);
-			result.Imported.Add($"Team role '{roleDto.Name}'");
 		}
 
 		await _db.SaveChangesAsync(ct);
@@ -274,8 +223,7 @@ public class DatabaseService : IDatabaseService
 						Id = Guid.NewGuid(),
 						ProjectId = existingProject.Id,
 						Description = ideaDto.Description,
-						ExpandedDescription = ideaDto.ExpandedDescription,
-						ExpansionStatus = ideaDto.ExpansionStatus,
+						Specification = ideaDto.Specification,
 						SortOrder = ideaDto.SortOrder,
 						CreatedAt = DateTime.UtcNow,
 					});
@@ -297,12 +245,11 @@ public class DatabaseService : IDatabaseService
 				DefaultTargetBranch = projectDto.DefaultTargetBranch,
 				DevelopmentBranch = projectDto.DevelopmentBranch,
 				ReleaseBranch = projectDto.ReleaseBranch,
-				PlanningEnabled = projectDto.PlanningEnabled,
+				TeamEnabled = projectDto.TeamEnabled,
 				PromptContext = projectDto.PromptContext,
 				IdeasAutoCommit = projectDto.IdeasAutoCommit,
 				IdeasProcessingProviderId = projectDto.IdeasProcessingProviderId,
 				IdeasProcessingModelId = projectDto.IdeasProcessingModelId,
-				EnableTeamSwarm = projectDto.EnableTeamSwarm,
 				BuildVerificationEnabled = projectDto.BuildVerificationEnabled,
 				BuildCommand = projectDto.BuildCommand,
 				TestCommand = projectDto.TestCommand,
@@ -317,8 +264,7 @@ public class DatabaseService : IDatabaseService
 					Id = Guid.NewGuid(),
 					ProjectId = project.Id,
 					Description = ideaDto.Description,
-					ExpandedDescription = ideaDto.ExpandedDescription,
-					ExpansionStatus = ideaDto.ExpansionStatus,
+					Specification = ideaDto.Specification,
 					SortOrder = ideaDto.SortOrder,
 					CreatedAt = DateTime.UtcNow,
 				});
@@ -351,6 +297,86 @@ public class DatabaseService : IDatabaseService
 		// Import schedules (require matching project and provider by name)
 		var projectsByName = await _db.Projects.ToDictionaryAsync(p => p.Name, p => p, ct);
 		var providersByName = await _db.Providers.ToDictionaryAsync(p => p.Name, p => p, ct);
+
+		// Import profiles (require a matching provider by name). A provider keeps one default
+		// profile, so an exported default only arrives for a provider that has none yet.
+		var existingProfileNames = (await _db.Profiles.Select(profile => profile.Name).ToListAsync(ct))
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+		var inferenceProvidersByName = (await _db.InferenceProviders.ToListAsync(ct))
+			.GroupBy(provider => provider.Name, StringComparer.OrdinalIgnoreCase)
+			.ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+		foreach (var profileDto in export.Profiles ?? [])
+		{
+			if (string.IsNullOrWhiteSpace(profileDto.Name))
+			{
+				continue;
+			}
+
+			if (existingProfileNames.Contains(profileDto.Name))
+			{
+				result.Skipped.Add($"Profile '{profileDto.Name}' already exists");
+				continue;
+			}
+
+			Guid? providerId = null;
+			Guid? inferenceProviderId = null;
+			string? reasoningEffort = null;
+			if (!string.IsNullOrWhiteSpace(profileDto.InferenceProviderName))
+			{
+				if (!inferenceProvidersByName.TryGetValue(profileDto.InferenceProviderName, out var inferenceProvider))
+				{
+					result.Errors.Add($"Profile '{profileDto.Name}' skipped: inference provider '{profileDto.InferenceProviderName}' not found");
+					continue;
+				}
+
+				inferenceProviderId = inferenceProvider.Id;
+			}
+			else
+			{
+				if (!providersByName.TryGetValue(profileDto.ProviderName, out var profileProvider))
+				{
+					result.Errors.Add($"Profile '{profileDto.Name}' skipped: provider '{profileDto.ProviderName}' not found");
+					continue;
+				}
+
+				providerId = profileProvider.Id;
+				reasoningEffort = ProviderCapabilities.SupportsReasoningEffort(profileProvider, profileDto.ReasoningEffort)
+					? ProviderCapabilities.NormalizeReasoningEffort(profileDto.ReasoningEffort)
+					: null;
+			}
+
+			if (profileDto.IsProviderDefault
+				&& await _db.Profiles.AnyAsync(profile => profile.IsProviderDefault
+					&& profile.ProviderId == providerId && profile.InferenceProviderId == inferenceProviderId, ct))
+			{
+				result.Skipped.Add($"Profile '{profileDto.Name}': its provider already has a default profile");
+				continue;
+			}
+
+			// Project settings only take a model the provider lists, so an unknown one falls back to the default.
+			var profileModelId = string.IsNullOrWhiteSpace(profileDto.ModelId) ? null : profileDto.ModelId.Trim();
+			if (profileModelId != null && !(providerId is Guid codingId
+				? await _db.ProviderModels.AnyAsync(model => model.ProviderId == codingId && model.IsAvailable && model.ModelId == profileModelId, ct)
+				: await _db.InferenceModels.AnyAsync(model => model.InferenceProviderId == inferenceProviderId && model.IsAvailable && model.ModelId == profileModelId, ct)))
+			{
+				profileModelId = null;
+			}
+
+			_db.Profiles.Add(new Profile
+			{
+				Id = Guid.NewGuid(),
+				Name = profileDto.Name.Trim(),
+				Description = profileDto.Description,
+				ProviderId = providerId,
+				InferenceProviderId = inferenceProviderId,
+				ModelId = profileModelId,
+				ReasoningEffort = reasoningEffort,
+				IsProviderDefault = profileDto.IsProviderDefault,
+				CreatedAt = DateTime.UtcNow,
+			});
+			existingProfileNames.Add(profileDto.Name);
+			result.Imported.Add($"Profile '{profileDto.Name}'");
+		}
 
 		foreach (var scheduleDto in export.Schedules)
 		{
@@ -432,6 +458,10 @@ public class DatabaseService : IDatabaseService
 				result.Imported.Add("App settings");
 			}
 		}
+
+		// An export names profiles but not which setting used which, so imported settings are
+		// matched to the profile holding their values.
+		await ProfileService.EnsureSettingsHaveProfilesAsync(_db, ct);
 
 		return result;
 	}

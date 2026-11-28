@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using VibeSwarm.Client.Components.Projects;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Tests;
@@ -59,21 +60,52 @@ public sealed class AutoPilotPanelTests
 	}
 
 	[Fact]
-	public void Idle_PickingAnInferenceProviderSendsIt()
+	public void Idle_PickingAnInferenceProfileForIdeas_SendsItWithItsProviderAndModel()
 	{
 		var service = new FakeAutoPilotService(null);
 		using var context = CreateContext(service);
 		var grok = new InferenceProvider { Id = Guid.NewGuid(), Name = "Grok", IsEnabled = true };
+		var ideas = new Profile { Id = Guid.NewGuid(), Name = "Grok ideas", InferenceProviderId = grok.Id, InferenceProvider = grok, ModelId = "grok-4" };
+		context.Services.AddSingleton<IProfileService>(new OneProfileService(ideas));
 		var cut = context.Render<AutoPilotPanel>(parameters => parameters
 			.Add(p => p.ProjectId, ProjectId)
 			.Add(p => p.AvailableInferenceProviders, [grok]));
 
-		cut.WaitForAssertion(() => Assert.NotNull(cut.Find("#ap-idea-source")));
-		cut.Find("#ap-idea-source").Change(grok.Id.ToString());
+		cut.WaitForAssertion(() => Assert.Contains("Grok ideas", cut.FindAll("#ap-idea-source option").Select(option => option.TextContent)));
+		Assert.Empty(cut.FindAll("#ap-inference-model"));
+		cut.Find("#ap-idea-source").Change(ideas.Id.ToString());
 		cut.FindAll("button").Single(b => b.TextContent.Contains("Start Auto-Pilot")).Click();
 
-		Assert.Equal(grok.Id, service.StartedWith?.InferenceProviderId);
+		Assert.Equal((ideas.Id, grok.Id, "grok-4"), (service.StartedWith!.IdeasProfileId!.Value, service.StartedWith.InferenceProviderId!.Value, service.StartedWith.InferenceModelId));
 		Assert.True(service.StartedWith?.UseInferenceForIdeas);
+	}
+
+	[Fact]
+	public void Idle_BuiltBy_IsAProfile_AndLeavingItAloneMeansTheProjectsOwn()
+	{
+		var service = new FakeAutoPilotService(null);
+		using var context = CreateContext(service);
+		var claude = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+		var quick = new Profile { Id = Guid.NewGuid(), Name = "Quick fixer", ProviderId = claude.Id, Provider = claude, ModelId = "haiku" };
+		context.Services.AddSingleton<IProfileService>(new OneProfileService(quick));
+		var cut = context.Render<AutoPilotPanel>(parameters => parameters.Add(p => p.ProjectId, ProjectId));
+
+		cut.WaitForAssertion(() => Assert.Equal(["Project's Build profile", "Quick fixer"], cut.FindAll("#ap-coding-profile option").Select(option => option.TextContent)));
+		Assert.Empty(cut.FindAll("#ap-coding-provider, #ap-coding-model"));
+
+		cut.Find("#ap-coding-profile").Change(quick.Id.ToString());
+		cut.FindAll("button").Single(b => b.TextContent.Contains("Start Auto-Pilot")).Click();
+
+		Assert.Equal((quick.Id, null, null), (service.StartedWith!.ProfileId!.Value, service.StartedWith.ProviderId, service.StartedWith.ModelId));
+	}
+
+	private sealed class OneProfileService(Profile profile) : IProfileService
+	{
+		public Task<IEnumerable<Profile>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Profile>>([profile]);
+		public Task<Profile?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Profile?>(profile);
+		public Task<Profile> CreateAsync(Profile created, CancellationToken cancellationToken = default) => Task.FromResult(created);
+		public Task<Profile> UpdateAsync(Profile updated, CancellationToken cancellationToken = default) => Task.FromResult(updated);
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
 	}
 
 	[Fact]
@@ -216,6 +248,7 @@ public sealed class AutoPilotPanelTests
 			Task.FromResult(new AppSettings { InferenceAnswersAgentQuestions = inferenceAnswersQuestions });
 
 		public Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<AppSettings> UpdateTeamAsync(Guid? leadProfileId, Guid? reviewProfileId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}

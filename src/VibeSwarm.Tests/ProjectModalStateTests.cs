@@ -90,29 +90,6 @@ var isValid = Validator.TryValidateObject(project, new ValidationContext(project
 	}
 
 	[Fact]
-	public void ProjectModalFormModel_TeamAssignmentWithoutProvider_FailsValidation()
-	{
-		var project = new ProjectModalFormModel
-		{
-			Name = "Sample Project",
-			WorkingPath = "/tmp/sample-project",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					AgentId = Guid.NewGuid(),
-					ProviderId = Guid.Empty
-				}
-			]
-		};
-		var validationResults = new List<ValidationResult>();
-		var isValid = Validator.TryValidateObject(project, new ValidationContext(project), validationResults, validateAllProperties: true);
-
-		Assert.False(isValid);
-		Assert.Contains(validationResults, result => result.ErrorMessage == "Each assigned agent must have a provider.");
-	}
-
-	[Fact]
 	public void UpdateGitHubRepositoryInput_NameFollowsTheRepositoryAsItIsTyped()
 	{
 		var project = new ProjectModalFormModel { CreationMode = ProjectCreationMode.CloneGitHubRepository };

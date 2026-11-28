@@ -33,11 +33,18 @@ public static partial class ReviewPrompts
 		+ "must change; or a line containing only " + IssuesMarker + " followed by a numbered list of the problems "
 		+ "that must be fixed, most important first, at most 8.";
 
-	public static string BuildReviewPrompt(string goal, string? plan, string diff, bool canOpenFiles)
+	/// <param name="scopeNote">Set when one step of a job is reviewed rather than the whole job:
+	/// <paramref name="goal"/> is then the step, and the note says what lies outside it.</param>
+	public static string BuildReviewPrompt(string goal, string? plan, string diff, bool canOpenFiles, string? scopeNote = null)
 	{
 		var builder = new StringBuilder();
-		builder.AppendLine("# The goal the agent was given");
+		builder.AppendLine(scopeNote == null ? "# The goal the agent was given" : "# The step the agent was given");
 		builder.AppendLine(goal.Trim());
+		if (scopeNote != null)
+		{
+			builder.AppendLine();
+			builder.AppendLine(scopeNote);
+		}
 
 		if (!string.IsNullOrWhiteSpace(plan))
 		{
@@ -47,7 +54,9 @@ public static partial class ReviewPrompts
 		}
 
 		builder.AppendLine();
-		builder.AppendLine("# The change, as a diff against the commit the job started from");
+		builder.AppendLine(scopeNote == null
+			? "# The change, as a diff against the commit the job started from"
+			: "# The change this step made, as a diff against the work before it");
 		if (diff.Length > MaxDiffLength)
 		{
 			builder.AppendLine(diff[..MaxDiffLength]);
@@ -90,6 +99,7 @@ public static partial class ReviewPrompts
 			```
 
 			Fix the failure, run the build and tests again, then finish with a short summary of what you changed.
+			The project's build and tests outrank the plan: where the two disagree, make the checks pass and say what you changed from the plan.
 			""";
 	}
 

@@ -92,7 +92,7 @@ public interface IJobService
     /// <param name="providerId">New provider ID (null to keep current)</param>
     /// <param name="modelId">Model ID to use (null for default)</param>
     /// <param name="reasoningEffort">Reasoning effort to use (null for default)</param>
-    Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default);
+    Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, Guid? profileId = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates the goal prompt for a job that hasn't started yet
@@ -148,4 +148,16 @@ public interface IJobService
     /// ordered by FollowUpIndex ascending.
     /// </summary>
     Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default);
+
+    /// <summary>The steps a team job was planned into, in order; empty for a job built in one go.</summary>
+    Task<IReadOnlyList<JobStep>> GetStepsAsync(Guid jobId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Adds a step of the user's own to the end of a team job that is still working through its
+    /// steps. Returns null when the job has no chain to add to, or already has its fill waiting.
+    /// </summary>
+    Task<JobStep?> AddStepAsync(Guid jobId, string instructions, CancellationToken cancellationToken = default);
+
+    /// <summary>Drops a step that hasn't started. False when it has, or isn't this job's.</summary>
+    Task<bool> SkipStepAsync(Guid jobId, Guid stepId, CancellationToken cancellationToken = default);
 }

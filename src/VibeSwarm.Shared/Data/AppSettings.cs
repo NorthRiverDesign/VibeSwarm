@@ -83,8 +83,15 @@ public class AppSettings
 	[Range(MinCriticalErrorLogMaxEntries, MaxCriticalErrorLogMaxEntries)]
 	public int CriticalErrorLogMaxEntries { get; set; } = DefaultCriticalErrorLogMaxEntries;
 
-	[StringLength(ValidationLimits.IdeaPromptTemplateMaxLength)]
-	public string? IdeaExpansionPromptTemplate { get; set; }
+	/// <summary>
+	/// The team's Lead: the profile that plans each job on a project working as a team, and
+	/// suggests what to build next. Null leaves the team without one. Projects copy it into
+	/// their own Lead settings (TeamLinks), so every consumer keeps reading the project.
+	/// </summary>
+	public Guid? TeamLeadProfileId { get; set; }
+
+	/// <summary>The team's reviewer: the profile that checks each job's work (see <see cref="TeamLeadProfileId"/>).</summary>
+	public Guid? TeamReviewProfileId { get; set; }
 
 	[StringLength(ValidationLimits.IdeaPromptTemplateMaxLength)]
 	public string? IdeaImplementationPromptTemplate { get; set; }

@@ -9,7 +9,7 @@ public class DatabaseExportDto
 	public AppSettingsExportDto? Settings { get; set; }
 	public List<ProjectExportDto> Projects { get; set; } = [];
 	public List<SkillExportDto> Skills { get; set; } = [];
-	public List<AgentExportDto> Agents { get; set; } = [];
+	public List<ProfileExportDto> Profiles { get; set; } = [];
 	public List<ScheduleExportDto> Schedules { get; set; } = [];
 }
 
@@ -40,12 +40,11 @@ public class ProjectExportDto
 	public string? DefaultTargetBranch { get; set; }
 	public string? DevelopmentBranch { get; set; }
 	public string? ReleaseBranch { get; set; }
-	public bool PlanningEnabled { get; set; }
+	public bool TeamEnabled { get; set; }
 	public string? PromptContext { get; set; }
 	public bool IdeasAutoCommit { get; set; }
 	public Guid? IdeasProcessingProviderId { get; set; }
 	public string? IdeasProcessingModelId { get; set; }
-	public bool EnableTeamSwarm { get; set; }
 	public bool BuildVerificationEnabled { get; set; }
 	public string? BuildCommand { get; set; }
 	public string? TestCommand { get; set; }
@@ -57,8 +56,7 @@ public class ProjectExportDto
 public class IdeaExportDto
 {
 	public string Description { get; set; } = string.Empty;
-	public string? ExpandedDescription { get; set; }
-	public IdeaExpansionStatus ExpansionStatus { get; set; }
+	public string? Specification { get; set; }
 	public int SortOrder { get; set; }
 }
 
@@ -82,14 +80,17 @@ public class SkillExportDto
 	public bool IsEnabled { get; set; } = true;
 }
 
-public class AgentExportDto
+public class ProfileExportDto
 {
 	public string Name { get; set; } = string.Empty;
 	public string? Description { get; set; }
-	public string? Responsibilities { get; set; }
-	public string? DefaultModelId { get; set; }
-	public bool IsEnabled { get; set; } = true;
-	public List<string> SkillNames { get; set; } = [];
+	/// <summary>The coding provider's name; empty for an inference profile.</summary>
+	public string ProviderName { get; set; } = string.Empty;
+	/// <summary>The inference provider's name, for an inference profile.</summary>
+	public string? InferenceProviderName { get; set; }
+	public string? ModelId { get; set; }
+	public string? ReasoningEffort { get; set; }
+	public bool IsProviderDefault { get; set; }
 }
 
 public class ScheduleExportDto

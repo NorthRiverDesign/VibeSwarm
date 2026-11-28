@@ -4,6 +4,7 @@ using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Validation;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -31,11 +32,133 @@ public partial class JobService
             return;
         }
 
-        await ApplySelectedAgentDefaultsAsync(job, cancellationToken);
         NormalizeJobForPersistence(job);
         job.ExecutionPlan = null;
         await InitializeExecutionPlanAsync(job, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<JobStep>> GetStepsAsync(Guid jobId, CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.JobSteps
+            .Where(step => step.JobId == jobId)
+            .OrderBy(step => step.Order)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<JobStep?> AddStepAsync(Guid jobId, string instructions, CancellationToken cancellationToken = default)
+    {
+        var text = instructions?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return null;
+        }
+
+        var job = await _dbContext.Jobs.AsNoTracking()
+            .Where(j => j.Id == jobId)
+            .Select(j => new { j.Status, j.TeamRun })
+            .FirstOrDefaultAsync(cancellationToken);
+        var steps = await _dbContext.JobSteps.Where(step => step.JobId == jobId).ToListAsync(cancellationToken);
+
+        // Only a chain still being worked can take another step: once its last step is done the
+        // run is wrapping up, and a step added then would never be built.
+        if (job is not { TeamRun: true } || !JobChain.IsOpen(job.Status)
+            || !steps.Any(step => step.Status is JobStepStatus.Waiting or JobStepStatus.Running)
+            || steps.Count(step => step.Status == JobStepStatus.Waiting) >= JobChain.MaxWaitingSteps)
+        {
+            return null;
+        }
+
+        var firstLine = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0];
+        var added = new JobStep
+        {
+            JobId = jobId,
+            Order = steps.Max(step => step.Order) + 1,
+            Title = firstLine.Length <= 80 ? firstLine : firstLine[..79].TrimEnd() + "…",
+            Instructions = text.Length <= JobStep.TextMaxLength ? text : text[..JobStep.TextMaxLength],
+            Source = JobStepSource.User
+        };
+        _dbContext.JobSteps.Add(added);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await NotifyStepsChangedAsync(jobId);
+        return added;
+    }
+
+    public async Task<bool> SkipStepAsync(Guid jobId, Guid stepId, CancellationToken cancellationToken = default)
+    {
+        // One statement, so a step the runner has just started can't be skipped under it.
+        var skipped = await _dbContext.JobSteps
+            .Where(step => step.Id == stepId && step.JobId == jobId && step.Status == JobStepStatus.Waiting)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(step => step.Status, JobStepStatus.Skipped), cancellationToken);
+        if (skipped == 0)
+        {
+            return false;
+        }
+
+        await NotifyStepsChangedAsync(jobId);
+        return true;
+    }
+
+    /// <summary>
+    /// What a job queued again (a retry, a reset, a move to another provider) does with its plan.
+    /// A team job the Lead cut into steps keeps them: the next run carries on at the first step
+    /// not finished, from the work its finished steps saved, and a step that was under way
+    /// starts over. Any other job is planned afresh.
+    /// </summary>
+    private async Task KeepOrClearChainAsync(Job job, CancellationToken cancellationToken)
+    {
+        var steps = job.TeamRun
+            ? await _dbContext.JobSteps
+                .Where(step => step.JobId == job.Id && step.Status != JobStepStatus.Earlier)
+                .OrderBy(step => step.Order)
+                .ToListAsync(cancellationToken)
+            : [];
+        if (steps.Count > 0)
+        {
+            foreach (var step in steps.Where(step => step.Status == JobStepStatus.Running))
+            {
+                step.Status = JobStepStatus.Waiting;
+                step.SessionId = null;
+                step.StartedAt = null;
+            }
+
+            // What the finished steps' reviews cost stays on the job with them.
+            var (reviewCost, reviewer) = (job.ReviewCostUsd, job.ReviewProviderName);
+            JobReview.Reset(job);
+            (job.ReviewCostUsd, job.ReviewProviderName) = (reviewCost, reviewer);
+            job.WorkSnapshotCommit = steps.LastOrDefault(step => step.Status == JobStepStatus.Done && step.SnapshotCommit != null)?.SnapshotCommit;
+            return;
+        }
+
+        job.PlanningOutput = null;
+        job.PlanSkippedReason = null;
+        job.LeadChecks = 0;
+        job.PlanningProviderId = null;
+        job.PlanningModelUsed = null;
+        job.PlanningReasoningEffortUsed = null;
+        JobReview.Reset(job);
+        job.PlanningGeneratedAt = null;
+        job.PlanningInputTokens = null;
+        job.PlanningOutputTokens = null;
+        job.PlanningCostUsd = null;
+    }
+
+    private async Task NotifyStepsChangedAsync(Guid jobId)
+    {
+        if (_jobUpdateService == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _jobUpdateService.NotifyJobStepsChanged(jobId);
+        }
+        catch
+        {
+            // The page also reloads its steps when the job's status changes.
+        }
     }
 
     public async Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default)
@@ -94,15 +217,19 @@ public partial class JobService
         var (nextIndex, target) = next.Value;
         var previousProviderName = plan[Math.Clamp(job.ActiveExecutionIndex, 0, plan.Count - 1)].ProviderName;
         var savedPlan = job.ExecutionPlan;
+        var (askedProfileId, askedProfileName) = (job.ProfileId, job.ProfileName);
 
-        if (!await ResetJobWithOptionsInternalAsync(job, target.ProviderId, target.ModelId, target.ReasoningEffort, cancellationToken))
+        if (!await ResetJobWithOptionsInternalAsync(job, target.ProviderId, target.ModelId, target.ReasoningEffort, null, cancellationToken))
         {
             return false;
         }
 
         // The reset clears the plan so a manual retry starts fresh; a failover has to keep
         // it and step forward, otherwise the job would start again on the provider that
-        // just failed.
+        // just failed. It also keeps the profile the job was asked to run on: the switch is
+        // the app's doing, and a later retry goes back to what was asked for.
+        job.ProfileId = askedProfileId;
+        job.ProfileName = askedProfileName;
         job.ExecutionPlan = savedPlan;
         job.ActiveExecutionIndex = nextIndex;
         job.LastSwitchAt = DateTime.UtcNow;
@@ -273,6 +400,18 @@ public partial class JobService
         job.InteractionChoices = null;
         job.InteractionRequestedAt = null;
         job.PlanningOutput = null;
+        job.PlanSkippedReason = null;
+        job.LeadChecks = 0;
+        // The follow-up is planned afresh. The steps already built stay as the job's record, and
+        // the new plan's steps follow them; steps that were never built go with the old plan.
+        await _dbContext.JobSteps
+            .Where(step => step.JobId == job.Id && step.Status == JobStepStatus.Done)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(step => step.Status, JobStepStatus.Earlier)
+                .SetProperty(step => step.SnapshotCommit, (string?)null), cancellationToken);
+        await _dbContext.JobSteps
+            .Where(step => step.JobId == job.Id && (step.Status == JobStepStatus.Waiting || step.Status == JobStepStatus.Running))
+            .ExecuteDeleteAsync(cancellationToken);
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;
@@ -281,7 +420,6 @@ public partial class JobService
         job.PlanningInputTokens = null;
         job.PlanningOutputTokens = null;
         job.PlanningCostUsd = null;
-        job.CurrentCycle = 1;
         job.ActiveExecutionIndex = 0;
         job.LastSwitchAt = null;
         job.LastSwitchReason = null;
@@ -321,9 +459,10 @@ public partial class JobService
             .OrderBy(pp => pp.Priority)
             .ToListAsync(cancellationToken);
 
-        var providerOrder = job.AgentId.HasValue && job.ProviderId != Guid.Empty
-            ? enabledProviders.Where(provider => provider.Id == job.ProviderId).ToList()
-            : BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections);
+        // A job run on a profile was given its model by that profile, so nothing the project
+        // prefers for the same provider may replace it.
+        var runsOnProfile = job.ProfileId.HasValue;
+        var providerOrder = BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections, runsOnProfile);
 
         var modelLookup = await _dbContext.ProviderModels
             .Where(m => providerIds.Contains(m.ProviderId) && m.IsAvailable)
@@ -354,7 +493,7 @@ public partial class JobService
                 {
                     plannedTargets.Add((job.ModelUsed, selectedReasoning, "job-selected-model"));
                 }
-                else if (!string.IsNullOrWhiteSpace(selection?.PreferredModelId))
+                else if (!runsOnProfile && !string.IsNullOrWhiteSpace(selection?.PreferredModelId))
                 {
                     plannedTargets.Add((selection.PreferredModelId, selectedReasoning, "project-preferred-model"));
                 }
@@ -462,72 +601,98 @@ public partial class JobService
         }
     }
 
-	private async Task ApplySelectedAgentDefaultsAsync(Job job, CancellationToken cancellationToken)
+	/// <summary>
+	/// Decides what a new job runs on, once, for every way of creating one:
+	/// a profile the job names wins over anything else it was sent; a job that names neither a
+	/// profile nor a provider takes the project's Build profile (the first it lists, or the
+	/// default provider's own when it lists none); a job that names only a
+	/// provider (an older client) is left as sent. A profile that is gone, or whose provider is
+	/// off, counts as not named, so a schedule or auto-pilot run falls through instead of failing.
+	/// </summary>
+	private async Task ApplyJobProfileAsync(Job job, CancellationToken cancellationToken)
 	{
-		if (!job.AgentId.HasValue || job.AgentId == Guid.Empty)
+		var resolved = await ResolveJobProfileAsync(job.ProfileId, cancellationToken);
+		if (resolved == null && job.ProviderId == Guid.Empty)
 		{
-            return;
-        }
-
-        var agent = await _dbContext.Agents
-            .Include(a => a.DefaultProvider)
-            .FirstOrDefaultAsync(a => a.Id == job.AgentId.Value, cancellationToken);
-        if (agent == null || !agent.IsEnabled)
-        {
-            throw new InvalidOperationException("The selected agent does not exist or is disabled.");
-        }
-
-		if (!agent.DefaultProviderId.HasValue || agent.DefaultProvider == null || !agent.DefaultProvider.IsEnabled)
-		{
-			throw new InvalidOperationException("The selected agent does not have an enabled default provider.");
+			resolved = await ResolveBuildProfileAsync(job.ProjectId, cancellationToken);
 		}
 
-		var agentInstructions = string.IsNullOrWhiteSpace(agent.Responsibilities)
-			? null
-			: agent.Responsibilities.Trim();
-		if (string.IsNullOrWhiteSpace(job.GoalPrompt))
+		ApplyResolvedProfile(job, resolved);
+	}
+
+	/// <summary>
+	/// The profile the project builds with: its first enabled Build entry's, or the default
+	/// provider's own when the project lists nothing.
+	/// </summary>
+	private async Task<ResolvedJobProfile?> ResolveBuildProfileAsync(Guid projectId, CancellationToken cancellationToken)
+	{
+		var buildOrder = await _dbContext.ProjectProviders
+			.Where(entry => entry.ProjectId == projectId && entry.IsEnabled
+				&& _dbContext.Providers.Any(provider => provider.Id == entry.ProviderId && provider.IsEnabled))
+			.OrderBy(entry => entry.Priority)
+			.Select(entry => entry.ProfileId)
+			.ToListAsync(cancellationToken);
+		var buildProfileId = buildOrder.Count > 0
+			? buildOrder[0]
+			: await _dbContext.Profiles
+				.Where(profile => profile.IsProviderDefault && profile.Provider != null && profile.Provider.IsEnabled)
+				.OrderByDescending(profile => profile.Provider!.IsDefault)
+				.ThenBy(profile => profile.Provider!.Name)
+				.Select(profile => (Guid?)profile.Id)
+				.FirstOrDefaultAsync(cancellationToken);
+		return await ResolveJobProfileAsync(buildProfileId, cancellationToken);
+	}
+
+	/// <summary>Puts the profile's values on the job, or clears the job's profile when there is none.</summary>
+	private static void ApplyResolvedProfile(Job job, ResolvedJobProfile? resolved)
+	{
+		if (resolved is not { } profile)
 		{
-			if (string.IsNullOrWhiteSpace(agentInstructions))
-			{
-				throw new InvalidOperationException("Goal prompt is required when the selected agent does not have saved instructions.");
-			}
-
-			if (agentInstructions.Length > ValidationLimits.JobGoalPromptMaxLength)
-			{
-				throw new InvalidOperationException($"Goal prompt is required when the selected agent instructions exceed {ValidationLimits.JobGoalPromptMaxLength} characters.");
-			}
-
-			job.GoalPrompt = agentInstructions;
+			job.ProfileId = null;
+			job.ProfileName = null;
+			return;
 		}
 
-		if (job.ProviderId == Guid.Empty)
+		job.ProfileId = profile.Id;
+		job.ProfileName = profile.Name;
+		job.ProviderId = profile.ProviderId;
+		job.ModelUsed = profile.ModelId;
+		job.ReasoningEffort = profile.ReasoningEffort;
+	}
+
+	/// <summary>
+	/// The provider, model and reasoning a job gets from a profile. Null when the profile is
+	/// missing, answers questions only, or sits on a provider that is turned off.
+	/// </summary>
+	private async Task<ResolvedJobProfile?> ResolveJobProfileAsync(Guid? profileId, CancellationToken cancellationToken)
+	{
+		if (profileId is not Guid id)
 		{
-			job.ProviderId = agent.DefaultProviderId.Value;
-        }
+			return null;
+		}
 
-        if (string.IsNullOrWhiteSpace(job.ModelUsed))
-        {
-            job.ModelUsed = agent.DefaultModelId;
-        }
-        if (string.IsNullOrWhiteSpace(job.ReasoningEffort))
-        {
-            job.ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(agent.DefaultReasoningEffort);
-        }
+		var profile = await _dbContext.Profiles
+			.AsNoTracking()
+			.Include(candidate => candidate.Provider)
+			.FirstOrDefaultAsync(candidate => candidate.Id == id, cancellationToken);
+		if (profile == null || !ProfileRoles.CanBuild(profile))
+		{
+			return null;
+		}
 
-        if (AgentPresetHelper.HasCustomCycleSettings(job))
-        {
-            return;
-        }
+		var defaultModelId = string.IsNullOrWhiteSpace(profile.ModelId)
+			? await _dbContext.ProviderModels
+				.Where(model => model.ProviderId == profile.ProviderId && model.IsAvailable && model.IsDefault)
+				.Select(model => model.ModelId)
+				.FirstOrDefaultAsync(cancellationToken)
+			: null;
+		var (providerId, modelId, reasoningEffort) = ProfileLinks.ResolveForJob(profile, defaultModelId);
+		return new ResolvedJobProfile(profile.Id, profile.Name, providerId, modelId, reasoningEffort);
+	}
 
-        job.CycleMode = agent.DefaultCycleMode;
-        job.CycleSessionMode = agent.DefaultCycleSessionMode;
-        job.MaxCycles = Math.Clamp(agent.DefaultMaxCycles, 1, 100);
-        job.CycleReviewPrompt = string.IsNullOrWhiteSpace(agent.DefaultCycleReviewPrompt)
-            ? null
-            : agent.DefaultCycleReviewPrompt.Trim();
-    }
+	private readonly record struct ResolvedJobProfile(Guid Id, string Name, Guid ProviderId, string? ModelId, string? ReasoningEffort);
 
-    private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections)
+    private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections, bool runsOnProfile)
     {
         if (projectSelections.Count == 0)
         {
@@ -539,6 +704,15 @@ public partial class JobService
             .Where(pp => providerById.ContainsKey(pp.ProviderId))
             .Select(pp => providerById[pp.ProviderId])
             .ToList();
+
+        // A profile picked for this job runs first even on a provider the project doesn't list.
+        // Switching away from it afterwards still follows the project's list alone.
+        if (runsOnProfile
+            && orderedProviders.All(provider => provider.Id != selectedProviderId)
+            && providerById.TryGetValue(selectedProviderId, out var pickedProvider))
+        {
+            return [pickedProvider, .. orderedProviders];
+        }
 
         return OrderProvidersWithSelectionFirst(selectedProviderId, orderedProviders);
     }

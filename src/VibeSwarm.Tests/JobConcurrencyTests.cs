@@ -14,6 +14,7 @@ using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Web.Controllers;
 using VibeSwarm.Web.Services;
+using static VibeSwarm.Tests.MigrationSeed;
 
 namespace VibeSwarm.Tests;
 
@@ -217,30 +218,40 @@ public sealed class JobConcurrencyTests : IDisposable
 				var migrator = dbContext.GetService<IMigrator>();
 				var addedLimits = dbContext.Database.GetMigrations().Single(id => id.EndsWith("_AddJobConcurrencyLimits", StringComparison.Ordinal));
 				migrator.Migrate(addedLimits);
-				dbContext.Providers.AddRange(
-					new Provider { Id = _claude.Id, Name = "Claude", Type = ProviderType.Claude, MaxConcurrentJobs = 1 },
-					new Provider { Id = _copilot.Id, Name = "Copilot", Type = ProviderType.Copilot, MaxConcurrentJobs = 3 });
+
+				// Seeded with SQL against the schema as it was then: the current model has
+				// columns later migrations add, which an EF insert would name.
+				var connection = dbContext.Database.GetDbConnection();
+				connection.Open();
+				InsertRow(connection, "Providers", new() { ["Id"] = SqliteGuid(_claude.Id), ["Name"] = "Claude", ["MaxConcurrentJobs"] = 1 });
+				InsertRow(connection, "Providers", new() { ["Id"] = SqliteGuid(_copilot.Id), ["Name"] = "Copilot", ["MaxConcurrentJobs"] = 3 });
 				// Rows that point at a provider, so SQLite's rebuild of the table must keep them.
-				dbContext.Projects.Add(new Project { Id = _alpha.Id, Name = "Alpha", WorkingPath = "/tmp/alpha" });
-				dbContext.ProviderModels.Add(new ProviderModel { ProviderId = _claude.Id, ModelId = "opus" });
-				dbContext.Jobs.Add(new Job { Id = Guid.NewGuid(), ProjectId = _alpha.Id, ProviderId = _claude.Id, Title = "Queued", GoalPrompt = "Queued" });
-				dbContext.SaveChanges();
+				InsertRow(connection, "Projects", new() { ["Id"] = SqliteGuid(_alpha.Id), ["Name"] = "Alpha", ["WorkingPath"] = "/tmp/alpha" });
+				InsertRow(connection, "ProviderModels", new() { ["ProviderId"] = SqliteGuid(_claude.Id), ["ModelId"] = "opus" });
+				InsertRow(connection, "Jobs", new() { ["Id"] = SqliteGuid(Guid.NewGuid()), ["ProjectId"] = SqliteGuid(_alpha.Id), ["ProviderId"] = SqliteGuid(_claude.Id), ["Title"] = "Queued", ["GoalPrompt"] = "Queued" });
 
 				migrator.Migrate();
 			}
 
-			using var migrated = DataServiceExtensions.CreateMigrationContext($"Data Source={databasePath};Pooling=False");
-			var limits = migrated.Providers.AsNoTracking().ToDictionary(provider => provider.Id, provider => provider.MaxConcurrentJobs);
+			using var migrated = new SqliteConnection($"Data Source={databasePath};Pooling=False");
+			migrated.Open();
 
-			Assert.Equal(JobConcurrency.DefaultJobsPerProvider, limits[_claude.Id]);
-			Assert.Equal(3, limits[_copilot.Id]);
-			Assert.Equal(_claude.Id, migrated.ProviderModels.AsNoTracking().Single().ProviderId);
-			Assert.Equal(_claude.Id, migrated.Jobs.AsNoTracking().Single().ProviderId);
+			Assert.Equal(JobConcurrency.DefaultJobsPerProvider, ReadScalar<long>(migrated, $"SELECT MaxConcurrentJobs FROM Providers WHERE Id = '{SqliteGuid(_claude.Id)}'"));
+			Assert.Equal(3, ReadScalar<long>(migrated, $"SELECT MaxConcurrentJobs FROM Providers WHERE Id = '{SqliteGuid(_copilot.Id)}'"));
+			Assert.Equal(SqliteGuid(_claude.Id), ReadScalar<string>(migrated, "SELECT ProviderId FROM ProviderModels"));
+			Assert.Equal(SqliteGuid(_claude.Id), ReadScalar<string>(migrated, "SELECT ProviderId FROM Jobs"));
 		}
 		finally
 		{
 			File.Delete(databasePath);
 		}
+	}
+
+	private static T ReadScalar<T>(SqliteConnection connection, string sql)
+	{
+		using var command = connection.CreateCommand();
+		command.CommandText = sql;
+		return (T)command.ExecuteScalar()!;
 	}
 
 	[Fact]

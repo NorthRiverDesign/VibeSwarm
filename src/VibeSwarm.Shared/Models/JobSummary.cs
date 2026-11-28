@@ -44,10 +44,6 @@ public class JobSummary
 	public decimal? ExecutionCostUsd { get; set; }
 	public int? ExecutionInputTokens { get; set; }
 	public int? ExecutionOutputTokens { get; set; }
-	public int CurrentCycle { get; set; }
-	public int MaxCycles { get; set; }
-	public CycleMode CycleMode { get; set; }
-	public string? AgentName { get; set; }
 	public string? Branch { get; set; }
 	public int? ChangedFilesCount { get; set; }
 	public bool? BuildVerified { get; set; }

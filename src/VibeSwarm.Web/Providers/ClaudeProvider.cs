@@ -222,7 +222,7 @@ public class ClaudeProvider : CliProviderBase
         var args = BuildCliArgs(prompt, sessionId, effectiveWorkingDir);
 
         // The settings below belong to this run. Copy first so they don't leak into the
-        // caller's dictionary and on to later cycles or a fallback provider.
+        // caller's dictionary and on to later turns or a fallback provider.
         CurrentEnvironmentVariables = CurrentEnvironmentVariables == null
             ? null
             : new Dictionary<string, string>(CurrentEnvironmentVariables);
@@ -234,7 +234,7 @@ public class ClaudeProvider : CliProviderBase
             CurrentEnvironmentVariables["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1";
         }
 
-        // 1-hour prompt cache TTL for multi-cycle / swarm jobs (Claude v2.1.108+).
+        // 1-hour prompt cache TTL for jobs that run several sessions (Claude v2.1.108+).
         if (CurrentEnableOneHourPromptCache && SupportsCliVersion(PromptCacheOneHourVersion))
         {
             CurrentEnvironmentVariables ??= new Dictionary<string, string>();
@@ -505,7 +505,7 @@ public class ClaudeProvider : CliProviderBase
         }
 
         // Display name for the session (enables `claude --resume <name>` for debugging). Only a
-        // new session is named, so later cycles that resume it keep the name it started with.
+        // new session is named, so later turns that resume it keep the name it started with.
         if (!string.IsNullOrEmpty(CurrentSessionName)
             && string.IsNullOrEmpty(sessionId)
             && !CurrentContinueLastSession

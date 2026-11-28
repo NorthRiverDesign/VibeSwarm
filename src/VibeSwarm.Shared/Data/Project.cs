@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 using System.ComponentModel.DataAnnotations;
 using VibeSwarm.Shared.Validation;
 
@@ -72,31 +74,15 @@ public class Project
 	public string? ReleaseBranch { get; set; }
 
 	/// <summary>
-	/// Whether idea expansion should use provider-native planning mode.
-	/// When enabled, idea expansion uses the configured planning provider/model to generate
-	/// a reviewed implementation plan before the idea is converted into a job.
+	/// Whether jobs on this project are worked by a team: the Lead plans each job before it
+	/// builds, the project's Build profile builds it, and the reviewer checks it. The Lead and
+	/// the reviewer come from the team set once in Settings (<see cref="AppSettings"/>) unless
+	/// <see cref="TeamOverrides"/> says this project picked its own.
 	/// </summary>
-	public bool PlanningEnabled { get; set; }
+	public bool TeamEnabled { get; set; }
 
-	/// <summary>
-	/// Optional provider to use for project planning.
-	/// Supported planning providers are currently Claude and GitHub Copilot.
-	/// </summary>
-	public Guid? PlanningProviderId { get; set; }
-
-	/// <summary>
-	/// Optional model override to use for project planning.
-	/// When omitted, the planning provider's default model is used.
-	/// </summary>
-	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
-	public string? PlanningModelId { get; set; }
-
-	/// <summary>
-	/// Optional reasoning effort override to use for project planning.
-	/// When omitted, the planning provider's default reasoning is used.
-	/// </summary>
-	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
-	public string? PlanningReasoningEffort { get; set; }
+	/// <summary>The team roles this project fills with its own profile instead of the team's.</summary>
+	public TeamRoles TeamOverrides { get; set; }
 
 	/// <summary>
 	/// Whether a second model reviews each job's work before it is delivered. Problems it finds
@@ -117,6 +103,9 @@ public class Project
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? ReviewReasoningEffort { get; set; }
 
+	/// <summary>The profile the reviewer comes from (see <see cref="PlanningProfileId"/>).</summary>
+	public Guid? ReviewProfileId { get; set; }
+
 	/// <summary>The coding provider (Claude or Copilot, run read-only) that acts as the project's Lead.</summary>
 	public Guid? LeadProviderId { get; set; }
 
@@ -125,6 +114,18 @@ public class Project
 
 	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
 	public string? LeadReasoningEffort { get; set; }
+
+	/// <summary>The profile the Lead comes from (see <see cref="PlanningProfileId"/>).</summary>
+	public Guid? LeadProfileId { get; set; }
+
+	/// <summary>
+	/// The profile a running job can ask for a second opinion on a decision. Claude and Copilot
+	/// profiles read the repository; inference profiles see only the question.
+	/// </summary>
+	public Guid? DecisionsProfileId { get; set; }
+
+	/// <summary>The profile a running job can ask to research a question (see <see cref="DecisionsProfileId"/>).</summary>
+	public Guid? ResearchProfileId { get; set; }
 
 	/// <summary>
 	/// Where the owner wants the project to go: priorities, what matters most, what is off limits.
@@ -140,6 +141,12 @@ public class Project
 	public Guid? IdeaInferenceProviderId { get; set; }
 
 	/// <summary>
+	/// The inference profile that suggests ideas for this project; the idea provider and model
+	/// beside it are copied from it. Null, with no provider either, leaves ideas to the coding provider.
+	/// </summary>
+	public Guid? IdeasProfileId { get; set; }
+
+	/// <summary>
 	/// Default inference model for idea generation. When null, uses the provider's default.
 	/// </summary>
 	[StringLength(200)]
@@ -150,6 +157,12 @@ public class Project
 	/// When null, commit summaries continue to come from the coding provider output.
 	/// </summary>
 	public Guid? CommitSummaryInferenceProviderId { get; set; }
+
+	/// <summary>
+	/// The inference profile that writes commit messages; the provider and model beside it are
+	/// copied from it. Null, with no provider either, leaves them to the coding provider.
+	/// </summary>
+	public Guid? CommitSummaryProfileId { get; set; }
 
 	/// <summary>
 	/// Optional inference model used to generate auto-commit summaries.
@@ -169,8 +182,14 @@ public class Project
     public ICollection<Job> Jobs { get; set; } = new List<Job>();
     public ICollection<Idea> Ideas { get; set; } = new List<Idea>();
     public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
-    public ICollection<ProjectAgent> AgentAssignments { get; set; } = new List<ProjectAgent>();
     public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
+
+	/// <summary>
+	/// The skills a job on this project can load: every skill that is switched on. Filled in when
+	/// a job starts; not stored.
+	/// </summary>
+	[NotMapped, JsonIgnore]
+	public IReadOnlyList<Skill> AvailableSkills { get; set; } = [];
 
     /// <summary>
     /// Other projects linked to this one. Jobs are told about them for context.
@@ -222,19 +241,16 @@ public class Project
 	public Guid? IdeasProcessingProviderId { get; set; }
 
 	/// <summary>
+	/// The profile queued ideas run on while Start All is active; the provider and model beside it
+	/// are copied from it. Null, with no provider either, runs them on the project's Build profile.
+	/// </summary>
+	public Guid? IdeasProcessingProfileId { get; set; }
+
+	/// <summary>
 	/// Optional model override used while Start All idea auto-processing is active.
 	/// </summary>
 	[StringLength(ValidationLimits.JobScheduleModelIdMaxLength)]
 	public string? IdeasProcessingModelId { get; set; }
-
-	/// <summary>
-	/// When enabled and at least two team roles are configured, creating a job automatically
-	/// fans out into role-based jobs — one per enabled team role assignment.
-	/// Each role job runs its assigned provider with a role-specific system prompt in a git
-	/// worktree of its own, so they run at the same time (one job per provider); each one's
-	/// commits are replayed onto the project's branch as it finishes.
-	/// </summary>
-	public bool EnableTeamSwarm { get; set; }
 
 	/// <summary>
 	/// Whether to verify the build succeeds before auto-committing or pushing job results.

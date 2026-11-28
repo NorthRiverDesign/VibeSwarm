@@ -36,7 +36,6 @@ var services = new ServiceCollection();
 services.AddLogging();
 services.AddSingleton<IProjectService>(new FakeProjectService());
 services.AddSingleton<IProviderService>(new FakeProviderService(provider));
-	services.AddSingleton<IAgentService>(new FakeAgentService([]));
 services.AddSingleton<ISettingsService>(new FakeSettingsService());
 services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService([]));
 services.AddSingleton<IFileSystemService>(new FakeWorkspaceFileSystemService());
@@ -65,8 +64,12 @@ Assert.Contains("Working folder", html);
 Assert.Contains("Project name", html);
 Assert.Contains("accordion-item", html);
 Assert.Contains("When a job finishes", html);
-Assert.Contains("Providers and agents", html);
-Assert.Contains("Ideas and planning", html);
+// Who does what is in view without opening anything.
+Assert.Contains("Work as a team", html);
+Assert.DoesNotContain("Plan first", html);
+Assert.DoesNotContain(">Agents<", html);
+Assert.Contains(">Ideas<", html);
+Assert.DoesNotContain("Providers and agents", html);
 Assert.Contains("Instructions and memory", html);
 Assert.Contains("Build verification", html);
 Assert.Contains("Create Project", html);
@@ -231,94 +234,22 @@ public void BrowseGitHubRepositories_AllAlreadyAddedOffersToShowThem()
 	Assert.False(cut.Find("#githubRepositoryBrowserHideExisting").HasAttribute("checked"));
 }
 
-[Fact]
-public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
-{
-	var provider = new Provider
-	{
-		Id = Guid.NewGuid(),
-		Name = "GitHub Copilot",
-		Type = ProviderType.Copilot,
-		IsEnabled = true
-	};
-	var agent = new Agent
-	{
-		Id = Guid.NewGuid(),
-		Name = "Backend Engineer",
-		DefaultProviderId = provider.Id,
-		DefaultProvider = provider,
-		DefaultModelId = "gpt-5.4",
-		IsEnabled = true
-	};
-
-	using var context = CreateBunitContext(agents: [agent], provider: provider);
-
-	var cut = context.Render<ProjectModal>(parameters => parameters
-		.Add(component => component.IsVisible, true));
-
-	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Backend Engineer", StringComparison.Ordinal))
-		.Click();
-
-	Assert.Equal(provider.Id.ToString(), cut.Find($"#team-provider-{agent.Id}").GetAttribute("value"));
-	Assert.Equal("gpt-5.4", cut.Find($"#team-model-{agent.Id}").GetAttribute("value"));
-}
-
 	[Fact]
-	public void EditProject_LoadsCommitSummaryInferenceSettings()
+	public void EditProject_ShowsTheProfilesThatSuggestIdeasAndWriteCommitMessages()
 	{
-	var inferenceProviderId = Guid.NewGuid();
-	var inferenceProvider = new InferenceProvider
-	{
-		Id = inferenceProviderId,
-		Name = "Local Ollama",
-		ProviderType = VibeSwarm.Shared.Inference.InferenceProviderType.Ollama,
-		Endpoint = "http://localhost:11434",
-		IsEnabled = true,
-		Models =
-		[
-			new InferenceModel
-			{
-				InferenceProviderId = inferenceProviderId,
-				ModelId = "qwen3",
-				DisplayName = "Qwen 3",
-				IsAvailable = true,
-				IsDefault = true
-			}
-		]
-	};
-
-	using var context = CreateBunitContext(
-		inferenceProviders: [inferenceProvider]);
-
-	var cut = context.Render<ProjectModal>(parameters => parameters
-		.Add(component => component.IsVisible, true)
-		.Add(component => component.EditProject, new Project
+		var ollama = new InferenceProvider
 		{
 			Id = Guid.NewGuid(),
-			Name = "Sample Project",
-			WorkingPath = "/tmp/sample",
-			CommitSummaryInferenceProviderId = inferenceProviderId,
-			CommitSummaryInferenceModelId = "qwen3"
-		}));
-
-	Assert.Contains("Commit message writer", cut.Markup);
-	Assert.Equal(inferenceProviderId.ToString(), cut.Find("#modal-commitSummaryInferenceProvider").GetAttribute("value"));
-	Assert.Equal("qwen3", cut.Find("#modal-commitSummaryInferenceModel").GetAttribute("value"));
-	}
-
-	[Fact]
-	public void EditProject_ShowsSinglePlanningReasoningInput()
-	{
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "GitHub Copilot",
-			Type = ProviderType.Copilot,
+			Name = "Local Ollama",
+			ProviderType = VibeSwarm.Shared.Inference.InferenceProviderType.Ollama,
+			Endpoint = "http://localhost:11434",
 			IsEnabled = true
 		};
+		var writer = new Profile { Id = Guid.NewGuid(), Name = "Commit writer", InferenceProviderId = ollama.Id, InferenceProvider = ollama, ModelId = "qwen3" };
+		var coder = new Provider { Id = Guid.NewGuid(), Name = "GitHub Copilot", Type = ProviderType.Copilot, IsEnabled = true };
+		var coding = new Profile { Id = Guid.NewGuid(), Name = "GitHub Copilot", ProviderId = coder.Id, Provider = coder, IsProviderDefault = true };
 
-		using var context = CreateBunitContext(provider: provider);
+		using var context = CreateBunitContext(provider: coder, profiles: [coding, writer]);
 
 		var cut = context.Render<ProjectModal>(parameters => parameters
 			.Add(component => component.IsVisible, true)
@@ -327,13 +258,60 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 				Id = Guid.NewGuid(),
 				Name = "Sample Project",
 				WorkingPath = "/tmp/sample",
-				PlanningEnabled = true,
-				PlanningProviderId = provider.Id,
-				PlanningReasoningEffort = "medium"
+				CommitSummaryProfileId = writer.Id,
+				CommitSummaryInferenceProviderId = ollama.Id,
+				CommitSummaryInferenceModelId = "qwen3"
 			}));
 
-		Assert.Single(cut.FindAll("#modal-planningReasoning"));
-		Assert.Single(cut.FindAll("label[for='modal-planningReasoning']"));
+		Assert.Contains("Commit message writer", cut.Markup);
+		Assert.Equal(writer.Id.ToString(), cut.Find("#modal-commitSummaryProfile").GetAttribute("value"));
+		// Only inference profiles are offered, with the coding provider as the other choice.
+		Assert.Equal(["The coding provider", "Commit writer"], cut.FindAll("#modal-commitSummaryProfile option").Select(option => option.TextContent));
+		Assert.Equal(["The coding provider", "Commit writer"], cut.FindAll("#modal-ideasProfile option").Select(option => option.TextContent));
+		Assert.Empty(cut.FindAll("#modal-commitSummaryInferenceProvider, #modal-commitSummaryInferenceModel, #modal-ideaInferenceProvider, #modal-ideaInferenceModel"));
+	}
+
+	[Fact]
+	public void EditProject_ShowsItsTeam_AndANewProjectBuildsWithTheDefaultProfile()
+	{
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var providerDefault = new Profile { Id = Guid.NewGuid(), Name = "GitHub Copilot", ProviderId = provider.Id, Provider = provider, IsProviderDefault = true };
+		var planner = new Profile { Id = Guid.NewGuid(), Name = "Planner", ProviderId = provider.Id, Provider = provider, ReasoningEffort = "medium" };
+		var projectService = new FakeProjectService();
+
+		using var context = CreateBunitContext(projectService, provider: provider, profiles: [providerDefault, planner]);
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditProject, new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Sample Project",
+				WorkingPath = "/tmp/sample",
+				TeamEnabled = true,
+				TeamOverrides = TeamRoles.Lead,
+				LeadProviderId = provider.Id,
+				LeadReasoningEffort = "medium",
+				LeadProfileId = planner.Id
+			}));
+
+		// The project's own Lead is named on its row; nothing asks for a provider, model or reasoning.
+		var leadRow = cut.FindAll("button[aria-expanded]").Single(row => row.TextContent.TrimStart().StartsWith("Lead", StringComparison.Ordinal));
+		Assert.Contains("Planner · this project only", leadRow.TextContent);
+		Assert.Empty(cut.FindAll("#modal-planningReasoning, #modal-planningProvider, #modal-planningModel, #modal-leadProvider, #modal-leadModel"));
+
+		var fresh = context.Render<ProjectModal>(parameters => parameters.Add(component => component.IsVisible, true));
+		var buildRow = fresh.FindAll("button[aria-expanded]").Single(row => row.TextContent.TrimStart().StartsWith("Build", StringComparison.Ordinal));
+		Assert.Contains("GitHub Copilot", buildRow.TextContent);
+		buildRow.Click();
+		Assert.Equal(providerDefault.Id.ToString(), fresh.Find("#workflow-build").GetAttribute("value"));
 	}
 
 	[Fact]
@@ -625,6 +603,39 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 	}
 
 	[Fact]
+	public void EditProject_KeepsProfileLinks_WhenSavedUnchanged()
+	{
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+		var profileId = Guid.NewGuid();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Linked",
+			WorkingPath = "/tmp/linked",
+			TeamEnabled = true,
+			TeamOverrides = TeamRoles.Lead | TeamRoles.Review,
+			ReviewEnabled = true,
+			ReviewProfileId = profileId,
+			LeadProfileId = profileId,
+			LeadProviderId = provider.Id,
+			ProviderSelections = [new ProjectProvider { ProviderId = provider.Id, ProfileId = profileId, Priority = 0, IsEnabled = true }]
+		};
+		var projectService = new FakeProjectService { AllProjects = [project] };
+
+		using var context = CreateBunitContext(projectService, provider: provider);
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditProject, project));
+		cut.Find("form").Submit();
+
+		cut.WaitForAssertion(() => Assert.NotNull(projectService.LastUpdatedProject), WaitTimeout);
+		var saved = projectService.LastUpdatedProject!;
+		Assert.Equal((profileId, profileId), (saved.ReviewProfileId!.Value, saved.LeadProfileId!.Value));
+		Assert.Equal((true, TeamRoles.Lead | TeamRoles.Review), (saved.TeamEnabled, saved.TeamOverrides));
+		Assert.Equal(profileId, Assert.Single(saved.ProviderSelections).ProfileId);
+	}
+
+	[Fact]
 	public void EditProject_LeavesLinksAlone_WhenTheyDidNotChange()
 	{
 		var project = new Project { Id = Guid.NewGuid(), Name = "Web", WorkingPath = "/tmp/web" };
@@ -644,10 +655,10 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 
 private static BunitContext CreateBunitContext(
 	FakeProjectService? projectService = null,
-	IReadOnlyList<Agent>? agents = null,
 	Provider? provider = null,
 	IReadOnlyList<InferenceProvider>? inferenceProviders = null,
-	IFileSystemService? fileSystemService = null)
+	IFileSystemService? fileSystemService = null,
+	IReadOnlyList<Profile>? profiles = null)
 {
 	var context = new BunitContext();
 	context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
@@ -662,12 +673,25 @@ private static BunitContext CreateBunitContext(
 	};
 	context.Services.AddSingleton<IProjectService>(projectService ?? new FakeProjectService());
 	context.Services.AddSingleton<IProviderService>(new FakeProviderService(resolvedProvider));
-	context.Services.AddSingleton<IAgentService>(new FakeAgentService(agents ?? []));
 	context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 	context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService(inferenceProviders ?? []));
 	context.Services.AddSingleton<IFileSystemService>(fileSystemService ?? new FakeWorkspaceFileSystemService());
 	context.Services.AddSingleton<NotificationService>();
+	if (profiles != null)
+	{
+		context.Services.AddSingleton<IProfileService>(new FakeProfileService(profiles));
+	}
+
 	return context;
+}
+
+private sealed class FakeProfileService(IReadOnlyList<Profile> profiles) : IProfileService
+{
+	public Task<IEnumerable<Profile>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Profile>>(profiles);
+	public Task<Profile?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(profiles.FirstOrDefault(profile => profile.Id == id));
+	public Task<Profile> CreateAsync(Profile profile, CancellationToken cancellationToken = default) => Task.FromResult(profile);
+	public Task<Profile> UpdateAsync(Profile profile, CancellationToken cancellationToken = default) => Task.FromResult(profile);
+	public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
 
 private sealed class FakeProjectService : FakeProjectServiceBase
@@ -739,17 +763,9 @@ private sealed class FakeSettingsService : ISettingsService
 {
 public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
 public Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+public Task<AppSettings> UpdateTeamAsync(Guid? leadProfileId, Guid? reviewProfileId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");
-}
-
-private sealed class FakeAgentService(IReadOnlyList<Agent> agents) : FakeAgentServiceBase
-{
-	private readonly IReadOnlyList<Agent> _agents = agents;
-	public override Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents);
-	public override Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents.Where(agent => agent.IsEnabled));
-	public override Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_agents.FirstOrDefault(agent => agent.Id == id));
-public override Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
 }
 
 private sealed class NoOpJsRuntime : IJSRuntime

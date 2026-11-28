@@ -1,4 +1,4 @@
-using GitHub.Copilot.Rpc;
+using Microsoft.Copilot.Rpc;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Web.Providers.Copilot;
@@ -6,7 +6,7 @@ using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Tests;
 
-#pragma warning disable GHCP001 // The account quota types are marked experimental in the SDK
+#pragma warning disable MCPSDK001 // The account quota types are marked experimental in the SDK
 public sealed class CopilotQuotaReaderTests
 {
 	private static readonly DateTime Now = new(2026, 10, 12, 16, 0, 0, DateTimeKind.Utc);
@@ -98,4 +98,4 @@ public sealed class CopilotQuotaReaderTests
 			new ProviderUsageSummary { LimitsRefreshedAt = now.AddMinutes(-10) }, null, now, readingIsFree: true));
 	}
 }
-#pragma warning restore GHCP001
+#pragma warning restore MCPSDK001

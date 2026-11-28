@@ -31,7 +31,6 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<ProviderUsageSummary> ProviderUsageSummaries { get; set; }
 	public DbSet<Project> Projects { get; set; }
 	public DbSet<ProjectProvider> ProjectProviders { get; set; }
-	public DbSet<ProjectAgent> ProjectAgents { get; set; }
 	public DbSet<ProjectEnvironment> ProjectEnvironments { get; set; }
 	public DbSet<ProjectFolder> ProjectFolders { get; set; }
 	public DbSet<ProjectLink> ProjectLinks { get; set; }
@@ -46,9 +45,9 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<JobMessage> JobMessages { get; set; }
 	public DbSet<JobChangeSet> JobChangeSets { get; set; }
 	public DbSet<JobProviderAttempt> JobProviderAttempts { get; set; }
+	public DbSet<JobStep> JobSteps { get; set; }
 	public DbSet<Skill> Skills { get; set; }
-	public DbSet<Agent> Agents { get; set; }
-	public DbSet<AgentSkill> AgentSkills { get; set; }
+	public DbSet<Profile> Profiles { get; set; }
 	public DbSet<Idea> Ideas { get; set; }
 	public DbSet<IdeaAttachment> IdeaAttachments { get; set; }
 	public DbSet<AppSettings> AppSettings { get; set; }
@@ -144,8 +143,6 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.DefaultTargetBranch).HasMaxLength(ValidationLimits.ProjectDefaultTargetBranchMaxLength);
 			entity.Property(e => e.DevelopmentBranch).HasMaxLength(ValidationLimits.ProjectBranchMaxLength);
 			entity.Property(e => e.ReleaseBranch).HasMaxLength(ValidationLimits.ProjectBranchMaxLength);
-			entity.Property(e => e.PlanningModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
-			entity.Property(e => e.PlanningReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.ReviewModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
 			entity.Property(e => e.ReviewReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.LeadModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
@@ -233,26 +230,6 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasIndex(e => new { e.ProjectId, e.Priority });
 		});
 
-		modelBuilder.Entity<ProjectAgent>(entity =>
-		{
-			entity.HasKey(e => e.Id);
-			entity.HasOne(e => e.Project)
-	.WithMany(project => project.AgentAssignments)
-	.HasForeignKey(e => e.ProjectId)
-	.OnDelete(DeleteBehavior.Cascade);
-			entity.HasOne(e => e.Agent)
-	.WithMany(role => role.ProjectAssignments)
-	.HasForeignKey(e => e.AgentId)
-	.OnDelete(DeleteBehavior.Cascade);
-			entity.HasOne(e => e.Provider)
-	.WithMany()
-	.HasForeignKey(e => e.ProviderId)
-	.OnDelete(DeleteBehavior.Restrict);
-			entity.Property(e => e.PreferredModelId).HasMaxLength(200);
-			entity.Property(e => e.PreferredReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
-			entity.HasIndex(e => new { e.ProjectId, e.AgentId }).IsUnique();
-		});
-
 		modelBuilder.Entity<ProjectEnvironment>(entity =>
 		{
 			entity.HasKey(e => e.Id);
@@ -277,7 +254,6 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.Prompt).IsRequired().HasMaxLength(ValidationLimits.JobSchedulePromptMaxLength);
 			entity.Property(e => e.ModelId).HasMaxLength(ValidationLimits.JobScheduleModelIdMaxLength);
 			entity.Property(e => e.ScheduleType).HasConversion<string>();
-			entity.Property(e => e.ExecutionTarget).HasConversion<string>();
 			entity.Property(e => e.Frequency).HasConversion<string>();
 			entity.Property(e => e.WeeklyDay).HasConversion<string>();
 			entity.Property(e => e.LastError).HasMaxLength(ValidationLimits.JobScheduleLastErrorMaxLength);
@@ -289,17 +265,12 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 				.WithMany()
 				.HasForeignKey(e => e.ProviderId)
 				.OnDelete(DeleteBehavior.SetNull);
-			entity.HasOne(e => e.Agent)
-				.WithMany()
-				.HasForeignKey(e => e.AgentId)
-				.OnDelete(DeleteBehavior.SetNull);
 			entity.HasOne(e => e.InferenceProvider)
 				.WithMany()
 				.HasForeignKey(e => e.InferenceProviderId)
 				.OnDelete(DeleteBehavior.SetNull);
 			entity.HasIndex(e => e.InferenceProviderId);
 			entity.HasIndex(e => e.ProviderId);
-			entity.HasIndex(e => e.AgentId);
 			entity.HasIndex(e => new { e.IsEnabled, e.NextRunAtUtc });
 			entity.HasIndex(e => new { e.ProjectId, e.IsEnabled });
 		});
@@ -314,7 +285,6 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.ReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.Branch).HasMaxLength(ValidationLimits.JobTemplateBranchMaxLength);
 			entity.Property(e => e.TargetBranch).HasMaxLength(ValidationLimits.JobTemplateBranchMaxLength);
-			entity.Property(e => e.CycleReviewPrompt).HasMaxLength(ValidationLimits.JobTemplatePromptMaxLength);
 			entity.HasOne(e => e.Provider)
 				.WithMany()
 				.HasForeignKey(e => e.ProviderId)
@@ -331,6 +301,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.AttachedFilesJson).HasMaxLength(4000);
 			entity.Property(e => e.ModelUsed).HasMaxLength(200);
 			entity.Property(e => e.ReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
+			entity.Property(e => e.ProfileName).HasMaxLength(ValidationLimits.ProfileNameMaxLength);
 			entity.Property(e => e.PlanningModelUsed).HasMaxLength(200);
 			entity.Property(e => e.PlanningReasoningEffortUsed).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.BuildCheckedTreeHash).HasMaxLength(100);
@@ -370,10 +341,6 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	.WithMany()
 	.HasForeignKey(e => e.ProviderId)
 	.OnDelete(DeleteBehavior.Restrict);
-			entity.HasOne(e => e.Agent)
-				.WithMany()
-				.HasForeignKey(e => e.AgentId)
-				.OnDelete(DeleteBehavior.SetNull);
 			entity.Navigation(e => e.Statistics).AutoInclude();
 			entity.Navigation(e => e.PlanningStatistics).AutoInclude();
 			entity.Navigation(e => e.ExecutionStatistics).AutoInclude();
@@ -469,42 +436,49 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasIndex(e => e.Name).IsUnique();
 		});
 
-		modelBuilder.Entity<Agent>(entity =>
+		// Settings and jobs point at a profile by id alone, as they do at providers: deleting a
+		// profile moves each setting to its provider's default profile (ProfileService), and a
+		// job keeps the id and the name it ran under.
+		modelBuilder.Entity<Profile>(entity =>
 		{
 			entity.HasKey(e => e.Id);
-			entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
-			entity.Property(e => e.Description).HasMaxLength(ValidationLimits.AgentDescriptionMaxLength);
-			entity.Property(e => e.Responsibilities).HasMaxLength(ValidationLimits.AgentResponsibilitiesMaxLength);
-			entity.Property(e => e.DefaultModelId).HasMaxLength(200);
-			entity.Property(e => e.DefaultReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
-			entity.Property(e => e.DefaultCycleReviewPrompt).HasMaxLength(ValidationLimits.JobTemplatePromptMaxLength);
-			entity.HasOne(e => e.DefaultProvider)
+			entity.Property(e => e.Name).IsRequired().HasMaxLength(ValidationLimits.ProfileNameMaxLength);
+			entity.Property(e => e.Description).HasMaxLength(ValidationLimits.ProfileDescriptionMaxLength);
+			entity.Property(e => e.ModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
+			entity.Property(e => e.ReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
+			entity.HasOne(e => e.Provider)
 				.WithMany()
-				.HasForeignKey(e => e.DefaultProviderId)
-				.OnDelete(DeleteBehavior.SetNull);
+				.HasForeignKey(e => e.ProviderId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.HasOne(e => e.InferenceProvider)
+				.WithMany()
+				.HasForeignKey(e => e.InferenceProviderId)
+				.OnDelete(DeleteBehavior.Cascade);
 			entity.HasIndex(e => e.Name).IsUnique();
 		});
 
-		modelBuilder.Entity<AgentSkill>(entity =>
+		modelBuilder.Entity<JobStep>(entity =>
 		{
-			entity.HasKey(e => new { e.AgentId, e.SkillId });
-			entity.HasOne(e => e.Agent)
-	.WithMany(role => role.SkillLinks)
-	.HasForeignKey(e => e.AgentId)
-	.OnDelete(DeleteBehavior.Cascade);
-			entity.HasOne(e => e.Skill)
-	.WithMany()
-	.HasForeignKey(e => e.SkillId)
-	.OnDelete(DeleteBehavior.Cascade);
+			entity.HasKey(e => e.Id);
+			entity.HasOne(e => e.Job)
+				.WithMany(job => job.Steps)
+				.HasForeignKey(e => e.JobId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.Property(e => e.Title).IsRequired().HasMaxLength(JobStep.TitleMaxLength);
+			entity.Property(e => e.Instructions).HasMaxLength(JobStep.TextMaxLength);
+			entity.Property(e => e.DoneWhen).HasMaxLength(JobStep.SummaryMaxLength);
+			entity.Property(e => e.Summary).HasMaxLength(JobStep.SummaryMaxLength);
+			entity.Property(e => e.ReviewNotes).HasMaxLength(JobStep.TextMaxLength);
+			entity.Property(e => e.SessionId).HasMaxLength(200);
+			entity.Property(e => e.SnapshotCommit).HasMaxLength(64);
+			entity.HasIndex(e => new { e.JobId, e.Order });
 		});
 
 		modelBuilder.Entity<Idea>(entity =>
 		{
 			entity.HasKey(e => e.Id);
 			entity.Property(e => e.Description).IsRequired().HasMaxLength(ValidationLimits.IdeaDescriptionMaxLength);
-			entity.Property(e => e.ExpandedDescription).HasMaxLength(ValidationLimits.IdeaExpandedDescriptionMaxLength);
-			entity.Property(e => e.ExpansionStatus).HasConversion<string>();
-			entity.Property(e => e.ExpansionError).HasMaxLength(ValidationLimits.IdeaExpansionErrorMaxLength);
+			entity.Property(e => e.Specification).HasMaxLength(ValidationLimits.IdeaSpecificationMaxLength);
 			// Suggestions waiting for approval, and dismissed ones, stay out of every ordinary idea
 			// query: the list, the queue, auto-pilot and counts. The Lead reads them with IgnoreQueryFilters.
 			entity.HasQueryFilter(e => !e.NeedsApproval && e.DismissedAt == null);
@@ -554,7 +528,6 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.CriticalErrorLogRetentionDays).HasDefaultValue(global::VibeSwarm.Shared.Data.AppSettings.DefaultCriticalErrorLogRetentionDays);
 			entity.Property(e => e.CriticalErrorLogMaxEntries).HasDefaultValue(global::VibeSwarm.Shared.Data.AppSettings.DefaultCriticalErrorLogMaxEntries);
 			entity.Property(e => e.MaxConcurrentJobs).HasDefaultValue(JobConcurrency.DefaultTotalJobs);
-			entity.Property(e => e.IdeaExpansionPromptTemplate).HasMaxLength(ValidationLimits.IdeaPromptTemplateMaxLength);
 			entity.Property(e => e.IdeaImplementationPromptTemplate).HasMaxLength(ValidationLimits.IdeaPromptTemplateMaxLength);
 			entity.Property(e => e.ApprovedIdeaImplementationPromptTemplate).HasMaxLength(ValidationLimits.IdeaPromptTemplateMaxLength);
 		});

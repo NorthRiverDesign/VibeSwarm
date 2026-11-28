@@ -338,12 +338,9 @@ public partial class IdeaService : IIdeaService
 			.FirstOrDefaultAsync(attachment => attachment.Id == attachmentId, cancellationToken);
 	}
 
-	private static void EnsureLengthWithinLimit(string fieldName, string? value, int maxLength)
+	private static void ValidateIdea(Idea idea)
 	{
-		if (!string.IsNullOrEmpty(value) && value.Length > maxLength)
-		{
-			throw new ValidationException($"{fieldName} must be {maxLength:N0} characters or fewer.");
-		}
+		ValidationHelper.ValidateObject(idea);
 	}
 
 	private static int NormalizePageSize(int pageSize, int defaultPageSize)

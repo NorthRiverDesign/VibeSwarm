@@ -391,6 +391,62 @@ public sealed class JobGitSyncTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ARetriedChain_GetsItsFinishedStepsBack_ButNotTheStepThatWasUnderWay()
+	{
+		await InitRepositoryAsync();
+		var baseCommit = await GitAsync(_repo, "rev-parse HEAD");
+		var snapshots = new JobWorkSnapshotService(_git, NullLogger<JobWorkSnapshotService>.Instance);
+		await using var db = await CreateDbContextAsync();
+		var job = await AddJobAsync(db);
+		job.TeamRun = true;
+		job.Status = JobStatus.New;
+
+		// Step one finished and was saved. Step two was half way when the run failed, and the
+		// job's own snapshot holds that half as well.
+		await WriteAsync(_repo, "divide.txt", "step one\n");
+		var stepOne = await snapshots.SaveAsync(_repo, job.Id, baseCommit);
+		await WriteAsync(_repo, "power.txt", "half of step two\n");
+		job.WorkSnapshotCommit = await snapshots.SaveAsync(_repo, job.Id, baseCommit);
+		db.JobSteps.AddRange(
+			new JobStep { JobId = job.Id, Order = 1, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Done, SnapshotCommit = stepOne },
+			new JobStep { JobId = job.Id, Order = 2, Title = "Add power", Instructions = "Add power." });
+		await db.SaveChangesAsync();
+		Assert.NotNull(stepOne);
+		Assert.NotEqual(stepOne, job.WorkSnapshotCommit);
+
+		// The retry starts from a clean checkout of an origin that has moved on meanwhile.
+		await PushFromOtherCloneAsync("other.txt", "someone else's work\n");
+		await GitAsync(_repo, "clean -fdq");
+		await GitAsync(_repo, "pull -q");
+		var newBase = await GitAsync(_repo, "rev-parse HEAD");
+		Assert.NotEqual(baseCommit, newBase);
+
+		var processor = new JobProcessingService(
+			new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobProcessingService>.Instance,
+			_versionControl,
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService(),
+			workSnapshots: snapshots);
+		var result = await (Task<JobWorkRestoreResult?>)GetMethod("RestorePriorRunWorkAsync").Invoke(processor, [job, _repo, db, CancellationToken.None])!;
+
+		Assert.Equal(JobWorkRestoreOutcome.Restored, result!.Outcome);
+		Assert.Equal("step one\n", await File.ReadAllTextAsync(Path.Combine(_repo, "divide.txt")));
+		Assert.False(File.Exists(Path.Combine(_repo, "power.txt")));
+
+		// The step's work is saved again on the branch as it now stands, so what the next step
+		// changes is measured from there: neither step one nor origin's commit shows up in it.
+		var step = await db.JobSteps.SingleAsync(saved => saved.Order == 1);
+		Assert.NotEqual(stepOne, step.SnapshotCommit);
+		Assert.Equal(step.SnapshotCommit, job.WorkSnapshotCommit);
+		Assert.Equal(newBase, await GitAsync(_repo, $"rev-parse {step.SnapshotCommit}^"));
+		await WriteAsync(_repo, "power.txt", "step two\n");
+		var stepTwoChange = await snapshots.DiffWorkingTreeAgainstAsync(_repo, step.SnapshotCommit!);
+		Assert.Contains("power.txt", stepTwoChange);
+		Assert.DoesNotContain("divide.txt", stepTwoChange);
+		Assert.DoesNotContain("other.txt", stepTwoChange);
+	}
+
+	[Fact]
 	public void StaleIndexLock_IsRemovedOnlyWhenOlderThanTheBoot()
 	{
 		var gitDir = Path.Combine(_root, "locked", ".git");

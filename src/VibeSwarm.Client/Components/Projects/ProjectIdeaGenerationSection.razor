@@ -1,62 +1,17 @@
+@* Who suggests improvement ideas for the project: an inference profile, or the coding provider. *@
 @if (Project != null)
 {
-	<div class="mb-5">
-		<label for="modal-ideaInferenceProvider" class="form-label">Idea provider</label>
-		<InputSelect TValue="Guid?" id="modal-ideaInferenceProvider" @bind-Value="Project.IdeaInferenceProviderId"
-					 @bind-Value:after="HandleProviderChanged" class="form-control">
-			<option value="">Use the coding provider</option>
-			@foreach (var provider in AvailableInferenceProviders)
-			{
-				<option value="@provider.Id">@provider.Name (@provider.ProviderType)</option>
-			}
-		</InputSelect>
-		<div class="form-text">
-			Generates improvement ideas from the codebase for Auto-Pilot and the Suggest button. Uses providers
-			configured under Inference.
-		</div>
-	</div>
-
-	@if (Project.IdeaInferenceProviderId.HasValue)
-	{
-		<div class="mb-5">
-			<label for="modal-ideaInferenceModel" class="form-label">
-				Idea model <span class="fg-1 fw-normal">(optional)</span>
-			</label>
-			<div class="input-group">
-				<InputSelect id="modal-ideaInferenceModel" @bind-Value="Project.IdeaInferenceModelId" class="form-control"
-							 disabled="@(!InferenceModels.Any())">
-					<option value="">Provider default</option>
-					@foreach (var model in InferenceModels)
-					{
-						<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
-					}
-				</InputSelect>
-				<ModelRefreshButton ProviderId="@Project.IdeaInferenceProviderId" IsInference="true"
-									OnInferenceRefreshed="() => OnModelsRefreshed.InvokeAsync()" />
-			</div>
-			@if (!InferenceModels.Any())
-			{
-				<div class="form-text">No models cached yet — use the refresh button to load them.</div>
-			}
-		</div>
-	}
+	<ProfilePicker Id="modal-ideasProfile" Class="mb-5" Label="Ideas come from" Profiles="Profiles" Allowed="ProjectInferenceRoles.CanAnswerAlone"
+				   SelectedProfileId="Project.IdeasProfileId" EmptyLabel="The coding provider"
+				   OnSelected="profile => ProjectInferenceRoles.Apply(profile, (id, provider, model) => (Project.IdeasProfileId, Project.IdeaInferenceProviderId, Project.IdeaInferenceModelId) = (id, provider, model))"
+				   EmptyHint="An inference profile can suggest ideas from the codebase for Auto-Pilot and the Suggest button, without using a coding provider's limits." />
 }
 
 @code {
 	[Parameter, EditorRequired]
 	public ProjectModalFormModel Project { get; set; } = default!;
 
+	/// <summary>Every profile; ideas take an inference one.</summary>
 	[Parameter]
-	public IReadOnlyList<InferenceProvider> AvailableInferenceProviders { get; set; } = [];
-
-	[Parameter]
-	public IReadOnlyList<InferenceModel> InferenceModels { get; set; } = [];
-
-	[Parameter]
-	public EventCallback OnProviderChanged { get; set; }
-
-	[Parameter]
-	public EventCallback OnModelsRefreshed { get; set; }
-
-	private Task HandleProviderChanged() => OnProviderChanged.InvokeAsync();
+	public IReadOnlyList<Profile> Profiles { get; set; } = [];
 }

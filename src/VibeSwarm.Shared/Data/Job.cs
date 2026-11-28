@@ -5,28 +5,6 @@ using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Data;
 
-public enum CycleMode
-{
-    SingleCycle = 0,
-
-    /// <summary>
-    /// Fixed number of cycles. Job runs exactly MaxCycles times.
-    /// </summary>
-    FixedCount = 1,
-
-    /// <summary>
-    /// Autonomous mode. Agent decides when to stop by responding with CYCLE_COMPLETE.
-    /// </summary>
-    Autonomous = 2
-}
-
-public enum CycleSessionMode
-{
-    ContinueSession = 0,
-
-    FreshSession = 1
-}
-
 /// <summary>
 /// Tracks whether VibeSwarm preserved local git changes before a destructive operation.
 /// </summary>
@@ -96,10 +74,58 @@ public class Job
     public string? ReasoningEffort { get; set; }
 
     /// <summary>
-    /// Planning output generated before execution when project planning is enabled.
+    /// The profile the job was asked to run on. Its provider, model and reasoning are copied into
+    /// the fields above when the job is created or retried; the id is kept so a retry can read the
+    /// profile again. Points by id alone, so it may outlive the profile.
+    /// </summary>
+    public Guid? ProfileId { get; set; }
+
+    /// <summary>
+    /// The name <see cref="ProfileId"/> had when the job last took its values. It stays what was
+    /// asked for: the provider and model beside it show what ran, which can differ after a
+    /// switch to another provider.
+    /// </summary>
+    [StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ProfileNameMaxLength)]
+    public string? ProfileName { get; set; }
+
+    /// <summary>
+    /// The Lead's plan for the job, written before it builds when the job is worked by a team.
     /// Persisted so execution and retries can reuse the reviewed plan without regenerating it.
     /// </summary>
     public string? PlanningOutput { get; set; }
+
+    /// <summary>
+    /// Whether the job is worked by the project's team (planned by the Lead, checked by the
+    /// reviewer) or by its builder alone. Decided once, when the job is created.
+    /// </summary>
+    public bool TeamRun { get; set; }
+
+    /// <summary>
+    /// Set on a new job to have its builder work it alone although the project works as a team.
+    /// Read once, when the job is created; not stored.
+    /// </summary>
+    [NotMapped]
+    public bool RunSolo { get; set; }
+
+    /// <summary>
+    /// How many times the Lead has checked the finished steps against the brief and found more
+    /// to do. Bounded by <see cref="JobChain.MaxChecks"/>, so a job can't be extended for ever.
+    /// </summary>
+    public int LeadChecks { get; set; }
+
+    /// <summary>
+    /// Why the job was built without a plan although it is a team job: the Lead was missing,
+    /// near its usage limit or gave nothing usable. Set, it also means "don't plan again".
+    /// </summary>
+    [StringLength(500)]
+    public string? PlanSkippedReason { get; set; }
+
+    /// <summary>
+    /// The steps the Lead planned the job into, in order. Empty for a job its builder works alone,
+    /// and for a team job whose plan was skipped: both are built in one go from the goal.
+    /// </summary>
+    [JsonIgnore]
+    public ICollection<JobStep> Steps { get; set; } = new List<JobStep>();
 
     public Guid? PlanningProviderId { get; set; }
     public Provider? PlanningProvider { get; set; }
@@ -480,29 +506,6 @@ public class Job
     /// </summary>
     public Guid? DependsOnJobId { get; set; }
 
-    #region Multi-Cycle Properties
-
-    public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
-    public CycleSessionMode CycleSessionMode { get; set; } = CycleSessionMode.ContinueSession;
-
-    /// <summary>
-    /// Maximum number of cycles to execute (default 1, meaning single execution).
-    /// </summary>
-    public int MaxCycles { get; set; } = 1;
-
-    /// <summary>
-    /// Current cycle number (1-based, updated during execution).
-    /// </summary>
-    public int CurrentCycle { get; set; } = 1;
-
-    /// <summary>
-    /// Custom prompt for cycle review in Autonomous mode.
-    /// If empty, uses default: "Review all changes. Verify compile/tests. Respond with CYCLE_COMPLETE if done, otherwise continue."
-    /// </summary>
-    [StringLength(2000)]
-    public string? CycleReviewPrompt { get; set; }
-
-    #endregion
     /// <summary>
     /// Git diff showing changes made during job execution.
     /// Captured after job completes by comparing working directory state.
@@ -637,12 +640,17 @@ public class Job
     public Guid? SwarmId { get; set; }
 
     /// <summary>
-    /// The team role this job is executing as. Set when the job is part of a team swarm.
-    /// Null for regular jobs or when no specific role is assigned.
+    /// This job's place, from 1, among copies of one job started side by side. Set on each copy
+    /// when a job is created with more than one instance; null otherwise.
     /// </summary>
-    public Guid? AgentId { get; set; }
+    public int? InstanceNumber { get; set; }
 
-    public Agent? Agent { get; set; }
+    /// <summary>
+    /// How many copies of this job to start side by side, each in its own worktree. Read once
+    /// when the job is created and never stored.
+    /// </summary>
+    [NotMapped]
+    public int RequestedInstances { get; set; } = 1;
 
     [JsonIgnore]
     public JobStatistics? Statistics { get; set; }
@@ -813,6 +821,23 @@ public enum JobReviewStatus
 
     /// <summary>The reviewer couldn't run; the work was delivered without it.</summary>
     Skipped = 3
+}
+
+/// <summary>The limits on a team job's chain of steps.</summary>
+public static class JobChain
+{
+    /// <summary>How many times the Lead may send a finished job back with more steps.</summary>
+    public const int MaxChecks = 2;
+
+    /// <summary>How many steps one check may add.</summary>
+    public const int MaxStepsPerCheck = 3;
+
+    /// <summary>How many steps a job may have waiting at once, however they were added.</summary>
+    public const int MaxWaitingSteps = 12;
+
+    /// <summary>Whether the job is still being worked, so its steps can change.</summary>
+    public static bool IsOpen(JobStatus status) => status is JobStatus.New or JobStatus.Pending or JobStatus.Started
+        or JobStatus.Planning or JobStatus.Processing or JobStatus.Paused or JobStatus.Stalled;
 }
 
 public static class JobReview

@@ -62,39 +62,6 @@ public sealed class JobServiceCreateReproTests : IDisposable
 	}
 
 	[Fact]
-	public async Task CreateAsync_WhenAgentPresetSelected_DoesNotCollideWithTrackedAgent()
-	{
-		using var scope = _rootProvider.CreateScope();
-		var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
-
-		var provider = SeedProvider(dbContext);
-		var project = SeedProject(dbContext, provider.Id);
-		var agent = new Agent
-		{
-			Id = Guid.NewGuid(),
-			Name = "Security Reviewer",
-			IsEnabled = true,
-			DefaultProviderId = provider.Id,
-			DefaultModelId = "gpt-5",
-			DefaultReasoningEffort = "high"
-		};
-		dbContext.Agents.Add(agent);
-		await dbContext.SaveChangesAsync();
-
-		var service = new JobService(dbContext, scope.ServiceProvider);
-
-		var incomingJob = new Job
-		{
-			ProjectId = project.Id,
-			AgentId = agent.Id,
-			GoalPrompt = "Review the auth changes."
-		};
-
-		var created = await service.CreateAsync(incomingJob);
-		Assert.NotEqual(Guid.Empty, created.Id);
-	}
-
-	[Fact]
 	public async Task CreateAsync_CalledTwice_InSameScope_DoesNotThrowDuplicateTracking()
 	{
 		using var scope = _rootProvider.CreateScope();
@@ -145,6 +112,123 @@ public sealed class JobServiceCreateReproTests : IDisposable
 
 		var created = await service.CreateAsync(incomingJob);
 		Assert.NotEqual(Guid.Empty, created.Id);
+	}
+
+	[Fact]
+	public async Task CreateAsync_DecidesOnceWhetherTheTeamWorksTheJob()
+	{
+		using var scope = _rootProvider.CreateScope();
+		var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+		var provider = SeedProvider(dbContext);
+		var project = SeedProject(dbContext, provider.Id);
+		project.TeamEnabled = true;
+		var soloProject = SeedProject(dbContext, provider.Id);
+		soloProject.Name = "Solo";
+		soloProject.WorkingPath = "/tmp/solo";
+		await dbContext.SaveChangesAsync();
+		var service = new JobService(dbContext, scope.ServiceProvider);
+
+		// A project working as a team has its jobs worked by the team...
+		Assert.True((await service.CreateAsync(new Job { ProjectId = project.Id, GoalPrompt = "Add a page." })).TeamRun);
+		// ...unless the job was created for its builder alone,
+		Assert.False((await service.CreateAsync(new Job { ProjectId = project.Id, GoalPrompt = "Fix a typo.", RunSolo = true })).TeamRun);
+		// is a merge, which has one resolution,
+		Assert.False((await service.CreateAsync(new Job { ProjectId = project.Id, GoalPrompt = "Merge it.", MergeFromBranch = "feature" })).TeamRun);
+		// or runs as several copies side by side.
+		var copies = await service.CreateAsync(new Job { ProjectId = project.Id, GoalPrompt = "- Fix the header\n- Fix the footer", RequestedInstances = 2 });
+		Assert.False(copies.TeamRun);
+		Assert.False((await service.CreateAsync(new Job { ProjectId = soloProject.Id, GoalPrompt = "Add a page." })).TeamRun);
+	}
+
+	[Fact]
+	public async Task Steps_CanBeAddedAndSkipped_OnlyWhileTheChainIsStillBeingWorked()
+	{
+		using var scope = _rootProvider.CreateScope();
+		var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+		var provider = SeedProvider(dbContext);
+		var project = SeedProject(dbContext, provider.Id);
+		var running = new JobStep { Order = 1, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Running };
+		var waiting = new JobStep { Order = 2, Title = "Add power", Instructions = "Add power." };
+		var job = new Job { Id = Guid.NewGuid(), ProjectId = project.Id, ProviderId = provider.Id, GoalPrompt = "Two functions.", TeamRun = true, Status = JobStatus.Processing, Steps = [running, waiting] };
+		var finished = new Job { Id = Guid.NewGuid(), ProjectId = project.Id, ProviderId = provider.Id, GoalPrompt = "Done.", TeamRun = true, Status = JobStatus.Completed, Steps = [new JobStep { Order = 1, Title = "Did it", Instructions = "Did it.", Status = JobStepStatus.Done }] };
+		var plain = new Job { Id = Guid.NewGuid(), ProjectId = project.Id, ProviderId = provider.Id, GoalPrompt = "Plain.", Status = JobStatus.Processing };
+		dbContext.Jobs.AddRange(job, finished, plain);
+		await dbContext.SaveChangesAsync();
+		var service = new JobService(dbContext, scope.ServiceProvider);
+
+		var added = await service.AddStepAsync(job.Id, "  Also update the README.\nList every function.  ");
+		Assert.NotNull(added);
+		Assert.Equal((3, "Also update the README.", JobStepSource.User, JobStepStatus.Waiting), (added.Order, added.Title, added.Source, added.Status));
+		Assert.Equal("Also update the README.\nList every function.", added.Instructions);
+		Assert.Equal(["Add divide", "Add power", "Also update the README."], (await service.GetStepsAsync(job.Id)).Select(step => step.Title));
+
+		// Nothing can join a job that is over, one with no chain, or a blank step.
+		Assert.Null(await service.AddStepAsync(finished.Id, "One more."));
+		Assert.Null(await service.AddStepAsync(plain.Id, "One more."));
+		Assert.Null(await service.AddStepAsync(job.Id, "   "));
+
+		// A waiting step can be dropped; one that has started cannot, nor can another job's.
+		Assert.True(await service.SkipStepAsync(job.Id, waiting.Id));
+		Assert.False(await service.SkipStepAsync(job.Id, waiting.Id));
+		Assert.False(await service.SkipStepAsync(job.Id, running.Id));
+		Assert.False(await service.SkipStepAsync(plain.Id, added.Id));
+		dbContext.ChangeTracker.Clear();
+		Assert.Equal(JobStepStatus.Skipped, (await dbContext.JobSteps.SingleAsync(step => step.Id == waiting.Id)).Status);
+	}
+
+	[Fact]
+	public async Task ARetriedTeamJob_KeepsItsPlanAndFinishedSteps_AndANewPromptIsPlannedAfresh()
+	{
+		using var scope = _rootProvider.CreateScope();
+		var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+		var provider = SeedProvider(dbContext);
+		var project = SeedProject(dbContext, provider.Id);
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Two functions.",
+			TeamRun = true,
+			Status = JobStatus.Failed,
+			PlanningOutput = "Outcome: two functions.",
+			PlanningCostUsd = 0.4m,
+			LeadChecks = 1,
+			ReviewStatus = JobReviewStatus.Approved,
+			ReviewCostUsd = 0.12m,
+			// The whole tree as the failed run left it, the unfinished step included.
+			WorkSnapshotCommit = "ffff",
+			Steps =
+			[
+				new JobStep { Order = 1, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Done, Summary = "divide is in.", SnapshotCommit = "aaaa" },
+				new JobStep { Order = 2, Title = "Add power", Instructions = "Add power.", Status = JobStepStatus.Running, SessionId = "the-run-that-failed" },
+				new JobStep { Order = 3, Title = "Document both", Instructions = "Write the docs." }
+			]
+		};
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+		var service = new JobService(dbContext, scope.ServiceProvider);
+
+		Assert.True(await service.ResetJobWithOptionsAsync(job.Id));
+
+		// The plan, what it cost and the finished step stay; the step that was under way starts
+		// over, from the finished step's saved work rather than the failed run's.
+		dbContext.ChangeTracker.Clear();
+		var retried = await dbContext.Jobs.Include(j => j.Steps).SingleAsync(j => j.Id == job.Id);
+		Assert.Equal(JobStatus.New, retried.Status);
+		Assert.Equal(("Outcome: two functions.", 0.4m, 1, 0.12m), (retried.PlanningOutput, retried.PlanningCostUsd, retried.LeadChecks, retried.ReviewCostUsd));
+		Assert.Equal(JobReviewStatus.None, retried.ReviewStatus);
+		Assert.Equal("aaaa", retried.WorkSnapshotCommit);
+		var steps = retried.Steps.OrderBy(step => step.Order).ToList();
+		Assert.Equal([JobStepStatus.Done, JobStepStatus.Waiting, JobStepStatus.Waiting], steps.Select(step => step.Status));
+		Assert.Equal(("divide is in.", null), (steps[0].Summary, steps[1].SessionId));
+
+		// A different prompt is a different job: the old plan would build the wrong thing.
+		Assert.True(await service.UpdateJobPromptAsync(job.Id, "Three functions."));
+		dbContext.ChangeTracker.Clear();
+		var edited = await dbContext.Jobs.Include(j => j.Steps).SingleAsync(j => j.Id == job.Id);
+		Assert.Null(edited.PlanningOutput);
+		Assert.Empty(edited.Steps);
 	}
 
 	private static Provider SeedProvider(VibeSwarmDbContext dbContext)

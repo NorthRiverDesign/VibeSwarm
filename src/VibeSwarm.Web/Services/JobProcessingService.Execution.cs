@@ -67,19 +67,11 @@ public partial class JobProcessingService
             // Rebind `job` to the instance tracked in this scope so subsequent Entry(job),
             // dbContext.SaveChanges, and nav-property fix-up all operate on one entity.
             // The prompt, the job's APP_* variables and its MCP config read the project's
-            // environments and agent team from this instance, so load them here too.
+            // environments from this instance, so load them here too.
             var trackedJob = await dbContext.Jobs
                 .Include(j => j.Provider)
                 .Include(j => j.Project)
                     .ThenInclude(project => project!.Environments)
-                .Include(j => j.Project)
-                    .ThenInclude(project => project!.AgentAssignments)
-                        .ThenInclude(assignment => assignment.Provider)
-                .Include(j => j.Project)
-                    .ThenInclude(project => project!.AgentAssignments)
-                        .ThenInclude(assignment => assignment.Agent)
-                            .ThenInclude(agent => agent!.SkillLinks)
-                                .ThenInclude(link => link.Skill)
                 .FirstOrDefaultAsync(j => j.Id == job.Id, cancellationToken);
 
             if (trackedJob == null)
@@ -176,9 +168,7 @@ public partial class JobProcessingService
             {
                 JobStatus.Planning => JobStatus.Planning,
                 JobStatus.Started or JobStatus.Processing => JobStatus.Processing,
-                _ => ShouldUsePlanningStage(job.Project) && string.IsNullOrWhiteSpace(job.PlanningOutput)
-                    ? JobStatus.Planning
-                    : JobStatus.Processing
+                _ => NeedsLeadPlan(job) ? JobStatus.Planning : JobStatus.Processing
             };
             await UpdateJobStatusAsync(job.Id, initialStatus, dbContext, cancellationToken);
             await NotifyStatusChangedAsync(job.Id, initialStatus);
@@ -323,21 +313,10 @@ public partial class JobProcessingService
             // Note: This task manages its own DbContext scopes to avoid disposal issues
             var cancellationMonitorTask = MonitorCancellationAndHeartbeatAsync(job.Id, executionContext, cancellationToken);
 
-            async Task FailDuringPlanningAsync(string errorMessage)
-            {
-                executionContext.CancellationTokenSource?.Cancel();
-                try { await cancellationMonitorTask; } catch { }
-                await ReleaseJobAsync(job.Id, JobStatus.Failed, errorMessage, dbContext, cancellationToken);
-                await NotifyJobCompletedAsync(job.Id, false, errorMessage);
-            }
-
             // Execute the job with session support
             _logger.LogInformation("Starting provider execution for job {JobId} in directory {WorkingDir}",
                 job.Id, workingDirectory ?? "(default)");
 
-            // Multi-cycle execution support
-            var effectiveMaxCycles = job.CycleMode == CycleMode.SingleCycle ? 1 : job.MaxCycles;
-            var currentCycle = job.CurrentCycle;
             var sessionId = job.SessionId;
             ExecutionResult? lastResult = null;
             int? executionInputTokens = null;
@@ -742,7 +721,7 @@ public partial class JobProcessingService
                 }
             });
 
-            // ===== Multi-Cycle Execution Loop =====
+            // ===== Execution Loop =====
             if (job.Project != null)
             {
                 _projectEnvironmentCredentialService.PopulateForExecution(job.Project);
@@ -803,221 +782,113 @@ public partial class JobProcessingService
             var priorWorkRules = PromptBuilder.BuildPriorWorkRules(executionContext.PriorWorkRestore);
             var branchMergeRules = PromptBuilder.BuildBranchMergeRules(job.MergeFromBranch, executionContext.BranchMerge?.Outcome, executionContext.BranchMerge?.ConflictedFiles);
 
-            // Inject role-specific system prompt context for team swarm jobs
+            // An instance is told which part of the goal is its own.
             string? roleContext = null;
-            if (job.AgentId.HasValue)
+            if (job.SwarmId.HasValue && job.InstanceNumber is int instanceNumber)
             {
                 try
                 {
-                    var agent = await dbContext.Agents
-                        .Include(role => role.SkillLinks)
-                            .ThenInclude(link => link.Skill)
-                        .FirstOrDefaultAsync(r => r.Id == job.AgentId.Value, cancellationToken);
-                    if (agent != null)
-                    {
-                        await EnsureAgentSkillsMaterializedAsync(agent, skillStorage, cancellationToken);
-
-                        var swarmSize = job.SwarmId.HasValue
-                            ? await dbContext.Jobs.CountAsync(j => j.SwarmId == job.SwarmId, cancellationToken)
-                            : 1;
-                        var teammates = job.SwarmId.HasValue
-                            ? (await dbContext.Jobs
-                                .AsNoTracking()
-                                .Where(j => j.SwarmId == job.SwarmId && j.Id != job.Id && j.Agent != null)
-                                .Select(j => new { j.Agent!.Name, j.Agent.Description })
-                                .ToListAsync(cancellationToken))
-                                .Select(teammate => new Agent { Name = teammate.Name, Description = teammate.Description })
-                                .ToList()
-                            : [];
-                        roleContext = PromptBuilder.BuildRoleSystemPromptContext(agent, swarmSize, teammates);
-                    }
+                    var instanceCount = await dbContext.Jobs.CountAsync(j => j.SwarmId == job.SwarmId, cancellationToken);
+                    // A follow-up archives the run before it as a change set, so any change set means this run is one.
+                    var isFollowUp = await dbContext.JobChangeSets.AnyAsync(cs => cs.JobId == job.Id, cancellationToken);
+                    roleContext = PromptBuilder.BuildInstanceSystemPromptContext(job.GoalPrompt, instanceNumber, instanceCount, isFollowUp);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to load team role context for job {JobId}, continuing without it", job.Id);
+                    _logger.LogWarning(ex, "Failed to load instance context for job {JobId}, continuing without it", job.Id);
                 }
             }
 
+            var helperRules = await PrepareJobHelpersAsync(job, workingDirectory, dbContext, cancellationToken);
             systemPromptRules = PromptBuilder.JoinRuleSections(
-                roleContext, systemPromptRules, projectMemoryRules, localSetupRules, priorWorkRules, branchMergeRules);
+                roleContext, systemPromptRules, projectMemoryRules, localSetupRules, priorWorkRules, branchMergeRules, helperRules);
             // The read-only planner can't build, edit or commit, so it skips those rules.
             var planningSystemPromptRules = PromptBuilder.JoinRuleSections(
                 roleContext, PromptBuilder.BuildPlanningSystemPromptRules(job.Project, projectMemoryFilePath, injectRepoMap), priorWorkRules);
 
             var planningOutput = job.PlanningOutput;
-            if (ShouldUsePlanningStage(job.Project) && string.IsNullOrWhiteSpace(planningOutput))
+            if (NeedsLeadPlan(job))
             {
                 await UpdateJobStatusAsync(job.Id, JobStatus.Planning, dbContext, cancellationToken);
                 await NotifyStatusChangedAsync(job.Id, JobStatus.Planning);
 
-                const string planningActivity = "Generating implementation plan...";
+                const string planningActivity = "The Lead is planning the job...";
                 await UpdateHeartbeatAsync(job.Id, planningActivity, dbContext, cancellationToken);
                 await NotifyJobActivityAsync(job.Id, planningActivity, DateTime.UtcNow);
+                executionContext.LatestActivity = planningActivity;
+                await PersistExecutionCheckpointAsync(job.Id, JobStatus.Planning, executionContext, cancellationToken);
 
-                var planningProviderId = job.Project!.PlanningProviderId!.Value;
-                var planningProviderConfig = await providerService.GetByIdAsync(planningProviderId, cancellationToken);
-                if (planningProviderConfig == null)
+                // A Lead that can't plan never stops the job: the builder works from the goal.
+                planningOutput = await PlanWithLeadAsync(job, workingDirectory, planningSystemPromptRules, dbContext, cancellationToken);
+                if (planningOutput == null)
                 {
-                    await FailDuringPlanningAsync($"[Planning] Provider not found (ID: {planningProviderId}).");
-                    return;
+                    await NotifyJobActivityAsync(job.Id, $"Plan skipped: {job.PlanSkippedReason}", DateTime.UtcNow);
                 }
 
-                if (!ProviderPlanningHelper.SupportsPlanningMode(planningProviderConfig.Type))
-                {
-                    await FailDuringPlanningAsync($"[Planning] {planningProviderConfig.Name} does not support planning mode.");
-                    return;
-                }
-
-                var planningProvider = CreateProviderInstance(planningProviderConfig);
-                var planningValidationError = await ValidateProviderAvailabilityAsync(job.Id, planningProviderConfig, planningProvider, cancellationToken);
-                if (!string.IsNullOrWhiteSpace(planningValidationError))
-                {
-                    await FailDuringPlanningAsync($"[Planning] {planningProviderConfig.Name}: {planningValidationError}");
-                    return;
-                }
-
-                var planningPrompt = ProviderPlanningHelper.BuildPlanningPrompt(planningProviderConfig.Type, job.GoalPrompt);
-                if (job.ResumeFromStatus == JobStatus.Planning)
-                {
-                    planningPrompt = PromptBuilder.BuildRecoveryPrompt(
-                        planningPrompt,
-                        job.RecoveryPrompt,
-                        JobRecoveryHelper.TrimTail(job.ConsoleOutput, JobRecoveryHelper.MaxRecoveryConsoleOutputLength),
-                        job.LastResumeFailureReason,
-                        forceFreshSession: true);
-                }
-
-                ExecutionResult? planningResult = null;
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, browserExecutablePath, cancellationToken);
-                    executionContext.ActivePrompt = planningPrompt;
-                    executionContext.LatestActivity = planningActivity;
-                    await PersistExecutionCheckpointAsync(job.Id, JobStatus.Planning, executionContext, cancellationToken);
-
-                    using var planningExecutionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                    executionContext.ActiveExecutionCancellationTokenSource = planningExecutionCts;
-
-                    try
-                    {
-                        planningResult = await planningProvider.ExecuteWithOptionsAsync(
-                            planningPrompt,
-                            new ExecutionOptions
-                            {
-                                WorkingDirectory = workingDirectory,
-                                McpConfigPath = planningMcpOptions.McpConfigPath,
-                                BashEnvPath = planningMcpOptions.BashEnvPath,
-                                AdditionalArgs = planningMcpOptions.AdditionalArgs,
-                                UseBareMode = planningProviderConfig.Type == ProviderType.Claude
-                                    && planningProviderConfig.ConnectionMode == ProviderConnectionMode.CLI,
-                                Model = job.Project.PlanningModelId,
-                                ReasoningEffort = job.Project.PlanningReasoningEffort,
-                                Title = job.Title,
-                                AppendSystemPrompt = planningSystemPromptRules,
-                                EnvironmentVariables = jobEnvironmentVariables,
-                                DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools,
-                                StrictMcpConfig = true,
-                                DisableBuiltinMcps = true
-                            },
-                            progress,
-                            planningExecutionCts.Token);
-                    }
-                    catch (OperationCanceledException) when (executionContext.IsPausedForInteraction && !cancellationToken.IsCancellationRequested)
-                    {
-                        planningResult = new ExecutionResult
-                        {
-                            Success = false,
-                            IsPaused = true,
-                            SessionId = executionContext.SessionId
-                        };
-                    }
-                    finally
-                    {
-                        if (ReferenceEquals(executionContext.ActiveExecutionCancellationTokenSource, planningExecutionCts))
-                        {
-                            executionContext.ActiveExecutionCancellationTokenSource = null;
-                        }
-
-                        CleanupMcpExecutionResources(planningMcpOptions.Resources);
-                    }
-
-                    ThrowIfStoppedByTimeLimit(executionContext, planningResult);
-
-                    if (planningResult.IsPaused && executionContext.IsPausedForInteraction)
-                    {
-                        var interactionResume = await WaitForInteractionResponseAndBuildPromptAsync(planningPrompt);
-                        if (!interactionResume.Success || string.IsNullOrWhiteSpace(interactionResume.ResumePrompt))
-                        {
-                            await FailDuringPlanningAsync($"[Planning] {interactionResume.ErrorMessage}");
-                            return;
-                        }
-
-                        planningPrompt = interactionResume.ResumePrompt;
-                        executionContext.ActivePrompt = planningPrompt;
-                        executionContext.LatestActivity = "Resuming planning after user input...";
-                        await PersistExecutionCheckpointAsync(job.Id, JobStatus.Planning, executionContext, cancellationToken);
-                        continue;
-                    }
-
-                    break;
-                }
-
-                if (planningResult == null)
-                {
-                    await FailDuringPlanningAsync("[Planning] Planning was cancelled before the provider returned a result.");
-                    return;
-                }
-
-                await RecordUsageAndCheckExhaustionAsync(
-                    planningProviderConfig.Id,
-                    planningProviderConfig.Name,
-                    job.Id,
-                    planningResult,
-                    planningProvider,
-                    CancellationToken.None);
-
-                planningOutput = ProviderPlanningHelper.ExtractExecutionText(planningResult);
-                if (!planningResult.Success || string.IsNullOrWhiteSpace(planningOutput))
-                {
-                    var planningError = string.IsNullOrWhiteSpace(planningResult.ErrorMessage)
-                        ? $"{planningProviderConfig.Name} did not return a plan."
-                        : planningResult.ErrorMessage;
-                    await FailDuringPlanningAsync($"[Planning] {planningProviderConfig.Name}: {planningError}");
-                    return;
-                }
-
-                job.PlanningOutput = planningOutput.Trim();
-                var planningSummary = JobSummaryGenerator.ExtractCommitSummary(job.PlanningOutput);
-                if (!string.IsNullOrWhiteSpace(planningSummary))
-                {
-                    job.SessionSummary = planningSummary;
-                }
-                job.PlanningProviderId = planningProviderConfig.Id;
-                job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
-                job.PlanningReasoningEffortUsed = job.Project.PlanningReasoningEffort;
-                job.PlanningGeneratedAt = DateTime.UtcNow;
-                job.PlanningInputTokens = planningResult.InputTokens;
-                job.PlanningOutputTokens = planningResult.OutputTokens;
-                job.PlanningCostUsd = planningResult.CostUsd;
-                job.PlanningCommandUsed = executionContext.CommandUsed ?? planningResult.CommandUsed;
-
-                // Clear planning phase's command/process so execution phase starts clean
-                job.CommandUsed = null;
-                job.ProcessId = null;
-                executionContext.ProcessId = 0;
-                executionContext.CommandUsed = null;
                 JobRecoveryHelper.ClearRecoveryState(job);
-
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
-            await EnsureProjectSkillsMaterializedAsync(job.Project, skillStorage, cancellationToken);
+            await LoadProjectSkillsAsync(job.Project, dbContext, skillStorage, cancellationToken);
             await LoadLinkedProjectsAsync(job.Project, dbContext, cancellationToken);
             var currentPrompt = PromptBuilder.BuildExecutionPrompt(job, planningOutput, enableStructuring);
             var shouldRunRecoveryFlow = JobRecoveryHelper.IsResumeCandidate(job);
+
+            // A team job the Lead planned into steps is built one step at a time, each in a
+            // session of its own. currentStep stays null for every other job, built in one go.
+            var jobPrompt = PromptBuilder.BuildExecutionPrompt(job, null, enableStructuring);
+            var currentStep = await BeginChainAsync(job, executionContext, shouldRunRecoveryFlow, dbContext, cancellationToken);
+            StepRun? stepRun = null;
+            var stepUsageAtStart = (Input: 0, Output: 0, Cost: 0m);
+            // Set when the run stops between two steps to wait for the builder's usage.
+            SessionLimitHold? usageHold = null;
+
+            // A chain that was built before this run began is not built again. The Lead still
+            // has its say, and a step it adds is built like any other.
+            var chainWasBuilt = currentStep == null && await ChainIsBuiltAsync(job, dbContext, cancellationToken);
+            if (chainWasBuilt)
+            {
+                currentStep = await CheckWithLeadAsync(job, workingDirectory, planningSystemPromptRules, executionContext.GitCommitBefore, dbContext, cancellationToken);
+            }
+
+            if (currentStep != null || chainWasBuilt)
+            {
+                executionContext.CarriedOverUsage = await SumFinishedStepsAsync(job, dbContext, cancellationToken);
+
+                // Only a step a restart cut off is a recovery: it carries on in its own session.
+                // Any other step starts clean, with its own prompt, even in a resumed run.
+                if (currentStep is not { Status: JobStepStatus.Running } && shouldRunRecoveryFlow)
+                {
+                    JobRecoveryHelper.ClearRecoveryState(job);
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    shouldRunRecoveryFlow = false;
+                }
+            }
+
+            if (currentStep != null)
+            {
+                if (currentStep.Status != JobStepStatus.Running)
+                {
+                    await StartStepAsync(job, currentStep, dbContext, cancellationToken);
+                    sessionId = null;
+                    executionContext.SessionId = null;
+                }
+
+                stepRun = await DescribeStepAsync(job, jobPrompt, currentStep, executionContext.GitCommitBefore, dbContext, cancellationToken);
+                currentPrompt = stepRun.Prompt;
+                executionContext.LatestActivity = $"Step {stepRun.Position} of {stepRun.Count}: {currentStep.Title}";
+            }
+
             executionContext.ActivePrompt = currentPrompt;
             var attachedFiles = DeserializeAttachedFiles(job.AttachedFilesJson);
-            var cycleComplete = false;
+            // With every step built and nothing added by the Lead, no agent runs: the work goes to delivery.
+            var noAgentTurn = chainWasBuilt && currentStep == null;
+            var settled = noAgentTurn;
+            if (noAgentTurn)
+            {
+                lastResult = new ExecutionResult { Success = true };
+            }
+
             // From here until the agent is done, the user can steer it with messages.
             var executionPrompt = currentPrompt;
             IReadOnlyList<string>? nextTurnUserMessages = null;
@@ -1060,11 +931,10 @@ public partial class JobProcessingService
                 return preassignedSessionId;
             }
 
-            async Task<ExecutionResult> ExecuteCurrentCycleAsync(string promptToExecute, string? requestedSessionId)
+            async Task<ExecutionResult> ExecuteTurnAsync(string promptToExecute, string? requestedSessionId)
             {
                 var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, browserExecutablePath, cancellationToken);
-                var wantsOneHourCache = provider.Type == ProviderType.Claude
-                    && (job.CycleMode != CycleMode.SingleCycle || job.SwarmId != null);
+                var wantsOneHourCache = provider.Type == ProviderType.Claude && job.SwarmId != null;
                 var hasMcp = !string.IsNullOrEmpty(mcpOptions.McpConfigPath);
                 var preassignedSessionId = await TryPreassignSessionIdAsync(requestedSessionId);
                 using var executionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -1241,14 +1111,16 @@ public partial class JobProcessingService
                     return false;
                 }
 
+                // A step is reviewed on its own change, against what the step was to do.
                 var feedback = await TryGetReviewFeedbackAsync(
                     job,
                     workingDirectory,
-                    executionContext.GitCommitBefore,
+                    stepRun?.BaseCommit ?? executionContext.GitCommitBefore,
                     sessionId,
                     canSkipFinalBuild: executionContext.PriorWorkRestore is not { ConflictedFiles.Count: > 0 }
                         && executionContext.BranchMerge is not { ConflictedFiles.Count: > 0 },
-                    cancellationToken);
+                    cancellationToken,
+                    stepRun?.Scope);
                 if (feedback == null)
                 {
                     return false;
@@ -1270,41 +1142,18 @@ public partial class JobProcessingService
                     userMessages,
                     JobRecoveryHelper.TrimTail(executionContext.GetConsoleOutput(), JobRecoveryHelper.MaxRecoveryConsoleOutputLength));
 
-            while (currentCycle <= effectiveMaxCycles && !cycleComplete && !cancellationToken.IsCancellationRequested)
+            // One pass is one turn of the agent. The run goes round again whenever something keeps
+            // the agent going: an answer to its question, a message from the user, review findings.
+            while (!settled && !cancellationToken.IsCancellationRequested)
             {
-                if (effectiveMaxCycles > 1)
-                {
-                    _logger.LogInformation("Starting cycle {Current}/{Max} for job {JobId}",
-                        currentCycle, effectiveMaxCycles, job.Id);
-
-                    // Notify UI about cycle progress
-                    if (_jobUpdateService != null)
-                    {
-                        await _jobUpdateService.NotifyJobCycleProgress(job.Id, currentCycle, effectiveMaxCycles);
-                    }
-
-                    // Update current cycle in database
-                    using var cycleScope = _scopeFactory.CreateScope();
-                    var cycleDbContext = cycleScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
-                    var jobForCycle = await cycleDbContext.Jobs.FindAsync(new object[] { job.Id }, cancellationToken);
-                    if (jobForCycle != null)
-                    {
-                        jobForCycle.CurrentCycle = currentCycle;
-                        await cycleDbContext.SaveChangesAsync(cancellationToken);
-                    }
-                }
-
                 // A turn carrying the user's messages continues the session they interrupted.
                 var turnUserMessages = nextTurnUserMessages;
                 nextTurnUserMessages = null;
 
-                // Determine session ID for this cycle. Recovery runs always attempt the persisted
-                // provider session first, regardless of normal cycle session policy.
-                var cycleSessionId = shouldRunRecoveryFlow || turnUserMessages != null
-                    ? sessionId
-                    : job.CycleSessionMode == CycleSessionMode.ContinueSession ? sessionId : null;
+                // Every turn continues the job's session, when it has one.
+                var turnSessionId = sessionId;
 
-                if (currentCycle == job.CurrentCycle && turnUserMessages == null)
+                if (turnUserMessages == null)
                 {
                     await RecordProviderAttemptAsync(
                         job.Id,
@@ -1323,7 +1172,7 @@ public partial class JobProcessingService
                 {
                     promptToExecute = BuildRecoveryPrompt(job, executionContext, currentPrompt);
                     attemptedSessionResume = JobRecoveryHelper.ShouldAttemptSessionResume(job)
-                        && !string.IsNullOrWhiteSpace(cycleSessionId);
+                        && !string.IsNullOrWhiteSpace(turnSessionId);
                     if (attemptedSessionResume)
                     {
                         JobRecoveryHelper.RecordResumeAttempt(job);
@@ -1331,11 +1180,11 @@ public partial class JobProcessingService
                     }
                     else
                     {
-                        cycleSessionId = null;
+                        turnSessionId = null;
                     }
                 }
 
-                if (turnUserMessages != null && string.IsNullOrWhiteSpace(cycleSessionId))
+                if (turnUserMessages != null && string.IsNullOrWhiteSpace(turnSessionId))
                 {
                     promptToExecute = BuildUserMessagesFreshSessionPrompt(turnUserMessages);
                 }
@@ -1346,7 +1195,7 @@ public partial class JobProcessingService
                     : executionContext.LatestActivity;
                 await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
 
-                var result = await ExecuteCurrentCycleAsync(promptToExecute, cycleSessionId);
+                var result = await ExecuteTurnAsync(promptToExecute, turnSessionId);
                 ThrowIfStoppedByTimeLimit(executionContext, result);
                 if (attemptedSessionResume && IsSessionResumeFailure(result))
                 {
@@ -1377,9 +1226,9 @@ public partial class JobProcessingService
                     executionContext.LatestActivity = "Retrying interrupted job in a fresh session...";
                     await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
 
-                    result = await ExecuteCurrentCycleAsync(freshRecoveryPrompt, null);
+                    result = await ExecuteTurnAsync(freshRecoveryPrompt, null);
                 }
-                else if (turnUserMessages != null && !string.IsNullOrWhiteSpace(cycleSessionId) && IsSessionResumeFailure(result))
+                else if (turnUserMessages != null && !string.IsNullOrWhiteSpace(turnSessionId) && IsSessionResumeFailure(result))
                 {
                     _logger.LogWarning(
                         "Job {JobId} could not resume its session for the user's message. Continuing in a fresh session. Error: {Error}",
@@ -1398,7 +1247,7 @@ public partial class JobProcessingService
                     executionContext.ActivePrompt = freshPrompt;
                     await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
 
-                    result = await ExecuteCurrentCycleAsync(freshPrompt, null);
+                    result = await ExecuteTurnAsync(freshPrompt, null);
                 }
 
                 // Store last result and accumulate tokens/cost
@@ -1429,7 +1278,7 @@ public partial class JobProcessingService
                             Success = false,
                             ErrorMessage = interactionResume.ErrorMessage
                         };
-                        cycleComplete = true;
+                        settled = true;
                         break;
                     }
 
@@ -1455,12 +1304,12 @@ public partial class JobProcessingService
                     }
                 }
 
-                // Check for cycle completion conditions
+                // A failed turn ends the run
                 if (!result.Success)
                 {
-                    _logger.LogWarning("Cycle {Current} failed for job {JobId}: {Error}",
-                        currentCycle, job.Id, result.ErrorMessage);
-                    cycleComplete = true;
+                    _logger.LogWarning("The agent's turn failed for job {JobId}: {Error}",
+                        job.Id, result.ErrorMessage);
+                    settled = true;
                     break;
                 }
 
@@ -1471,86 +1320,90 @@ public partial class JobProcessingService
                     shouldRunRecoveryFlow = false;
                 }
 
-                // Check cancellation between cycles
+                // Check cancellation between turns
                 using var cancelCheckScope = _scopeFactory.CreateScope();
                 var cancelCheckService = cancelCheckScope.ServiceProvider.GetRequiredService<IJobService>();
                 if (await cancelCheckService.IsCancellationRequestedAsync(job.Id, CancellationToken.None))
                 {
-                    _logger.LogInformation("Job {JobId} cancelled between cycles", job.Id);
-                    cycleComplete = true;
+                    _logger.LogInformation("Job {JobId} cancelled between turns", job.Id);
+                    settled = true;
                     break;
                 }
 
-                // Determine if we should continue cycling
-                if (job.CycleMode == CycleMode.SingleCycle || currentCycle >= effectiveMaxCycles)
+                // An agent that ended its run with a question gets an answer and carries on
+                // in the same session, rather than leaving the work for the user to pick up.
+                var followUp = await TryAnswerClosingQuestionAsync(result);
+                if (followUp != null)
                 {
-                    // An agent that ended its run with a question gets an answer and carries on
-                    // in the same session, rather than leaving the work for the user to pick up.
-                    var followUp = await TryAnswerClosingQuestionAsync(result);
-                    if (followUp != null)
+                    await SaveRunMessagesAsync(cancelCheckService, job.Id, result);
+                    await cancelCheckService.AddMessageAsync(job.Id, new JobMessage { Role = MessageRole.User, Content = followUp }, CancellationToken.None);
+                    await NotifyJobMessageAddedAsync(job.Id);
+                    currentPrompt = followUp;
+                    executionContext.ActivePrompt = currentPrompt;
+                    executionContext.LatestActivity = "Continuing after inference answered the agent's question...";
+                    await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
+                    continue;
+                }
+
+                if (await ContinueWithLateUserMessagesAsync(result))
+                {
+                    continue;
+                }
+
+                if (await ContinueWithReviewFeedbackAsync(result, cancelCheckService))
+                {
+                    continue;
+                }
+
+                // A step is finished: its work is saved, and the next one starts a session of its own.
+                if (currentStep != null)
+                {
+                    currentStep.InputTokens = (executionInputTokens ?? 0) - stepUsageAtStart.Input;
+                    currentStep.OutputTokens = (executionOutputTokens ?? 0) - stepUsageAtStart.Output;
+                    currentStep.CostUsd = (executionCostUsd ?? 0m) - stepUsageAtStart.Cost;
+                    // With no step left, the Lead reads the result and may ask for more.
+                    var nextStep = await FinishStepAsync(job, currentStep, result, workingDirectory, executionContext.GitCommitBefore, dbContext, cancellationToken)
+                        ?? await CheckWithLeadAsync(job, workingDirectory, planningSystemPromptRules, executionContext.GitCommitBefore, dbContext, cancellationToken);
+                    if (nextStep != null)
                     {
                         await SaveRunMessagesAsync(cancelCheckService, job.Id, result);
-                        await cancelCheckService.AddMessageAsync(job.Id, new JobMessage { Role = MessageRole.User, Content = followUp }, CancellationToken.None);
-                        await NotifyJobMessageAddedAsync(job.Id);
-                        currentPrompt = followUp;
+
+                        // Between two steps is where a chain can stop cleanly, so that is where
+                        // the builder's usage is read.
+                        usageHold = await CheckUsageBetweenStepsAsync(job, provider, result, dbContext, cancellationToken);
+                        if (usageHold != null)
+                        {
+                            settled = true;
+                            break;
+                        }
+
+                        currentStep = nextStep;
+                        await StartStepAsync(job, currentStep, dbContext, cancellationToken);
+                        stepRun = await DescribeStepAsync(job, jobPrompt, currentStep, executionContext.GitCommitBefore, dbContext, cancellationToken);
+                        stepUsageAtStart = (executionInputTokens ?? 0, executionOutputTokens ?? 0, executionCostUsd ?? 0m);
+                        currentPrompt = stepRun.Prompt;
+                        executionPrompt = currentPrompt;
+                        sessionId = null;
+                        executionContext.SessionId = null;
                         executionContext.ActivePrompt = currentPrompt;
-                        executionContext.LatestActivity = "Continuing after inference answered the agent's question...";
+                        executionContext.LatestActivity = $"Step {stepRun.Position} of {stepRun.Count}: {currentStep.Title}";
+                        await NotifyJobActivityAsync(job.Id, executionContext.LatestActivity, DateTime.UtcNow);
                         await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
                         continue;
                     }
-
-                    if (await ContinueWithLateUserMessagesAsync(result))
-                    {
-                        continue;
-                    }
-
-                    if (await ContinueWithReviewFeedbackAsync(result, cancelCheckService))
-                    {
-                        continue;
-                    }
-
-                    cycleComplete = true;
                 }
-                else if (job.CycleMode == CycleMode.Autonomous)
-                {
-                    // Check if output contains CYCLE_COMPLETE marker
-                    if (result.Output?.Contains("CYCLE_COMPLETE", StringComparison.OrdinalIgnoreCase) == true)
-                    {
-                        _logger.LogInformation("Job {JobId} completed autonomously at cycle {Current}",
-                            job.Id, currentCycle);
-                        if (await ContinueWithLateUserMessagesAsync(result))
-                        {
-                            continue;
-                        }
 
-                        if (await ContinueWithReviewFeedbackAsync(result, cancelCheckService))
-                        {
-                            continue;
-                        }
-
-                        cycleComplete = true;
-                    }
-                    else
-                    {
-                        // Build next cycle prompt for autonomous mode
-                        currentPrompt = string.IsNullOrWhiteSpace(job.CycleReviewPrompt)
-                            ? "Review all changes made so far. Verify the code compiles and tests pass. If the task is complete and working correctly, respond with CYCLE_COMPLETE. Otherwise, continue implementing the remaining work."
-                            : job.CycleReviewPrompt;
-                        executionContext.ActivePrompt = currentPrompt;
-                        currentCycle++;
-                    }
-                }
-                else if (job.CycleMode == CycleMode.FixedCount)
-                {
-                    // Build next cycle prompt for fixed count mode
-                    currentPrompt = $"Continue implementing the task. This is cycle {currentCycle + 1} of {effectiveMaxCycles}. Review the current state and continue where you left off.";
-                    executionContext.ActivePrompt = currentPrompt;
-                    currentCycle++;
-                }
+                settled = true;
             }
 
             // No agent is left to read messages sent from here on.
             CloseUserMessages(job.Id, executionContext);
+
+            // The job's review line speaks for all its steps, not just the last.
+            if (chainWasBuilt || currentStep is { Status: JobStepStatus.Done })
+            {
+                await SummariseStepReviewsAsync(job, dbContext, CancellationToken.None);
+            }
 
             // The agent is done, or was stopped: the checks and delivery that follow must not trip
             // the time limit.
@@ -1565,7 +1418,8 @@ public partial class JobProcessingService
 
             // If the provider did not report token usage, fall back to text-length estimates.
             // This is common for GitHub Copilot CLI which reports premium requests rather than raw tokens.
-            if (!finalResult.InputTokens.HasValue && !finalResult.OutputTokens.HasValue)
+            // A run with no agent turn made no request, so there is nothing to estimate.
+            if (!noAgentTurn && !finalResult.InputTokens.HasValue && !finalResult.OutputTokens.HasValue)
             {
                 var inputText = job.GoalPrompt + (job.PlanningOutput is { Length: > 0 } ? "\n" + job.PlanningOutput : "");
                 finalResult.InputTokens = TokenHelper.EstimateTokenCount(inputText);
@@ -1617,6 +1471,18 @@ public partial class JobProcessingService
                 await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled by user");
 
                 _logger.LogInformation("Job {JobId} was cancelled during execution", job.Id);
+            }
+            else if (usageHold != null)
+            {
+                await UpdateProviderAttemptOutcomeAsync(job.Id, job.ActiveExecutionIndex, true, finalResult.ModelUsed ?? job.ModelUsed, dbContext, CancellationToken.None);
+                var providerDisplayName = job.Provider?.Name;
+                providerDisplayName ??= provider?.Name;
+                providerDisplayName ??= "Unknown Provider";
+                await RequeueChainBetweenStepsAsync(job.Id, usageHold.Describe(providerDisplayName), finalResult, executionContext, dbContext, CancellationToken.None);
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, provider!, CancellationToken.None);
+                await NotifyStatusChangedAsync(job.Id, JobStatus.New);
+
+                _logger.LogInformation("Job {JobId} stopped between two steps to wait for {ProviderName}'s usage", job.Id, providerDisplayName);
             }
             else if (finalResult.Success)
             {
@@ -1806,7 +1672,8 @@ public partial class JobProcessingService
                             // Not queued again: another run would spend the same budget again.
                             timeLimitMessage = JobTimeLimit.BuildStopMessage(
                                 executionContext.TimeLimit!.Limit,
-                                jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved ? jobEntity.GitCheckpointBranch : null);
+                                jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved ? jobEntity.GitCheckpointBranch : null,
+                                hasSteps: jobEntity.TeamRun && await resetDbContext.JobSteps.AnyAsync(step => step.JobId == jobEntity.Id && step.Status != JobStepStatus.Earlier));
                             JobStateMachine.TryTransition(jobEntity, JobStatus.Failed, timeLimitMessage);
                             JobRecoveryHelper.ClearRecoveryState(jobEntity);
                             jobEntity.ErrorMessage = timeLimitMessage;
@@ -1852,6 +1719,7 @@ public partial class JobProcessingService
         finally
         {
             CloseUserMessages(job.Id, executionContext);
+            EndJobHelpers(job.Id);
             executionContext.TimeLimit?.Dispose();
             await ReleaseSwarmWorktreeAfterRunAsync(job.Id, executionContext);
 
@@ -1884,7 +1752,7 @@ public partial class JobProcessingService
 
     /// <summary>
     /// A run cut short by the time limit goes to the cancellation handling, which keeps its work
-    /// and fails the job, instead of on to another cycle or a fallback provider.
+    /// and fails the job, instead of on to another turn or a fallback provider.
     /// </summary>
     private static void ThrowIfStoppedByTimeLimit(JobExecutionContext executionContext, ExecutionResult? result)
     {
@@ -1943,61 +1811,32 @@ public partial class JobProcessingService
             .LoadAsync(cancellationToken);
     }
 
-    private async Task EnsureProjectSkillsMaterializedAsync(
-        Project? project,
-        ISkillStorageService skillStorage,
-        CancellationToken cancellationToken)
-    {
-        if (project?.AgentAssignments is null)
-        {
-            return;
-        }
-
-        var seen = new HashSet<Guid>();
-        foreach (var assignment in project.AgentAssignments)
-        {
-            var agent = assignment.Agent;
-            if (agent?.SkillLinks is null)
-            {
-                continue;
-            }
-
-            foreach (var link in agent.SkillLinks)
-            {
-                if (link.Skill is null || !seen.Add(link.Skill.Id))
-                {
-                    continue;
-                }
-
-                await MaterializeSkillSafelyAsync(link.Skill, skillStorage, cancellationToken);
-            }
-        }
-    }
-
     /// <summary>
-    /// Ensures an individual agent's skills have been materialized ahead of
-    /// <see cref="PromptBuilder.BuildRoleSystemPromptContext"/>. Separate from the project-level
-    /// path because swarm jobs load the agent independently of <c>job.Project</c>.
+    /// Gives the job every skill that is switched on: each is written to disk and listed in the
+    /// prompt (<see cref="PromptBuilder"/>), so the agent can load the ones the task calls for.
     /// </summary>
-    private async Task EnsureAgentSkillsMaterializedAsync(
-        Agent agent,
+    internal async Task LoadProjectSkillsAsync(
+        Project? project,
+        VibeSwarmDbContext dbContext,
         ISkillStorageService skillStorage,
         CancellationToken cancellationToken)
     {
-        if (agent.SkillLinks is null)
+        if (project is null)
         {
             return;
         }
 
-        foreach (var link in agent.SkillLinks)
+        // Tracked, so the storage path a skill gets when first written out is saved with it.
+        var skills = await dbContext.Skills
+            .Where(skill => skill.IsEnabled)
+            .OrderBy(skill => skill.Name)
+            .ToListAsync(cancellationToken);
+        foreach (var skill in skills)
         {
-            if (link.Skill is null)
-            {
-                continue;
-            }
-
-            await MaterializeSkillSafelyAsync(link.Skill, skillStorage, cancellationToken);
+            await MaterializeSkillSafelyAsync(skill, skillStorage, cancellationToken);
         }
+
+        project.AvailableSkills = skills;
     }
 
     private async Task MaterializeSkillSafelyAsync(

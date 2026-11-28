@@ -1,0 +1,82 @@
+@* One profile as a grouped-list row: its name and what it runs on, opening in place for the
+   details and actions. *@
+
+<ListRow Icon="@(Profile.InferenceProviderId.HasValue ? "cpu" : "person-badge")" Title="@Profile.Name" Subtitle="@Summary">
+	<Trailing>
+		@if (Profile.IsProviderDefault)
+		{
+			<span class="small fg-2 flex-shrink-0">Default</span>
+		}
+	</Trailing>
+	<ChildContent>
+		<dl class="d-flex flex-column gap-3 small mb-0">
+			@foreach (var (label, value) in Facts)
+			{
+				<div class="d-flex justify-content-between gap-5">
+					<dt class="fw-normal fg-1 flex-shrink-0">@label</dt>
+					<dd class="mb-0 text-end text-break">@value</dd>
+				</div>
+			}
+		</dl>
+
+		<div class="d-flex align-items-center gap-3">
+			<button type="button" class="btn-sm btn-solid theme-secondary" @onclick="() => OnEdit.InvokeAsync(Profile)">Edit</button>
+			@if (!Profile.IsProviderDefault)
+			{
+				<button type="button" class="btn-sm btn-link fg-danger text-decoration-none px-0 ms-auto" @onclick="() => OnDelete.InvokeAsync(Profile)">
+					<i class="bi bi-trash"></i>Delete
+				</button>
+			}
+		</div>
+	</ChildContent>
+</ListRow>
+
+@code {
+	[Parameter, EditorRequired]
+	public Profile Profile { get; set; } = new();
+
+	[Parameter]
+	public EventCallback<Profile> OnEdit { get; set; }
+
+	[Parameter]
+	public EventCallback<Profile> OnDelete { get; set; }
+
+	/// <summary>What the profile runs on, in one quiet line: provider · model · reasoning.</summary>
+	private string Summary => Describe(Profile);
+
+	private IEnumerable<(string Label, string Value)> Facts
+	{
+		get
+		{
+			if (!string.IsNullOrWhiteSpace(Profile.Description))
+			{
+				yield return ("Description", Profile.Description);
+			}
+
+			yield return ("Provider", ProviderName(Profile) ?? "Unknown provider");
+			yield return ("Model", Profile.ModelId ?? "Provider default");
+			if (Profile.InferenceProviderId.HasValue)
+			{
+				yield return ("Kind", "Inference: answers questions, can't run jobs");
+			}
+			else
+			{
+				yield return ("Reasoning", Profile.ReasoningEffort ?? "Provider default");
+			}
+
+			if (Profile.IsProviderDefault)
+			{
+				yield return ("Default", "This provider's default profile, kept while the provider exists");
+			}
+		}
+	}
+
+	public static string Describe(Profile profile)
+	{
+		var parts = new[] { ProviderName(profile), profile.ModelId, profile.ReasoningEffort }
+			.Where(part => !string.IsNullOrWhiteSpace(part));
+		return string.Join(" · ", parts);
+	}
+
+	private static string? ProviderName(Profile profile) => profile.Provider?.Name ?? profile.InferenceProvider?.Name;
+}

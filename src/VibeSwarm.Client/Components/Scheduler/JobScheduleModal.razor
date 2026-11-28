@@ -1,9 +1,7 @@
 @using VibeSwarm.Shared.Validation
 @inject IJobScheduleService JobScheduleService
 @inject IProjectService ProjectService
-@inject IAgentService AgentService
-@inject IProviderService ProviderService
-@inject IInferenceProviderService InferenceProviderService
+@inject IServiceProvider Services
 @inject AppTimeZoneService AppTimeZoneService
 @inject NotificationService NotificationService
 
@@ -63,116 +61,17 @@
 			<div class="row g-5">
 				@if (Schedule.ScheduleType == JobScheduleType.RunJob)
 				{
-					<div class="col-12 lg:col-4">
-						<label for="schedule-target" class="form-label">Executor Type</label>
-						<InputSelect id="schedule-target" @bind-Value="Schedule.ExecutionTarget" @bind-Value:after="OnExecutionTargetChanged" class="form-control">
-							<option value="@JobScheduleExecutionTarget.Provider">Provider</option>
-							<option value="@JobScheduleExecutionTarget.Agent">Agent</option>
-						</InputSelect>
-						<div class="form-text">Choose a direct provider or a project agent that should run this task.</div>
-					</div>
-
-					@if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
-					{
-						<div class="col-12 lg:col-4">
-							<label for="schedule-provider" class="form-label">Provider</label>
-							<select id="schedule-provider" class="form-control" value="@GetProviderValue()" @onchange="OnProviderChanged"
-									disabled="@(!_allowedProviders.Any())">
-								<option value="">@(_allowedProviders.Any() ? "Select provider..." : "No enabled providers")</option>
-								@foreach (var provider in _allowedProviders)
-								{
-									<option value="@provider.Id">@provider.Name</option>
-								}
-							</select>
-						</div>
-					}
-					else
-					{
-						<div class="col-12 lg:col-4">
-							<label for="schedule-team-role" class="form-label">Agent</label>
-							<select id="schedule-team-role" class="form-control" value="@GetAgentValue()" @onchange="OnAgentChanged"
-									disabled="@(!_agents.Any())">
-								<option value="">@(_agents.Any() ? "Select agent..." : "No enabled agents")</option>
-								@foreach (var agent in _agents)
-								{
-									<option value="@agent.Id">@GetAgentDisplayText(agent)</option>
-								}
-							</select>
-							@if (!_agents.Any())
-							{
-								<div class="form-text fg-warning">Create an enabled agent from the Agents page first.</div>
-							}
-						</div>
-					}
+					<ProfilePicker Id="schedule-profile" Class="col-12 lg:col-4" Label="Run with" Profiles="_profiles" Allowed="ProfileRoles.CanBuild"
+								   SelectedProfileId="Schedule.ProfileId" EmptyLabel="Project's Build profile"
+								   OnSelected="profile => Schedule.ProfileId = profile?.Id" />
 				}
 				else
 				{
-					<div class="col-12 lg:col-4">
-						<label for="schedule-inference-provider" class="form-label">Inference Provider</label>
-						<select id="schedule-inference-provider" class="form-control" value="@GetInferenceProviderValue()" @onchange="OnInferenceProviderChanged"
-								disabled="@(!_inferenceProviders.Any())">
-							<option value="">@(_inferenceProviders.Any() ? "Select inference provider..." : "No enabled inference providers")</option>
-							@foreach (var provider in _inferenceProviders)
-							{
-								<option value="@provider.Id">@provider.Name</option>
-							}
-						</select>
-						@if (!_inferenceProviders.Any())
-						{
-							<div class="form-text fg-warning">Configure an enabled inference provider first.</div>
-						}
-					</div>
+					<ProfilePicker Id="schedule-ideas-profile" Class="col-12 lg:col-4" Label="Ideas come from" Profiles="_profiles"
+								   Allowed="ProjectInferenceRoles.CanAnswerAlone" SelectedProfileId="Schedule.ProfileId"
+								   OnSelected="profile => Schedule.ProfileId = profile?.Id" />
 				}
-
-				<div class="col-12 lg:col-4">
-					<label for="schedule-model" class="form-label">Model</label>
-					<div class="input-group">
-						<select id="schedule-model" class="form-control" @bind="_selectedModelId" @bind:after="OnModelChanged"
-								disabled="@(_isLoadingModels || !_models.Any())">
-							<option value="">@(_isLoadingModels ? "Loading..." : "Use assigned default")</option>
-							@foreach (var model in _models)
-							{
-								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
-							}
-						</select>
-						<button type="button" class="btn-solid theme-secondary"
-								@onclick="RefreshModelsAsync"
-								disabled="@(_isRefreshingModels || _isLoadingModels || !ResolveSelectedProviderId().HasValue)"
-								title="Refresh models from provider">
-							@if (_isRefreshingModels)
-							{
-								<span class="spinner-border spinner-sm" role="status"></span>
-							}
-							else
-							{
-								<i class="bi bi-arrow-clockwise"></i>
-							}
-						</button>
-					</div>
-					<div class="form-text">@GetModelHelpText()</div>
-				</div>
 			</div>
-
-			@if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent)
-			{
-				var selectedAgent = GetSelectedAgent();
-				@if (selectedAgent != null)
-				{
-					<div class="small fg-1 mt-3 d-flex flex-wrap gap-5">
-						<span class="d-inline-flex align-items-center gap-1">
-							<i class="bi bi-cpu opacity-75"></i>
-							@(selectedAgent.DefaultProvider?.Name ?? "No default provider")
-						</span>
-						@if (!string.IsNullOrWhiteSpace(selectedAgent.DefaultReasoningEffort))
-						{
-							<span class="d-inline-flex align-items-center gap-1">
-								<i class="bi bi-lightning-charge opacity-75"></i>
-								@selectedAgent.DefaultReasoningEffort
-							</span>
-						}
-					</div>
-				}
-			}
 
 			<div class="row g-5 mt-1">
 				<div class="col-12 lg:col-4">
@@ -283,15 +182,7 @@
 	private string? ErrorMessage { get; set; }
 	private bool _previousIsVisible;
 	private List<Project> _projects = [];
-	private readonly Dictionary<Guid, Project> _projectDetailsById = [];
-	private List<Agent> _agents = [];
-	private List<Provider> _providers = [];
-	private List<InferenceProvider> _inferenceProviders = [];
-	private List<Provider> _allowedProviders = [];
-	private List<ProviderModel> _models = [];
-	private bool _isLoadingModels;
-	private bool _isRefreshingModels;
-	private string _selectedModelId = string.Empty;
+	private List<Profile> _profiles = [];
 	private string _timeValue = "09:00";
 
 	protected override async Task OnInitializedAsync()
@@ -305,19 +196,12 @@
 		if (IsVisible && !_previousIsVisible)
 		{
 			await LoadLookupDataAsync();
-			await ResetStateAsync();
+			ResetState();
 		}
-		else if (!_projects.Any() || !_providers.Any() || !_agents.Any())
+		else if (!_projects.Any())
 		{
 			await LoadLookupDataAsync();
-			await SyncExecutionTargetsAsync(preserveCurrentSelection: true);
-		}
-		else if (IsVisible && Schedule.ProjectId != Guid.Empty)
-		{
-			// Modal is already open — clear the project detail cache so provider
-			// selections are refreshed on re-render (e.g. timer-driven parent updates).
-			_projectDetailsById.Remove(Schedule.ProjectId);
-			await SyncExecutionTargetsAsync(preserveCurrentSelection: true);
+			SyncExecutionTargets();
 		}
 
 		_previousIsVisible = IsVisible;
@@ -325,33 +209,27 @@
 
 	private async Task LoadLookupDataAsync()
 	{
-		var projectsTask = ProjectService.GetAllAsync();
-		var agentsTask = AgentService.GetAllAsync();
-		var providersTask = ProviderService.GetAllAsync();
-		var inferenceProvidersTask = InferenceProviderService.GetEnabledAsync();
-		await Task.WhenAll(projectsTask, agentsTask, providersTask, inferenceProvidersTask);
-
-		_projects = projectsTask.Result
+		_projects = (await ProjectService.GetAllAsync())
 			.OrderBy(project => project.Name)
 			.ToList();
-		_projectDetailsById.Clear();
-		_agents = agentsTask.Result
-			.Where(agent => agent.IsEnabled)
-			.OrderBy(agent => agent.Name)
-			.ToList();
-		_providers = providersTask.Result
-			.Where(provider => provider.IsEnabled)
-			.OrderByDescending(provider => provider.IsDefault)
-			.ThenBy(provider => provider.Name)
-			.ToList();
-		_inferenceProviders = inferenceProvidersTask.Result.ToList();
+
+		// Resolved lazily so pages and tests that never open the editor need no registration.
+		try
+		{
+			_profiles = Services.GetService<IProfileService>() is { } profileService
+				? (await profileService.GetAllAsync()).ToList()
+				: [];
+		}
+		catch (HttpRequestException)
+		{
+			_profiles = [];
+		}
 	}
 
-	private async Task ResetStateAsync()
+	private void ResetState()
 	{
 		ErrorMessage = null;
 		IsSaving = false;
-		_models = [];
 
 		if (EditSchedule != null)
 		{
@@ -360,12 +238,9 @@
 				Id = EditSchedule.Id,
 				ProjectId = EditSchedule.ProjectId,
 				ScheduleType = EditSchedule.ScheduleType,
-				ExecutionTarget = EditSchedule.ExecutionTarget,
-				ProviderId = EditSchedule.ProviderId,
-				AgentId = EditSchedule.AgentId,
-				InferenceProviderId = EditSchedule.InferenceProviderId,
+				// The server keeps the provider and model beside the profile; only the profile is sent.
+				ProfileId = EditSchedule.ProfileId,
 				Prompt = EditSchedule.Prompt,
-				ModelId = EditSchedule.ModelId,
 				IdeaCount = EditSchedule.IdeaCount,
 				Frequency = EditSchedule.Frequency,
 				IntervalMinutes = EditSchedule.IntervalMinutes,
@@ -388,8 +263,6 @@
 			{
 				ProjectId = project?.Id ?? Guid.Empty,
 				ScheduleType = JobScheduleType.RunJob,
-				ExecutionTarget = JobScheduleExecutionTarget.Provider,
-				InferenceProviderId = _inferenceProviders.FirstOrDefault()?.Id,
 				IdeaCount = SuggestIdeasRequest.DefaultIdeaCount,
 				Frequency = JobScheduleFrequency.Daily,
 				IntervalMinutes = 15,
@@ -402,254 +275,39 @@
 		}
 
 		_timeValue = $"{Schedule.HourUtc:D2}:{Schedule.MinuteUtc:D2}";
-		await SyncExecutionTargetsAsync(preserveCurrentSelection: IsEdit);
+		SyncExecutionTargets();
 	}
 
-	private Project? GetSelectedProject()
-		=> _projects.FirstOrDefault(project => project.Id == Schedule.ProjectId);
-
-	private async Task<Project?> GetSelectedProjectAsync()
+	private void SyncExecutionTargets()
 	{
-		if (Schedule.ProjectId == Guid.Empty)
-		{
-			return null;
-		}
-
-		if (_projectDetailsById.TryGetValue(Schedule.ProjectId, out var cachedProject))
-		{
-			return cachedProject;
-		}
-
-		var detailedProject = await ProjectService.GetByIdAsync(Schedule.ProjectId);
-		if (detailedProject == null)
-		{
-			return GetSelectedProject();
-		}
-
-		_projectDetailsById[Schedule.ProjectId] = detailedProject;
-		var projectIndex = _projects.FindIndex(project => project.Id == detailedProject.Id);
-		if (projectIndex >= 0)
-		{
-			_projects[projectIndex] = detailedProject;
-		}
-		else
-		{
-			_projects.Add(detailedProject);
-			_projects = _projects
-				.OrderBy(project => project.Name)
-				.ToList();
-		}
-
-		return detailedProject;
-	}
-
-	private async Task SyncExecutionTargetsAsync(bool preserveCurrentSelection)
-	{
-		var project = await GetSelectedProjectAsync();
-		_allowedProviders = ProjectExecutionDefaults.GetAllowedProviders(project, _providers);
-
 		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 		{
-			if (!preserveCurrentSelection || !Schedule.InferenceProviderId.HasValue || !_inferenceProviders.Any(provider => provider.Id == Schedule.InferenceProviderId.Value))
+			// Ideas need an inference profile; start on the first when the pick isn't one.
+			if (!IdeaProfiles.Any(profile => profile.Id == Schedule.ProfileId))
 			{
-				Schedule.InferenceProviderId = _inferenceProviders.FirstOrDefault()?.Id;
+				Schedule.ProfileId = IdeaProfiles.FirstOrDefault()?.Id;
 			}
 
-			Schedule.ProviderId = null;
-			Schedule.AgentId = null;
 		}
-		else if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		else if (IdeaProfiles.Any(profile => profile.Id == Schedule.ProfileId))
 		{
-			if (!preserveCurrentSelection || !Schedule.ProviderId.HasValue || !_allowedProviders.Any(provider => provider.Id == Schedule.ProviderId.Value))
-			{
-				Schedule.ProviderId = ProjectExecutionDefaults.GetPreferredProvider(project, _providers)?.Id
-					?? _allowedProviders.FirstOrDefault()?.Id;
-			}
-
-			Schedule.AgentId = null;
-		}
-		else
-		{
-			if (!preserveCurrentSelection || !Schedule.AgentId.HasValue || !_agents.Any(agent => agent.Id == Schedule.AgentId.Value))
-			{
-				Schedule.AgentId = _agents.FirstOrDefault()?.Id;
-			}
-
-			Schedule.ProviderId = null;
-		}
-
-		await LoadModelsAsync();
-	}
-
-	private async Task LoadModelsAsync()
-	{
-		_models = [];
-		_selectedModelId = string.Empty;
-
-		var resolvedProviderId = ResolveSelectedProviderId();
-		if (!resolvedProviderId.HasValue)
-		{
-			Schedule.ModelId = null;
-			return;
-		}
-
-		_isLoadingModels = true;
-		StateHasChanged();
-
-		try
-		{
-			if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
-			{
-				_models = (await InferenceProviderService.GetModelsAsync(resolvedProviderId.Value))
-					.Where(model => model.IsAvailable)
-					.Select(model => new ProviderModel
-					{
-						Id = model.Id,
-						ModelId = model.ModelId,
-						DisplayName = model.DisplayName ?? model.ModelId,
-						IsAvailable = model.IsAvailable,
-						IsDefault = model.IsDefault
-					})
-					.OrderByDescending(model => model.IsDefault)
-					.ThenBy(model => model.DisplayName ?? model.ModelId)
-					.ToList();
-			}
-			else
-			{
-				_models = (await ProviderService.GetModelsAsync(resolvedProviderId.Value))
-					.Where(model => model.IsAvailable)
-					.OrderByDescending(model => model.IsDefault)
-					.ThenBy(model => model.DisplayName ?? model.ModelId)
-					.ToList();
-			}
-
-			if (!string.IsNullOrWhiteSpace(Schedule.ModelId) && _models.Any(model => model.ModelId == Schedule.ModelId))
-			{
-				_selectedModelId = Schedule.ModelId;
-			}
-			else
-			{
-				_selectedModelId = ResolveDefaultModel(resolvedProviderId.Value);
-				Schedule.ModelId = string.IsNullOrWhiteSpace(_selectedModelId) ? null : _selectedModelId;
-			}
-		}
-		catch
-		{
-			_models = [];
-			_selectedModelId = string.Empty;
-			Schedule.ModelId = null;
-		}
-		finally
-		{
-			_isLoadingModels = false;
+			// No profile is a choice too: the job then runs on the project's Build profile. A
+			// profile left over from an idea schedule only answers questions, so it goes.
+			Schedule.ProfileId = null;
 		}
 	}
 
-	private async Task OnProjectChanged(ChangeEventArgs args)
+	private void OnProjectChanged(ChangeEventArgs args)
 	{
 		Schedule.ProjectId = TryParseGuid(args.Value);
 		ErrorMessage = null;
-		await SyncExecutionTargetsAsync(preserveCurrentSelection: false);
+		SyncExecutionTargets();
 	}
 
-	private async Task OnExecutionTargetChanged()
+	private void OnScheduleTypeChanged()
 	{
 		ErrorMessage = null;
-		await SyncExecutionTargetsAsync(preserveCurrentSelection: false);
-	}
-
-	private async Task OnScheduleTypeChanged()
-	{
-		ErrorMessage = null;
-		await SyncExecutionTargetsAsync(preserveCurrentSelection: false);
-	}
-
-	private async Task OnProviderChanged(ChangeEventArgs args)
-	{
-		Schedule.ProviderId = TryParseNullableGuid(args.Value);
-		ErrorMessage = null;
-		await LoadModelsAsync();
-	}
-
-	private async Task OnInferenceProviderChanged(ChangeEventArgs args)
-	{
-		Schedule.InferenceProviderId = TryParseNullableGuid(args.Value);
-		ErrorMessage = null;
-		await LoadModelsAsync();
-	}
-
-	private async Task OnAgentChanged(ChangeEventArgs args)
-	{
-		Schedule.AgentId = TryParseNullableGuid(args.Value);
-		ErrorMessage = null;
-		await LoadModelsAsync();
-	}
-
-	private Task OnModelChanged()
-	{
-		Schedule.ModelId = string.IsNullOrWhiteSpace(_selectedModelId) ? null : _selectedModelId;
-		return Task.CompletedTask;
-	}
-
-	private async Task RefreshModelsAsync()
-	{
-		var providerId = ResolveSelectedProviderId();
-		if (!providerId.HasValue)
-		{
-			return;
-		}
-
-		_isRefreshingModels = true;
-		StateHasChanged();
-		try
-		{
-			if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
-			{
-				var refreshed = (await InferenceProviderService.RefreshModelsAsync(providerId.Value)).ToList();
-				_models = refreshed
-					.Where(model => model.IsAvailable)
-					.Select(model => new ProviderModel
-					{
-						Id = model.Id,
-						ModelId = model.ModelId,
-						DisplayName = model.DisplayName ?? model.ModelId,
-						IsAvailable = model.IsAvailable,
-						IsDefault = model.IsDefault
-					})
-					.OrderByDescending(model => model.IsDefault)
-					.ThenBy(model => model.DisplayName ?? model.ModelId)
-					.ToList();
-			}
-			else
-			{
-				_models = (await ProviderService.RefreshModelsAsync(providerId.Value))
-					.Where(model => model.IsAvailable)
-					.OrderByDescending(model => model.IsDefault)
-					.ThenBy(model => model.DisplayName ?? model.ModelId)
-					.ToList();
-			}
-
-			if (!string.IsNullOrWhiteSpace(_selectedModelId) && _models.Any(model => model.ModelId == _selectedModelId))
-			{
-				// Preserve current selection when still available.
-			}
-			else
-			{
-				_selectedModelId = ResolveDefaultModel(providerId.Value);
-				Schedule.ModelId = string.IsNullOrWhiteSpace(_selectedModelId) ? null : _selectedModelId;
-			}
-
-			NotificationService.ShowSuccess($"Found {_models.Count} model(s).");
-		}
-		catch (Exception ex)
-		{
-			NotificationService.ShowError($"Failed to refresh models: {ex.Message}");
-		}
-		finally
-		{
-			_isRefreshingModels = false;
-			StateHasChanged();
-		}
+		SyncExecutionTargets();
 	}
 
 	private static string GetFrequencyLabel(JobScheduleFrequency frequency)
@@ -679,21 +337,9 @@
 			return;
 		}
 
-		if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider && !Schedule.ProviderId.HasValue)
+		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas && !Schedule.ProfileId.HasValue)
 		{
-			ErrorMessage = "Please select a provider.";
-			return;
-		}
-
-		if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent && !Schedule.AgentId.HasValue)
-		{
-			ErrorMessage = "Please select an agent.";
-			return;
-		}
-
-		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas && !Schedule.InferenceProviderId.HasValue)
-		{
-			ErrorMessage = "Please select an inference provider.";
+			ErrorMessage = "Please choose an inference profile. Add an inference provider first if there is none.";
 			return;
 		}
 
@@ -724,24 +370,14 @@
 			Schedule.HourUtc = 0;
 		}
 
+		// A provider and a model are never sent: the server takes them from the profile.
+		Schedule.ProviderId = null;
+		Schedule.InferenceProviderId = null;
+		Schedule.ModelId = null;
 		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 		{
-			Schedule.ProviderId = null;
-			Schedule.AgentId = null;
 			Schedule.Prompt = string.Empty;
 		}
-		else if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
-		{
-			Schedule.AgentId = null;
-			Schedule.InferenceProviderId = null;
-		}
-		else
-		{
-			Schedule.ProviderId = null;
-			Schedule.InferenceProviderId = null;
-		}
-
-		Schedule.ModelId = string.IsNullOrWhiteSpace(_selectedModelId) ? null : _selectedModelId;
 
 		IsSaving = true;
 		try
@@ -782,87 +418,11 @@
 		await IsVisibleChanged.InvokeAsync(isVisible);
 	}
 
-	private Agent? GetSelectedAgent()
-		=> Schedule.AgentId.HasValue
-			? _agents.FirstOrDefault(agent => agent.Id == Schedule.AgentId.Value)
-			: null;
-
-	private Guid? ResolveSelectedProviderId()
-	{
-		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
-		{
-			return Schedule.InferenceProviderId;
-		}
-
-		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
-		{
-			return Schedule.ProviderId;
-		}
-
-		return GetSelectedAgent()?.DefaultProviderId;
-	}
-
-	private string ResolveDefaultModel(Guid providerId)
-	{
-		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
-		{
-			return _models.FirstOrDefault(model => model.IsDefault)?.ModelId ?? string.Empty;
-		}
-
-		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
-		{
-			return ProjectExecutionDefaults.ResolveModelId(GetSelectedProject(), providerId, _models);
-		}
-
-		var selectedAgent = GetSelectedAgent();
-		if (!string.IsNullOrWhiteSpace(selectedAgent?.DefaultModelId) && _models.Any(model => model.ModelId == selectedAgent.DefaultModelId))
-		{
-			return selectedAgent.DefaultModelId!;
-		}
-
-		return _models.FirstOrDefault(model => model.IsDefault)?.ModelId ?? string.Empty;
-	}
-
-	private string GetModelHelpText()
-	{
-		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
-		{
-			return "Leave empty to use the inference provider's default suggest/default model.";
-		}
-
-		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
-		{
-			return "Leave empty to use the project's preferred provider model or the provider default.";
-		}
-
-		var selectedAgent = GetSelectedAgent();
-		if (selectedAgent == null)
-		{
-			return "Leave empty to use the selected agent's default model.";
-		}
-
-		if (!string.IsNullOrWhiteSpace(selectedAgent.DefaultModelId))
-		{
-			return $"Leave empty to use {selectedAgent.Name}'s default model ({selectedAgent.DefaultModelId}).";
-		}
-
-		return "Leave empty to use the selected agent's provider default model.";
-	}
-
-	private static string GetAgentDisplayText(Agent agent)
-	{
-		var providerName = agent.DefaultProvider?.Name;
-		return string.IsNullOrWhiteSpace(providerName) ? agent.Name : $"{agent.Name} ({providerName})";
-	}
+	/// <summary>Inference profiles on a provider that is turned on: the ones that can suggest ideas.</summary>
+	private IReadOnlyList<Profile> IdeaProfiles => _profiles.Where(ProjectInferenceRoles.CanAnswerAlone).ToList();
 
 	private string GetProjectValue() => Schedule.ProjectId == Guid.Empty ? string.Empty : Schedule.ProjectId.ToString();
-	private string GetProviderValue() => Schedule.ProviderId?.ToString() ?? string.Empty;
-	private string GetAgentValue() => Schedule.AgentId?.ToString() ?? string.Empty;
-	private string GetInferenceProviderValue() => Schedule.InferenceProviderId?.ToString() ?? string.Empty;
 
 	private static Guid TryParseGuid(object? value)
 		=> Guid.TryParse(value?.ToString(), out var id) ? id : Guid.Empty;
-
-	private static Guid? TryParseNullableGuid(object? value)
-		=> Guid.TryParse(value?.ToString(), out var id) ? id : null;
 }

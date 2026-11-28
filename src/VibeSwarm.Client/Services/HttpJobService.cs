@@ -195,9 +195,9 @@ public class HttpJobService : IJobService
         return await response.Content.ReadFromJsonAsync<string?>(ct);
     }
 
-    public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken ct = default)
+    public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, Guid? profileId = null, CancellationToken ct = default)
     {
-        var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/retry", new { ProviderId = providerId, ModelId = modelId, ReasoningEffort = reasoningEffort }, ct);
+        var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/retry", new { ProviderId = providerId, ModelId = modelId, ReasoningEffort = reasoningEffort, ProfileId = profileId }, ct);
         return response.IsSuccessStatusCode;
     }
 
@@ -267,6 +267,26 @@ public class HttpJobService : IJobService
         var response = await _http.GetAsync($"/api/jobs/{id}/queue-status", ct);
         if (response.StatusCode != System.Net.HttpStatusCode.OK) return null;
         return await response.Content.ReadFromJsonAsync<JobQueueStatus>(ct);
+    }
+
+    public async Task<IReadOnlyList<JobStep>> GetStepsAsync(Guid jobId, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"/api/jobs/{jobId}/steps", ct);
+        if (!response.IsSuccessStatusCode) return [];
+        return await response.Content.ReadFromJsonAsync<List<JobStep>>(ct) ?? [];
+    }
+
+    public async Task<JobStep?> AddStepAsync(Guid jobId, string instructions, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync($"/api/jobs/{jobId}/steps", new { Instructions = instructions }, ct);
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadFromJsonAsync<JobStep>(ct);
+    }
+
+    public async Task<bool> SkipStepAsync(Guid jobId, Guid stepId, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"/api/jobs/{jobId}/steps/{stepId}/skip", null, ct);
+        return response.IsSuccessStatusCode;
     }
 
     public async Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken ct = default)

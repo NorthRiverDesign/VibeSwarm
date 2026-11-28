@@ -1,0 +1,117 @@
+@page "/profiles"
+@attribute [Authorize]
+@inject IProfileService ProfileService
+@inject NotificationService NotificationService
+
+<PageHeader Title="Profiles" Subtitle="Named picks of a provider and model, for jobs, agents, project settings and helpers.">
+	<Actions>
+		<TitleAction Icon="plus-lg" Label="Add a profile" Primary="true" OnClick="ShowAddModal" />
+	</Actions>
+</PageHeader>
+
+@if (_isLoading)
+{
+	<LoadingSpinner Text="Loading profiles..." />
+}
+else if (_profiles.Count == 0)
+{
+	<EmptyState Icon="person-badge" Title="No profiles yet"
+				Message="A profile names a provider, model and reasoning level, such as Deep thinker or Quick fixer. Pick it for a job, or link it in project settings so changing the profile updates every project.">
+		<ActionButton Icon="plus-lg" Text="New profile" Style="ActionButton.ButtonStyle.Primary"
+					  Size="ActionButton.ButtonSize.Small" OnClick="ShowAddModal" />
+	</EmptyState>
+}
+else
+{
+	<div class="list-group rounded-9">
+		@foreach (var profile in _profiles)
+		{
+			<ProfileRow @key="profile.Id" Profile="profile" OnEdit="ShowEditModal" OnDelete="ShowDeleteConfirmation" />
+		}
+	</div>
+}
+
+<ProfileModal @bind-IsVisible="_showModal" EditProfile="_editing" OnSaved="LoadAsync" />
+
+<ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete profile"
+				   Message="@($"Delete {_deleting?.Name}?")"
+				   SubMessage="Anything that uses it switches to its provider's default profile."
+				   ConfirmText="Delete" ButtonClass="btn-solid theme-danger" IsProcessing="_isDeleting"
+				   OnConfirm="ConfirmDelete" OnCancel="CancelDelete" />
+
+@code {
+	private List<Profile> _profiles = [];
+	private bool _isLoading = true;
+	private bool _showModal;
+	private Profile? _editing;
+	private bool _showDeleteModal;
+	private Profile? _deleting;
+	private bool _isDeleting;
+
+	protected override Task OnInitializedAsync() => LoadAsync();
+
+	private async Task LoadAsync()
+	{
+		try
+		{
+			_profiles = (await ProfileService.GetAllAsync()).ToList();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load profiles: {ex.Message}");
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private void ShowAddModal()
+	{
+		_editing = null;
+		_showModal = true;
+	}
+
+	private void ShowEditModal(Profile profile)
+	{
+		_editing = profile;
+		_showModal = true;
+	}
+
+	private void ShowDeleteConfirmation(Profile profile)
+	{
+		_deleting = profile;
+		_showDeleteModal = true;
+	}
+
+	private void CancelDelete()
+	{
+		_showDeleteModal = false;
+		_deleting = null;
+	}
+
+	private async Task ConfirmDelete()
+	{
+		if (_deleting == null)
+		{
+			return;
+		}
+
+		_isDeleting = true;
+		try
+		{
+			await ProfileService.DeleteAsync(_deleting.Id);
+			_showDeleteModal = false;
+			_deleting = null;
+			await LoadAsync();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to delete profile: {ex.Message}");
+		}
+		finally
+		{
+			_isDeleting = false;
+		}
+	}
+}

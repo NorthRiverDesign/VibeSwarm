@@ -1,0 +1,43 @@
+@* The one New profile dialog that every profile picker opens (see ProfileComposer). *@
+@implements IDisposable
+@inject IServiceProvider Services
+
+@if (_composer != null)
+{
+	<ProfileModal IsVisible="_composer.IsOpen" IsVisibleChanged="HandleVisibilityChanged"
+				  Allowed="_composer.Allowed" OnSaved="HandleSaved" />
+}
+
+@code {
+	// Resolved lazily so layouts rendered in tests need no registration.
+	private ProfileComposer? _composer;
+
+	protected override void OnInitialized()
+	{
+		_composer = Services.GetService<ProfileComposer>();
+		if (_composer != null)
+		{
+			_composer.Changed += HandleChanged;
+		}
+	}
+
+	private void HandleChanged() => InvokeAsync(StateHasChanged);
+
+	private void HandleVisibilityChanged(bool visible)
+	{
+		if (!visible)
+		{
+			_composer?.Complete(null);
+		}
+	}
+
+	private void HandleSaved(Profile profile) => _composer?.Complete(profile);
+
+	public void Dispose()
+	{
+		if (_composer != null)
+		{
+			_composer.Changed -= HandleChanged;
+		}
+	}
+}

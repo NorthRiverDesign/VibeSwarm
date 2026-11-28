@@ -183,7 +183,7 @@ public class JobsController : ControllerBase
 
     [HttpPost("{id:guid}/retry")]
     public async Task<IActionResult> RetryWithOptions(Guid id, [FromBody] RetryRequest req, CancellationToken ct)
-        => await _jobService.ResetJobWithOptionsAsync(id, req.ProviderId, req.ModelId, req.ReasoningEffort, ct) ? Ok() : BadRequest();
+        => await _jobService.ResetJobWithOptionsAsync(id, req.ProviderId, req.ModelId, req.ReasoningEffort, req.ProfileId, ct) ? Ok() : BadRequest();
 
     [HttpPut("{id:guid}/prompt")]
     public async Task<IActionResult> UpdatePrompt(Guid id, [FromBody] UpdatePromptRequest req, CancellationToken ct)
@@ -242,11 +242,32 @@ public class JobsController : ControllerBase
         return status == null ? NoContent() : Ok(status);
     }
 
+    [HttpGet("{id:guid}/steps")]
+    public async Task<IActionResult> GetSteps(Guid id, CancellationToken ct)
+        => Ok(await _jobService.GetStepsAsync(id, ct));
+
+    [HttpPost("{id:guid}/steps")]
+    public async Task<IActionResult> AddStep(Guid id, [FromBody] AddStepRequest request, CancellationToken ct)
+        => await _jobService.AddStepAsync(id, request.Instructions, ct) is { } step
+            ? Ok(step)
+            : BadRequest(new { error = "This job isn't working through steps any more, or already has as many waiting as it can take." });
+
+    [HttpPost("{id:guid}/steps/{stepId:guid}/skip")]
+    public async Task<IActionResult> SkipStep(Guid id, Guid stepId, CancellationToken ct)
+        => await _jobService.SkipStepAsync(id, stepId, ct) ? Ok() : BadRequest(new { error = "That step has already started." });
+
     [HttpGet("{id:guid}/changesets")]
     public async Task<IActionResult> GetChangeSets(Guid id, CancellationToken ct)
         => Ok(await _jobService.GetChangeSetsAsync(id, ct));
 
     // Request DTOs
+    // A class, not a positional record: MVC refuses validation attributes placed on a record's properties.
+    public sealed class AddStepRequest
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.StringLength(JobStep.TextMaxLength)]
+        public string Instructions { get; init; } = string.Empty;
+    }
     public record UpdateStatusRequest(string Status, string? Output, string? ErrorMessage);
     public record UpdateResultRequest(string Status, string? SessionId, string? Output, string? ErrorMessage, int? InputTokens, int? OutputTokens, decimal? CostUsd);
     public record UpdateProgressRequest(string? CurrentActivity);
@@ -256,7 +277,7 @@ public class JobsController : ControllerBase
     public record PauseInteractionRequest(string InteractionPrompt, string InteractionType, string? Choices);
     public record ContinueJobRequest(string FollowUpPrompt);
     public record AgentMessageRequest(string Message);
-    public record RetryRequest(Guid? ProviderId, string? ModelId, string? ReasoningEffort);
+    public record RetryRequest(Guid? ProviderId, string? ModelId, string? ReasoningEffort, Guid? ProfileId = null);
     public record UpdatePromptRequest(string Prompt);
     public record SelectedJobsRequest(List<Guid> JobIds);
 }

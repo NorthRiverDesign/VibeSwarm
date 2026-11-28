@@ -26,6 +26,13 @@ public class HttpSettingsService : ISettingsService
         return await response.ReadJsonAsync(new AppSettings(), ct);
     }
 
+    public async Task<AppSettings> UpdateTeamAsync(Guid? leadProfileId, Guid? reviewProfileId, CancellationToken ct = default)
+    {
+        var response = await _http.PutAsJsonAsync("/api/settings/team", new { LeadProfileId = leadProfileId, ReviewProfileId = reviewProfileId }, ct);
+        await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
+        return await response.ReadJsonAsync(new AppSettings(), ct);
+    }
+
     public async Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken ct = default)
     {
         var settings = await GetSettingsAsync(ct);

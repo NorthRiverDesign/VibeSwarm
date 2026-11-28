@@ -172,7 +172,8 @@ public sealed class ProjectDetailTabMergeTests
 		{
 			var job = Assert.Single(jobService.CreatedJobs);
 			Assert.Equal(TestProject.Id, job.ProjectId);
-			Assert.Equal(Guid.Parse("22222222-2222-2222-2222-222222222222"), job.ProviderId);
+			// It names no provider: the server runs it on the project's Build profile.
+			Assert.Equal(Guid.Empty, job.ProviderId);
 			Assert.True(LocalEnvironmentSetup.IsSetupJob(job));
 			Assert.EndsWith($"/jobs/view/{job.Id}", navigation.Uri);
 		});
@@ -305,7 +306,6 @@ public sealed class ProjectDetailTabMergeTests
 		context.Services.AddSingleton<IJobService>(jobService ?? new FakeJobService(jobs));
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService());
 		context.Services.AddSingleton<IVersionControlService>(versionControlService ?? new FakeVersionControlService());
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService(ideas));
 		context.Services.AddSingleton<IInferenceService>(new FakeInferenceService());
@@ -417,14 +417,6 @@ public sealed class ProjectDetailTabMergeTests
 			=> Task.FromResult(new VibeSwarm.Shared.Models.JobTemplateRunResult());
 	}
 
-	private sealed class FakeAgentService : FakeAgentServiceBase
-	{
-		public override Task<IEnumerable<Agent>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>([]);
-		public override Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>([]);
-		public override Task<Agent?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<Agent?>(null);
-		public override Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken ct = default) => Task.FromResult(false);
-	}
-
 	private sealed class FakeAutoPilotService : IAutoPilotService
 	{
 		public Task<IterationLoop> StartAsync(Guid projectId, AutoPilotConfig config, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -458,6 +450,7 @@ public sealed class ProjectDetailTabMergeTests
 	{
 		public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
 		public Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<AppSettings> UpdateTeamAsync(Guid? leadProfileId, Guid? reviewProfileId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
 		public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 	}

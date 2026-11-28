@@ -13,12 +13,6 @@ public enum JobScheduleFrequency
 	Minutes = 4
 }
 
-public enum JobScheduleExecutionTarget
-{
-	Provider = 0,
-	Agent = 1
-}
-
 public enum JobScheduleType
 {
 	RunJob = 0,
@@ -34,13 +28,18 @@ public class JobSchedule : IValidatableObject
 
 	public JobScheduleType ScheduleType { get; set; } = JobScheduleType.RunJob;
 
-	public JobScheduleExecutionTarget ExecutionTarget { get; set; } = JobScheduleExecutionTarget.Provider;
-
 	public Guid? ProviderId { get; set; }
 	public Provider? Provider { get; set; }
 
-	public Guid? AgentId { get; set; }
-	public Agent? Agent { get; set; }
+	/// <summary>
+	/// The profile the scheduled job runs on; <see cref="ProviderId"/> and <see cref="ModelId"/>
+	/// are copied from it. Null, with no provider either, runs on the project's Build profile.
+	/// </summary>
+	public Guid? ProfileId { get; set; }
+
+	/// <summary>The name of <see cref="ProfileId"/>. Filled in when a schedule is read; not stored.</summary>
+	[System.ComponentModel.DataAnnotations.Schema.NotMapped]
+	public string? ProfileName { get; set; }
 
 	public Guid? InferenceProviderId { get; set; }
 	public InferenceProvider? InferenceProvider { get; set; }
@@ -89,19 +88,11 @@ public class JobSchedule : IValidatableObject
 			yield return new ValidationResult("A project is required.", [nameof(ProjectId)]);
 		}
 
-		if (ScheduleType == JobScheduleType.RunJob && ExecutionTarget == JobScheduleExecutionTarget.Provider && (!ProviderId.HasValue || ProviderId == Guid.Empty))
+		// An idea schedule names an inference profile; the server fills in the provider it runs on.
+		// (A job schedule may name a profile, or nothing at all to run on the project's Build profile.)
+		if (ScheduleType == JobScheduleType.GenerateIdeas && !ProfileId.HasValue && (!InferenceProviderId.HasValue || InferenceProviderId == Guid.Empty))
 		{
-			yield return new ValidationResult("A provider is required.", [nameof(ProviderId)]);
-		}
-
-		if (ScheduleType == JobScheduleType.RunJob && ExecutionTarget == JobScheduleExecutionTarget.Agent && (!AgentId.HasValue || AgentId == Guid.Empty))
-		{
-			yield return new ValidationResult("An agent is required.", [nameof(AgentId)]);
-		}
-
-		if (ScheduleType == JobScheduleType.GenerateIdeas && (!InferenceProviderId.HasValue || InferenceProviderId == Guid.Empty))
-		{
-			yield return new ValidationResult("An inference provider is required.", [nameof(InferenceProviderId)]);
+			yield return new ValidationResult("Choose an inference profile for the ideas.", [nameof(ProfileId)]);
 		}
 
 		if (ScheduleType == JobScheduleType.RunJob && string.IsNullOrWhiteSpace(Prompt))

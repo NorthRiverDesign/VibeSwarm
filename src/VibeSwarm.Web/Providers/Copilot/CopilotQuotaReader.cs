@@ -1,4 +1,4 @@
-using GitHub.Copilot.Rpc;
+using Microsoft.Copilot.Rpc;
 using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Web.Providers.Copilot;
@@ -8,7 +8,7 @@ namespace VibeSwarm.Web.Providers.Copilot;
 /// usage window, so jobs stop short of the plan's premium requests without the user typing in
 /// their allowance. Reading it makes no model request, so it costs nothing.
 /// </summary>
-#pragma warning disable GHCP001 // The account quota RPC is marked experimental in the SDK
+#pragma warning disable MCPSDK001 // The account quota RPC is marked experimental in the SDK
 public static class CopilotQuotaReader
 {
 	/// <summary>The quota that metered agent requests draw on.</summary>
@@ -63,4 +63,4 @@ public static class CopilotQuotaReader
 		};
 	}
 }
-#pragma warning restore GHCP001
+#pragma warning restore MCPSDK001

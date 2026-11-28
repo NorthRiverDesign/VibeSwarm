@@ -54,6 +54,39 @@ public sealed class JobWorkSnapshotTests : IDisposable
 	}
 
 	[Fact]
+	public async Task DiffWorkingTreeAgainst_ASnapshot_ShowsOnlyWhatChangedSinceIt()
+	{
+		// A job's second step is reviewed on its own change. The first step's new file is still
+		// untracked in the checkout, and must not be shown to the reviewer a second time.
+		var baseCommit = await InitRepositoryAsync();
+		var jobId = Guid.NewGuid();
+		await WriteAsync("src/StepOne.cs", "class StepOne {}\n");
+		await WriteAsync("app.txt", "one\nTWO\nthree\n");
+		var afterStepOne = await _snapshots.SaveAsync(_repo, jobId, baseCommit);
+		Assert.NotNull(afterStepOne);
+
+		await WriteAsync("src/StepTwo.cs", "class StepTwo {}\n");
+		await WriteAsync("app.txt", "one\nTWO\nTHREE\n");
+		var statusBefore = await GitAsync("status --porcelain");
+
+		var stepTwo = await _snapshots.DiffWorkingTreeAgainstAsync(_repo, afterStepOne!);
+
+		Assert.NotNull(stepTwo);
+		Assert.Contains("src/StepTwo.cs", stepTwo);
+		Assert.Contains("+THREE", stepTwo);
+		Assert.DoesNotContain("StepOne", stepTwo);
+		Assert.DoesNotContain("+TWO", stepTwo);
+		// Reading the change leaves the checkout and its index as they were.
+		Assert.Equal(statusBefore, await GitAsync("status --porcelain"));
+
+		// Against the commit the job started from, it is everything the job has done.
+		var wholeJob = await _snapshots.DiffWorkingTreeAgainstAsync(_repo, baseCommit);
+		Assert.Contains("src/StepOne.cs", wholeJob);
+		Assert.Contains("src/StepTwo.cs", wholeJob);
+		Assert.Null(await _snapshots.DiffWorkingTreeAgainstAsync(_repo, "HEAD; rm -rf"));
+	}
+
+	[Fact]
 	public async Task SaveAsync_SkipsRunsThatChangedNothing()
 	{
 		var baseCommit = await InitRepositoryAsync();

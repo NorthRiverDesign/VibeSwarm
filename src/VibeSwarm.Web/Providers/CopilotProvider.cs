@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using GitHub.Copilot;
+using Microsoft.Copilot;
 using VibeSwarm.Shared.Providers.Claude;
 using VibeSwarm.Shared.Providers.Copilot;
 using VibeSwarm.Shared.Services;
@@ -27,6 +27,12 @@ public class CopilotProvider : CliProviderBase
 
     // Release numbers from the CLI's own changelog.json, not inferred.
     private static readonly Version SessionNameVersion = new(1, 0, 35);
+
+    /// <summary>
+    /// The longest session name the CLI takes. A longer one fails the run before it starts
+    /// ("Session name must be 100 characters or less"), and a job's title can be twice that.
+    /// </summary>
+    internal const int MaxSessionNameLength = 100;
     private static readonly Version SessionIdVersion = new(1, 0, 51);
 
     // Flags first confirmed present on the verified release (see ProviderVersionReference).
@@ -490,8 +496,9 @@ public class CopilotProvider : CliProviderBase
                 && _cachedCliVersion != null
                 && _cachedCliVersion >= SessionNameVersion)
             {
+                var sessionName = CurrentSessionName.Trim();
                 args.Add("--name");
-                args.Add(CurrentSessionName.Trim());
+                args.Add(sessionName.Length <= MaxSessionNameLength ? sessionName : sessionName[..MaxSessionNameLength].TrimEnd());
             }
         }
 
@@ -1562,19 +1569,15 @@ public class CopilotProvider : CliProviderBase
 
     private CopilotClientOptions BuildMetadataClientOptions()
     {
-        var options = new CopilotClientOptions
-        {
-            LogLevel = CopilotLogLevel.Warning,
-            Connection = CopilotSdkProvider.BuildRuntimeConnection(ExecutablePath)
-        };
-
         var cwd = WorkingDirectory ?? Environment.CurrentDirectory;
-        if (!string.IsNullOrWhiteSpace(cwd))
+        return new CopilotClientOptions
         {
-            options.WorkingDirectory = cwd;
-        }
-
-        return options;
+            Mode = CopilotClientMode.CodingAgent,
+            Observability = new() { LogLevel = CopilotLogLevel.Warning },
+            Runtime = CopilotSdkProvider.BuildRuntimeConnection(
+                ExecutablePath,
+                workingDirectory: string.IsNullOrWhiteSpace(cwd) ? null : cwd)
+        };
     }
 
     /// <summary>
@@ -1848,10 +1851,10 @@ public class CopilotProvider : CliProviderBase
         {
             client = new CopilotClient(BuildMetadataClientOptions());
             await client.StartAsync(cancellationToken);
-#pragma warning disable GHCP001 // The account quota RPC is marked experimental in the SDK
-            var quota = await client.Rpc.Account.GetQuotaAsync(null!, null!, cancellationToken);
+#pragma warning disable MCPSDK001 // The account quota RPC is marked experimental in the SDK
+            var quota = await client.Rpc.Account.GetQuotaAsync(cancellationToken);
             var limits = CopilotQuotaReader.ToUsageLimits(quota?.QuotaSnapshots, DateTime.UtcNow);
-#pragma warning restore GHCP001
+#pragma warning restore MCPSDK001
             if (limits != null)
             {
                 _lastObservedUsageLimits = limits;

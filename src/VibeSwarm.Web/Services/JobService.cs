@@ -6,6 +6,7 @@ using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Utilities;
+using VibeSwarm.Shared.Validation;
 using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Web.Services;
 
@@ -73,10 +74,6 @@ public partial class JobService : IJobService
 			ExecutionCostUsd = j.ExecutionStatistics != null ? j.ExecutionStatistics.CostUsd : null,
 			ExecutionInputTokens = j.ExecutionStatistics != null ? j.ExecutionStatistics.InputTokens : null,
 			ExecutionOutputTokens = j.ExecutionStatistics != null ? j.ExecutionStatistics.OutputTokens : null,
-            CurrentCycle = j.CurrentCycle,
-            MaxCycles = j.MaxCycles,
-            CycleMode = j.CycleMode,
-            AgentName = j.Agent != null ? j.Agent.Name : null,
              Branch = j.Branch,
              ChangedFilesCount = j.ChangedFilesCount,
              BuildVerified = j.BuildVerified,
@@ -107,7 +104,6 @@ public partial class JobService : IJobService
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
 			.Include(j => j.PlanningProvider)
-			.Include(j => j.Agent)
 			.OrderByDescending(j => j.CreatedAt)
 			.ToListAsync(cancellationToken);
     }
@@ -165,7 +161,6 @@ public partial class JobService : IJobService
 	{
 		return await IncludeStatistics(_dbContext.Jobs)
 			.Include(j => j.Provider)
-			.Include(j => j.Agent)
 			.Where(j => j.ProjectId == projectId)
 			.OrderByDescending(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
@@ -355,7 +350,6 @@ public partial class JobService : IJobService
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
 			.Include(j => j.PlanningProvider)
-			.Include(j => j.Agent)
 			.Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
 			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
     }
@@ -367,7 +361,6 @@ public partial class JobService : IJobService
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
 			.Include(j => j.PlanningProvider)
-			.Include(j => j.Agent)
 			.Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
 			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 		if (job == null)
@@ -394,8 +387,10 @@ public partial class JobService : IJobService
 
     public async Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)
     {
+        var requestedInstances = Math.Clamp(job.RequestedInstances, 1, ValidationLimits.JobInstancesMax);
+        job.RequestedInstances = 1;
         NormalizeJobForPersistence(job);
-        await ApplySelectedAgentDefaultsAsync(job, cancellationToken);
+        await ApplyJobProfileAsync(job, cancellationToken);
         NormalizeJobForPersistence(job);
         await ValidateRequestedExecutionAsync(job, cancellationToken);
 
@@ -406,7 +401,6 @@ public partial class JobService : IJobService
         job.PlanningProvider = null;
         job.JobSchedule = null;
         job.JobTemplate = null;
-        job.Agent = null;
         job.Statistics = null;
         job.PlanningStatistics = null;
         job.ExecutionStatistics = null;
@@ -427,20 +421,48 @@ public partial class JobService : IJobService
 			throw new InvalidOperationException("No enabled providers are available for this job.");
 		}
 
+        // A merge has one resolution and a setup job one result, so neither is split into instances.
+        // Copies split a goal written as a list, never running more copies than it has items:
+        // copies left to divide prose among themselves would overlap.
+        var canRunAsInstances = !LocalEnvironmentSetup.IsSetupJob(job) && string.IsNullOrWhiteSpace(job.MergeFromBranch);
+        var instanceCount = canRunAsInstances && requestedInstances > 1
+            ? Math.Min(requestedInstances, JobInstanceSplitter.GetListItems(job.GoalPrompt).Count)
+            : 1;
+        // Decided once, here: the project's team works the job unless it is a merge, a setup job
+        // or one of several copies, which each have a single agent's work to do.
+        job.TeamRun = !job.RunSolo && canRunAsInstances && instanceCount == 1
+            && await _dbContext.Projects.AsNoTracking()
+                .Where(project => project.Id == job.ProjectId)
+                .Select(project => project.TeamEnabled)
+                .FirstOrDefaultAsync(cancellationToken);
+        job.PlanSkippedReason = null;
+        job.LeadChecks = 0;
+
+        var instanceJobs = instanceCount > 1
+            ? BuildInstanceJobs(job, instanceCount)
+            : [];
+
         // Persist via a brand-new DbContext constructed from the same options as _dbContext.
         // This guarantees an empty change tracker at the moment of Add, regardless of what
         // the request-scoped _dbContext (or callers like IdeaService) already have attached.
+        // A job's instances are saved with it, so none can start before the others exist.
         if (_dbContextOptions is not null)
         {
             await using var freshContext = new VibeSwarmDbContext(_dbContextOptions);
             freshContext.Jobs.Add(job);
+            freshContext.Jobs.AddRange(instanceJobs);
             await freshContext.SaveChangesAsync(cancellationToken);
             freshContext.Entry(job).State = EntityState.Detached;
+            foreach (var instanceJob in instanceJobs)
+            {
+                freshContext.Entry(instanceJob).State = EntityState.Detached;
+            }
         }
         else
         {
             // Tests that construct JobService with an empty IServiceProvider land here.
             _dbContext.Jobs.Add(job);
+            _dbContext.Jobs.AddRange(instanceJobs);
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
@@ -454,11 +476,7 @@ public partial class JobService : IJobService
                 .ExecuteUpdateAsync(setters => setters.SetProperty(template => template.UseCount, template => template.UseCount + 1), cancellationToken);
         }
 
-        // Fan out to team swarm jobs if the project has team swarm enabled. A merge has one
-        // resolution, so a deploy's conflict job is never split across agents.
-		var swarmJobs = job.AgentId.HasValue || LocalEnvironmentSetup.IsSetupJob(job) || !string.IsNullOrWhiteSpace(job.MergeFromBranch)
-			? []
-			: await TryCreateTeamSwarmJobsAsync(job, cancellationToken);
+		var swarmJobs = instanceJobs;
 
         // Notify that a new job was created (so processing can start immediately)
         if (_jobUpdateService != null)
@@ -485,85 +503,65 @@ public partial class JobService : IJobService
         return job;
     }
 
-    private async Task<List<Job>> TryCreateTeamSwarmJobsAsync(Job primaryJob, CancellationToken cancellationToken)
+    /// <summary>
+    /// Makes the job the first of <paramref name="count"/> instances and builds the rest: copies
+    /// on the same provider, model and plan that share a swarm, so each runs in a worktree of its
+    /// own at the same time and its work is replayed onto the branch as it finishes.
+    /// </summary>
+    private static List<Job> BuildInstanceJobs(Job primaryJob, int count)
     {
-        var project = await _dbContext.Projects
-            .Include(p => p.AgentAssignments)
-                .ThenInclude(a => a.Agent)
-            .Include(p => p.AgentAssignments)
-                .ThenInclude(a => a.Provider)
-            .FirstOrDefaultAsync(p => p.Id == primaryJob.ProjectId, cancellationToken);
-
-        if (project == null || !project.EnableTeamSwarm)
-            return [];
-
-        var enabledAssignments = project.AgentAssignments
-            .Where(a => a.IsEnabled
-                && a.Agent != null
-                && a.Agent.IsEnabled
-                && a.ProviderId != Guid.Empty)
-            .OrderBy(a => a.Agent!.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (enabledAssignments.Count < 2)
-            return [];
-
         var swarmId = Guid.NewGuid();
-        var createdJobs = new List<Job>();
+        var baseTitle = primaryJob.Title;
+        primaryJob.SwarmId = swarmId;
+        primaryJob.InstanceNumber = 1;
+        primaryJob.Title = BuildInstanceTitle(baseTitle, 1, count);
 
-        // Assign the first role to the primary job
-        var primaryJobDb = await _dbContext.Jobs.FindAsync(new object[] { primaryJob.Id }, cancellationToken);
-        if (primaryJobDb != null)
+        var instances = new List<Job>(count - 1);
+        for (var number = 2; number <= count; number++)
         {
-            var firstAssignment = enabledAssignments[0];
-            primaryJobDb.SwarmId = swarmId;
-			primaryJobDb.ProviderId = Guid.Empty;
-			primaryJobDb.ModelUsed = null;
-			primaryJobDb.ReasoningEffort = null;
-			AgentPresetHelper.ApplyExecutionDefaults(primaryJobDb, firstAssignment);
-            // Update the in-memory job so callers see the changes
-            primaryJob.SwarmId = swarmId;
-			primaryJob.ProviderId = Guid.Empty;
-			primaryJob.ModelUsed = null;
-			primaryJob.ReasoningEffort = null;
-			AgentPresetHelper.ApplyExecutionDefaults(primaryJob, firstAssignment);
-        }
-
-        // Create sibling jobs for each remaining role
-        for (var i = 1; i < enabledAssignments.Count; i++)
-        {
-            var assignment = enabledAssignments[i];
-            var roleJob = new Job
+            instances.Add(new Job
             {
                 Id = Guid.NewGuid(),
-                Title = primaryJob.Title,
+                Title = BuildInstanceTitle(baseTitle, number, count),
                 GoalPrompt = primaryJob.GoalPrompt,
                 Status = JobStatus.New,
                 ProjectId = primaryJob.ProjectId,
-				ProviderId = assignment.ProviderId,
-                ModelUsed = string.IsNullOrWhiteSpace(assignment.PreferredModelId) ? null : assignment.PreferredModelId,
-                ReasoningEffort = assignment.PreferredReasoningEffort,
+                ProviderId = primaryJob.ProviderId,
+                ModelUsed = primaryJob.ModelUsed,
+                ReasoningEffort = primaryJob.ReasoningEffort,
+                ProfileId = primaryJob.ProfileId,
+                ProfileName = primaryJob.ProfileName,
+                ExecutionPlan = primaryJob.ExecutionPlan,
+                ActiveExecutionIndex = 0,
                 Branch = primaryJob.Branch,
                 TargetBranch = primaryJob.TargetBranch,
                 GitChangeDeliveryMode = primaryJob.GitChangeDeliveryMode,
                 CommitModeOverride = primaryJob.CommitModeOverride,
                 Priority = primaryJob.Priority,
-                CreatedAt = DateTime.UtcNow,
+                NotBeforeUtc = primaryJob.NotBeforeUtc,
                 MaxCostUsd = primaryJob.MaxCostUsd,
                 MaxExecutionMinutes = primaryJob.MaxExecutionMinutes,
                 MaxTokens = primaryJob.MaxTokens,
+                CreatedAt = primaryJob.CreatedAt,
                 SwarmId = swarmId,
-            };
-
-			AgentPresetHelper.ApplyExecutionDefaults(roleJob, assignment);
-            await InitializeExecutionPlanAsync(roleJob, cancellationToken);
-
-            _dbContext.Jobs.Add(roleJob);
-            createdJobs.Add(roleJob);
+                InstanceNumber = number,
+            });
         }
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        return createdJobs;
+        return instances;
+    }
+
+    private static string BuildInstanceTitle(string? title, int number, int count)
+    {
+        var suffix = $" ({number}/{count})";
+        var baseTitle = string.IsNullOrWhiteSpace(title) ? "Job" : title.Trim();
+        const int maxTitleLength = 200;
+        if (baseTitle.Length + suffix.Length > maxTitleLength)
+        {
+            baseTitle = baseTitle[..(maxTitleLength - suffix.Length - 1)].TrimEnd() + "…";
+        }
+
+        return baseTitle + suffix;
     }
 
 	private IQueryable<Job> BuildFilteredJobsQuery(Guid? projectId, string statusFilter)

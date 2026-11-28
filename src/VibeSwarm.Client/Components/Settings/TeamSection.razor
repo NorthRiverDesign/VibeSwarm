@@ -1,0 +1,83 @@
+@* The team: who leads and who reviews on every project that works as a team. It is set once,
+   here, and each choice saves as it is made. Projects keep their own builder. *@
+@inject ISettingsService SettingsService
+@inject NotificationService NotificationService
+@inject IServiceProvider Services
+
+<section class="d-flex flex-column gap-3" aria-label="Team">
+	<SectionHeader Title="Team" Subtitle="Who works on a job besides its builder. Turn on Work as a team in a project to use them." />
+	<div class="list-group rounded-9">
+		<ListRow Icon="compass" Title="Lead" Subtitle="@(Summary(Settings.TeamLeadProfileId))">
+			<ChildContent>
+				<p class="small fg-1 mb-0">Reads the code and plans each job before the builder starts, and suggests what to build next. A strong model works best. Needs Claude Code or Copilot.</p>
+				<ProfilePicker Id="team-settings-lead" Label="Lead with" Profiles="_profiles" Allowed="CanReadCode"
+							   SelectedProfileId="Settings.TeamLeadProfileId" EmptyLabel="Nobody"
+							   OnSelected="profile => SaveAsync(profile?.Id, Settings.TeamReviewProfileId)" />
+			</ChildContent>
+		</ListRow>
+		<ListRow Icon="hammer" IconClass="fg-2" Title="Builder" Subtitle="Each project's own Build profile" />
+		<ListRow Icon="eye" Title="Reviewer" Subtitle="@(Summary(Settings.TeamReviewProfileId))">
+			<ChildContent>
+				<p class="small fg-1 mb-0">Checks each job's work against its goal and sends problems back to the builder. A cheaper model that differs from the builder gives the most independent check.</p>
+				<ProfilePicker Id="team-settings-review" Label="Review with" Profiles="_profiles" Allowed="CanAnswer"
+							   SelectedProfileId="Settings.TeamReviewProfileId" EmptyLabel="Nobody"
+							   OnSelected="profile => SaveAsync(Settings.TeamLeadProfileId, profile?.Id)" />
+			</ChildContent>
+		</ListRow>
+	</div>
+</section>
+
+@code {
+	/// <summary>The page's settings; the team's two profiles are read from it and written back after a save.</summary>
+	[Parameter, EditorRequired]
+	public AppSettings Settings { get; set; } = default!;
+
+	private IReadOnlyList<Profile> _profiles = [];
+
+	protected override async Task OnInitializedAsync()
+	{
+		// Resolved lazily so pages and tests that never show profiles need no registration.
+		var profileService = Services.GetService<IProfileService>();
+		if (profileService == null)
+		{
+			return;
+		}
+
+		try
+		{
+			_profiles = (await profileService.GetAllAsync()).ToList();
+		}
+		catch
+		{
+			_profiles = [];
+		}
+	}
+
+	// A role is only offered a profile whose provider is turned on.
+	private static bool IsOn(Profile profile) => profile.Provider?.IsEnabled ?? profile.InferenceProvider?.IsEnabled ?? false;
+
+	private static bool CanReadCode(Profile profile) => ProfileRoles.CanRunReadOnly(profile) && IsOn(profile);
+
+	private static bool CanAnswer(Profile profile) => ProfileRoles.CanHelpJobs(profile) && IsOn(profile);
+
+	private string Summary(Guid? profileId)
+		=> profileId is Guid id
+			? _profiles.FirstOrDefault(profile => profile.Id == id)?.Name ?? "A profile"
+			: "Nobody yet";
+
+	private async Task SaveAsync(Guid? leadProfileId, Guid? reviewProfileId)
+	{
+		try
+		{
+			var saved = await SettingsService.UpdateTeamAsync(leadProfileId, reviewProfileId);
+			Settings.TeamLeadProfileId = saved.TeamLeadProfileId;
+			Settings.TeamReviewProfileId = saved.TeamReviewProfileId;
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Couldn't change the team: {ex.Message}");
+		}
+
+		StateHasChanged();
+	}
+}

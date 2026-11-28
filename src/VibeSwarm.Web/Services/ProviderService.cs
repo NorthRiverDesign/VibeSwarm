@@ -56,6 +56,7 @@ public class ProviderService : IProviderService
 
         _dbContext.Providers.Add(provider);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await VibeSwarm.Web.Services.ProfileService.EnsureProviderDefaultsAsync(_dbContext, cancellationToken);
 
         return provider;
     }
@@ -125,6 +126,9 @@ public class ProviderService : IProviderService
         {
             _dbContext.Providers.Remove(provider);
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            // Its profiles went with it; settings that pointed at them are cleared.
+            await VibeSwarm.Web.Services.ProfileService.EnsureSettingsHaveProfilesAsync(_dbContext, cancellationToken);
         }
     }
 

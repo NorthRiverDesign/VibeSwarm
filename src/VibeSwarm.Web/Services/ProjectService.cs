@@ -84,7 +84,9 @@ public class ProjectService : IProjectService
 		{
 			throw new InvalidOperationException($"A project named '{project.Name}' already exists.");
 		}
-		NormalizePlanningSettings(project);
+		await ApplyTeamAsync(project, cancellationToken);
+		await ApplyProfileLinksAsync(project, cancellationToken);
+		NormalizeRoleSettings(project);
 		project.FolderId = await ResolveFolderIdAsync(project.FolderId, cancellationToken);
 		// Links go both ways, so they are saved through SetLinkedProjectsAsync, never with the project.
 		project.Links = [];
@@ -97,11 +99,8 @@ public class ProjectService : IProjectService
 		project.CommitSummaryInferenceModelId = string.IsNullOrWhiteSpace(project.CommitSummaryInferenceModelId) ? null : project.CommitSummaryInferenceModelId.Trim();
 		project.Memory = NormalizeProjectMemory(project.Memory);
 		NormalizeProviderSelections(project);
-		NormalizeAgentAssignments(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
-		await ValidateAgentAssignmentsAsync(project.AgentAssignments, cancellationToken);
-		await ValidatePlanningAsync(project, cancellationToken);
 		await ValidateReviewAsync(project, cancellationToken);
 		await ValidateLeadAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
@@ -154,7 +153,9 @@ public class ProjectService : IProjectService
 		{
 			throw new InvalidOperationException($"A project named '{project.Name}' already exists.");
 		}
-		NormalizePlanningSettings(project);
+		await ApplyTeamAsync(project, cancellationToken);
+		await ApplyProfileLinksAsync(project, cancellationToken);
+		NormalizeRoleSettings(project);
 		existing.Name = project.Name;
 		existing.Description = project.Description;
 		existing.WorkingPath = project.WorkingPath;
@@ -164,21 +165,25 @@ public class ProjectService : IProjectService
 		existing.DefaultTargetBranch = string.IsNullOrWhiteSpace(project.DefaultTargetBranch) ? null : project.DefaultTargetBranch.Trim();
 		existing.DevelopmentBranch = string.IsNullOrWhiteSpace(project.DevelopmentBranch) ? null : project.DevelopmentBranch.Trim();
 		existing.ReleaseBranch = string.IsNullOrWhiteSpace(project.ReleaseBranch) ? null : project.ReleaseBranch.Trim();
-		existing.PlanningEnabled = project.PlanningEnabled;
-		existing.PlanningProviderId = project.PlanningProviderId;
-		existing.PlanningModelId = project.PlanningModelId;
-		existing.PlanningReasoningEffort = project.PlanningReasoningEffort;
+		existing.TeamEnabled = project.TeamEnabled;
+		existing.TeamOverrides = project.TeamOverrides;
 		existing.ReviewEnabled = project.ReviewEnabled;
 		existing.ReviewProviderId = project.ReviewProviderId;
 		existing.ReviewInferenceProviderId = project.ReviewInferenceProviderId;
 		existing.ReviewModelId = project.ReviewModelId;
 		existing.ReviewReasoningEffort = project.ReviewReasoningEffort;
+		existing.ReviewProfileId = project.ReviewProfileId;
 		existing.LeadProviderId = project.LeadProviderId;
 		existing.LeadModelId = project.LeadModelId;
 		existing.LeadReasoningEffort = project.LeadReasoningEffort;
+		existing.LeadProfileId = project.LeadProfileId;
+		existing.DecisionsProfileId = project.DecisionsProfileId;
+		existing.ResearchProfileId = project.ResearchProfileId;
 		existing.LeadDirection = project.LeadDirection;
 		existing.IdeaInferenceProviderId = project.IdeaInferenceProviderId;
 		existing.IdeaInferenceModelId = string.IsNullOrWhiteSpace(project.IdeaInferenceModelId) ? null : project.IdeaInferenceModelId.Trim();
+		existing.IdeasProfileId = project.IdeasProfileId;
+		existing.CommitSummaryProfileId = project.CommitSummaryProfileId;
 		existing.CommitSummaryInferenceProviderId = project.CommitSummaryInferenceProviderId;
 		existing.CommitSummaryInferenceModelId = string.IsNullOrWhiteSpace(project.CommitSummaryInferenceModelId) ? null : project.CommitSummaryInferenceModelId.Trim();
 		existing.PromptContext = project.PromptContext;
@@ -194,25 +199,18 @@ public class ProjectService : IProjectService
 			.Collection(p => p.ProviderSelections)
 			.LoadAsync(cancellationToken);
 		await _dbContext.Entry(existing)
-			.Collection(p => p.AgentAssignments)
-			.LoadAsync(cancellationToken);
-		await _dbContext.Entry(existing)
 			.Collection(p => p.Environments)
 			.LoadAsync(cancellationToken);
 
 		NormalizeProviderSelections(project);
-		NormalizeAgentAssignments(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
-		await ValidateAgentAssignmentsAsync(project.AgentAssignments, cancellationToken);
-		await ValidatePlanningAsync(project, cancellationToken);
 		await ValidateReviewAsync(project, cancellationToken);
 		await ValidateLeadAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
 		_credentialService.PrepareForStorage(project, existing.Environments.ToList());
 
 		SynchronizeProviderSelections(existing, project.ProviderSelections);
-		SynchronizeAgentAssignments(existing, project.AgentAssignments);
 		SynchronizeEnvironments(existing, project.Environments);
 
 		await _dbContext.SaveChangesAsync(cancellationToken);
@@ -660,13 +658,7 @@ public class ProjectService : IProjectService
 			.Include(p => p.Links)
 			.Include(p => p.Environments.OrderBy(environment => environment.SortOrder))
 			.Include(p => p.ProviderSelections.OrderBy(pp => pp.Priority))
-				.ThenInclude(pp => pp.Provider)
-			.Include(p => p.AgentAssignments)
-				.ThenInclude(assignment => assignment.Provider)
-			.Include(p => p.AgentAssignments)
-				.ThenInclude(assignment => assignment.Agent)
-					.ThenInclude(agent => agent!.SkillLinks)
-						.ThenInclude(link => link.Skill);
+				.ThenInclude(pp => pp.Provider);
 	}
 
 	private static void ValidateProject(Project project)
@@ -854,45 +846,11 @@ public class ProjectService : IProjectService
 		project.ProviderSelections = orderedSelections;
 	}
 
-	private static void NormalizeAgentAssignments(Project project)
+	private static void NormalizeRoleSettings(Project project)
 	{
-		if (project.AgentAssignments == null || project.AgentAssignments.Count == 0)
-		{
-			project.AgentAssignments = [];
-			return;
-		}
-
-		var normalizedAssignments = project.AgentAssignments
-			.GroupBy(assignment => assignment.AgentId)
-			.Select(group => group.First())
-			.ToList();
-
-		foreach (var assignment in normalizedAssignments)
-		{
-			assignment.Id = assignment.Id == Guid.Empty ? Guid.NewGuid() : assignment.Id;
-			assignment.ProjectId = project.Id;
-			assignment.Agent = null;
-			assignment.Provider = null;
-			assignment.PreferredModelId = string.IsNullOrWhiteSpace(assignment.PreferredModelId)
-				? null
-				: assignment.PreferredModelId.Trim();
-			assignment.PreferredReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(assignment.PreferredReasoningEffort);
-			assignment.UpdatedAt = DateTime.UtcNow;
-			if (assignment.CreatedAt == default)
-			{
-				assignment.CreatedAt = DateTime.UtcNow;
-			}
-		}
-
-		project.AgentAssignments = normalizedAssignments;
-	}
-
-	private static void NormalizePlanningSettings(Project project)
-	{
-		project.PlanningModelId = string.IsNullOrWhiteSpace(project.PlanningModelId)
-			? null
-			: project.PlanningModelId.Trim();
-		project.PlanningReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(project.PlanningReasoningEffort);
+		// Research and Decisions are no longer offered; nothing may keep running unseen.
+		project.DecisionsProfileId = null;
+		project.ResearchProfileId = null;
 
 		// A review runs on one reviewer: a coding provider wins over an inference provider.
 		if (project.ReviewProviderId.HasValue)
@@ -1003,6 +961,7 @@ public class ProjectService : IProjectService
 					IsEnabled = requested.IsEnabled,
 					PreferredModelId = requested.PreferredModelId,
 					PreferredReasoningEffort = requested.PreferredReasoningEffort,
+					ProfileId = requested.ProfileId,
 					CreatedAt = requested.CreatedAt,
 					UpdatedAt = requested.UpdatedAt
 				});
@@ -1013,54 +972,82 @@ public class ProjectService : IProjectService
 			current.IsEnabled = requested.IsEnabled;
 			current.PreferredModelId = requested.PreferredModelId;
 			current.PreferredReasoningEffort = requested.PreferredReasoningEffort;
+			current.ProfileId = requested.ProfileId;
 			current.UpdatedAt = DateTime.UtcNow;
 		}
 	}
 
-	private void SynchronizeAgentAssignments(Project existing, ICollection<ProjectAgent> requestedAssignments)
+	/// <summary>
+	/// Gives the project the team's Lead and reviewer, or its own where it overrides them
+	/// (<see cref="TeamLinks"/>). Runs before the profile links are filled in.
+	/// </summary>
+	private async Task ApplyTeamAsync(Project project, CancellationToken cancellationToken)
 	{
-		var requestedProject = new Project
-		{
-			Id = existing.Id,
-			AgentAssignments = requestedAssignments ?? []
-		};
+		var settings = await _dbContext.AppSettings.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync(cancellationToken);
+		TeamLinks.Apply(project, TeamLinks.From(settings));
+	}
 
-		NormalizeAgentAssignments(requestedProject);
-		var requestedByAgent = requestedProject.AgentAssignments.ToDictionary(assignment => assignment.AgentId);
-
-		var assignmentsToRemove = existing.AgentAssignments
-			.Where(current => !requestedByAgent.ContainsKey(current.AgentId))
-			.ToList();
-		foreach (var assignment in assignmentsToRemove)
+	/// <summary>
+	/// Fills every setting linked to a profile from that profile, so what's saved always matches
+	/// it whatever the client sent, then gives each setting that came with a provider but no
+	/// profile the profile matching its values. A link to a profile that no longer exists is
+	/// dropped; one to a profile its role can't run on is refused.
+	/// </summary>
+	private async Task ApplyProfileLinksAsync(Project project, CancellationToken cancellationToken)
+	{
+		var ids = ProfileLinks.GetLinkedProfileIds(project);
+		if (ids.Count > 0)
 		{
-			_dbContext.ProjectAgents.Remove(assignment);
+			var profiles = await _dbContext.Profiles
+				.AsNoTracking()
+				.Include(profile => profile.Provider)
+				.Include(profile => profile.InferenceProvider)
+				.Where(profile => ids.Contains(profile.Id))
+				.ToDictionaryAsync(profile => profile.Id, cancellationToken);
+			RejectProfilesTheirRoleCannotUse(project, profiles);
+			ApplyProfileLinks(project, profiles);
 		}
 
-		foreach (var requested in requestedProject.AgentAssignments)
-		{
-			var current = existing.AgentAssignments.FirstOrDefault(assignment => assignment.AgentId == requested.AgentId);
-			if (current == null)
-			{
-				_dbContext.ProjectAgents.Add(new ProjectAgent
-				{
-					Id = requested.Id,
-					ProjectId = existing.Id,
-					AgentId = requested.AgentId,
-					ProviderId = requested.ProviderId,
-					PreferredModelId = requested.PreferredModelId,
-					PreferredReasoningEffort = requested.PreferredReasoningEffort,
-					IsEnabled = requested.IsEnabled,
-					CreatedAt = requested.CreatedAt,
-					UpdatedAt = requested.UpdatedAt
-				});
-				continue;
-			}
+		await ProfileService.LinkProjectAsync(_dbContext, project, cancellationToken);
+	}
 
-			current.ProviderId = requested.ProviderId;
-			current.PreferredModelId = requested.PreferredModelId;
-			current.PreferredReasoningEffort = requested.PreferredReasoningEffort;
-			current.IsEnabled = requested.IsEnabled;
-			current.UpdatedAt = DateTime.UtcNow;
+	/// <summary>
+	/// A profile in a role it can't fill would otherwise be dropped quietly, leaving the role
+	/// running on whatever it held before.
+	/// </summary>
+	private static void RejectProfilesTheirRoleCannotUse(Project project, IReadOnlyDictionary<Guid, Profile> profiles)
+	{
+		Profile? Linked(Guid? profileId) => profileId is Guid id && profiles.TryGetValue(id, out var profile) ? profile : null;
+
+		if (Linked(project.LeadProfileId) is { } lead && !ProfileRoles.CanRunReadOnly(lead))
+		{
+			throw new InvalidOperationException($"The Lead needs a Claude or Copilot profile, and '{lead.Name}' isn't one.");
+		}
+
+		// A reviewer that is switched off keeps its last profile without using it.
+		if (project.ReviewEnabled && Linked(project.ReviewProfileId) is { } reviewer && !ProfileRoles.CanHelpJobs(reviewer))
+		{
+			throw new InvalidOperationException($"Review needs a Claude, Copilot or inference profile, and '{reviewer.Name}' isn't one.");
+		}
+
+		var runners = (project.ProviderSelections ?? []).Select(entry => entry.ProfileId);
+		foreach (var profileId in runners)
+		{
+			if (Linked(profileId) is { ProviderId: null } profile)
+			{
+				throw new InvalidOperationException($"'{profile.Name}' only answers questions, so it can't run jobs.");
+			}
+		}
+	}
+
+	private static void ApplyProfileLinks(Project project, IReadOnlyDictionary<Guid, Profile> profiles)
+	{
+		ProfileLinks.ApplyRoleLinks(project, profiles);
+		ProfileLinks.ApplyHelperLinks(project, profiles);
+		ProfileLinks.ApplyInferenceRoleLinks(project, profiles);
+		foreach (var entry in project.ProviderSelections ?? [])
+		{
+			ProfileLinks.ApplyEntryLink(entry, profiles);
 		}
 	}
 
@@ -1201,95 +1188,6 @@ public class ProjectService : IProjectService
 		}
 	}
 
-	private async Task ValidateAgentAssignmentsAsync(ICollection<ProjectAgent> assignments, CancellationToken cancellationToken)
-	{
-		if (assignments == null || !assignments.Any())
-		{
-			return;
-		}
-
-		var agentIds = assignments.Select(assignment => assignment.AgentId).ToList();
-		var duplicates = agentIds.GroupBy(id => id).Where(group => group.Count() > 1).Select(group => group.Key).ToList();
-		if (duplicates.Any())
-		{
-			throw new InvalidOperationException("Duplicate agent assignment detected. Agents cannot be repeated.");
-		}
-
-		if (assignments.Any(assignment => assignment.ProviderId == Guid.Empty))
-		{
-			throw new InvalidOperationException("Each agent assignment must select a provider.");
-		}
-
-		var existingAgentIds = await _dbContext.Agents
-			.Where(agent => agentIds.Contains(agent.Id))
-			.Select(agent => agent.Id)
-			.ToListAsync(cancellationToken);
-		var invalidAgentIds = agentIds.Except(existingAgentIds).ToList();
-		if (invalidAgentIds.Any())
-		{
-			throw new InvalidOperationException($"One or more agent IDs do not exist: {string.Join(", ", invalidAgentIds)}");
-		}
-
-		var providerIds = assignments.Select(assignment => assignment.ProviderId).Distinct().ToList();
-		var existingProviders = await _dbContext.Providers
-			.Where(provider => providerIds.Contains(provider.Id))
-			.Select(provider => new { provider.Id, provider.Type, provider.ConnectionMode })
-			.ToListAsync(cancellationToken);
-		var existingProviderIds = existingProviders.Select(provider => provider.Id).ToList();
-		var invalidProviderIds = providerIds.Except(existingProviderIds).ToList();
-		if (invalidProviderIds.Any())
-		{
-			throw new InvalidOperationException($"One or more provider IDs do not exist for team assignments: {string.Join(", ", invalidProviderIds)}");
-		}
-
-		var preferredModels = assignments
-			.Where(assignment => !string.IsNullOrWhiteSpace(assignment.PreferredModelId))
-			.Select(assignment => new
-			{
-				assignment.ProviderId,
-				ModelId = assignment.PreferredModelId!.Trim()
-			})
-			.ToList();
-		if (!preferredModels.Any())
-		{
-			return;
-		}
-
-		var providerModels = await _dbContext.ProviderModels
-			.AsNoTracking()
-			.Where(model => model.IsAvailable && providerIds.Contains(model.ProviderId))
-			.Select(model => new { model.ProviderId, model.ModelId })
-			.ToListAsync(cancellationToken);
-		var availableModels = providerModels.ToHashSet();
-		var invalidPreferredModels = preferredModels
-			.Where(selection => !availableModels.Contains(new { selection.ProviderId, selection.ModelId }))
-			.Select(selection => $"{selection.ProviderId}:{selection.ModelId}")
-			.ToList();
-		if (invalidPreferredModels.Any())
-		{
-			throw new InvalidOperationException($"One or more agent models are not available for their provider: {string.Join(", ", invalidPreferredModels)}");
-		}
-
-		var providerLookup = existingProviders.ToDictionary(
-			provider => provider.Id,
-			provider => new Provider
-			{
-				Id = provider.Id,
-				Type = provider.Type,
-				ConnectionMode = provider.ConnectionMode
-			});
-		var invalidReasoningSelections = assignments
-			.Where(assignment => !ProviderCapabilities.SupportsReasoningEffort(
-				providerLookup[assignment.ProviderId],
-				assignment.PreferredReasoningEffort))
-			.Select(assignment => assignment.AgentId)
-			.ToList();
-		if (invalidReasoningSelections.Any())
-		{
-			throw new InvalidOperationException($"One or more agent reasoning levels are not supported by their provider: {string.Join(", ", invalidReasoningSelections)}");
-		}
-	}
-
 	private async Task ValidateReviewAsync(Project project, CancellationToken cancellationToken)
 	{
 		if (!project.ReviewEnabled)
@@ -1344,59 +1242,6 @@ public class ProjectService : IProjectService
 		if (!ProviderCapabilities.SupportsReasoningEffort(provider, project.LeadReasoningEffort))
 		{
 			throw new InvalidOperationException("The Lead's reasoning level is not supported by the chosen provider.");
-		}
-	}
-
-	private async Task ValidatePlanningAsync(Project project, CancellationToken cancellationToken)
-	{
-		if (!project.PlanningEnabled)
-		{
-			return;
-		}
-
-		if (!project.PlanningProviderId.HasValue)
-		{
-			throw new InvalidOperationException("Planning requires selecting a provider.");
-		}
-
-		var provider = await _dbContext.Providers
-			.AsNoTracking()
-			.FirstOrDefaultAsync(p => p.Id == project.PlanningProviderId.Value, cancellationToken);
-		if (provider == null)
-		{
-			throw new InvalidOperationException("The selected planning provider does not exist.");
-		}
-
-		if (!provider.IsEnabled)
-		{
-			throw new InvalidOperationException("The selected planning provider is disabled.");
-		}
-
-		if (provider.Type is not (ProviderType.Claude or ProviderType.Copilot))
-		{
-			throw new InvalidOperationException("Planning currently supports only Claude and GitHub Copilot providers.");
-		}
-
-		if (!ProviderCapabilities.SupportsReasoningEffort(provider, project.PlanningReasoningEffort))
-		{
-			throw new InvalidOperationException("The selected planning reasoning level is not supported by the chosen provider.");
-		}
-
-		if (string.IsNullOrWhiteSpace(project.PlanningModelId))
-		{
-			return;
-		}
-
-		var modelExists = await _dbContext.ProviderModels
-			.AsNoTracking()
-			.AnyAsync(
-				model => model.ProviderId == provider.Id &&
-					model.IsAvailable &&
-					model.ModelId == project.PlanningModelId,
-				cancellationToken);
-		if (!modelExists)
-		{
-			throw new InvalidOperationException("The selected planning model is not available for the chosen provider.");
 		}
 	}
 

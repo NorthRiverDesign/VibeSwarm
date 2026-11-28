@@ -95,6 +95,7 @@ public class AgentDetectionService
 		if (_db.ChangeTracker.HasChanges())
 		{
 			await _db.SaveChangesAsync(cancellationToken);
+			await ProfileService.EnsureProviderDefaultsAsync(_db, cancellationToken);
 		}
 
 		_logger.LogInformation(

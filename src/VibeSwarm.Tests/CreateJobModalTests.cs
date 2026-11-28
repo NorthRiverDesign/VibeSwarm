@@ -20,7 +20,6 @@ public sealed class CreateJobModalTests
 		using var context = new BunitContext();
 		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
 
@@ -42,8 +41,6 @@ public sealed class CreateJobModalTests
 		var cut = context.Render<CreateJobModal>(parameters => parameters
 			.Add(component => component.IsVisible, true)
 			.Add(component => component.JobModel, new Job())
-			.Add(component => component.Providers, [provider])
-			.Add(component => component.AvailableModels, new List<ProviderModel>())
 			.Add(component => component.Branches, new List<GitBranchInfo>())
 			.Add(component => component.TemplateLibrary, [template]));
 
@@ -97,7 +94,7 @@ public sealed class CreateJobModalTests
 	{
 		using var context = CreateGoalPromptContext();
 		var provider = new Provider { Id = Guid.NewGuid(), Name = "GitHub Copilot", Type = ProviderType.Copilot, IsEnabled = true };
-		var cut = RenderGoalPromptModal(context, provider, new Job { ProviderId = provider.Id }, () => { });
+		var cut = RenderGoalPromptModal(context, provider, new Job(), () => { });
 
 		cut.Find("form").Submit();
 		Assert.Contains("Goal prompt is required.", cut.Markup);
@@ -107,12 +104,149 @@ public sealed class CreateJobModalTests
 		Assert.DoesNotContain("Goal prompt is required.", cut.Markup);
 	}
 
+	[Fact]
+	public void CreateJobModal_StartsOnTheProjectsBuildProfile_AndAsksForNoProviderOrModel()
+	{
+		using var context = CreateGoalPromptContext();
+		var (claude, copilot) = (NewProvider("Claude", ProviderType.Claude, isDefault: true), NewProvider("GitHub Copilot", ProviderType.Copilot));
+		var claudeDefault = new Profile { Id = Guid.NewGuid(), Name = "Claude", ProviderId = claude.Id, Provider = claude, IsProviderDefault = true };
+		var build = new Profile { Id = Guid.NewGuid(), Name = "Deep thinker", ProviderId = copilot.Id, Provider = copilot, ModelId = "gpt-5", ReasoningEffort = "high" };
+		context.Services.AddSingleton<IProfileService>(new FakeProfileService(claudeDefault, build));
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "VibeSwarm",
+			ProviderSelections = [new ProjectProvider { ProviderId = copilot.Id, ProfileId = build.Id, IsEnabled = true }]
+		};
+		var submitted = false;
+		var job = new Job();
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, job)
+			.Add(component => component.Project, project)
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, [])
+			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, () => submitted = true)));
+
+		// One choice, already on the profile the project builds with, and saying what that is.
+		Assert.Equal(build.Id.ToString(), cut.Find("#jobProfile").GetAttribute("value"));
+		Assert.Contains("GitHub Copilot · gpt-5 · high", cut.Markup);
+		Assert.Equal(["Deep thinker", "Claude"], cut.FindAll("#jobProfile option").Select(option => option.TextContent));
+		Assert.Empty(cut.FindAll("#provider"));
+		Assert.Empty(cut.FindAll("#model"));
+		Assert.Empty(cut.FindAll("#reasoning"));
+
+		cut.Find("#goalPrompt").Input("Fix the flaky test");
+		cut.Find("form").Submit();
+
+		// The job names the profile and leaves the provider, model and reasoning to the server.
+		Assert.True(submitted);
+		Assert.Equal(build.Id, job.ProfileId);
+		Assert.Equal((Guid.Empty, null, null), (job.ProviderId, job.ModelUsed, job.ReasoningEffort));
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void CreateJobModal_OnATeamProject_OffersToLetTheBuilderWorkTheJobAlone(bool turnTheTeamOff)
+	{
+		using var context = CreateGoalPromptContext();
+		var claude = NewProvider("Claude", ProviderType.Claude, isDefault: true);
+		context.Services.AddSingleton<IProfileService>(new FakeProfileService(
+			new Profile { Id = Guid.NewGuid(), Name = "Claude", ProviderId = claude.Id, Provider = claude, IsProviderDefault = true }));
+		var job = new Job();
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, job)
+			.Add(component => component.Project, new Project { Id = Guid.NewGuid(), Name = "Team project", TeamEnabled = true })
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, [])
+			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, () => { })));
+
+		// On by default: the project works as a team.
+		Assert.True(cut.Find("#jobWorkAsTeam").HasAttribute("checked"));
+		Assert.Contains("The Lead plans this job into steps", cut.Markup);
+		if (turnTheTeamOff)
+		{
+			cut.Find("#jobWorkAsTeam").Change(false);
+			Assert.Contains("The builder works this job alone", cut.Markup);
+		}
+
+		cut.Find("#goalPrompt").Input("Fix the flaky test");
+		cut.Find("form").Submit();
+
+		Assert.Equal(turnTheTeamOff, job.RunSolo);
+	}
+
+	[Fact]
+	public void CreateJobModal_OnAProjectWithoutATeam_HasNoTeamSwitch()
+	{
+		using var context = CreateGoalPromptContext();
+		var claude = NewProvider("Claude", ProviderType.Claude, isDefault: true);
+		context.Services.AddSingleton<IProfileService>(new FakeProfileService(
+			new Profile { Id = Guid.NewGuid(), Name = "Claude", ProviderId = claude.Id, Provider = claude, IsProviderDefault = true }));
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, new Job())
+			.Add(component => component.Project, new Project { Id = Guid.NewGuid(), Name = "Solo project" })
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, [])
+			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, () => { })));
+
+		Assert.Empty(cut.FindAll("#jobWorkAsTeam"));
+	}
+
+	[Fact]
+	public void CreateJobModal_PickingAProfileAndInstances_NamesItOnTheJobAndAsksForCopies()
+	{
+		using var context = CreateGoalPromptContext();
+		var (claude, copilot) = (NewProvider("Claude", ProviderType.Claude, isDefault: true), NewProvider("GitHub Copilot", ProviderType.Copilot));
+		var claudeDefault = new Profile { Id = Guid.NewGuid(), Name = "Claude", ProviderId = claude.Id, Provider = claude, IsProviderDefault = true };
+		var profile = new Profile { Id = Guid.NewGuid(), Name = "Fast fixer", ProviderId = copilot.Id, Provider = copilot, ModelId = "gpt-5", ReasoningEffort = "high" };
+		// A profile that only answers questions, and one on a provider that is off, can't run a job.
+		var answers = new Profile { Id = Guid.NewGuid(), Name = "Grok", InferenceProviderId = Guid.NewGuid(), InferenceProvider = new InferenceProvider { Name = "Grok", IsEnabled = true } };
+		var off = new Profile { Id = Guid.NewGuid(), Name = "Switched off", ProviderId = Guid.NewGuid(), Provider = new Provider { Name = "OpenCode", Type = ProviderType.OpenCode, IsEnabled = false } };
+		context.Services.AddSingleton<IProfileService>(new FakeProfileService(claudeDefault, profile, answers, off));
+		var submitted = false;
+		var job = new Job();
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, job)
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, [])
+			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, () => submitted = true)));
+
+		Assert.Equal(["Claude", "Fast fixer"], cut.FindAll("#jobProfile option").Select(option => option.TextContent));
+		// With no Build order to go by, the job starts on the default provider's own profile.
+		Assert.Equal(claudeDefault.Id.ToString(), cut.Find("#jobProfile").GetAttribute("value"));
+
+		cut.Find("#jobProfile").Change(profile.Id.ToString());
+		cut.Find("#instances").Change("3");
+		cut.Find("#goalPrompt").Input("- One\n- Two\n- Three");
+		cut.Find("form").Submit();
+
+		Assert.True(submitted);
+		Assert.Equal(profile.Id, job.ProfileId);
+		Assert.Equal(3, job.RequestedInstances);
+	}
+
+	private static Provider NewProvider(string name, ProviderType type, bool isDefault = false)
+		=> new() { Id = Guid.NewGuid(), Name = name, Type = type, IsEnabled = true, IsDefault = isDefault };
+
+	private sealed class FakeProfileService(params Profile[] profiles) : IProfileService
+	{
+		public Task<IEnumerable<Profile>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Profile>>(profiles);
+		public Task<Profile?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(profiles.FirstOrDefault(profile => profile.Id == id));
+		public Task<Profile> CreateAsync(Profile created, CancellationToken cancellationToken = default) => Task.FromResult(created);
+		public Task<Profile> UpdateAsync(Profile updated, CancellationToken cancellationToken = default) => Task.FromResult(updated);
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
+	}
+
 	private static BunitContext CreateGoalPromptContext()
 	{
 		var context = new BunitContext();
 		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
 		return context;
@@ -123,268 +257,47 @@ public sealed class CreateJobModalTests
 		return context.Render<CreateJobModal>(parameters => parameters
 			.Add(component => component.IsVisible, true)
 			.Add(component => component.JobModel, job)
-			.Add(component => component.Providers, [provider])
-			.Add(component => component.AvailableModels, new List<ProviderModel>())
 			.Add(component => component.Branches, new List<GitBranchInfo>())
 			.Add(component => component.TemplateLibrary, [])
 			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, onSubmit)));
 	}
 
 	[Fact]
-	public void CreateJobModal_TemplateThatLeavesSettingsToTheProject_KeepsTheProjectsProviderBranchAndDelivery()
+	public void CreateJobModal_Templates_ChangeTheProfileOnlyWhenTheyNameOne()
 	{
 		using var context = CreateGoalPromptContext();
-		var provider = new Provider { Id = Guid.NewGuid(), Name = "Claude Code", Type = ProviderType.Claude, IsEnabled = true };
-		var template = new JobTemplate { Id = Guid.NewGuid(), Name = "Update dependencies", GoalPrompt = "Bring every dependency up to date." };
-		var job = new Job { ProviderId = provider.Id, Branch = "develop", GitChangeDeliveryMode = GitChangeDeliveryMode.PullRequest, TargetBranch = "main" };
-		var providerChanges = new List<Guid>();
+		var claude = NewProvider("Claude Code", ProviderType.Claude, isDefault: true);
+		var build = new Profile { Id = Guid.NewGuid(), Name = "Claude Code", ProviderId = claude.Id, Provider = claude, IsProviderDefault = true };
+		var careful = new Profile { Id = Guid.NewGuid(), Name = "Careful", ProviderId = claude.Id, Provider = claude, ModelId = "opus", ReasoningEffort = "high" };
+		context.Services.AddSingleton<IProfileService>(new FakeProfileService(build, careful));
+		var leavesItToTheProject = new JobTemplate { Id = Guid.NewGuid(), Name = "Update dependencies", GoalPrompt = "Bring every dependency up to date." };
+		var namesAProfile = new JobTemplate { Id = Guid.NewGuid(), Name = "Audit", GoalPrompt = "Audit the auth code.", ProfileId = careful.Id };
+		var job = new Job { Branch = "develop", GitChangeDeliveryMode = GitChangeDeliveryMode.PullRequest, TargetBranch = "main" };
 		var submitted = false;
 
 		var cut = context.Render<CreateJobModal>(parameters => parameters
 			.Add(component => component.IsVisible, true)
 			.Add(component => component.JobModel, job)
-			.Add(component => component.Providers, [provider])
-			.Add(component => component.AvailableModels, new List<ProviderModel>())
 			.Add(component => component.Branches, new List<GitBranchInfo>())
-			.Add(component => component.TemplateLibrary, [template])
-			.Add(component => component.OnProviderChanged, EventCallback.Factory.Create<Guid>(this, providerChanges.Add))
+			.Add(component => component.TemplateLibrary, [leavesItToTheProject, namesAProfile])
 			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, () => submitted = true)));
 
-		cut.Find("#jobTemplate").Change(template.Id.ToString());
+		// A template that leaves everything to the project keeps its profile, branch and delivery.
+		cut.Find("#jobTemplate").Change(leavesItToTheProject.Id.ToString());
+		Assert.Equal(build.Id.ToString(), cut.Find("#jobProfile").GetAttribute("value"));
+
+		cut.Find("#jobTemplate").Change(namesAProfile.Id.ToString());
+		Assert.Equal(careful.Id.ToString(), cut.Find("#jobProfile").GetAttribute("value"));
+
 		cut.Find("form").Submit();
 
 		Assert.True(submitted);
-		Assert.Equal(template.Id, job.JobTemplateId);
-		Assert.Equal("Bring every dependency up to date.", job.GoalPrompt);
-		Assert.Equal(provider.Id, job.ProviderId);
+		Assert.Equal(namesAProfile.Id, job.JobTemplateId);
+		Assert.Equal("Audit the auth code.", job.GoalPrompt);
+		Assert.Equal(careful.Id, job.ProfileId);
 		Assert.Equal("develop", job.Branch);
 		Assert.Equal(GitChangeDeliveryMode.PullRequest, job.GitChangeDeliveryMode);
 		Assert.Equal("main", job.TargetBranch);
-		Assert.Empty(providerChanges);
-	}
-
-	[Fact]
-	public void CreateJobModal_SelectingAgentPresetAppliesAssignedExecutionDefaults()
-	{
-		using var context = new BunitContext();
-		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
-		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
-		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
-		context.Services.AddSingleton<NotificationService>();
-
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "GitHub Copilot",
-			Type = ProviderType.Copilot,
-			IsEnabled = true
-		};
-		var agent = new Agent
-		{
-			Id = Guid.NewGuid(),
-			Name = "Security Reviewer",
-			Description = "Reviews risky auth and secrets changes.",
-			Responsibilities = "Inspect security-sensitive code paths before shipping.",
-			IsEnabled = true,
-			DefaultProviderId = provider.Id,
-			DefaultProvider = provider,
-			DefaultModelId = "gpt-5.4",
-			DefaultReasoningEffort = "high",
-			DefaultCycleMode = CycleMode.Autonomous,
-			DefaultCycleSessionMode = CycleSessionMode.ContinueSession,
-			DefaultMaxCycles = 4,
-			DefaultCycleReviewPrompt = "Review the last cycle and continue only if work remains."
-		};
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
-		var project = new Project
-		{
-			Id = Guid.NewGuid(),
-			Name = "VibeSwarm"
-		};
-
-		var cut = context.Render<CreateJobModal>(parameters => parameters
-			.Add(component => component.IsVisible, true)
-			.Add(component => component.JobModel, new Job())
-			.Add(component => component.Project, project)
-			.Add(component => component.Providers, [provider])
-			.Add(component => component.AvailableModels, new List<ProviderModel>())
-			.Add(component => component.Branches, new List<GitBranchInfo>())
-			.Add(component => component.TemplateLibrary, []));
-
-		cut.Find("#agentPreset").Change(agent.Id.ToString());
-
-		Assert.Contains("Agent Preset", cut.Markup);
-		Assert.Contains("Security Reviewer", cut.Markup);
-		Assert.Contains("GitHub Copilot", cut.Markup);
-		Assert.Contains("gpt-5.4", cut.Markup);
-		Assert.Contains("high", cut.Markup);
-		Assert.Contains("Autonomous (max 4 cycles)", cut.Markup);
-		Assert.Contains("Continue session between cycles", cut.Markup);
-		Assert.Contains("Review the last cycle and continue only if work remains.", cut.Markup);
-		Assert.Empty(cut.FindAll("#provider"));
-	}
-
-	[Fact]
-	public void CreateJobModal_SelectedAgentWithInstructions_AllowsBlankGoalPromptAndSubmitsFallback()
-	{
-		using var context = new BunitContext();
-		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
-		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
-		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
-		context.Services.AddSingleton<NotificationService>();
-
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "GitHub Copilot",
-			Type = ProviderType.Copilot,
-			IsEnabled = true
-		};
-		var agent = new Agent
-		{
-			Id = Guid.NewGuid(),
-			Name = "Implementation Agent",
-			Responsibilities = "Implement the requested change from the selected agent instructions.",
-			IsEnabled = true,
-			DefaultProviderId = provider.Id,
-			DefaultProvider = provider
-		};
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
-
-		var submitted = false;
-		var job = new Job();
-		var cut = context.Render<CreateJobModal>(parameters => parameters
-			.Add(component => component.IsVisible, true)
-			.Add(component => component.JobModel, job)
-			.Add(component => component.Providers, [provider])
-			.Add(component => component.AvailableModels, new List<ProviderModel>())
-			.Add(component => component.Branches, new List<GitBranchInfo>())
-			.Add(component => component.TemplateLibrary, [])
-			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, () => submitted = true)));
-
-		cut.Find("#agentPreset").Change(agent.Id.ToString());
-		cut.Find("form").Submit();
-
-		Assert.True(submitted);
-		Assert.Equal(agent.Responsibilities, job.GoalPrompt);
-		Assert.Contains("Goal Prompt (Optional)", cut.Markup);
-		Assert.DoesNotContain("Goal prompt is required", cut.Markup);
-	}
-
-	[Fact]
-	public void CreateJobModal_SelectedAgentWithoutInstructions_StillRequiresGoalPrompt()
-	{
-		using var context = new BunitContext();
-		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
-		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
-		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
-		context.Services.AddSingleton<NotificationService>();
-
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "GitHub Copilot",
-			Type = ProviderType.Copilot,
-			IsEnabled = true
-		};
-		var agent = new Agent
-		{
-			Id = Guid.NewGuid(),
-			Name = "Implementation Agent",
-			IsEnabled = true,
-			DefaultProviderId = provider.Id,
-			DefaultProvider = provider
-		};
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
-
-		var cut = context.Render<CreateJobModal>(parameters => parameters
-			.Add(component => component.IsVisible, true)
-			.Add(component => component.JobModel, new Job())
-			.Add(component => component.Providers, [provider])
-			.Add(component => component.AvailableModels, new List<ProviderModel>())
-			.Add(component => component.Branches, new List<GitBranchInfo>())
-			.Add(component => component.TemplateLibrary, []));
-
-		cut.Find("#agentPreset").Change(agent.Id.ToString());
-		cut.Find("form").Submit();
-
-		Assert.Contains("This agent does not have saved instructions, so enter a goal prompt for this job.", cut.Markup);
-		Assert.Contains("Goal prompt is required because the selected agent does not have reusable instructions.", cut.Markup);
-	}
-
-	[Fact]
-	public void CreateJobModal_RefreshesAgentAssignmentsFromProjectService_WhenParentProjectIsStale()
-	{
-		using var context = new BunitContext();
-		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
-		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
-		context.Services.AddSingleton<NotificationService>();
-
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "GitHub Copilot",
-			Type = ProviderType.Copilot,
-			IsEnabled = true
-		};
-		var agent = new Agent
-		{
-			Id = Guid.NewGuid(),
-			Name = "Release Manager",
-			DefaultProviderId = provider.Id,
-			DefaultProvider = provider,
-			DefaultCycleMode = CycleMode.FixedCount,
-			DefaultMaxCycles = 2,
-			IsEnabled = true
-		};
-		var staleProject = new Project
-		{
-			Id = Guid.NewGuid(),
-			Name = "VibeSwarm",
-			WorkingPath = "/tmp/vibeswarm"
-		};
-		var refreshedProject = new Project
-		{
-			Id = staleProject.Id,
-			Name = staleProject.Name,
-			WorkingPath = staleProject.WorkingPath,
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					ProjectId = staleProject.Id,
-					AgentId = agent.Id,
-					Agent = null,
-					ProviderId = provider.Id,
-					Provider = null,
-					IsEnabled = true
-				}
-			]
-		};
-
-		context.Services.AddSingleton<IProjectService>(new FakeProjectService([staleProject], refreshedProject));
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
-
-		var cut = context.Render<CreateJobModal>(parameters => parameters
-			.Add(component => component.IsVisible, true)
-			.Add(component => component.JobModel, new Job())
-			.Add(component => component.Project, staleProject)
-			.Add(component => component.Providers, [provider])
-			.Add(component => component.AvailableModels, new List<ProviderModel>())
-			.Add(component => component.Branches, new List<GitBranchInfo>())
-			.Add(component => component.TemplateLibrary, []));
-
-		cut.WaitForAssertion(() =>
-		{
-			Assert.Contains("Release Manager", cut.Markup);
-		});
-
-		cut.Find("#agentPreset").Change(agent.Id.ToString());
-
-		Assert.Contains("Agent Preset", cut.Markup);
-		Assert.Contains("Release Manager", cut.Markup);
-		Assert.Contains("GitHub Copilot", cut.Markup);
-		Assert.Contains("Fixed count (2 cycles)", cut.Markup);
 	}
 
 	private sealed class FakeJobTemplateService : IJobTemplateService
@@ -422,10 +335,4 @@ public sealed class CreateJobModalTests
 		public override Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
 	}
 
-	private sealed class FakeAgentService(IReadOnlyList<Agent> agents) : FakeAgentServiceBase
-	{
-		public override Task<IEnumerable<Agent>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>(agents);
-		public override Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>(agents.Where(agent => agent.IsEnabled));
-		public override Task<Agent?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(agents.FirstOrDefault(agent => agent.Id == id));
-	}
 }

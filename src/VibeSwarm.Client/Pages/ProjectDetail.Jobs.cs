@@ -73,16 +73,6 @@ public partial class ProjectDetail
         NewJob.Branch = string.IsNullOrWhiteSpace(Project?.DevelopmentBranch) ? CurrentBranch : Project.DevelopmentBranch;
         NewJob.GitChangeDeliveryMode = Project?.GitChangeDeliveryMode ?? GitChangeDeliveryMode.CommitToBranch;
         NewJob.TargetBranch = Project?.DefaultTargetBranch ?? CurrentBranch;
-        SelectedModelId = string.Empty;
-        AvailableModels.Clear();
-        NewJob.ReasoningEffort = null;
-
-        var initialProvider = GetPreferredJobProvider();
-        if (initialProvider != null)
-        {
-            NewJob.ProviderId = initialProvider.Id;
-            await LoadModelsForProvider(initialProvider.Id);
-        }
 
         ErrorMessage = null;
         _showCreateJobModal = true;
@@ -95,18 +85,6 @@ public partial class ProjectDetail
 
     private async Task HandleCreateJob()
     {
-        if (NewJob.ProviderId == Guid.Empty)
-        {
-            ErrorMessage = "Please select a provider.";
-            return;
-        }
-
-        if (!GetAllowedJobProviders().Any(p => p.Id == NewJob.ProviderId) && !IsSelectedAgentProviderAllowed())
-        {
-            ErrorMessage = "The selected provider is not allowed for this project.";
-            return;
-        }
-
         if (NewJob.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
         {
             if (string.IsNullOrWhiteSpace(NewJob.TargetBranch))
@@ -134,7 +112,6 @@ public partial class ProjectDetail
         try
         {
             NewJob.ProjectId = ProjectId;
-            NewJob.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
             var createdJob = await JobService.CreateAsync(NewJob);
             NavigationManager.NavigateTo($"/jobs/view/{createdJob.Id}");
         }
@@ -142,48 +119,6 @@ public partial class ProjectDetail
         {
             ErrorMessage = $"Error creating job: {ex.Message}";
             IsSaving = false;
-        }
-    }
-
-    private async Task OnProviderChanged(Guid providerId)
-    {
-        if (providerId != Guid.Empty && !GetAllowedJobProviders().Any(p => p.Id == providerId))
-        {
-            ErrorMessage = "This provider is not enabled for the current project.";
-            return;
-        }
-
-        NewJob.ProviderId = providerId;
-        SelectedModelId = string.Empty;
-        AvailableModels.Clear();
-        ErrorMessage = null;
-
-        if (providerId != Guid.Empty)
-        {
-            await LoadModelsForProvider(providerId);
-        }
-    }
-
-    private async Task LoadModelsForProvider(Guid providerId)
-    {
-        IsLoadingModels = true;
-        try
-        {
-            AvailableModels = (await ProviderService.GetModelsAsync(providerId))
-                .Where(model => model.IsAvailable)
-                .OrderByDescending(model => model.IsDefault)
-                .ThenBy(model => model.DisplayName ?? model.ModelId)
-                .ToList();
-
-            SelectedModelId = ProjectExecutionDefaults.ResolveModelId(Project, providerId, AvailableModels);
-            var provider = GetAllowedJobProviders().FirstOrDefault(item => item.Id == providerId);
-            NewJob.ReasoningEffort = provider != null
-                ? ProjectExecutionDefaults.ResolveReasoningEffort(Project, provider)
-                : null;
-        }
-        finally
-        {
-            IsLoadingModels = false;
         }
     }
 
@@ -195,63 +130,6 @@ public partial class ProjectDetail
     private Provider? GetPreferredJobProvider()
     {
         return ProjectExecutionDefaults.GetPreferredProvider(Project, Providers);
-    }
-
-    private Guid? GetDefaultIdeasProcessingProviderId()
-    {
-        return GetPreferredJobProvider()?.Id;
-    }
-
-    private string? GetDefaultIdeasProcessingModelId()
-    {
-        var provider = GetPreferredJobProvider();
-        if (provider == null)
-        {
-            return null;
-        }
-
-        var models = provider.AvailableModels
-            .Where(model => model.IsAvailable)
-            .OrderByDescending(model => model.IsDefault)
-            .ThenBy(model => model.DisplayName ?? model.ModelId)
-            .ToList();
-
-        var resolvedModelId = ProjectExecutionDefaults.ResolveModelId(Project, provider.Id, models);
-        return string.IsNullOrWhiteSpace(resolvedModelId) ? null : resolvedModelId;
-    }
-
-    private string? GetProviderHint()
-    {
-        var allowedProviders = GetAllowedJobProviders();
-        if (allowedProviders.Count == 0)
-        {
-            return null;
-        }
-
-        var hasProjectPriority = Project?.ProviderSelections?.Any(pp => pp.IsEnabled) == true;
-        if (!hasProjectPriority)
-        {
-            return "This project can use any enabled provider. The list below is ordered by the current provider defaults.";
-        }
-
-        var chain = string.Join(" -> ", allowedProviders.Select(p => p.Name));
-        return $"This project will try providers in this order: {chain}.";
-    }
-
-    private bool IsSelectedAgentProviderAllowed()
-    {
-        if (!NewJob.AgentId.HasValue || NewJob.AgentId == Guid.Empty)
-        {
-            return false;
-        }
-
-        var assignment = AgentPresetHelper.ResolveAgent(Project, NewJob.AgentId);
-        if (assignment != null && assignment.ProviderId == NewJob.ProviderId)
-        {
-            return true;
-        }
-
-        return NewJob.ProviderId != Guid.Empty;
     }
 
     private async Task DeleteSelectedJobs(List<Guid> jobIds)
@@ -545,9 +423,8 @@ public partial class ProjectDetail
     {
         await StartIdeasProcessingWithOptions(new IdeaProcessingOptions
         {
-            AutoCommitMode = Project?.AutoCommitMode ?? AutoCommitMode.Off,
-            ProviderId = GetDefaultIdeasProcessingProviderId(),
-            ModelId = GetDefaultIdeasProcessingModelId()
+            // No profile named: queued ideas run on the project's Build profile.
+            AutoCommitMode = Project?.AutoCommitMode ?? AutoCommitMode.Off
         });
     }
 
@@ -572,22 +449,15 @@ public partial class ProjectDetail
             IsIdeasProcessingActive = true;
             if (Project != null)
             {
-                Project.IdeasProcessingProviderId = options.ProviderId;
-                Project.IdeasProcessingModelId = string.IsNullOrWhiteSpace(options.ModelId) ? null : options.ModelId.Trim();
+                Project.IdeasProcessingProfileId = options.ProfileId;
             }
             await QueuePanelStateService.RequestRefreshAsync();
 
             var autoCommit = autoCommitMode != AutoCommitMode.Off;
             var commitMessage = autoCommit ? " Auto-commit is enabled." : "";
             var queueMessage = hasRunningJob ? " New ideas will queue behind the current job." : string.Empty;
-            var providerName = options.ProviderId.HasValue
-                ? GetAllowedJobProviders().FirstOrDefault(provider => provider.Id == options.ProviderId.Value)?.Name
-                : null;
-            var providerMessage = providerName == null
-                ? string.Empty
-                : $" Queued ideas will use {providerName}{(string.IsNullOrWhiteSpace(options.ModelId) ? string.Empty : $" ({options.ModelId})")}.";
             NotificationService.ShowInfo(
-                $"Ideas will be converted to jobs automatically.{queueMessage}{commitMessage}{providerMessage}",
+                $"Ideas will be converted to jobs automatically.{queueMessage}{commitMessage}",
                 "Auto-Processing Started");
         }
         catch (Exception ex)
@@ -665,113 +535,6 @@ public partial class ProjectDetail
         {
             ProcessingIdeaIds.Remove(ideaId);
             NotificationService.ShowProjectError(Project?.Name, $"Error starting idea: {ex.Message}");
-        }
-    }
-
-    private async Task ExpandIdea((Guid ideaId, IdeaExpansionRequest request) args)
-    {
-        var ideaId = args.ideaId;
-        var request = args.request;
-        _expandingIdeaId = ideaId;
-
-        // Cancel any previous expansion
-        _expandCts?.Cancel();
-        _expandCts?.Dispose();
-        _expandCts = new CancellationTokenSource();
-        var ct = _expandCts.Token;
-
-        try
-        {
-            var result = await IdeaService.ExpandIdeaAsync(ideaId, request, ct);
-            if (result != null)
-            {
-                await LoadIdeas(force: true);
-                if (result.ExpansionStatus == IdeaExpansionStatus.PendingReview)
-                {
-                    NotificationService.ShowSuccess("Idea expanded successfully. Review the specification.", "AI Expansion Complete");
-                }
-                else if (result.ExpansionStatus == IdeaExpansionStatus.Failed)
-                {
-                    NotificationService.ShowError(result.ExpansionError ?? "Expansion failed", "AI Expansion Failed");
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // User cancelled - try to reset the server-side status
-            try
-            {
-                await IdeaService.CancelExpansionAsync(ideaId);
-                await LoadIdeas(force: true);
-            }
-            catch { /* Best effort */ }
-            NotificationService.ShowInfo("Expansion cancelled.", "Cancelled");
-        }
-        catch (Exception ex)
-        {
-            // On error, also cancel the server-side expansion status
-            try
-            {
-                await IdeaService.CancelExpansionAsync(ideaId);
-                await LoadIdeas(force: true);
-            }
-            catch { /* Best effort */ }
-            NotificationService.ShowProjectError(Project?.Name, $"Error expanding idea: {ex.Message}");
-        }
-        finally
-        {
-            _expandingIdeaId = null;
-        }
-    }
-
-    private async Task CancelIdeaExpansion(Guid ideaId)
-    {
-        _expandCts?.Cancel();
-
-        try
-        {
-            await IdeaService.CancelExpansionAsync(ideaId);
-            await LoadIdeas(force: true);
-            NotificationService.ShowInfo("Expansion cancelled.", "Cancelled");
-        }
-        catch (Exception ex)
-        {
-            NotificationService.ShowProjectError(Project?.Name, $"Error cancelling expansion: {ex.Message}");
-        }
-        finally
-        {
-            _expandingIdeaId = null;
-        }
-    }
-
-    private async Task ApproveIdeaExpansion((Guid ideaId, string? editedDescription) args)
-    {
-        try
-        {
-            var result = await IdeaService.ApproveExpansionAsync(args.ideaId, args.editedDescription);
-            if (result != null)
-            {
-                await LoadIdeas(force: true);
-                NotificationService.ShowSuccess("Specification approved. The idea is ready to run.", "Expansion Approved");
-            }
-        }
-        catch (Exception ex)
-        {
-            NotificationService.ShowProjectError(Project?.Name, $"Error approving expansion: {ex.Message}");
-        }
-    }
-
-    private async Task RejectIdeaExpansion(Guid ideaId)
-    {
-        try
-        {
-            await IdeaService.RejectExpansionAsync(ideaId);
-            await LoadIdeas(force: true);
-            NotificationService.ShowInfo("Expansion discarded. You can try again or edit manually.", "Expansion Discarded");
-        }
-        catch (Exception ex)
-        {
-            NotificationService.ShowProjectError(Project?.Name, $"Error rejecting expansion: {ex.Message}");
         }
     }
 
@@ -858,7 +621,8 @@ public partial class ProjectDetail
 
         try
         {
-            var job = LocalEnvironmentSetup.CreateJob(ProjectId, provider.Id, GetDefaultIdeasProcessingModelId(), CurrentBranch);
+            // No provider named: the job runs on the project's Build profile.
+            var job = LocalEnvironmentSetup.CreateJob(ProjectId, Guid.Empty, null, CurrentBranch);
             var createdJob = await JobService.CreateAsync(job);
             NavigationManager.NavigateTo($"/jobs/view/{createdJob.Id}");
         }
@@ -970,22 +734,12 @@ public partial class ProjectDetail
         {
             _availableInferenceProviders = (await InferenceProviderService.GetEnabledAsync()).ToList();
             _hasInference = _availableInferenceProviders.Any();
-
-            if (_hasInference)
-            {
-                var health = await InferenceService.CheckHealthAsync();
-                if (health.IsAvailable)
-                {
-                    _availableLocalModels = health.DiscoveredModels;
-                }
-            }
         }
         catch
         {
             // Non-critical - inference is optional
             _hasInference = false;
             _availableInferenceProviders = new();
-            _availableLocalModels = new();
         }
     }
 

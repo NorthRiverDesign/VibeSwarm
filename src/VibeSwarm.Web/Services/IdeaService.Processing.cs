@@ -28,8 +28,12 @@ public partial class IdeaService
 
 				project.IdeasProcessingActive = true;
 				project.IdeasAutoCommit = normalizedOptions.AutoCommitMode != AutoCommitMode.Off;
+				project.IdeasProcessingProfileId = normalizedOptions.ProfileId;
 				project.IdeasProcessingProviderId = normalizedOptions.ProviderId;
 				project.IdeasProcessingModelId = normalizedOptions.ModelId;
+				// An older client names a provider instead of a profile; it gets the profile that
+				// runs the same thing.
+				await VibeSwarm.Web.Services.ProfileService.LinkIdeasQueueAsync(_dbContext, project, cancellationToken);
 				project.UpdatedAt = DateTime.UtcNow;
 				await _dbContext.SaveChangesAsync(cancellationToken);
 				_logger.LogInformation(
@@ -73,6 +77,7 @@ public partial class IdeaService
 				}
 
 				project.IdeasProcessingActive = false;
+				project.IdeasProcessingProfileId = null;
 				project.IdeasProcessingProviderId = null;
 				project.IdeasProcessingModelId = null;
 				project.UpdatedAt = DateTime.UtcNow;
@@ -183,6 +188,7 @@ public partial class IdeaService
 		var processingOptions = new IdeaProcessingOptions
 		{
 			AutoCommitMode = project.IdeasAutoCommit ? AutoCommitMode.CommitOnly : AutoCommitMode.Off,
+			ProfileId = project.IdeasProcessingProfileId,
 			ProviderId = project.IdeasProcessingProviderId,
 			ModelId = project.IdeasProcessingModelId
 		};
@@ -512,6 +518,25 @@ public partial class IdeaService
 			ProviderId = options?.ProviderId,
 			ModelId = string.IsNullOrWhiteSpace(options?.ModelId) ? null : options!.ModelId!.Trim()
 		};
+
+		// A profile brings its own provider and model, and may sit on a provider the project
+		// doesn't list: picking it for this run is the user's call, as it is on a single job.
+		if (options?.ProfileId is Guid profileId)
+		{
+			var profile = await _dbContext.Profiles
+				.AsNoTracking()
+				.Include(candidate => candidate.Provider)
+				.FirstOrDefaultAsync(candidate => candidate.Id == profileId, cancellationToken);
+			if (profile == null || !ProfileRoles.CanBuild(profile))
+			{
+				throw new ValidationException("The selected profile can't run jobs. Its provider may be turned off.");
+			}
+
+			normalized.ProfileId = profile.Id;
+			normalized.ProviderId = profile.ProviderId;
+			normalized.ModelId = profile.ModelId;
+			return normalized;
+		}
 
 		if (!normalized.ProviderId.HasValue)
 		{

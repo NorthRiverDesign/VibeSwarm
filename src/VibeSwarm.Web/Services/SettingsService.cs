@@ -1,25 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Utilities;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Shared.Services;
 
 public class SettingsService : ISettingsService
 {
 	private readonly VibeSwarmDbContext _dbContext;
-	private const string LegacyDefaultIdeaExpansionPromptTemplate =
-		"""
-		You are a staff-level software engineer turning a rough product idea into an implementation-ready specification.
-
-		## Feature Idea
-		{{idea}}
-
-		## Instructions
-		1. Explore the codebase, adjacent workflows, reusable components, and tests before deciding on the solution. Use subagents when they help you investigate in parallel.
-		2. Make pragmatic assumptions from repository patterns and choose the option that best fits the current system.
-		3. Return concise markdown with these sections: Overview, User Flows, Affected Areas, Implementation Plan, Edge Cases, Acceptance Criteria.
-		4. Keep it concrete and brief. No code samples. Do not mention providers, models, or attribution.
-		""";
 	private const string LegacyDefaultIdeaImplementationPromptTemplate =
 		"""
 		You are a staff-level software engineer implementing a feature directly from a product idea.
@@ -190,7 +178,6 @@ public class SettingsService : ISettingsService
 				CriticalErrorLogRetentionDays = AppSettings.DefaultCriticalErrorLogRetentionDays,
 				CriticalErrorLogMaxEntries = AppSettings.DefaultCriticalErrorLogMaxEntries,
 				MaxConcurrentJobs = JobConcurrency.DefaultTotalJobs,
-				IdeaExpansionPromptTemplate = PromptBuilder.DefaultIdeaExpansionPromptTemplate,
 				IdeaImplementationPromptTemplate = PromptBuilder.DefaultIdeaImplementationPromptTemplate,
 				ApprovedIdeaImplementationPromptTemplate = PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
 				UpdatedAt = DateTime.UtcNow
@@ -205,10 +192,6 @@ public class SettingsService : ISettingsService
 			var normalizedRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			var normalizedMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
 			var normalizedMaxConcurrentJobs = JobConcurrency.Normalize(settings.MaxConcurrentJobs);
-			var normalizedIdeaExpansionPromptTemplate = NormalizePromptTemplate(
-				settings.IdeaExpansionPromptTemplate,
-				PromptBuilder.DefaultIdeaExpansionPromptTemplate,
-				LegacyDefaultIdeaExpansionPromptTemplate);
 			var normalizedIdeaImplementationPromptTemplate = NormalizePromptTemplate(
 				settings.IdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultIdeaImplementationPromptTemplate,
@@ -226,7 +209,6 @@ public class SettingsService : ISettingsService
 				settings.CriticalErrorLogRetentionDays != normalizedRetentionDays ||
 				settings.CriticalErrorLogMaxEntries != normalizedMaxEntries ||
 				settings.MaxConcurrentJobs != normalizedMaxConcurrentJobs ||
-				!string.Equals(settings.IdeaExpansionPromptTemplate, normalizedIdeaExpansionPromptTemplate, StringComparison.Ordinal) ||
 				!string.Equals(settings.IdeaImplementationPromptTemplate, normalizedIdeaImplementationPromptTemplate, StringComparison.Ordinal) ||
 				!string.Equals(settings.ApprovedIdeaImplementationPromptTemplate, normalizedApprovedIdeaImplementationPromptTemplate, StringComparison.Ordinal))
 			{
@@ -234,7 +216,6 @@ public class SettingsService : ISettingsService
 				settings.CriticalErrorLogRetentionDays = normalizedRetentionDays;
 				settings.CriticalErrorLogMaxEntries = normalizedMaxEntries;
 				settings.MaxConcurrentJobs = normalizedMaxConcurrentJobs;
-				settings.IdeaExpansionPromptTemplate = normalizedIdeaExpansionPromptTemplate;
 				settings.IdeaImplementationPromptTemplate = normalizedIdeaImplementationPromptTemplate;
 				settings.ApprovedIdeaImplementationPromptTemplate = normalizedApprovedIdeaImplementationPromptTemplate;
 				settings.UpdatedAt ??= DateTime.UtcNow;
@@ -258,10 +239,6 @@ public class SettingsService : ISettingsService
 			settings.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
 			// Only admins change it, through UpdateMaxConcurrentJobsAsync.
 			settings.MaxConcurrentJobs = JobConcurrency.DefaultTotalJobs;
-			settings.IdeaExpansionPromptTemplate = NormalizePromptTemplate(
-				settings.IdeaExpansionPromptTemplate,
-				PromptBuilder.DefaultIdeaExpansionPromptTemplate,
-				LegacyDefaultIdeaExpansionPromptTemplate);
 			settings.IdeaImplementationPromptTemplate = NormalizePromptTemplate(
 				settings.IdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultIdeaImplementationPromptTemplate,
@@ -292,10 +269,6 @@ public class SettingsService : ISettingsService
 			existing.InferenceAnswersAgentQuestions = settings.InferenceAnswersAgentQuestions;
 			existing.CriticalErrorLogRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			existing.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
-			existing.IdeaExpansionPromptTemplate = NormalizePromptTemplate(
-				settings.IdeaExpansionPromptTemplate,
-				PromptBuilder.DefaultIdeaExpansionPromptTemplate,
-				LegacyDefaultIdeaExpansionPromptTemplate);
 			existing.IdeaImplementationPromptTemplate = NormalizePromptTemplate(
 				settings.IdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultIdeaImplementationPromptTemplate,
@@ -324,6 +297,73 @@ public class SettingsService : ISettingsService
 		settings.UpdatedAt = DateTime.UtcNow;
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
+		return settings;
+	}
+
+	public async Task<AppSettings> UpdateTeamAsync(Guid? leadProfileId, Guid? reviewProfileId, CancellationToken cancellationToken = default)
+	{
+		var ids = new[] { leadProfileId, reviewProfileId }.OfType<Guid>().Distinct().ToList();
+		var profiles = await _dbContext.Profiles
+			.AsNoTracking()
+			.Include(profile => profile.Provider)
+			.Include(profile => profile.InferenceProvider)
+			.Where(profile => ids.Contains(profile.Id))
+			.ToDictionaryAsync(profile => profile.Id, cancellationToken);
+
+		if (leadProfileId is Guid leadId)
+		{
+			if (!profiles.TryGetValue(leadId, out var lead))
+			{
+				throw new InvalidOperationException("The profile chosen to lead no longer exists.");
+			}
+
+			if (!ProfileRoles.CanRunReadOnly(lead))
+			{
+				throw new InvalidOperationException($"The Lead needs a Claude or Copilot profile, and '{lead.Name}' isn't one.");
+			}
+		}
+
+		if (reviewProfileId is Guid reviewId)
+		{
+			if (!profiles.TryGetValue(reviewId, out var reviewer))
+			{
+				throw new InvalidOperationException("The profile chosen to review no longer exists.");
+			}
+
+			if (!ProfileRoles.CanHelpJobs(reviewer))
+			{
+				throw new InvalidOperationException($"Review needs a Claude, Copilot or inference profile, and '{reviewer.Name}' isn't one.");
+			}
+		}
+
+		var settings = await GetSettingsAsync(cancellationToken);
+		settings.TeamLeadProfileId = leadProfileId;
+		settings.TeamReviewProfileId = reviewProfileId;
+		settings.UpdatedAt = DateTime.UtcNow;
+
+		// Projects hold a copy of the team's profiles, so each one working as a team is brought
+		// up to date here; a role the project overrides keeps its own profile.
+		var team = TeamLinks.From(settings);
+		var projects = await _dbContext.Projects.Where(project => project.TeamEnabled).ToListAsync(cancellationToken);
+		if (projects.Count > 0)
+		{
+			var linked = projects.SelectMany(project => new[] { project.LeadProfileId, project.ReviewProfileId }).OfType<Guid>()
+				.Concat(ids).Distinct().ToList();
+			var lookup = await _dbContext.Profiles
+				.AsNoTracking()
+				.Include(profile => profile.Provider)
+				.Include(profile => profile.InferenceProvider)
+				.Where(profile => linked.Contains(profile.Id))
+				.ToDictionaryAsync(profile => profile.Id, cancellationToken);
+			foreach (var project in projects)
+			{
+				TeamLinks.Apply(project, team);
+				ProfileLinks.ApplyRoleLinks(project, lookup);
+				project.UpdatedAt = DateTime.UtcNow;
+			}
+		}
+
+		await _dbContext.SaveChangesAsync(cancellationToken);
 		return settings;
 	}
 

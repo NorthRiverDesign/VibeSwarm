@@ -218,11 +218,6 @@ public sealed class LeadService : ILeadService, ILeadAutomation
 			.MaxAsync(cancellationToken);
 		idea.NeedsApproval = false;
 		idea.SortOrder = (lastInQueue ?? -1) + 1;
-		if (!string.IsNullOrWhiteSpace(idea.ExpandedDescription))
-		{
-			idea.ExpansionStatus = IdeaExpansionStatus.Approved;
-			idea.ExpandedAt ??= DateTime.UtcNow;
-		}
 
 		// A loop waiting for approved ideas has one now; the next wait deserves a new nudge.
 		await _db.IterationLoops
@@ -449,9 +444,7 @@ public sealed class LeadService : ILeadService, ILeadAutomation
 			{
 				ProjectId = projectId,
 				Description = idea.Title,
-				ExpandedDescription = idea.Spec,
-				ExpansionStatus = IdeaExpansionStatus.PendingReview,
-				ExpandedAt = DateTime.UtcNow,
+				Specification = idea.Spec,
 				Source = IdeaSource.Lead,
 				NeedsApproval = true,
 				LeadReviewId = reviewId,

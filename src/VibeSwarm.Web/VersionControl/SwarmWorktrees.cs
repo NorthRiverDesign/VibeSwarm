@@ -74,7 +74,7 @@ public sealed class SwarmWorktrees
 		{
 			throw new InvalidOperationException(
 				$"Couldn't create a worktree for the agent: {FirstLine(add.Error, add.Output)} " +
-				"Agents of a team work in worktrees of their own, which needs at least one commit in the repository.");
+				"Instances of a job work in worktrees of their own, which needs at least one commit in the repository.");
 		}
 
 		_logger.LogInformation("Created swarm worktree {Path} on {Branch} for job {JobId}", path, branch, jobId);

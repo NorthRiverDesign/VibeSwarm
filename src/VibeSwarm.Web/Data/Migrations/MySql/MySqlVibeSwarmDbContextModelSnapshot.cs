@@ -152,83 +152,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
-            modelBuilder.Entity("VibeSwarm.Shared.Data.Agent", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int>("DefaultCycleMode")
-                        .HasColumnType("int");
-
-                    b.Property<string>("DefaultCycleReviewPrompt")
-                        .HasMaxLength(2000)
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("DefaultCycleSessionMode")
-                        .HasColumnType("int");
-
-                    b.Property<int>("DefaultMaxCycles")
-                        .HasColumnType("int");
-
-                    b.Property<string>("DefaultModelId")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<Guid?>("DefaultProviderId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("DefaultReasoningEffort")
-                        .HasMaxLength(32)
-                        .HasColumnType("varchar(32)");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
-
-                    b.Property<bool>("IsEnabled")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.Property<string>("Responsibilities")
-                        .HasMaxLength(4000)
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DefaultProviderId");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.ToTable("Agents");
-                });
-
-            modelBuilder.Entity("VibeSwarm.Shared.Data.AgentSkill", b =>
-                {
-                    b.Property<Guid>("AgentId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("SkillId")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("AgentId", "SkillId");
-
-                    b.HasIndex("SkillId");
-
-                    b.ToTable("AgentSkills");
-                });
-
             modelBuilder.Entity("VibeSwarm.Shared.Data.AppSettings", b =>
                 {
                     b.Property<Guid>("Id")
@@ -277,10 +200,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
-                    b.Property<string>("IdeaExpansionPromptTemplate")
-                        .HasMaxLength(12000)
-                        .HasColumnType("longtext");
-
                     b.Property<string>("IdeaImplementationPromptTemplate")
                         .HasMaxLength(12000)
                         .HasColumnType("longtext");
@@ -316,6 +235,12 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
                         .HasDefaultValue(5);
+
+                    b.Property<Guid?>("TeamLeadProfileId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("TeamReviewProfileId")
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("TimeZoneId")
                         .IsRequired()
@@ -565,21 +490,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<DateTime?>("DismissedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<DateTime?>("ExpandedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("ExpandedDescription")
-                        .HasMaxLength(20000)
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("ExpansionError")
-                        .HasMaxLength(1000)
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("ExpansionStatus")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
                     b.Property<bool>("IsProcessing")
                         .HasColumnType("tinyint(1)");
 
@@ -600,6 +510,10 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
                     b.Property<int>("Source")
                         .HasColumnType("int");
+
+                    b.Property<string>("Specification")
+                        .HasMaxLength(20000)
+                        .HasColumnType("longtext");
 
                     b.HasKey("Id");
 
@@ -794,6 +708,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<int>("IdeaSource")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("IdeasProfileId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("InferenceModelId")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
@@ -832,6 +749,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
                     b.Property<int>("PolishEveryIterations")
                         .HasColumnType("int");
+
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("char(36)");
 
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("char(36)");
@@ -879,9 +799,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<int>("ActiveExecutionIndex")
                         .HasColumnType("int");
 
-                    b.Property<Guid?>("AgentId")
-                        .HasColumnType("char(36)");
-
                     b.Property<string>("AttachedFilesJson")
                         .HasMaxLength(4000)
                         .HasColumnType("longtext");
@@ -924,19 +841,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
                     b.Property<string>("CurrentActivity")
                         .HasColumnType("longtext");
-
-                    b.Property<int>("CurrentCycle")
-                        .HasColumnType("int");
-
-                    b.Property<int>("CycleMode")
-                        .HasColumnType("int");
-
-                    b.Property<string>("CycleReviewPrompt")
-                        .HasMaxLength(2000)
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("CycleSessionMode")
-                        .HasColumnType("int");
 
                     b.Property<Guid?>("DependsOnJobId")
                         .HasColumnType("char(36)");
@@ -1003,6 +907,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(20000)
                         .HasColumnType("longtext");
 
+                    b.Property<int?>("InstanceNumber")
+                        .HasColumnType("int");
+
                     b.Property<string>("InteractionChoices")
                         .HasColumnType("longtext");
 
@@ -1045,11 +952,11 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<int>("LeadChecks")
+                        .HasColumnType("int");
+
                     b.Property<decimal?>("MaxCostUsd")
                         .HasColumnType("decimal(65,30)");
-
-                    b.Property<int>("MaxCycles")
-                        .HasColumnType("int");
 
                     b.Property<int?>("MaxExecutionMinutes")
                         .HasColumnType("int");
@@ -1083,6 +990,10 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<string>("PendingInteractionPrompt")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("PlanSkippedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
                     b.Property<string>("PlanningCommandUsed")
                         .HasMaxLength(4000)
                         .HasColumnType("longtext");
@@ -1112,6 +1023,13 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
                     b.Property<int?>("ProcessId")
                         .HasColumnType("int");
+
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ProfileName")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
 
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("char(36)");
@@ -1196,6 +1114,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(250)
                         .HasColumnType("varchar(250)");
 
+                    b.Property<bool>("TeamRun")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("Title")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
@@ -1208,8 +1129,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasColumnType("longtext");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("AgentId");
 
                     b.HasIndex("CreatedAt");
 
@@ -1426,18 +1345,11 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
-                    b.Property<Guid?>("AgentId")
-                        .HasColumnType("char(36)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<int>("DayOfMonth")
                         .HasColumnType("int");
-
-                    b.Property<string>("ExecutionTarget")
-                        .IsRequired()
-                        .HasColumnType("longtext");
 
                     b.Property<string>("Frequency")
                         .IsRequired()
@@ -1475,6 +1387,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<DateTime>("NextRunAtUtc")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("char(36)");
 
@@ -1498,8 +1413,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasColumnType("longtext");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("AgentId");
 
                     b.HasIndex("InferenceProviderId");
 
@@ -1537,6 +1450,85 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.ToTable("JobStatistics");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<decimal?>("CostUsd")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("DoneWhen")
+                        .HasMaxLength(4000)
+                        .HasColumnType("longtext");
+
+                    b.Property<int?>("InputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Instructions")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("longtext");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("OutputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReviewNotes")
+                        .HasMaxLength(8000)
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("ReviewRounds")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReviewStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("SnapshotCommit")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(4000)
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId", "Order");
+
+                    b.ToTable("JobSteps");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobTemplate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1550,16 +1542,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<int>("CycleMode")
-                        .HasColumnType("int");
-
-                    b.Property<string>("CycleReviewPrompt")
-                        .HasMaxLength(2000)
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("CycleSessionMode")
-                        .HasColumnType("int");
-
                     b.Property<string>("Description")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
@@ -1572,9 +1554,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(20000)
                         .HasColumnType("longtext");
 
-                    b.Property<int>("MaxCycles")
-                        .HasColumnType("int");
-
                     b.Property<string>("ModelId")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
@@ -1583,6 +1562,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
+
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("char(36)");
 
                     b.Property<Guid?>("ProviderId")
                         .HasColumnType("char(36)");
@@ -1678,6 +1660,56 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.ToTable("LeadReviews");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.Profile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<Guid?>("InferenceProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsProviderDefault")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("ModelId")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<Guid?>("ProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ReasoningEffort")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InferenceProviderId");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("ProviderId");
+
+                    b.ToTable("Profiles");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.Project", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1701,8 +1733,14 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<Guid?>("CommitSummaryInferenceProviderId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("CommitSummaryProfileId")
+                        .HasColumnType("char(36)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("DecisionsProfileId")
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("DefaultTargetBranch")
                         .HasMaxLength(250)
@@ -1715,9 +1753,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<string>("DevelopmentBranch")
                         .HasMaxLength(250)
                         .HasColumnType("varchar(250)");
-
-                    b.Property<bool>("EnableTeamSwarm")
-                        .HasColumnType("tinyint(1)");
 
                     b.Property<Guid?>("FolderId")
                         .HasColumnType("char(36)");
@@ -1746,7 +1781,13 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<Guid?>("IdeasProcessingProfileId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid?>("IdeasProcessingProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("IdeasProfileId")
                         .HasColumnType("char(36)");
 
                     b.Property<bool>("IsActive")
@@ -1759,6 +1800,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<string>("LeadModelId")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
+
+                    b.Property<Guid?>("LeadProfileId")
+                        .HasColumnType("char(36)");
 
                     b.Property<Guid?>("LeadProviderId")
                         .HasColumnType("char(36)");
@@ -1776,20 +1820,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
-                    b.Property<bool>("PlanningEnabled")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("PlanningModelId")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<Guid?>("PlanningProviderId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("PlanningReasoningEffort")
-                        .HasMaxLength(32)
-                        .HasColumnType("varchar(32)");
-
                     b.Property<string>("PromptContext")
                         .HasMaxLength(4000)
                         .HasColumnType("longtext");
@@ -1804,6 +1834,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<DateTime?>("RepoMapGeneratedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<Guid?>("ResearchProfileId")
+                        .HasColumnType("char(36)");
+
                     b.Property<bool>("ReviewEnabled")
                         .HasColumnType("tinyint(1)");
 
@@ -1814,12 +1847,21 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<Guid?>("ReviewProfileId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid?>("ReviewProviderId")
                         .HasColumnType("char(36)");
 
                     b.Property<string>("ReviewReasoningEffort")
                         .HasMaxLength(32)
                         .HasColumnType("varchar(32)");
+
+                    b.Property<bool>("TeamEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("TeamOverrides")
+                        .HasColumnType("int");
 
                     b.Property<string>("TestCommand")
                         .HasMaxLength(500)
@@ -1841,50 +1883,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .IsUnique();
 
                     b.ToTable("Projects");
-                });
-
-            modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectAgent", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("AgentId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<bool>("IsEnabled")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("PreferredModelId")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<string>("PreferredReasoningEffort")
-                        .HasMaxLength(32)
-                        .HasColumnType("varchar(32)");
-
-                    b.Property<Guid>("ProjectId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("ProviderId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AgentId");
-
-                    b.HasIndex("ProviderId");
-
-                    b.HasIndex("ProjectId", "AgentId")
-                        .IsUnique();
-
-                    b.ToTable("ProjectAgents");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectEnvironment", b =>
@@ -2016,6 +2014,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
                     b.Property<int>("Priority")
                         .HasColumnType("int");
+
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("char(36)");
 
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("char(36)");
@@ -2505,35 +2506,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("VibeSwarm.Shared.Data.Agent", b =>
-                {
-                    b.HasOne("VibeSwarm.Shared.Providers.Provider", "DefaultProvider")
-                        .WithMany()
-                        .HasForeignKey("DefaultProviderId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("DefaultProvider");
-                });
-
-            modelBuilder.Entity("VibeSwarm.Shared.Data.AgentSkill", b =>
-                {
-                    b.HasOne("VibeSwarm.Shared.Data.Agent", "Agent")
-                        .WithMany("SkillLinks")
-                        .HasForeignKey("AgentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("VibeSwarm.Shared.Data.Skill", "Skill")
-                        .WithMany()
-                        .HasForeignKey("SkillId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Agent");
-
-                    b.Navigation("Skill");
-                });
-
             modelBuilder.Entity("VibeSwarm.Shared.Data.FolderManagerReport", b =>
                 {
                     b.HasOne("VibeSwarm.Shared.Data.ProjectFolder", null)
@@ -2603,11 +2575,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.Job", b =>
                 {
-                    b.HasOne("VibeSwarm.Shared.Data.Agent", "Agent")
-                        .WithMany()
-                        .HasForeignKey("AgentId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("VibeSwarm.Shared.Data.JobSchedule", "JobSchedule")
                         .WithMany("Jobs")
                         .HasForeignKey("JobScheduleId")
@@ -2634,8 +2601,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasForeignKey("ProviderId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("Agent");
 
                     b.Navigation("JobSchedule");
 
@@ -2705,11 +2670,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobSchedule", b =>
                 {
-                    b.HasOne("VibeSwarm.Shared.Data.Agent", "Agent")
-                        .WithMany()
-                        .HasForeignKey("AgentId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("VibeSwarm.Shared.Data.InferenceProvider", "InferenceProvider")
                         .WithMany()
                         .HasForeignKey("InferenceProviderId")
@@ -2726,8 +2686,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasForeignKey("ProviderId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.Navigation("Agent");
-
                     b.Navigation("InferenceProvider");
 
                     b.Navigation("Project");
@@ -2740,6 +2698,17 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.HasOne("VibeSwarm.Shared.Data.Job", "Job")
                         .WithOne("Statistics")
                         .HasForeignKey("VibeSwarm.Shared.Data.JobStatistics", "JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobStep", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.Job", "Job")
+                        .WithMany("Steps")
+                        .HasForeignKey("JobId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -2767,39 +2736,29 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Navigation("Project");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.Profile", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.InferenceProvider", "InferenceProvider")
+                        .WithMany()
+                        .HasForeignKey("InferenceProviderId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("VibeSwarm.Shared.Providers.Provider", "Provider")
+                        .WithMany()
+                        .HasForeignKey("ProviderId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("InferenceProvider");
+
+                    b.Navigation("Provider");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.Project", b =>
                 {
                     b.HasOne("VibeSwarm.Shared.Data.ProjectFolder", null)
                         .WithMany()
                         .HasForeignKey("FolderId")
                         .OnDelete(DeleteBehavior.SetNull);
-                });
-
-            modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectAgent", b =>
-                {
-                    b.HasOne("VibeSwarm.Shared.Data.Agent", "Agent")
-                        .WithMany("ProjectAssignments")
-                        .HasForeignKey("AgentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("VibeSwarm.Shared.Data.Project", "Project")
-                        .WithMany("AgentAssignments")
-                        .HasForeignKey("ProjectId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("VibeSwarm.Shared.Providers.Provider", "Provider")
-                        .WithMany()
-                        .HasForeignKey("ProviderId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Agent");
-
-                    b.Navigation("Project");
-
-                    b.Navigation("Provider");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.ProjectEnvironment", b =>
@@ -2897,13 +2856,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .OnDelete(DeleteBehavior.Cascade);
                 });
 
-            modelBuilder.Entity("VibeSwarm.Shared.Data.Agent", b =>
-                {
-                    b.Navigation("ProjectAssignments");
-
-                    b.Navigation("SkillLinks");
-                });
-
             modelBuilder.Entity("VibeSwarm.Shared.Data.Idea", b =>
                 {
                     b.Navigation("Attachments");
@@ -2927,6 +2879,8 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Navigation("ProviderAttempts");
 
                     b.Navigation("Statistics");
+
+                    b.Navigation("Steps");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobSchedule", b =>
@@ -2941,8 +2895,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.Project", b =>
                 {
-                    b.Navigation("AgentAssignments");
-
                     b.Navigation("Environments");
 
                     b.Navigation("Ideas");

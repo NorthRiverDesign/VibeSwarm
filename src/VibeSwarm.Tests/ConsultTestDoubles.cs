@@ -70,9 +70,13 @@ internal sealed class RecordingUsageService : IProviderUsageService
 {
 	public List<(Guid ProviderId, Guid? JobId)> Recorded { get; } = [];
 
+	/// <summary>The tokens and cost of each recorded run, in order.</summary>
+	public List<(int? InputTokens, int? OutputTokens, decimal? CostUsd)> Usage { get; } = [];
+
 	public Task RecordUsageAsync(Guid providerId, Guid? jobId, ExecutionResult executionResult, CancellationToken cancellationToken = default)
 	{
 		Recorded.Add((providerId, jobId));
+		Usage.Add((executionResult.InputTokens, executionResult.OutputTokens, executionResult.CostUsd));
 		return Task.CompletedTask;
 	}
 

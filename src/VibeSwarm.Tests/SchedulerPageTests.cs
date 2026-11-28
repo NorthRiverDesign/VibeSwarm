@@ -81,46 +81,6 @@ public sealed class SchedulerPageTests
 	}
 
 	[Fact]
-	public async Task RenderedSchedulerPage_ShowsTeamMemberSchedules()
-	{
-		var timeZoneId = DateTimeHelper.ResolveTimeZone("America/New_York").Id;
-		var schedule = new JobSchedule
-		{
-			Id = Guid.NewGuid(),
-			Prompt = "review for security issues",
-			ExecutionTarget = JobScheduleExecutionTarget.Agent,
-			AgentId = Guid.NewGuid(),
-			Agent = new Agent { Id = Guid.NewGuid(), Name = "Security Reviewer", IsEnabled = true },
-			Frequency = JobScheduleFrequency.Weekly,
-			WeeklyDay = DayOfWeek.Friday,
-			HourUtc = 9,
-			MinuteUtc = 30,
-			IsEnabled = true,
-			NextRunAtUtc = new DateTime(2026, 3, 27, 9, 30, 0, DateTimeKind.Utc),
-			Project = new Project { Id = Guid.NewGuid(), Name = "Repo", WorkingPath = "/tmp/repo" }
-		};
-
-		try
-		{
-			var services = BuildServices(new FakeJobScheduleService([schedule]), timeZoneId);
-			await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
-
-			var html = await renderer.Dispatcher.InvokeAsync(async () =>
-			{
-				var output = await renderer.RenderComponentAsync<Scheduler>();
-				return output.ToHtmlString();
-			});
-
-			Assert.Contains("Repo", html);
-			Assert.Contains("review for security issues", html);
-		}
-		finally
-		{
-			DateTimeHelper.ConfigureTimeZone(DateTimeHelper.UtcTimeZoneId);
-		}
-	}
-
-	[Fact]
 	public async Task RenderedSchedulerPage_ShowsIdeaGenerationSchedules()
 	{
 		var timeZoneId = DateTimeHelper.ResolveTimeZone("America/New_York").Id;
@@ -173,7 +133,6 @@ public sealed class SchedulerPageTests
 		services.AddSingleton<ISettingsService>(new FakeSettingsService(timeZoneId));
 		services.AddSingleton<AppTimeZoneService>();
 		services.AddSingleton<IProjectService>(new FakeProjectService());
-		services.AddSingleton<IAgentService>(new FakeAgentService());
 		services.AddSingleton<IProviderService>(new FakeProviderService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<IJobService>(new FakeJobService());
@@ -191,6 +150,7 @@ public sealed class SchedulerPageTests
 		});
 
 		public Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<AppSettings> UpdateTeamAsync(Guid? leadProfileId, Guid? reviewProfileId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
 		public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 	}
@@ -221,14 +181,6 @@ public sealed class SchedulerPageTests
 		public override Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
 		public override Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => Task.FromResult(new DashboardJobMetrics { RangeDays = rangeDays, Buckets = [] });
 		public override Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
-	}
-
-	private sealed class FakeAgentService : FakeAgentServiceBase
-	{
-		public override Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>([]);
-		public override Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>([]);
-		public override Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Agent?>(null);
-		public override Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
 	}
 
 	private sealed class FakeProviderService : FakeProviderServiceBase
