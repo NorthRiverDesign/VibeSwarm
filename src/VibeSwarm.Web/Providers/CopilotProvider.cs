@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using GitHub.Copilot;
+using Microsoft.Copilot;
 using VibeSwarm.Shared.Providers.Claude;
 using VibeSwarm.Shared.Providers.Copilot;
 using VibeSwarm.Shared.Services;
@@ -1569,19 +1569,15 @@ public class CopilotProvider : CliProviderBase
 
     private CopilotClientOptions BuildMetadataClientOptions()
     {
-        var options = new CopilotClientOptions
-        {
-            LogLevel = CopilotLogLevel.Warning,
-            Connection = CopilotSdkProvider.BuildRuntimeConnection(ExecutablePath)
-        };
-
         var cwd = WorkingDirectory ?? Environment.CurrentDirectory;
-        if (!string.IsNullOrWhiteSpace(cwd))
+        return new CopilotClientOptions
         {
-            options.WorkingDirectory = cwd;
-        }
-
-        return options;
+            Mode = CopilotClientMode.CodingAgent,
+            Observability = new() { LogLevel = CopilotLogLevel.Warning },
+            Runtime = CopilotSdkProvider.BuildRuntimeConnection(
+                ExecutablePath,
+                workingDirectory: string.IsNullOrWhiteSpace(cwd) ? null : cwd)
+        };
     }
 
     /// <summary>
@@ -1855,10 +1851,10 @@ public class CopilotProvider : CliProviderBase
         {
             client = new CopilotClient(BuildMetadataClientOptions());
             await client.StartAsync(cancellationToken);
-#pragma warning disable GHCP001 // The account quota RPC is marked experimental in the SDK
-            var quota = await client.Rpc.Account.GetQuotaAsync(null!, null!, cancellationToken);
+#pragma warning disable MCPSDK001 // The account quota RPC is marked experimental in the SDK
+            var quota = await client.Rpc.Account.GetQuotaAsync(cancellationToken);
             var limits = CopilotQuotaReader.ToUsageLimits(quota?.QuotaSnapshots, DateTime.UtcNow);
-#pragma warning restore GHCP001
+#pragma warning restore MCPSDK001
             if (limits != null)
             {
                 _lastObservedUsageLimits = limits;

@@ -19,14 +19,14 @@ public static partial class ProviderVersionReference
 	/// <summary>
 	/// Date the provider integrations were last checked against live CLI releases.
 	/// </summary>
-	public static readonly DateOnly LastReviewed = new(2026, 11, 17);
+	public static readonly DateOnly LastReviewed = new(2026, 11, 28);
 
 	private static readonly Dictionary<ProviderType, ProviderVersionTarget> Targets = new()
 	{
 		[ProviderType.Claude] = new ProviderVersionTarget(
 			ProviderType.Claude,
 			Executable: "claude",
-			VerifiedAgainst: new Version(2, 1, 326),
+			VerifiedAgainst: new Version(2, 1, 332),
 			MinimumSupported: new Version(2, 0, 0),
 			DocumentationUrl: "https://code.claude.com/docs/en/cli-reference",
 			Notes: "Usage limits arrive as 'rate_limit_event' stream-json messages carrying "
@@ -38,12 +38,15 @@ public static partial class ProviderVersionReference
 				+ "The hidden --advisor <model> flag (2.1.232+) turns on the server-side advisor tool, "
 				+ "skipped when weaker than the main model; CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1 turns it off. "
 				+ "Rate-limit windows can also name seven_day_opus and seven_day_sonnet. The prompt goes "
-				+ "right after -p: before 2.1.326 a prompt after a list option such as --add-dir was dropped."),
+				+ "right after -p: before 2.1.326 a prompt after a list option such as --add-dir was dropped. "
+				+ "Since 2.1.330 'claude auth login' prints a short https://claude.ai/oauth/authorize?<token> "
+				+ "link (CLAUDE_CODE_FULL_SIGN_IN_LINK=1 restores the long one), and since 2.1.332 a login "
+				+ "it can't save exits 1 instead of reporting success."),
 
 		[ProviderType.Copilot] = new ProviderVersionTarget(
 			ProviderType.Copilot,
 			Executable: "copilot",
-			VerifiedAgainst: new Version(1, 0, 112),
+			VerifiedAgainst: new Version(1, 0, 117),
 			MinimumSupported: new Version(1, 0, 0),
 			DocumentationUrl: "https://docs.github.com/en/copilot/how-tos/copilot-cli",
 			Notes: "Billing is moving from premium requests to GitHub AI Credits (--max-ai-credits). "
@@ -57,12 +60,20 @@ public static partial class ProviderVersionReference
 				+ ".mcp.json and hooks in a folder missing from trustedFolders, and --yolo doesn't change "
 				+ "that. --trust-folder (1.0.100+) refuses --session-id, --resume and --continue, so jobs "
 				+ "set COPILOT_ALLOW_ALL=true, which trusts the working directory. SDK sessions use "
-				+ "SessionConfig.TrustWorkingDirectory."),
+				+ "CreateSessionOptions.Filesystem.TrustWorkingDirectory. 1.0.117 reports SDK protocol 4, "
+				+ "which GitHub.Copilot.SDK 1.0.34 (protocol 3 only) refuses and Microsoft.Copilot.SDK 2.x "
+				+ "(protocol 4 only) needs, so SDK mode, the model list, the quota read and the sign-in check "
+				+ "need a CLI that speaks 4. 'copilot --model <unknown>' no longer lists the allowed models; "
+				+ "the SDK's model list does. Since 1.0.115 a -p run whose model answers with "
+				+ "nothing exits 1, an empty --available-tools value gives the model no tools, and the "
+				+ "usage file's agentMetrics are keyed by agent name with an invocationCount. 1.0.117's "
+				+ "session events add session.sandbox_state_changed and session.sensitivity_label_observation, "
+				+ "and its closing result record can carry outcome 'blocked' with a blocker."),
 
 		[ProviderType.OpenCode] = new ProviderVersionTarget(
 			ProviderType.OpenCode,
 			Executable: "opencode",
-			VerifiedAgainst: new Version(2, 3, 0),
+			VerifiedAgainst: new Version(2, 4, 2),
 			MinimumSupported: new Version(1, 0, 0),
 			DocumentationUrl: "https://opencode.ai/docs/cli",
 			Notes: "Bring-your-own-model harness with no first-party quota. Reasoning effort maps to "
@@ -75,6 +86,10 @@ public static partial class ProviderVersionReference
 				+ "reasoning, tool_use, step_start, step_finish, error), the only output carrying the "
 				+ "session ID and token/cost totals. 2.2 adds retry and background_wait events (fields at "
 				+ "the top level), and run now waits for background shells and subagents before it exits. "
+				+ "2.4 keeps run's flags and events; a model it can't route ends the run with "
+				+ "{type: error, error: {type: provider.no-route, message}}. It renamed the "
+				+ "experimental_image_generate tool to generate_image, and its own GitHub Copilot provider "
+				+ "no longer reads GITHUB_TOKEN (COPILOT_GITHUB_TOKEN or OAuth instead). "
 				+ "Neither has a 'session show' command. 1.x (latest 1.19.6, same run flags as 1.19.0) "
 				+ "stays supported. Metering depends entirely on the configured "
 				+ "model provider, so locally hosted open-source models are unmetered."),

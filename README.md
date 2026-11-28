@@ -18,9 +18,9 @@ VibeSwarm is an agentic CI/CD system for turning ideas into application code. It
 
 | Agent          | CLI Command | Verified against | Minimum | Install                                           |
 | -------------- | ----------- | ---------------- | ------- | ------------------------------------------------- |
-| Claude Code    | `claude`    | 2.1.326          | 2.0.0   | [claude.ai/code](https://claude.ai/code)          |
-| OpenCode       | `opencode`  | 2.3.0            | 1.0.0   | [opencode.ai](https://opencode.ai)                |
-| GitHub Copilot | `copilot`   | 1.0.112          | 1.0.0   | [copilot CLI](https://docs.github.com/en/copilot) |
+| Claude Code    | `claude`    | 2.1.332          | 2.0.0   | [claude.ai/code](https://claude.ai/code)          |
+| OpenCode       | `opencode`  | 2.4.2            | 1.0.0   | [opencode.ai](https://opencode.ai)                |
+| GitHub Copilot | `copilot`   | 1.0.117          | 1.0.0   | [copilot CLI](https://docs.github.com/en/copilot) |
 
 Agents are **auto-detected** at startup. If a supported CLI tool is on your PATH, VibeSwarm registers it as a provider automatically.
 

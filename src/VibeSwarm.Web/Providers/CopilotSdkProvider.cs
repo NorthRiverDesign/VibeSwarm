@@ -1,12 +1,12 @@
 using System.Text;
-using GitHub.Copilot;
+using Microsoft.Copilot;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Shared.Providers;
 
 /// <summary>
-/// Copilot provider using the official GitHub.Copilot.SDK NuGet package.
+/// Copilot provider using the official Microsoft.Copilot.SDK NuGet package.
 /// Uses CopilotClient → CopilotSession for typed, structured communication
 /// with streaming events, tool tracking, and proper lifecycle management.
 /// </summary>
@@ -19,18 +19,33 @@ public class CopilotSdkProvider : SdkProviderBase
 	/// </summary>
 	private const string DefaultByokModel = "gpt-4o";
 	private UsageLimits? _lastObservedUsageLimits;
+	// Listed by Copilot CLI 1.0.117's model list, then earlier models not known to be retired.
 	private static readonly string[] FallbackAvailableModels =
 	[
+		"auto",
+		"claude-sonnet-5.5",
+		"claude-sonnet-5",
+		"claude-haiku-5.5",
+		"claude-haiku-4.5",
+		"gpt-6.1-terra",
+		"gpt-6-luna",
+		"gpt-5.6-luna",
+		"gpt-5.3-codex",
+		"mai-code-2",
+		"mai-code-2-flash",
+		"mai-code-1.1-flash",
+		"gemini-4-hydrogen",
+		"gemini-3.8-flash",
+		"grok-4.7",
+		"grok-4.6",
+		"kimi-k3",
 		"claude-opus-4.7",
 		"claude-sonnet-4.6",
 		"claude-sonnet-4.5",
-		"claude-haiku-4.5",
 		"claude-opus-4.6",
-		"claude-opus-4.6-fast",
 		"claude-opus-4.5",
 		"claude-sonnet-4",
 		"gpt-5.4",
-		"gpt-5.3-codex",
 		"gpt-5.2-codex",
 		"gpt-5.2",
 		"gpt-5.1",
@@ -51,14 +66,17 @@ public class CopilotSdkProvider : SdkProviderBase
 
 	internal static IReadOnlyList<string> GetFallbackAvailableModels() => FallbackAvailableModels;
 
-	internal static void ApplySessionDefaults(SessionConfig sessionConfig)
-	{
-		sessionConfig.OnPermissionRequest = PermissionHandler.ApproveAll;
-	}
+	internal static void ApplySessionDefaults(CreateSessionOptions sessionConfig)
+		=> ApprovePermissions(sessionConfig);
 
-	internal static void ApplyResumeSessionDefaults(ResumeSessionConfig sessionConfig)
+	internal static void ApplyResumeSessionDefaults(ResumeSessionOptions sessionConfig)
+		=> ApprovePermissions(sessionConfig);
+
+	// SDK 2 leaves a request pending when no handler is set, which would stall a job.
+	private static void ApprovePermissions(SessionOptionsBase sessionConfig)
 	{
-		sessionConfig.OnPermissionRequest = PermissionHandler.ApproveAll;
+		sessionConfig.Permissions ??= new();
+		sessionConfig.Permissions.OnRequest = PermissionHandler.ApproveAll;
 	}
 
 	/// <summary>
@@ -69,25 +87,19 @@ public class CopilotSdkProvider : SdkProviderBase
 		var useCustomProvider = !string.IsNullOrEmpty(ApiEndpoint);
 		var options = new CopilotClientOptions
 		{
-			LogLevel = CopilotLogLevel.Warning,
-			UseLoggedInUser = !useCustomProvider && string.IsNullOrEmpty(ApiKey),
-			Connection = BuildRuntimeConnection(ExecutablePath, BuildStartupCliArgs())
+			Mode = CopilotClientMode.CodingAgent,
+			Observability = new() { LogLevel = CopilotLogLevel.Warning },
+			GitHub = new() { UseLoggedInUser = !useCustomProvider && string.IsNullOrEmpty(ApiKey) },
+			Runtime = BuildRuntimeConnection(
+				ExecutablePath,
+				BuildStartupCliArgs(),
+				workingDirectory ?? WorkingDirectory,
+				BuildStartupEnvironmentVariables())
 		};
-
-		var cwd = workingDirectory ?? WorkingDirectory;
-		if (!string.IsNullOrEmpty(cwd))
-		{
-			options.WorkingDirectory = cwd;
-		}
 
 		if (!useCustomProvider && !string.IsNullOrEmpty(ApiKey))
 		{
-			options.GitHubToken = ApiKey;
-		}
-
-		if (BuildStartupEnvironmentVariables() is { Count: > 0 } environmentVariables)
-		{
-			options.Environment = environmentVariables;
+			options.GitHub.Token = ApiKey;
 		}
 
 		return options;
@@ -95,9 +107,14 @@ public class CopilotSdkProvider : SdkProviderBase
 
 	/// <summary>
 	/// Points the SDK at the host's Copilot CLI. VibeSwarm opts out of the SDK's bundled runtime
-	/// (CopilotSkipCliDownload), so every connection needs an explicit executable.
+	/// (CopilotSkipCliDownload), and SDK 2 would otherwise host the runtime in-process, so every
+	/// connection spawns the CLI explicitly. A supplied environment replaces the inherited one.
 	/// </summary>
-	internal static RuntimeConnection BuildRuntimeConnection(string? executablePath, IList<string>? cliArgs = null)
+	internal static RuntimeConnection BuildRuntimeConnection(
+		string? executablePath,
+		IList<string>? cliArgs = null,
+		string? workingDirectory = null,
+		IReadOnlyDictionary<string, string>? environment = null)
 	{
 		var configuredPath = string.IsNullOrEmpty(executablePath)
 			? null
@@ -107,7 +124,11 @@ public class CopilotSdkProvider : SdkProviderBase
 			configuredPath,
 			PlatformHelper.GetEnhancedPath());
 
-		return RuntimeConnection.ForStdio(cliPath, cliArgs is { Count: > 0 } ? cliArgs : null!);
+		return RuntimeConnection.ForSpawnedStdio(
+			path: cliPath,
+			args: cliArgs is { Count: > 0 } ? cliArgs : null,
+			environment: environment is { Count: > 0 } ? environment : null,
+			workingDirectory: string.IsNullOrEmpty(workingDirectory) ? null : workingDirectory);
 	}
 
 	internal List<string>? BuildStartupCliArgs()
@@ -234,24 +255,27 @@ public class CopilotSdkProvider : SdkProviderBase
 	/// What a job run needs on a new or resumed session alike: the job's rules, its reasoning
 	/// effort, the tools its stage may not use, and its checkout.
 	/// </summary>
-	internal void ApplyRunSettings(SessionConfigBase config, string workingDirectory)
+	internal void ApplyRunSettings(SessionOptionsBase config, string workingDirectory)
 	{
 		config.Model = ResolveModel();
-		config.Streaming = true;
+		config.Events ??= new();
+		config.Events.Streaming = true;
 		config.WorkingDirectory = workingDirectory;
 		ApplyByokConfig(config);
 
 		// Trust the checkout for this session only, so its .mcp.json servers and hooks load
 		// even when the folder is missing from the user's trustedFolders. The SDK offers this
 		// on new sessions only.
-		if (config is SessionConfig newSession)
+		if (config is CreateSessionOptions newSession)
 		{
-			newSession.TrustWorkingDirectory = WorkingDirectoryTrust.Session;
+			newSession.Filesystem ??= new();
+			newSession.Filesystem.TrustWorkingDirectory = WorkingDirectoryTrust.Session;
 		}
 
 		if (!string.IsNullOrEmpty(CurrentReasoningEffort))
 		{
-			config.ReasoningEffort = CurrentReasoningEffort;
+			config.Inference ??= new();
+			config.Inference.ReasoningEffort = CurrentReasoningEffort;
 		}
 
 		if (!string.IsNullOrWhiteSpace(CurrentSystemPrompt))
@@ -265,7 +289,8 @@ public class CopilotSdkProvider : SdkProviderBase
 
 		if (CurrentDisallowedTools is { Count: > 0 } disallowed)
 		{
-			config.ExcludedTools = MapToSdkToolNames(disallowed).ToList();
+			config.Tools ??= new();
+			config.Tools.ExcludedTools = MapToSdkToolNames(disallowed).ToList();
 		}
 	}
 
@@ -274,18 +299,32 @@ public class CopilotSdkProvider : SdkProviderBase
 	/// when an API endpoint is configured. This enables routing requests through
 	/// custom providers like OpenAI, Azure AI Foundry, or Anthropic.
 	/// </summary>
-	private void ApplyByokConfig(SessionConfigBase sessionConfig)
+	private void ApplyByokConfig(SessionOptionsBase sessionConfig)
 	{
 		if (!string.IsNullOrEmpty(ApiEndpoint))
 		{
-			sessionConfig.Provider = new ProviderConfig
-			{
-				Type = InferProviderType(ApiEndpoint),
-				BaseUrl = ApiEndpoint,
-				ApiKey = ApiKey ?? string.Empty
-			};
+			// SDK 2 dropped the single session provider. The equivalent is one named connection
+			// that takes every unqualified model name, with Copilot's own models turned off.
+			sessionConfig.Inference ??= new();
+#pragma warning disable MCPSDK001 // Named provider connections are marked experimental in the SDK
+			sessionConfig.Inference.Providers =
+			[
+				new NamedProviderConfig
+				{
+					Name = ByokProviderName,
+					Type = InferProviderType(ApiEndpoint),
+					BaseUrl = ApiEndpoint,
+					ApiKey = ApiKey ?? string.Empty
+				}
+			];
+#pragma warning restore MCPSDK001
+			sessionConfig.Inference.DefaultProvider = ByokProviderName;
+			sessionConfig.GitHub ??= new();
+			sessionConfig.GitHub.Capi = new CapiSessionOptions { Enabled = false };
 		}
 	}
+
+	private const string ByokProviderName = "byok";
 
 	private static string? InferProviderType(string endpoint)
 	{
@@ -357,7 +396,7 @@ public class CopilotSdkProvider : SdkProviderBase
 				// Provide specific hints based on the error
 				var hint = ex.Message.Contains("JSON-RPC", StringComparison.OrdinalIgnoreCase) ||
 						   ex.Message.Contains("RPC", StringComparison.OrdinalIgnoreCase)
-					? " The CLI may not support SDK mode or version is incompatible. Verify 'copilot --version' shows 1.0.0+ and GitHub.Copilot.SDK is compatible."
+					? " The CLI may not support SDK mode or version is incompatible. Verify 'copilot --version' shows 1.0.0+ and Microsoft.Copilot.SDK is compatible."
 					: ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
 					  ex.Message.Contains("cannot find", StringComparison.OrdinalIgnoreCase)
 					? " CLI executable not found in PATH. Install the GitHub Copilot CLI or specify the full path."
@@ -379,7 +418,7 @@ public class CopilotSdkProvider : SdkProviderBase
 		{
 			var client = await EnsureClientAsync(cancellationToken: cancellationToken);
 
-			var sessionConfig = new SessionConfig { Model = ResolveModel() };
+			var sessionConfig = new CreateSessionOptions { Model = ResolveModel() };
 			ApplyByokConfig(sessionConfig);
 			ApplySessionDefaults(sessionConfig);
 			await using var session = await client.CreateSessionAsync(sessionConfig);
@@ -470,9 +509,9 @@ public class CopilotSdkProvider : SdkProviderBase
 
 			result.CommandUsed = $"Copilot SDK ({model ?? "default model"})";
 
-			var sessionConfig = new SessionConfig
+			var sessionConfig = new CreateSessionOptions
 			{
-				InfiniteSessions = new InfiniteSessionConfig { Enabled = true }
+				State = new() { InfiniteSessions = new InfiniteSessionConfig { Enabled = true } }
 			};
 			ApplySessionDefaults(sessionConfig);
 			ApplyRunSettings(sessionConfig, effectiveWorkingDir);
@@ -488,7 +527,7 @@ public class CopilotSdkProvider : SdkProviderBase
 			{
 				try
 				{
-					var resumeConfig = new ResumeSessionConfig();
+					var resumeConfig = new ResumeSessionOptions();
 					ApplyResumeSessionDefaults(resumeConfig);
 					ApplyRunSettings(resumeConfig, effectiveWorkingDir);
 					session = await client.ResumeSessionAsync(sessionId, resumeConfig, cancellationToken);
@@ -780,10 +819,10 @@ public class CopilotSdkProvider : SdkProviderBase
 						result.InputTokens = (result.InputTokens ?? 0) + (int)usage.Data.InputTokens.Value;
 					if (usage.Data.OutputTokens.HasValue)
 						result.OutputTokens = (result.OutputTokens ?? 0) + (int)usage.Data.OutputTokens.Value;
-#pragma warning disable GHCP001 // Cost is marked experimental in the SDK
+#pragma warning disable MCPSDK001 // Cost is marked experimental in the SDK
 					if (usage.Data.Cost.HasValue)
 						result.CostUsd = (result.CostUsd ?? 0) + (decimal)usage.Data.Cost.Value;
-#pragma warning restore GHCP001
+#pragma warning restore MCPSDK001
 
 					progress?.Report(new ExecutionProgress
 					{
@@ -797,9 +836,9 @@ public class CopilotSdkProvider : SdkProviderBase
 				{
 					// The session-wide total went internal in SDK 1.x; the per-model request cost is the
 					// same premium-request figure the CLI reports.
-#pragma warning disable GHCP001 // Requests.Cost is marked experimental in the SDK
+#pragma warning disable MCPSDK001 // Requests.Cost is marked experimental in the SDK
 					var premiumRequests = shutdown.Data.ModelMetrics?.Values.Sum(metric => metric.Requests?.Cost ?? 0) ?? 0;
-#pragma warning restore GHCP001
+#pragma warning restore MCPSDK001
 					if (premiumRequests > 0)
 					{
 						result.PremiumRequestsConsumed = (int)Math.Round(premiumRequests);
@@ -861,7 +900,7 @@ public class CopilotSdkProvider : SdkProviderBase
 	{
 		var info = new ProviderInfo
 		{
-			Version = "SDK (GitHub.Copilot.SDK)",
+			Version = "SDK (Microsoft.Copilot.SDK)",
 			AvailableModels = GetFallbackAvailableModels().ToList(),
 			AvailableAgents = new List<AgentInfo>
 			{
@@ -938,7 +977,7 @@ public class CopilotSdkProvider : SdkProviderBase
 		{
 			try
 			{
-				var config = new ResumeSessionConfig();
+				var config = new ResumeSessionOptions();
 				ApplyResumeSessionDefaults(config);
 				var session = await _client.ResumeSessionAsync(sessionId, config, cancellationToken);
 				await using (session)
@@ -996,7 +1035,7 @@ public class CopilotSdkProvider : SdkProviderBase
 			var client = await EnsureClientAsync(workingDirectory, cancellationToken);
 			var model = ResolveModel();
 
-			var sessionConfig = new SessionConfig { Model = model };
+			var sessionConfig = new CreateSessionOptions { Model = model };
 			ApplyByokConfig(sessionConfig);
 			ApplySessionDefaults(sessionConfig);
 			await using var session = await client.CreateSessionAsync(sessionConfig);

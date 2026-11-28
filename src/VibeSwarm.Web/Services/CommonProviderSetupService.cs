@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
-using GitHub.Copilot;
+using Microsoft.Copilot;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
@@ -553,9 +553,10 @@ public class CommonProviderSetupService(
 		{
 			var options = new CopilotClientOptions
 			{
-				LogLevel = CopilotLogLevel.Error,
-				UseLoggedInUser = true,
-				Connection = CopilotSdkProvider.BuildRuntimeConnection(executablePath)
+				Mode = CopilotClientMode.CodingAgent,
+				Observability = new() { LogLevel = CopilotLogLevel.Error },
+				GitHub = new() { UseLoggedInUser = true },
+				Runtime = CopilotSdkProvider.BuildRuntimeConnection(executablePath)
 			};
 
 			// The page waits on this probe, so a CLI that never answers must not hang it.

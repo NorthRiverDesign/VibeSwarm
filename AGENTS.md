@@ -46,7 +46,7 @@ When working on VibeSwarm itself, always:
 
 Users install providers on the same host as VibeSwarm. Each provider is a CLI agent that can be run in the background and managed through the VibeSwarm interface. Providers can be configured to run specific tasks, such as code analysis, refactoring, or testing.
 
-Keep provider SDK packages (such as `GitHub.Copilot.SDK` and `Anthropic`) on their latest stable release, even across major versions. The CLIs update themselves on users' hosts and change their wire protocol often, and an old SDK fails silently against a newer CLI. When you touch a provider integration, check for a newer SDK, bump it and fix the API changes in the same change.
+Keep provider SDK packages (such as `Microsoft.Copilot.SDK`, formerly `GitHub.Copilot.SDK`, and `Anthropic`) on their latest stable release, even across major versions. The CLIs update themselves on users' hosts and change their wire protocol often, and an old SDK fails silently against a newer CLI. When you touch a provider integration, check for a newer SDK, bump it and fix the API changes in the same change.
 
 ### Claude Code
 

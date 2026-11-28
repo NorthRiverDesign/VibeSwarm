@@ -61,7 +61,7 @@ public static class ProviderCapabilities
 	/// </summary>
 	public static string GetModeDescription(ProviderType providerType, ProviderConnectionMode mode) => (providerType, mode) switch
 	{
-		(ProviderType.Copilot, ProviderConnectionMode.SDK) => "Uses the GitHub.Copilot.SDK package for structured Copilot CLI sessions. Supports logged-in user sessions, GitHub tokens, or BYOK custom provider endpoints.",
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) => "Uses the Microsoft.Copilot.SDK package for structured Copilot CLI sessions. Supports logged-in user sessions, GitHub tokens, or BYOK custom provider endpoints.",
 		(ProviderType.Copilot, ProviderConnectionMode.CLI) => "Spawns the Copilot CLI for each job with prompt-mode automation, reasoning effort, BASH_ENV support, per-run MCP config injection, and additional directory allowances.",
 		(ProviderType.Claude, ProviderConnectionMode.SDK) => "Uses the Anthropic .NET SDK for direct API access with an Anthropic API key.",
 		(ProviderType.Claude, ProviderConnectionMode.CLI) => "Spawns the Claude Code CLI for each job with version-gated bare mode, worktree support, MCP config injection, and effort control.",
