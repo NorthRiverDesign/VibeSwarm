@@ -179,12 +179,11 @@ public class ProfileService : IProfileService
 		}
 
 		var projects = await _dbContext.Projects
-			.Where(project => project.PlanningProfileId == id || project.ReviewProfileId == id || project.LeadProfileId == id
+			.Where(project => project.ReviewProfileId == id || project.LeadProfileId == id
 				|| project.DecisionsProfileId == id || project.ResearchProfileId == id)
 			.ToListAsync(cancellationToken);
 		foreach (var project in projects)
 		{
-			project.PlanningProfileId = project.PlanningProfileId == id ? fallbackId : project.PlanningProfileId;
 			project.ReviewProfileId = project.ReviewProfileId == id ? fallbackId : project.ReviewProfileId;
 			project.LeadProfileId = project.LeadProfileId == id ? fallbackId : project.LeadProfileId;
 			project.DecisionsProfileId = project.DecisionsProfileId == id ? fallbackId : project.DecisionsProfileId;
@@ -195,6 +194,15 @@ public class ProfileService : IProfileService
 			}
 
 			project.UpdatedAt = DateTime.UtcNow;
+		}
+
+		// The team set in Settings follows the same rule as a project's own roles.
+		foreach (var settings in await _dbContext.AppSettings
+			.Where(settings => settings.TeamLeadProfileId == id || settings.TeamReviewProfileId == id)
+			.ToListAsync(cancellationToken))
+		{
+			settings.TeamLeadProfileId = settings.TeamLeadProfileId == id ? fallbackId : settings.TeamLeadProfileId;
+			settings.TeamReviewProfileId = settings.TeamReviewProfileId == id ? fallbackId : settings.TeamReviewProfileId;
 		}
 
 		foreach (var entry in await _dbContext.ProjectProviders.Where(entry => entry.ProfileId == id).ToListAsync(cancellationToken))
@@ -318,7 +326,7 @@ public class ProfileService : IProfileService
 		var id = profile.Id;
 		var lookup = new Dictionary<Guid, Profile> { [id] = profile };
 		var projects = await _dbContext.Projects
-			.Where(project => project.PlanningProfileId == id || project.ReviewProfileId == id || project.LeadProfileId == id)
+			.Where(project => project.ReviewProfileId == id || project.LeadProfileId == id)
 			.ToListAsync(cancellationToken);
 		foreach (var project in projects)
 		{
@@ -395,16 +403,15 @@ public class ProfileService : IProfileService
 		var providerName = provider?.Name ?? inferenceProvider?.Name ?? "that provider";
 		var projects = await _dbContext.Projects
 			.AsNoTracking()
-			.Where(project => project.PlanningProfileId == id || project.ReviewProfileId == id || project.LeadProfileId == id
+			.Where(project => project.ReviewProfileId == id || project.LeadProfileId == id
 				|| project.DecisionsProfileId == id || project.ResearchProfileId == id)
-			.Select(project => new { project.Name, project.PlanningEnabled, project.ReviewEnabled, project.PlanningProfileId, project.ReviewProfileId, project.LeadProfileId, project.DecisionsProfileId, project.ResearchProfileId })
+			.Select(project => new { project.Name, project.ReviewEnabled, project.ReviewProfileId, project.LeadProfileId, project.DecisionsProfileId, project.ResearchProfileId })
 			.ToListAsync(cancellationToken);
 		foreach (var project in projects)
 		{
-			// A planner or reviewer that is switched off keeps its last profile without using
-			// it, so it never stands in the way.
-			var role = !ProfileRoles.CanRunReadOnly(moved) && project.PlanningEnabled && project.PlanningProfileId == id ? "Plan first"
-				: !ProfileRoles.CanRunReadOnly(moved) && project.LeadProfileId == id ? "Lead"
+			// A reviewer that is switched off keeps its last profile without using it, so it
+			// never stands in the way.
+			var role = !ProfileRoles.CanRunReadOnly(moved) && project.LeadProfileId == id ? "Lead"
 				: !ProfileRoles.CanHelpJobs(moved) && project.ReviewEnabled && project.ReviewProfileId == id ? "Review"
 				: !ProfileRoles.CanHelpJobs(moved) && project.DecisionsProfileId == id ? "Decisions"
 				: !ProfileRoles.CanHelpJobs(moved) && project.ResearchProfileId == id ? "Research"
@@ -414,6 +421,17 @@ public class ProfileService : IProfileService
 				throw new InvalidOperationException(
 					$"{role} in {project.Name} uses this profile and can't run on {providerName}. Pick another profile there first, or add a new profile for {providerName}.");
 			}
+		}
+
+		// The team set in Settings names profiles too, whether or not a project uses it yet.
+		var team = await _dbContext.AppSettings.AsNoTracking().OrderBy(settings => settings.Id).FirstOrDefaultAsync(cancellationToken);
+		var teamRole = team?.TeamLeadProfileId == id && !ProfileRoles.CanRunReadOnly(moved) ? "Lead"
+			: team?.TeamReviewProfileId == id && !ProfileRoles.CanHelpJobs(moved) ? "reviewer"
+			: null;
+		if (teamRole != null)
+		{
+			throw new InvalidOperationException(
+				$"The team's {teamRole} uses this profile and can't run on {providerName}. Pick another profile for the team in Settings first, or add a new profile for {providerName}.");
 		}
 
 		if (provider == null)
@@ -538,7 +556,6 @@ public class ProfileService : IProfileService
 
 		public void LinkProject(Project project, bool switchOffRolesWithNothingToRunOn)
 		{
-			project.PlanningProfileId = Existing(project.PlanningProfileId);
 			project.ReviewProfileId = Existing(project.ReviewProfileId);
 			project.LeadProfileId = Existing(project.LeadProfileId);
 			project.DecisionsProfileId = Existing(project.DecisionsProfileId);
@@ -550,17 +567,11 @@ public class ProfileService : IProfileService
 
 			if (switchOffRolesWithNothingToRunOn)
 			{
-				project.PlanningEnabled = project.PlanningEnabled && project.PlanningProviderId.HasValue;
 				project.ReviewEnabled = project.ReviewEnabled && (project.ReviewProviderId.HasValue || project.ReviewInferenceProviderId.HasValue);
 			}
 
 			// Only a role that is on needs a profile; values left behind a switched-off one are
 			// just what it last ran on.
-			if (project.PlanningEnabled)
-			{
-				project.PlanningProfileId ??= FindOrAdd(project.PlanningProviderId, null, project.PlanningModelId, project.PlanningReasoningEffort);
-			}
-
 			if (project.ReviewEnabled)
 			{
 				project.ReviewProfileId ??= project.ReviewProviderId.HasValue
@@ -769,17 +780,11 @@ public class ProfileService : IProfileService
 	/// </summary>
 	private static void ApplyRoleLinksFor(Project project, Profile profile)
 	{
-		var original = (project.PlanningProfileId, project.ReviewProfileId, project.LeadProfileId);
-		project.PlanningProfileId = original.PlanningProfileId == profile.Id ? profile.Id : null;
+		var original = (project.ReviewProfileId, project.LeadProfileId);
 		project.ReviewProfileId = original.ReviewProfileId == profile.Id ? profile.Id : null;
 		project.LeadProfileId = original.LeadProfileId == profile.Id ? profile.Id : null;
 
 		ProfileLinks.ApplyRoleLinks(project, new Dictionary<Guid, Profile> { [profile.Id] = profile });
-
-		if (original.PlanningProfileId != profile.Id)
-		{
-			project.PlanningProfileId = original.PlanningProfileId;
-		}
 
 		if (original.ReviewProfileId != profile.Id)
 		{

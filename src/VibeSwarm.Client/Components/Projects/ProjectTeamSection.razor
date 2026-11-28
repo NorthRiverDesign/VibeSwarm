@@ -1,13 +1,58 @@
-@* A project's roles in one list: who builds, and who plans, reviews, researches, weighs decisions
-   and leads. Each role is Off or runs on a profile, so a large profile can build while cheaper
-   ones check and advise. *@
+@* Who works on a project's jobs. The builder is the project's own. With Work as a team on, the
+   team's Lead plans each job and its reviewer checks it; the team is set once in Settings, and a
+   project can put its own profile in either role. *@
 @using VibeSwarm.Shared.Validation
 @implements IDisposable
 @inject IServiceProvider Services
 
 <div class="d-flex flex-column gap-3 my-7">
-	<SectionHeader Title="Workflow" Subtitle="Who does what on this project. Each role runs on a profile." />
+	<SectionHeader Title="Team" Subtitle="Who works on this project's jobs." />
 	<div class="list-group rounded-9">
+		<div class="list-group-item d-flex flex-column gap-1 py-5">
+			<div class="form-field mb-0">
+				<div class="switch">
+					<input role="switch" switch type="checkbox" id="modal-teamEnabled"
+						   checked="@Project.TeamEnabled" @onchange="args => SetTeam(args.Value is true)" />
+				</div>
+				<label for="modal-teamEnabled">Work as a team</label>
+			</div>
+			@if (Project.TeamEnabled && TeamIsEmpty && Project.TeamOverrides == TeamRoles.None)
+			{
+				<a href="/settings" class="small fg-warning text-decoration-none">The team has nobody on it yet. Set it up in Settings.</a>
+			}
+			else
+			{
+				<span class="small fg-1">@(Project.TeamEnabled
+					? "A Lead plans each job, the builder builds it and a reviewer checks it."
+					: "Off: the builder works each job alone.")</span>
+			}
+		</div>
+
+		@if (Project.TeamEnabled)
+		{
+			<ListRow Icon="compass" Title="Lead" Subtitle="@(RoleSummary(TeamRoles.Lead, LeadProfileId, "Nobody leads yet"))">
+				<ChildContent>
+					<p class="small fg-1 mb-0">Reads the code and plans each job before the builder starts, and suggests what to build next. A job never waits on the Lead: if it can't run, the builder works from your prompt. Needs Claude Code or Copilot.</p>
+					<ProfilePicker Id="team-lead" Label="Lead with" Profiles="Known" Allowed="CanReadCode"
+								   SelectedProfileId="@(Overrides(TeamRoles.Lead) ? Project.LeadProfileId : null)"
+								   EmptyLabel="@TeamLabel(TeamLeadProfileId)" OnSelected="SetLead"
+								   EmptyHint="A strong model works best here." />
+					@if (LeadProfileId.HasValue)
+					{
+						<div>
+							<label for="modal-leadDirection" class="form-label">
+								Direction <span class="fg-1 fw-normal">(optional)</span>
+							</label>
+							<InputTextArea id="modal-leadDirection" @bind-Value="Project.LeadDirection" class="form-control" rows="5"
+										   maxlength="@LeadReviewLimits.DirectionMaxLength"
+										   placeholder="Where should this project go next? What matters most, and what should the Lead leave alone?" />
+							<div class="form-text">The Lead steers its suggestions by this. Nothing it suggests runs until you approve it.</div>
+						</div>
+					}
+				</ChildContent>
+			</ListRow>
+		}
+
 		<ListRow Icon="hammer" Title="Build" Subtitle="@BuildSummary">
 			<ChildContent>
 				<p class="small fg-1 mb-0">Runs each job. When this profile can't run, the job moves down the list below.</p>
@@ -41,78 +86,22 @@
 			</ChildContent>
 		</ListRow>
 
-		<ListRow Icon="map" Title="Plan first" Subtitle="@(RoleSummary(PlanProfileId, Project.PlanningEnabled, "Writes a plan before each job builds"))">
-			<Trailing>@OffLabel(Project.PlanningEnabled)</Trailing>
-			<ChildContent>
-				<p class="small fg-1 mb-0">Before a job builds, this profile reads the code and writes the plan the builder follows. Needs Claude Code or Copilot.</p>
-				<ProfilePicker Id="workflow-plan" Label="Plan with" Profiles="Known" Allowed="CanReadCode"
-							   SelectedProfileId="PlanProfileId" EmptyLabel="Off" OnSelected="SetPlan" />
-			</ChildContent>
-		</ListRow>
-
-		<ListRow Icon="eye" Title="Review" Subtitle="@(RoleSummary(ReviewProfileId, Project.ReviewEnabled, "Checks each job before it is delivered"))">
-			<Trailing>@OffLabel(Project.ReviewEnabled)</Trailing>
-			<ChildContent>
-				<p class="small fg-1 mb-0">When the builder finishes, the build and tests run, then this profile reads the change against the goal. Problems go back to the builder for up to @JobReview.MaxRounds fixes. If the reviewer can't run, the work is delivered as it is.</p>
-				<ProfilePicker Id="workflow-review" Label="Review with" Profiles="Known" Allowed="CanAnswer"
-							   SelectedProfileId="ReviewProfileId" EmptyLabel="Off" OnSelected="SetReview"
-							   EmptyHint="A different model from the builder gives the most independent check." />
-				@if (DescribeAccess(ReviewProfileId, "Reads the code as well as the change.", "Reads the change only.") is { } reviewAccess)
-				{
-					<p class="small fg-1 mb-0">@reviewAccess</p>
-				}
-			</ChildContent>
-		</ListRow>
-
-		<ListRow Icon="search" Title="Research" Subtitle="@(RoleSummary(Project.ResearchProfileId, Project.ResearchProfileId.HasValue, "Looks things up for the builder"))">
-			<Trailing>@OffLabel(Project.ResearchProfileId.HasValue)</Trailing>
-			<ChildContent>
-				<p class="small fg-1 mb-0">While a job runs, the builder can ask this profile to look things up: libraries, APIs, current facts and how others solve a problem. A run can ask @ValidationLimits.JobHelperQuestionsPerRun questions across its helpers.</p>
-				<ProfilePicker Id="workflow-research" Label="Research with" Profiles="Known" Allowed="CanAnswer"
-							   SelectedProfileId="Project.ResearchProfileId" EmptyLabel="Off"
-							   OnSelected="profile => Project.ResearchProfileId = profile?.Id" />
-				@if (DescribeAccess(Project.ResearchProfileId, "Reads the repository to answer.", "Sees only the question, not the code.") is { } researchAccess)
-				{
-					<p class="small fg-1 mb-0">@researchAccess</p>
-				}
-			</ChildContent>
-		</ListRow>
-
-		<ListRow Icon="signpost-split" Title="Decisions" Subtitle="@(RoleSummary(Project.DecisionsProfileId, Project.DecisionsProfileId.HasValue, "Gives the builder a second opinion"))">
-			<Trailing>@OffLabel(Project.DecisionsProfileId.HasValue)</Trailing>
-			<ChildContent>
-				<p class="small fg-1 mb-0">While a job runs, the builder can ask this profile for a second opinion before it settles a design or an approach.</p>
-				<ProfilePicker Id="workflow-decisions" Label="Decide with" Profiles="Known" Allowed="CanAnswer"
-							   SelectedProfileId="Project.DecisionsProfileId" EmptyLabel="Off"
-							   OnSelected="profile => Project.DecisionsProfileId = profile?.Id" />
-				@if (DescribeAccess(Project.DecisionsProfileId, "Reads the repository to answer.", "Sees only the question, not the code.") is { } decisionsAccess)
-				{
-					<p class="small fg-1 mb-0">@decisionsAccess</p>
-				}
-			</ChildContent>
-		</ListRow>
-
-		<ListRow Icon="compass" Title="Lead" Subtitle="@(RoleSummary(LeadProfileId, Project.LeadProviderId.HasValue, "Suggests what to build next"))">
-			<Trailing>@OffLabel(Project.LeadProviderId.HasValue)</Trailing>
-			<ChildContent>
-				<p class="small fg-1 mb-0">The Lead reads the latest code, the project memory and how recent jobs went, then suggests the next ideas with a goal and acceptance criteria. Nothing runs until you approve it. Needs Claude Code or Copilot.</p>
-				<ProfilePicker Id="workflow-lead" Label="Lead with" Profiles="Known" Allowed="CanReadCode"
-							   SelectedProfileId="LeadProfileId" EmptyLabel="Off" OnSelected="SetLead"
-							   EmptyHint="A strong model works best here. It runs only when you ask, or when auto-pilot runs out of approved ideas." />
-				@if (Project.LeadProviderId.HasValue)
-				{
-					<div>
-						<label for="modal-leadDirection" class="form-label">
-							Direction <span class="fg-1 fw-normal">(optional)</span>
-						</label>
-						<InputTextArea id="modal-leadDirection" @bind-Value="Project.LeadDirection" class="form-control" rows="5"
-									   maxlength="@LeadReviewLimits.DirectionMaxLength"
-									   placeholder="Where should this project go next? What matters most, and what should the Lead leave alone?" />
-						<div class="form-text">The Lead steers its suggestions by this instead of you writing each idea.</div>
-					</div>
-				}
-			</ChildContent>
-		</ListRow>
+		@if (Project.TeamEnabled)
+		{
+			<ListRow Icon="eye" Title="Review" Subtitle="@(RoleSummary(TeamRoles.Review, ReviewProfileId, "Nobody reviews yet"))">
+				<ChildContent>
+					<p class="small fg-1 mb-0">When the builder finishes, the build and tests run, then this profile reads the change against the goal. Problems go back to the builder for up to @JobReview.MaxRounds fixes. Work is always delivered: if the reviewer can't run, the job says so.</p>
+					<ProfilePicker Id="team-review" Label="Review with" Profiles="Known" Allowed="CanAnswer"
+								   SelectedProfileId="@(Overrides(TeamRoles.Review) ? Project.ReviewProfileId : null)"
+								   EmptyLabel="@TeamLabel(TeamReviewProfileId)" OnSelected="SetReview"
+								   EmptyHint="A different model from the builder gives the most independent check." />
+					@if (DescribeAccess(ReviewProfileId, "Reads the code as well as the change.", "Reads the change only.") is { } reviewAccess)
+					{
+						<p class="small fg-1 mb-0">@reviewAccess</p>
+					}
+				</ChildContent>
+			</ListRow>
+		}
 	</div>
 </div>
 
@@ -123,6 +112,14 @@
 	/// <summary>Every profile; each role offers the ones that can fill it.</summary>
 	[Parameter]
 	public IReadOnlyList<Profile> Profiles { get; set; } = [];
+
+	/// <summary>The team's Lead, as set in Settings; null when the team has none.</summary>
+	[Parameter]
+	public Guid? TeamLeadProfileId { get; set; }
+
+	/// <summary>The team's reviewer, as set in Settings; null when the team has none.</summary>
+	[Parameter]
+	public Guid? TeamReviewProfileId { get; set; }
 
 	// Resolved lazily so pages and tests that never add a profile need no registration.
 	private ProfileComposer? _composer;
@@ -182,24 +179,75 @@
 	private bool CanBeFallback(Profile profile)
 		=> ProfileRoles.CanBuild(profile) && Project.ProviderSelections.All(entry => entry.ProviderId != profile.ProviderId);
 
-	private Guid? PlanProfileId => Project.PlanningEnabled ? Project.PlanningProfileId : null;
+	private bool TeamIsEmpty => !TeamLeadProfileId.HasValue && !TeamReviewProfileId.HasValue;
 
-	private Guid? ReviewProfileId => Project.ReviewEnabled ? Project.ReviewProfileId : null;
+	private bool Overrides(TeamRoles role) => Project.TeamOverrides.HasFlag(role);
 
-	// The Lead has no switch of its own: it runs whenever it has a provider.
-	private Guid? LeadProfileId => Project.LeadProviderId.HasValue ? Project.LeadProfileId : null;
+	// What each role runs on here: the project's own pick, else the team's.
+	private Guid? LeadProfileId => Overrides(TeamRoles.Lead) ? Project.LeadProfileId : TeamLeadProfileId;
 
-	private string RoleSummary(Guid? profileId, bool isOn, string whatItDoes)
-		=> isOn ? Find(profileId)?.Name ?? "On" : whatItDoes;
+	private Guid? ReviewProfileId => Overrides(TeamRoles.Review) ? Project.ReviewProfileId : TeamReviewProfileId;
 
-	private static RenderFragment? OffLabel(bool isOn) => isOn
-		? null
-		: @<span class="small fg-2 flex-shrink-0">Off</span>;
+	private string RoleSummary(TeamRoles role, Guid? profileId, string nobody)
+		=> Find(profileId) is { } profile
+			? Overrides(role) ? $"{profile.Name} · this project only" : profile.Name
+			: nobody;
+
+	/// <summary>The picker's first choice: follow the team, named by who that is today.</summary>
+	private string TeamLabel(Guid? teamProfileId)
+		=> Find(teamProfileId) is { } profile ? $"Team's: {profile.Name}" : "Team's: nobody yet";
 
 	private string? DescribeAccess(Guid? profileId, string readsCode, string readsOnlyWhatItIsSent)
 		=> Find(profileId) is { } profile
 			? profile.InferenceProviderId.HasValue ? readsOnlyWhatItIsSent : readsCode
 			: null;
+
+	// The server works out what each role runs on when the project is saved (TeamLinks); the
+	// form keeps the same picture so what is shown is what will be saved.
+	private void SetTeam(bool enabled)
+	{
+		Project.TeamEnabled = enabled;
+		Project.TeamOverrides = TeamRoles.None;
+		ApplyLead(enabled ? Find(TeamLeadProfileId) : null);
+		ApplyReview(enabled ? Find(TeamReviewProfileId) : null);
+	}
+
+	private void SetLead(Profile? profile)
+	{
+		Project.TeamOverrides = profile == null ? Project.TeamOverrides & ~TeamRoles.Lead : Project.TeamOverrides | TeamRoles.Lead;
+		ApplyLead(profile ?? Find(TeamLeadProfileId));
+	}
+
+	private void SetReview(Profile? profile)
+	{
+		Project.TeamOverrides = profile == null ? Project.TeamOverrides & ~TeamRoles.Review : Project.TeamOverrides | TeamRoles.Review;
+		ApplyReview(profile ?? Find(TeamReviewProfileId));
+	}
+
+	// Each role keeps the profile's provider, model and reasoning beside its id, as the server
+	// stores them. A Lead with no provider is off.
+	private void ApplyLead(Profile? profile)
+	{
+		Project.LeadProfileId = profile?.Id;
+		Project.LeadProviderId = profile?.ProviderId;
+		Project.LeadModelId = profile?.ModelId;
+		Project.LeadReasoningEffort = profile?.ReasoningEffort;
+	}
+
+	private void ApplyReview(Profile? profile)
+	{
+		Project.ReviewEnabled = profile != null;
+		Project.ReviewProfileId = profile?.Id;
+		if (profile == null)
+		{
+			return;
+		}
+
+		Project.ReviewProviderId = profile.ProviderId;
+		Project.ReviewInferenceProviderId = profile.ProviderId.HasValue ? null : profile.InferenceProviderId;
+		Project.ReviewModelId = profile.ModelId;
+		Project.ReviewReasoningEffort = profile.ProviderId.HasValue ? profile.ReasoningEffort : null;
+	}
 
 	private void SetBuild(Profile? profile)
 	{
@@ -274,46 +322,6 @@
 		}
 
 		Project.ProviderSelections = order;
-	}
-
-	// Each role keeps the profile's provider, model and reasoning beside its id, as the server
-	// stores them; the server fills them again from the profile when the project is saved.
-	private void SetPlan(Profile? profile)
-	{
-		Project.PlanningEnabled = profile != null;
-		Project.PlanningProfileId = profile?.Id;
-		if (profile == null)
-		{
-			return;
-		}
-
-		Project.PlanningProviderId = profile.ProviderId;
-		Project.PlanningModelId = profile.ModelId;
-		Project.PlanningReasoningEffort = profile.ReasoningEffort;
-	}
-
-	private void SetReview(Profile? profile)
-	{
-		Project.ReviewEnabled = profile != null;
-		Project.ReviewProfileId = profile?.Id;
-		if (profile == null)
-		{
-			return;
-		}
-
-		Project.ReviewProviderId = profile.ProviderId;
-		Project.ReviewInferenceProviderId = profile.ProviderId.HasValue ? null : profile.InferenceProviderId;
-		Project.ReviewModelId = profile.ModelId;
-		Project.ReviewReasoningEffort = profile.ProviderId.HasValue ? profile.ReasoningEffort : null;
-	}
-
-	// Off clears the provider too: a Lead with a provider still runs.
-	private void SetLead(Profile? profile)
-	{
-		Project.LeadProfileId = profile?.Id;
-		Project.LeadProviderId = profile?.ProviderId;
-		Project.LeadModelId = profile?.ModelId;
-		Project.LeadReasoningEffort = profile?.ReasoningEffort;
 	}
 
 	private void HandleComposerChanged() => InvokeAsync(StateHasChanged);

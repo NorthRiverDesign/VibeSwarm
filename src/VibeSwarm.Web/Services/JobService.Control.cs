@@ -192,6 +192,7 @@ public partial class JobService
         job.GitCommitBefore = null; // Clear git commit reference
         job.GitCommitHash = null;  // Clear committed results hash
         job.PlanningOutput = null;
+        job.PlanSkippedReason = null;
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;
@@ -333,6 +334,7 @@ public partial class JobService
             ? JobTitleHelper.BuildSafeJobTitle(null, job.GoalPrompt)
             : JobTitleHelper.BuildSafeJobTitle(job.Title, job.GoalPrompt);
         job.PlanningOutput = null;
+        job.PlanSkippedReason = null;
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;

@@ -22,7 +22,9 @@ public partial class JobProcessingService
 		CancellationToken cancellationToken)
 	{
 		var project = job.Project;
+		// Only a job worked by the team is reviewed; one its builder works alone is delivered as it is.
 		if (project is not { ReviewEnabled: true }
+			|| !job.TeamRun
 			|| job.ReviewStatus is JobReviewStatus.Approved or JobReviewStatus.Unresolved or JobReviewStatus.Skipped
 			|| !string.IsNullOrWhiteSpace(job.MergeFromBranch)
 			|| LocalEnvironmentSetup.IsSetupJob(job))

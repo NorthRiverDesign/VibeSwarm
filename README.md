@@ -108,27 +108,33 @@ branch and leaves the conflicts for a provider to resolve, and the result is com
 merge only once no conflict markers remain. When that job finishes, press **Deploy** again.
 Deploys are always manual.
 
-### Profiles and Workflow
+### Profiles and the Team
 
 A **profile** names one provider, one model and one reasoning level, such as *Deep thinker* or
 *Quick fixer*. Wherever VibeSwarm asks who should run something (a job, a retry, a template, a
-schedule, auto-pilot, Start All, a role in a project) it asks for a profile rather than for a
+schedule, auto-pilot, Start All, a role on the team) it asks for a profile rather than for a
 provider and a model. Every provider has a
 default profile that follows its own default model and reasoning. Add more on the **Profiles**
 page, or pick **New profile…** from any profile list. Editing a profile updates everything that
 uses it; deleting one moves what used it to its provider's default profile.
 
-Each project's settings show a **Workflow**: the roles that work on it, each Off or on a profile.
+Each project's settings show its **Team**: who works on its jobs.
 
-- **Build** runs each job. Add fallbacks on other providers for when the first can't run.
-- **Plan first** writes a plan before a job builds.
-- **Review** checks each job before its work is delivered.
-- **Research** and **Decisions** answer the builder's questions while a job runs.
-- **Lead** suggests what to build next.
+- **Build** runs each job. Every project has its own builder, with fallbacks on other providers
+  for when the first can't run.
+- **Work as a team** is one switch, off by default. Turn it on and two more roles join the
+  builder on every job:
+  - the **Lead** plans each job before the builder starts, and suggests what to build next;
+  - the **Reviewer** checks each job before its work is delivered.
 
-So a project can build on a large model at high reasoning while cheaper profiles review and
-advise. Plan first and Lead need Claude Code or Copilot. Review, Research and Decisions also take
-an inference profile, such as Grok, which sees only what it is sent rather than the repository.
+The Lead and the Reviewer are set once, for every project, under **Settings → Team**. A project
+can put its own profile in either role; picking *Team's* again goes back to following the team.
+Changing the team in Settings reaches every project that follows it.
+
+So a short prompt can be planned by a large model at high reasoning, built by your everyday
+builder and checked by a cheaper, different model. The Lead needs Claude Code or Copilot. The
+Reviewer also takes an inference profile, such as Grok, which sees only the change rather than
+the repository.
 
 Two more project settings take an inference profile, or leave the work to the coding provider:
 who suggests ideas, and who writes commit messages. A schedule, auto-pilot and Start All run on
@@ -138,23 +144,29 @@ A job runs on its project's Build profile unless you pick another when you creat
 remembers the profile it was asked to run on, and its page shows that name ahead of the provider
 and model that ran, which differ once a job has moved to a fallback.
 
-### Review and Lead
+### The team at work
 
-Two optional helpers sit above single jobs. Both are roles in the project's Workflow, and both
-run read-only: Claude Code or Copilot with their write tools blocked.
+The Lead and the Reviewer run read-only: Claude Code or Copilot with their write tools blocked.
+Nothing either does can stop a job.
 
-- **Review** (off by default) checks each job before its work is delivered. When the agent
-  finishes, the project's build and tests run. Then a second model reads the change against the
-  goal and the plan's acceptance criteria. The reviewer is a Claude or Copilot CLI that can open
-  files, or an inference provider that sees only the diff. Problems go back to the agent in the
-  same session, at most twice. Review never holds work back: if the reviewer is off, near its
-  usage limit, fails or gives no verdict, the work is delivered and the job says why it wasn't
-  reviewed.
-- **Lead** suggests what to build next. A Lead review copies the branch jobs deliver to, as it is
-  on origin, and reads it alongside the project memory, recent job outcomes, unresolved review
-  findings and an optional **Direction** you write. It returns a short report and up to eight
+- **Plan.** Before a team job builds, the Lead reads the code and writes the plan the builder
+  follows. If the Lead can't (it is turned off, near its usage limit, or gives no answer within
+  30 minutes) the builder works from your prompt and the job says *Plan skipped* and why.
+- **Review.** When the builder finishes, the project's build and tests run. Then the Reviewer
+  reads the change against the goal and the plan. The reviewer is a Claude or Copilot CLI that
+  can open files, or an inference provider that sees only the diff. Problems go back to the
+  builder in the same session, at most twice. Review never holds work back: if the reviewer is
+  near its usage limit, fails or gives no verdict, the work is delivered and the job says why it
+  wasn't reviewed.
+- **What next.** A Lead review copies the branch jobs deliver to, as it is on origin, and reads
+  it alongside the project memory, recent job outcomes, unresolved review findings and an
+  optional **Direction** you write on the project. It returns a short report and up to eight
   ideas, each with a goal and acceptance criteria. They wait under **Suggested by Lead** on the
   project page until you approve them. Dismissed ones are never suggested again.
+
+A job is worked by the team when its project works as a team. Three kinds always run on the
+builder alone: a merge, an environment set-up job, and the copies of a job run as parallel
+instances.
 
 On the Auto-Pilot tab, **Ideas → Only ones I approve** makes auto-pilot run only ideas you typed
 or approved. When none are left, it asks the Lead for more, tells you once, and waits.

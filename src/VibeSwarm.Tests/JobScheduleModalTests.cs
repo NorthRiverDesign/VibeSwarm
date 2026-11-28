@@ -68,6 +68,7 @@ public sealed class JobScheduleModalTests
 		public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default)
 			=> Task.FromResult(new AppSettings { TimeZoneId = "UTC" });
 		public Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<AppSettings> UpdateTeamAsync(Guid? leadProfileId, Guid? reviewProfileId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default)
 			=> Task.FromResult(settings);
 		public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default)

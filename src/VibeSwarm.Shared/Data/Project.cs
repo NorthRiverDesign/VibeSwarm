@@ -74,36 +74,15 @@ public class Project
 	public string? ReleaseBranch { get; set; }
 
 	/// <summary>
-	/// Whether a job is planned before it builds: the planning provider and model read the code
-	/// and write the plan the builder follows.
+	/// Whether jobs on this project are worked by a team: the Lead plans each job before it
+	/// builds, the project's Build profile builds it, and the reviewer checks it. The Lead and
+	/// the reviewer come from the team set once in Settings (<see cref="AppSettings"/>) unless
+	/// <see cref="TeamOverrides"/> says this project picked its own.
 	/// </summary>
-	public bool PlanningEnabled { get; set; }
+	public bool TeamEnabled { get; set; }
 
-	/// <summary>
-	/// Optional provider to use for project planning.
-	/// Supported planning providers are currently Claude and GitHub Copilot.
-	/// </summary>
-	public Guid? PlanningProviderId { get; set; }
-
-	/// <summary>
-	/// Optional model override to use for project planning.
-	/// When omitted, the planning provider's default model is used.
-	/// </summary>
-	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
-	public string? PlanningModelId { get; set; }
-
-	/// <summary>
-	/// Optional reasoning effort override to use for project planning.
-	/// When omitted, the planning provider's default reasoning is used.
-	/// </summary>
-	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
-	public string? PlanningReasoningEffort { get; set; }
-
-	/// <summary>
-	/// The profile the planning provider, model and reasoning come from. Saving the profile
-	/// updates them; editing any of them by hand unlinks it.
-	/// </summary>
-	public Guid? PlanningProfileId { get; set; }
+	/// <summary>The team roles this project fills with its own profile instead of the team's.</summary>
+	public TeamRoles TeamOverrides { get; set; }
 
 	/// <summary>
 	/// Whether a second model reviews each job's work before it is delivered. Problems it finds

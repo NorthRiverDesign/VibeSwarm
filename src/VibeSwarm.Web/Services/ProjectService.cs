@@ -84,8 +84,9 @@ public class ProjectService : IProjectService
 		{
 			throw new InvalidOperationException($"A project named '{project.Name}' already exists.");
 		}
+		await ApplyTeamAsync(project, cancellationToken);
 		await ApplyProfileLinksAsync(project, cancellationToken);
-		NormalizePlanningSettings(project);
+		NormalizeRoleSettings(project);
 		project.FolderId = await ResolveFolderIdAsync(project.FolderId, cancellationToken);
 		// Links go both ways, so they are saved through SetLinkedProjectsAsync, never with the project.
 		project.Links = [];
@@ -100,7 +101,6 @@ public class ProjectService : IProjectService
 		NormalizeProviderSelections(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
-		await ValidatePlanningAsync(project, cancellationToken);
 		await ValidateReviewAsync(project, cancellationToken);
 		await ValidateLeadAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
@@ -153,8 +153,9 @@ public class ProjectService : IProjectService
 		{
 			throw new InvalidOperationException($"A project named '{project.Name}' already exists.");
 		}
+		await ApplyTeamAsync(project, cancellationToken);
 		await ApplyProfileLinksAsync(project, cancellationToken);
-		NormalizePlanningSettings(project);
+		NormalizeRoleSettings(project);
 		existing.Name = project.Name;
 		existing.Description = project.Description;
 		existing.WorkingPath = project.WorkingPath;
@@ -164,11 +165,8 @@ public class ProjectService : IProjectService
 		existing.DefaultTargetBranch = string.IsNullOrWhiteSpace(project.DefaultTargetBranch) ? null : project.DefaultTargetBranch.Trim();
 		existing.DevelopmentBranch = string.IsNullOrWhiteSpace(project.DevelopmentBranch) ? null : project.DevelopmentBranch.Trim();
 		existing.ReleaseBranch = string.IsNullOrWhiteSpace(project.ReleaseBranch) ? null : project.ReleaseBranch.Trim();
-		existing.PlanningEnabled = project.PlanningEnabled;
-		existing.PlanningProviderId = project.PlanningProviderId;
-		existing.PlanningModelId = project.PlanningModelId;
-		existing.PlanningReasoningEffort = project.PlanningReasoningEffort;
-		existing.PlanningProfileId = project.PlanningProfileId;
+		existing.TeamEnabled = project.TeamEnabled;
+		existing.TeamOverrides = project.TeamOverrides;
 		existing.ReviewEnabled = project.ReviewEnabled;
 		existing.ReviewProviderId = project.ReviewProviderId;
 		existing.ReviewInferenceProviderId = project.ReviewInferenceProviderId;
@@ -207,7 +205,6 @@ public class ProjectService : IProjectService
 		NormalizeProviderSelections(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
-		await ValidatePlanningAsync(project, cancellationToken);
 		await ValidateReviewAsync(project, cancellationToken);
 		await ValidateLeadAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
@@ -849,12 +846,11 @@ public class ProjectService : IProjectService
 		project.ProviderSelections = orderedSelections;
 	}
 
-	private static void NormalizePlanningSettings(Project project)
+	private static void NormalizeRoleSettings(Project project)
 	{
-		project.PlanningModelId = string.IsNullOrWhiteSpace(project.PlanningModelId)
-			? null
-			: project.PlanningModelId.Trim();
-		project.PlanningReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(project.PlanningReasoningEffort);
+		// Research and Decisions are no longer offered; nothing may keep running unseen.
+		project.DecisionsProfileId = null;
+		project.ResearchProfileId = null;
 
 		// A review runs on one reviewer: a coding provider wins over an inference provider.
 		if (project.ReviewProviderId.HasValue)
@@ -982,6 +978,16 @@ public class ProjectService : IProjectService
 	}
 
 	/// <summary>
+	/// Gives the project the team's Lead and reviewer, or its own where it overrides them
+	/// (<see cref="TeamLinks"/>). Runs before the profile links are filled in.
+	/// </summary>
+	private async Task ApplyTeamAsync(Project project, CancellationToken cancellationToken)
+	{
+		var settings = await _dbContext.AppSettings.AsNoTracking().OrderBy(s => s.Id).FirstOrDefaultAsync(cancellationToken);
+		TeamLinks.Apply(project, TeamLinks.From(settings));
+	}
+
+	/// <summary>
 	/// Fills every setting linked to a profile from that profile, so what's saved always matches
 	/// it whatever the client sent, then gives each setting that came with a provider but no
 	/// profile the profile matching its values. A link to a profile that no longer exists is
@@ -1013,21 +1019,15 @@ public class ProjectService : IProjectService
 	{
 		Profile? Linked(Guid? profileId) => profileId is Guid id && profiles.TryGetValue(id, out var profile) ? profile : null;
 
-		// A planner or reviewer that is switched off keeps its last profile without using it.
-		foreach (var (role, profileId) in new[] { ("Plan first", project.PlanningEnabled ? project.PlanningProfileId : null), ("Lead", project.LeadProfileId) })
+		if (Linked(project.LeadProfileId) is { } lead && !ProfileRoles.CanRunReadOnly(lead))
 		{
-			if (Linked(profileId) is { } profile && !ProfileRoles.CanRunReadOnly(profile))
-			{
-				throw new InvalidOperationException($"{role} needs a Claude or Copilot profile, and '{profile.Name}' isn't one.");
-			}
+			throw new InvalidOperationException($"The Lead needs a Claude or Copilot profile, and '{lead.Name}' isn't one.");
 		}
 
-		foreach (var (role, profileId) in new[] { ("Review", project.ReviewEnabled ? project.ReviewProfileId : null), ("Decisions", project.DecisionsProfileId), ("Research", project.ResearchProfileId) })
+		// A reviewer that is switched off keeps its last profile without using it.
+		if (project.ReviewEnabled && Linked(project.ReviewProfileId) is { } reviewer && !ProfileRoles.CanHelpJobs(reviewer))
 		{
-			if (Linked(profileId) is { } profile && !ProfileRoles.CanHelpJobs(profile))
-			{
-				throw new InvalidOperationException($"{role} needs a Claude, Copilot or inference profile, and '{profile.Name}' isn't one.");
-			}
+			throw new InvalidOperationException($"Review needs a Claude, Copilot or inference profile, and '{reviewer.Name}' isn't one.");
 		}
 
 		var runners = (project.ProviderSelections ?? []).Select(entry => entry.ProfileId);
@@ -1242,59 +1242,6 @@ public class ProjectService : IProjectService
 		if (!ProviderCapabilities.SupportsReasoningEffort(provider, project.LeadReasoningEffort))
 		{
 			throw new InvalidOperationException("The Lead's reasoning level is not supported by the chosen provider.");
-		}
-	}
-
-	private async Task ValidatePlanningAsync(Project project, CancellationToken cancellationToken)
-	{
-		if (!project.PlanningEnabled)
-		{
-			return;
-		}
-
-		if (!project.PlanningProviderId.HasValue)
-		{
-			throw new InvalidOperationException("Planning requires selecting a provider.");
-		}
-
-		var provider = await _dbContext.Providers
-			.AsNoTracking()
-			.FirstOrDefaultAsync(p => p.Id == project.PlanningProviderId.Value, cancellationToken);
-		if (provider == null)
-		{
-			throw new InvalidOperationException("The selected planning provider does not exist.");
-		}
-
-		if (!provider.IsEnabled)
-		{
-			throw new InvalidOperationException("The selected planning provider is disabled.");
-		}
-
-		if (provider.Type is not (ProviderType.Claude or ProviderType.Copilot))
-		{
-			throw new InvalidOperationException("Planning currently supports only Claude and GitHub Copilot providers.");
-		}
-
-		if (!ProviderCapabilities.SupportsReasoningEffort(provider, project.PlanningReasoningEffort))
-		{
-			throw new InvalidOperationException("The selected planning reasoning level is not supported by the chosen provider.");
-		}
-
-		if (string.IsNullOrWhiteSpace(project.PlanningModelId))
-		{
-			return;
-		}
-
-		var modelExists = await _dbContext.ProviderModels
-			.AsNoTracking()
-			.AnyAsync(
-				model => model.ProviderId == provider.Id &&
-					model.IsAvailable &&
-					model.ModelId == project.PlanningModelId,
-				cancellationToken);
-		if (!modelExists)
-		{
-			throw new InvalidOperationException("The selected planning model is not available for the chosen provider.");
 		}
 	}
 

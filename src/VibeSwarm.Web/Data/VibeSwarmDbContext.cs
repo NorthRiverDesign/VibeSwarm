@@ -142,8 +142,6 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.DefaultTargetBranch).HasMaxLength(ValidationLimits.ProjectDefaultTargetBranchMaxLength);
 			entity.Property(e => e.DevelopmentBranch).HasMaxLength(ValidationLimits.ProjectBranchMaxLength);
 			entity.Property(e => e.ReleaseBranch).HasMaxLength(ValidationLimits.ProjectBranchMaxLength);
-			entity.Property(e => e.PlanningModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
-			entity.Property(e => e.PlanningReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.ReviewModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
 			entity.Property(e => e.ReviewReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.LeadModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);

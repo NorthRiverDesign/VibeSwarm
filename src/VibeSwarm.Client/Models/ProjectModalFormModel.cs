@@ -37,17 +37,11 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(ValidationLimits.ProjectBranchMaxLength)]
 	public string? ReleaseBranch { get; set; }
 
-	public bool PlanningEnabled { get; set; }
+	/// <summary>Whether jobs here are worked by the team: a Lead plans, the builder builds, a reviewer checks.</summary>
+	public bool TeamEnabled { get; set; }
 
-	public Guid? PlanningProviderId { get; set; }
-
-	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
-	public string? PlanningModelId { get; set; }
-
-	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
-	public string? PlanningReasoningEffort { get; set; }
-
-	public Guid? PlanningProfileId { get; set; }
+	/// <summary>The team roles this project fills with its own profile instead of the team's.</summary>
+	public TeamRoles TeamOverrides { get; set; }
 
 	public bool ReviewEnabled { get; set; }
 
@@ -165,11 +159,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			DefaultTargetBranch = source.DefaultTargetBranch,
 			DevelopmentBranch = source.DevelopmentBranch,
 			ReleaseBranch = source.ReleaseBranch,
-			PlanningEnabled = source.PlanningEnabled,
-			PlanningProviderId = source.PlanningProviderId,
-			PlanningModelId = source.PlanningModelId,
-			PlanningReasoningEffort = source.PlanningReasoningEffort,
-			PlanningProfileId = source.PlanningProfileId,
+			TeamEnabled = source.TeamEnabled,
+			TeamOverrides = source.TeamOverrides,
 			ReviewEnabled = source.ReviewEnabled,
 			ReviewProviderId = source.ReviewProviderId,
 			ReviewInferenceProviderId = source.ReviewInferenceProviderId,
@@ -219,11 +210,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			DefaultTargetBranch = string.IsNullOrWhiteSpace(DefaultTargetBranch) ? null : DefaultTargetBranch.Trim(),
 			DevelopmentBranch = string.IsNullOrWhiteSpace(DevelopmentBranch) ? null : DevelopmentBranch.Trim(),
 			ReleaseBranch = string.IsNullOrWhiteSpace(ReleaseBranch) ? null : ReleaseBranch.Trim(),
-			PlanningEnabled = PlanningEnabled,
-			PlanningProviderId = PlanningProviderId,
-			PlanningModelId = string.IsNullOrWhiteSpace(PlanningModelId) ? null : PlanningModelId.Trim(),
-			PlanningReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(PlanningReasoningEffort),
-			PlanningProfileId = PlanningProfileId,
+			TeamEnabled = TeamEnabled,
+			TeamOverrides = TeamOverrides,
 			ReviewEnabled = ReviewEnabled,
 			ReviewProviderId = ReviewProviderId,
 			ReviewInferenceProviderId = ReviewProviderId.HasValue ? null : ReviewInferenceProviderId,

@@ -168,9 +168,7 @@ public partial class JobProcessingService
             {
                 JobStatus.Planning => JobStatus.Planning,
                 JobStatus.Started or JobStatus.Processing => JobStatus.Processing,
-                _ => ShouldUsePlanningStage(job.Project) && string.IsNullOrWhiteSpace(job.PlanningOutput)
-                    ? JobStatus.Planning
-                    : JobStatus.Processing
+                _ => NeedsLeadPlan(job) ? JobStatus.Planning : JobStatus.Processing
             };
             await UpdateJobStatusAsync(job.Id, initialStatus, dbContext, cancellationToken);
             await NotifyStatusChangedAsync(job.Id, initialStatus);
@@ -314,14 +312,6 @@ public partial class JobProcessingService
             // Start a background task to monitor for cancellation requests and send heartbeats
             // Note: This task manages its own DbContext scopes to avoid disposal issues
             var cancellationMonitorTask = MonitorCancellationAndHeartbeatAsync(job.Id, executionContext, cancellationToken);
-
-            async Task FailDuringPlanningAsync(string errorMessage)
-            {
-                executionContext.CancellationTokenSource?.Cancel();
-                try { await cancellationMonitorTask; } catch { }
-                await ReleaseJobAsync(job.Id, JobStatus.Failed, errorMessage, dbContext, cancellationToken);
-                await NotifyJobCompletedAsync(job.Id, false, errorMessage);
-            }
 
             // Execute the job with session support
             _logger.LogInformation("Starting provider execution for job {JobId} in directory {WorkingDir}",
@@ -817,169 +807,25 @@ public partial class JobProcessingService
                 roleContext, PromptBuilder.BuildPlanningSystemPromptRules(job.Project, projectMemoryFilePath, injectRepoMap), priorWorkRules);
 
             var planningOutput = job.PlanningOutput;
-            if (ShouldUsePlanningStage(job.Project) && string.IsNullOrWhiteSpace(planningOutput))
+            if (NeedsLeadPlan(job))
             {
                 await UpdateJobStatusAsync(job.Id, JobStatus.Planning, dbContext, cancellationToken);
                 await NotifyStatusChangedAsync(job.Id, JobStatus.Planning);
 
-                const string planningActivity = "Generating implementation plan...";
+                const string planningActivity = "The Lead is planning the job...";
                 await UpdateHeartbeatAsync(job.Id, planningActivity, dbContext, cancellationToken);
                 await NotifyJobActivityAsync(job.Id, planningActivity, DateTime.UtcNow);
+                executionContext.LatestActivity = planningActivity;
+                await PersistExecutionCheckpointAsync(job.Id, JobStatus.Planning, executionContext, cancellationToken);
 
-                var planningProviderId = job.Project!.PlanningProviderId!.Value;
-                var planningProviderConfig = await providerService.GetByIdAsync(planningProviderId, cancellationToken);
-                if (planningProviderConfig == null)
+                // A Lead that can't plan never stops the job: the builder works from the goal.
+                planningOutput = await PlanWithLeadAsync(job, workingDirectory, planningSystemPromptRules, dbContext, cancellationToken);
+                if (planningOutput == null)
                 {
-                    await FailDuringPlanningAsync($"[Planning] Provider not found (ID: {planningProviderId}).");
-                    return;
+                    await NotifyJobActivityAsync(job.Id, $"Plan skipped: {job.PlanSkippedReason}", DateTime.UtcNow);
                 }
 
-                if (!ProviderPlanningHelper.SupportsPlanningMode(planningProviderConfig.Type))
-                {
-                    await FailDuringPlanningAsync($"[Planning] {planningProviderConfig.Name} does not support planning mode.");
-                    return;
-                }
-
-                var planningProvider = CreateProviderInstance(planningProviderConfig);
-                var planningValidationError = await ValidateProviderAvailabilityAsync(job.Id, planningProviderConfig, planningProvider, cancellationToken);
-                if (!string.IsNullOrWhiteSpace(planningValidationError))
-                {
-                    await FailDuringPlanningAsync($"[Planning] {planningProviderConfig.Name}: {planningValidationError}");
-                    return;
-                }
-
-                var planningPrompt = ProviderPlanningHelper.BuildPlanningPrompt(planningProviderConfig.Type, job.GoalPrompt);
-                if (job.ResumeFromStatus == JobStatus.Planning)
-                {
-                    planningPrompt = PromptBuilder.BuildRecoveryPrompt(
-                        planningPrompt,
-                        job.RecoveryPrompt,
-                        JobRecoveryHelper.TrimTail(job.ConsoleOutput, JobRecoveryHelper.MaxRecoveryConsoleOutputLength),
-                        job.LastResumeFailureReason,
-                        forceFreshSession: true);
-                }
-
-                ExecutionResult? planningResult = null;
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, browserExecutablePath, cancellationToken);
-                    executionContext.ActivePrompt = planningPrompt;
-                    executionContext.LatestActivity = planningActivity;
-                    await PersistExecutionCheckpointAsync(job.Id, JobStatus.Planning, executionContext, cancellationToken);
-
-                    using var planningExecutionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                    executionContext.ActiveExecutionCancellationTokenSource = planningExecutionCts;
-
-                    try
-                    {
-                        planningResult = await planningProvider.ExecuteWithOptionsAsync(
-                            planningPrompt,
-                            new ExecutionOptions
-                            {
-                                WorkingDirectory = workingDirectory,
-                                McpConfigPath = planningMcpOptions.McpConfigPath,
-                                BashEnvPath = planningMcpOptions.BashEnvPath,
-                                AdditionalArgs = planningMcpOptions.AdditionalArgs,
-                                UseBareMode = planningProviderConfig.Type == ProviderType.Claude
-                                    && planningProviderConfig.ConnectionMode == ProviderConnectionMode.CLI,
-                                Model = job.Project.PlanningModelId,
-                                ReasoningEffort = job.Project.PlanningReasoningEffort,
-                                Title = job.Title,
-                                AppendSystemPrompt = planningSystemPromptRules,
-                                EnvironmentVariables = jobEnvironmentVariables,
-                                DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools,
-                                StrictMcpConfig = true,
-                                DisableBuiltinMcps = true
-                            },
-                            progress,
-                            planningExecutionCts.Token);
-                    }
-                    catch (OperationCanceledException) when (executionContext.IsPausedForInteraction && !cancellationToken.IsCancellationRequested)
-                    {
-                        planningResult = new ExecutionResult
-                        {
-                            Success = false,
-                            IsPaused = true,
-                            SessionId = executionContext.SessionId
-                        };
-                    }
-                    finally
-                    {
-                        if (ReferenceEquals(executionContext.ActiveExecutionCancellationTokenSource, planningExecutionCts))
-                        {
-                            executionContext.ActiveExecutionCancellationTokenSource = null;
-                        }
-
-                        CleanupMcpExecutionResources(planningMcpOptions.Resources);
-                    }
-
-                    ThrowIfStoppedByTimeLimit(executionContext, planningResult);
-
-                    if (planningResult.IsPaused && executionContext.IsPausedForInteraction)
-                    {
-                        var interactionResume = await WaitForInteractionResponseAndBuildPromptAsync(planningPrompt);
-                        if (!interactionResume.Success || string.IsNullOrWhiteSpace(interactionResume.ResumePrompt))
-                        {
-                            await FailDuringPlanningAsync($"[Planning] {interactionResume.ErrorMessage}");
-                            return;
-                        }
-
-                        planningPrompt = interactionResume.ResumePrompt;
-                        executionContext.ActivePrompt = planningPrompt;
-                        executionContext.LatestActivity = "Resuming planning after user input...";
-                        await PersistExecutionCheckpointAsync(job.Id, JobStatus.Planning, executionContext, cancellationToken);
-                        continue;
-                    }
-
-                    break;
-                }
-
-                if (planningResult == null)
-                {
-                    await FailDuringPlanningAsync("[Planning] Planning was cancelled before the provider returned a result.");
-                    return;
-                }
-
-                await RecordUsageAndCheckExhaustionAsync(
-                    planningProviderConfig.Id,
-                    planningProviderConfig.Name,
-                    job.Id,
-                    planningResult,
-                    planningProvider,
-                    CancellationToken.None);
-
-                planningOutput = ProviderPlanningHelper.ExtractExecutionText(planningResult);
-                if (!planningResult.Success || string.IsNullOrWhiteSpace(planningOutput))
-                {
-                    var planningError = string.IsNullOrWhiteSpace(planningResult.ErrorMessage)
-                        ? $"{planningProviderConfig.Name} did not return a plan."
-                        : planningResult.ErrorMessage;
-                    await FailDuringPlanningAsync($"[Planning] {planningProviderConfig.Name}: {planningError}");
-                    return;
-                }
-
-                job.PlanningOutput = planningOutput.Trim();
-                var planningSummary = JobSummaryGenerator.ExtractCommitSummary(job.PlanningOutput);
-                if (!string.IsNullOrWhiteSpace(planningSummary))
-                {
-                    job.SessionSummary = planningSummary;
-                }
-                job.PlanningProviderId = planningProviderConfig.Id;
-                job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
-                job.PlanningReasoningEffortUsed = job.Project.PlanningReasoningEffort;
-                job.PlanningGeneratedAt = DateTime.UtcNow;
-                job.PlanningInputTokens = planningResult.InputTokens;
-                job.PlanningOutputTokens = planningResult.OutputTokens;
-                job.PlanningCostUsd = planningResult.CostUsd;
-                job.PlanningCommandUsed = executionContext.CommandUsed ?? planningResult.CommandUsed;
-
-                // Clear planning phase's command/process so execution phase starts clean
-                job.CommandUsed = null;
-                job.ProcessId = null;
-                executionContext.ProcessId = 0;
-                executionContext.CommandUsed = null;
                 JobRecoveryHelper.ClearRecoveryState(job);
-
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 

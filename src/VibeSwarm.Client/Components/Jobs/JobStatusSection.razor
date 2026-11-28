@@ -79,6 +79,10 @@
                     <span class="badge theme-success"><i class="bi bi-eye"></i> Reviewed</span>
                 }
             </div>
+            @if (!string.IsNullOrWhiteSpace(Job.PlanSkippedReason))
+            {
+                <div class="small fg-1 mt-3">Plan skipped: @Job.PlanSkippedReason</div>
+            }
             @if (ReviewLine is { } review)
             {
                 <div class="small @review.CssClass mt-3">@review.Text</div>

@@ -39,7 +39,7 @@ public sealed class ProfilesUiTests
 	}
 
 	[Fact]
-	public void Workflow_EachRoleIsOffOrAProfile_AndOffersOnlyProfilesThatCanFillIt()
+	public void Team_IsOneSwitch_AndEachRoleTakesTheTeamsProfileOrTheProjectsOwn()
 	{
 		using var context = new BunitContext();
 		var grok = new InferenceProvider { Id = Guid.NewGuid(), Name = "Grok", IsEnabled = true };
@@ -47,66 +47,86 @@ public sealed class ProfilesUiTests
 		var thinker = new Profile { Id = Guid.NewGuid(), Name = "Deep thinker", ProviderId = Claude.Id, Provider = Claude, ModelId = "opus", ReasoningEffort = "high" };
 		var openCoder = new Profile { Id = Guid.NewGuid(), Name = "Open coder", ProviderId = OpenCode.Id, Provider = OpenCode };
 		var grokProfile = new Profile { Id = Guid.NewGuid(), Name = "Grok research", InferenceProviderId = grok.Id, InferenceProvider = grok, ModelId = "grok-4" };
-		// A provider that is turned off can't plan, review, answer or lead, whatever its kind.
+		// A provider that is turned off can't lead or review, whatever its kind.
 		var copilotOff = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = false };
 		var switchedOff = new Profile { Id = Guid.NewGuid(), Name = "Switched off", ProviderId = copilotOff.Id, Provider = copilotOff };
 		var project = new ProjectModalFormModel();
 		project.ProviderSelections.Add(new ProjectProvider { ProviderId = Claude.Id, ProfileId = claudeDefault.Id, IsEnabled = true });
 
-		var cut = context.Render<ProjectWorkflowSection>(parameters => parameters
+		var cut = context.Render<ProjectTeamSection>(parameters => parameters
 			.Add(section => section.Project, project)
-			.Add(section => section.Profiles, [claudeDefault, thinker, openCoder, grokProfile, switchedOff]));
+			.Add(section => section.Profiles, [claudeDefault, thinker, openCoder, grokProfile, switchedOff])
+			.Add(section => section.TeamLeadProfileId, thinker.Id)
+			.Add(section => section.TeamReviewProfileId, grokProfile.Id));
 
-		// Closed, the list reads as who does what: the builder by name, every other role Off.
-		Assert.Equal(["Build", "Plan first", "Review", "Research", "Decisions", "Lead"], RowTitles(cut));
-		Assert.Equal(5, cut.FindAll("button[aria-expanded]").Count(row => row.TextContent.Contains("Off")));
-		Assert.Contains("Claude", OpenRow(cut, "Build").TextContent);
+		// Off, the builder works alone: only its row shows.
+		Assert.Equal(["Build"], RowTitles(cut));
+		Assert.Contains("the builder works each job alone", cut.Markup);
 
-		// The Lead reads the code, which OpenCode and an inference provider can't do for it.
-		OpenRow(cut, "Lead");
-		Assert.Equal(["Off", "Claude", "Deep thinker"], Options(cut, "#workflow-lead"));
-		cut.Find("#workflow-lead").Change(thinker.Id.ToString());
+		// One switch brings in the team's Lead and reviewer, in the order a job meets them.
+		cut.Find("#modal-teamEnabled").Change(true);
+		Assert.Equal(["Lead", "Build", "Review"], RowTitles(cut));
+		Assert.True(project.TeamEnabled);
+		Assert.Equal(TeamRoles.None, project.TeamOverrides);
 		Assert.Equal((thinker.Id, Claude.Id, "opus", "high"), (project.LeadProfileId!.Value, project.LeadProviderId!.Value, project.LeadModelId, project.LeadReasoningEffort));
-		Assert.NotEmpty(cut.FindAll("#modal-leadDirection"));
+		Assert.True(project.ReviewEnabled);
+		Assert.Equal((grokProfile.Id, null, grok.Id, "grok-4"), (project.ReviewProfileId!.Value, project.ReviewProviderId, project.ReviewInferenceProviderId!.Value, project.ReviewModelId));
 
-		// Off stops it: the Lead runs for as long as it has a provider, so that goes too.
-		cut.Find("#workflow-lead").Change(string.Empty);
-		Assert.Null(project.LeadProfileId);
-		Assert.Null(project.LeadProviderId);
-		Assert.Empty(cut.FindAll("#modal-leadDirection"));
+		// The Lead reads the code, which OpenCode and an inference provider can't do for it. The
+		// first choice follows the team.
+		Assert.Contains("Deep thinker", OpenRow(cut, "Lead").TextContent);
+		Assert.Equal(["Team's: Deep thinker", "Claude", "Deep thinker"], Options(cut, "#team-lead"));
+		Assert.NotEmpty(cut.FindAll("#modal-leadDirection"));
+		cut.Find("#team-lead").Change(claudeDefault.Id.ToString());
+		Assert.Equal(TeamRoles.Lead, project.TeamOverrides);
+		Assert.Equal(claudeDefault.Id, project.LeadProfileId);
+		Assert.Contains("Claude · this project only", OpenRow(cut, "Lead").TextContent);
+
+		// Picking the team's again drops the project's own choice.
+		cut.Find("#team-lead").Change(string.Empty);
+		Assert.Equal(TeamRoles.None, project.TeamOverrides);
+		Assert.Equal(thinker.Id, project.LeadProfileId);
 
 		// An inference profile can review, on the change alone.
 		OpenRow(cut, "Review");
-		Assert.Equal(["Off", "Claude", "Deep thinker", "Grok research"], Options(cut, "#workflow-review"));
-		cut.Find("#workflow-review").Change(grokProfile.Id.ToString());
-		Assert.True(project.ReviewEnabled);
-		Assert.Equal((grokProfile.Id, null, grok.Id, "grok-4"), (project.ReviewProfileId!.Value, project.ReviewProviderId, project.ReviewInferenceProviderId!.Value, project.ReviewModelId));
+		Assert.Equal(["Team's: Grok research", "Claude", "Deep thinker", "Grok research"], Options(cut, "#team-review"));
 		Assert.Contains("Reads the change only.", cut.Markup);
-		cut.Find("#workflow-review").Change(string.Empty);
+		cut.Find("#team-review").Change(thinker.Id.ToString());
+		Assert.Equal(TeamRoles.Review, project.TeamOverrides);
+		Assert.Equal((thinker.Id, Claude.Id), (project.ReviewProfileId!.Value, project.ReviewProviderId!.Value));
+
+		// Off again leaves the builder alone, with nothing overridden.
+		cut.Find("#modal-teamEnabled").Change(false);
+		Assert.Equal(["Build"], RowTitles(cut));
 		Assert.False(project.ReviewEnabled);
+		Assert.Null(project.LeadProviderId);
+		Assert.Equal(TeamRoles.None, project.TeamOverrides);
 
-		OpenRow(cut, "Plan first");
-		Assert.Equal(["Off", "Claude", "Deep thinker"], Options(cut, "#workflow-plan"));
-		cut.Find("#workflow-plan").Change(thinker.Id.ToString());
-		Assert.Equal((true, thinker.Id, Claude.Id), (project.PlanningEnabled, project.PlanningProfileId!.Value, project.PlanningProviderId!.Value));
-		cut.Find("#workflow-plan").Change(string.Empty);
-		Assert.False(project.PlanningEnabled);
-		Assert.Null(project.PlanningProfileId);
-
-		OpenRow(cut, "Research");
-		OpenRow(cut, "Decisions");
-		cut.Find("#workflow-research").Change(grokProfile.Id.ToString());
-		cut.Find("#workflow-decisions").Change(thinker.Id.ToString());
-		Assert.Equal((grokProfile.Id, thinker.Id), (project.ResearchProfileId!.Value, project.DecisionsProfileId!.Value));
-		Assert.Contains("Sees only the question, not the code.", cut.Markup);
-		Assert.Contains("Reads the repository to answer.", cut.Markup);
-
-		// No role asks for a provider, a model or a reasoning level.
-		Assert.Empty(cut.FindAll("#modal-leadProvider, #modal-planningProvider, #modal-reviewer, #modal-planningModel, #modal-reviewModel, #modal-leadModel"));
+		// No role asks for a provider, a model or a reasoning level, and the helper roles are gone.
+		Assert.Empty(cut.FindAll("#modal-leadProvider, #modal-reviewer, #modal-reviewModel, #modal-leadModel, #workflow-plan, #workflow-research, #workflow-decisions"));
 	}
 
 	[Fact]
-	public void Workflow_Build_HasOneBuilderAndFallbacksOnOtherProviders()
+	public void Team_WithNobodyOnIt_PointsToSettings()
+	{
+		using var context = new BunitContext();
+		var claudeDefault = new Profile { Id = Guid.NewGuid(), Name = "Claude", ProviderId = Claude.Id, Provider = Claude, IsProviderDefault = true };
+		var project = new ProjectModalFormModel();
+
+		var cut = context.Render<ProjectTeamSection>(parameters => parameters
+			.Add(section => section.Project, project)
+			.Add(section => section.Profiles, [claudeDefault]));
+		cut.Find("#modal-teamEnabled").Change(true);
+
+		Assert.Equal("/settings", cut.Find("a.fg-warning").GetAttribute("href"));
+		Assert.Contains("Nobody leads yet", cut.Markup);
+		Assert.Contains("Nobody reviews yet", cut.Markup);
+		Assert.False(project.ReviewEnabled);
+		Assert.Null(project.LeadProviderId);
+	}
+
+	[Fact]
+	public void Team_Build_HasOneBuilderAndFallbacksOnOtherProviders()
 	{
 		using var context = new BunitContext();
 		var copilot = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, ConnectionMode = ProviderConnectionMode.CLI, IsEnabled = true };
@@ -116,7 +136,7 @@ public sealed class ProfilesUiTests
 		var project = new ProjectModalFormModel();
 		project.ProviderSelections.Add(new ProjectProvider { ProviderId = Claude.Id, ProfileId = claudeDefault.Id, IsEnabled = true });
 
-		var cut = context.Render<ProjectWorkflowSection>(parameters => parameters
+		var cut = context.Render<ProjectTeamSection>(parameters => parameters
 			.Add(section => section.Project, project)
 			.Add(section => section.Profiles, [claudeDefault, thinker, second]));
 		OpenRow(cut, "Build");
@@ -144,10 +164,10 @@ public sealed class ProfilesUiTests
 		Assert.Equal(second.Id, Assert.Single(project.ProviderSelections).ProfileId);
 	}
 
-	private static List<string> RowTitles(IRenderedComponent<ProjectWorkflowSection> cut)
+	private static List<string> RowTitles(IRenderedComponent<ProjectTeamSection> cut)
 		=> cut.FindAll("button[aria-expanded] .fw-medium, button[aria-expanded] .fw-semibold").Select(title => title.TextContent.Trim()).ToList();
 
-	private static AngleSharp.Dom.IElement OpenRow(IRenderedComponent<ProjectWorkflowSection> cut, string title)
+	private static AngleSharp.Dom.IElement OpenRow(IRenderedComponent<ProjectTeamSection> cut, string title)
 	{
 		var row = cut.FindAll("button[aria-expanded]").Single(button => button.TextContent.TrimStart().StartsWith(title, StringComparison.Ordinal));
 		if (row.GetAttribute("aria-expanded") != "true")

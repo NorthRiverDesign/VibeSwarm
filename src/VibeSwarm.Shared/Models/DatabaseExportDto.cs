@@ -40,7 +40,7 @@ public class ProjectExportDto
 	public string? DefaultTargetBranch { get; set; }
 	public string? DevelopmentBranch { get; set; }
 	public string? ReleaseBranch { get; set; }
-	public bool PlanningEnabled { get; set; }
+	public bool TeamEnabled { get; set; }
 	public string? PromptContext { get; set; }
 	public bool IdeasAutoCommit { get; set; }
 	public Guid? IdeasProcessingProviderId { get; set; }

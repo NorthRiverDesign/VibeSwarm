@@ -1024,7 +1024,8 @@ public sealed class JobExecutionSafetyTests : IDisposable
 				project.ReviewProviderId = provider.Id;
 			},
 			configureServices: services => services.AddSingleton<IReadOnlyConsultService>(consult),
-			versionControl: new DiffWithoutARepositoryVersionControlService(" src/app.cs | 2 +-\n-old\n+new\n"));
+			versionControl: new DiffWithoutARepositoryVersionControlService(" src/app.cs | 2 +-\n-old\n+new\n"),
+			configureJob: job => job.TeamRun = true);
 
 		Assert.Equal(2, agent.Runs.Count);
 		Assert.Equal("session-1", agent.Runs[1].SessionId);
@@ -1054,6 +1055,108 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
 		Assert.Equal(JobStatus.Failed, job.Status);
 		Assert.Contains("The model refused the request.", job.ErrorMessage);
+	}
+
+	[Fact]
+	public async Task ProcessJobAsync_ATeamJob_IsPlannedByTheLead_AndBuiltFromThePlan()
+	{
+		var agent = new ScriptedProvider((_, _) => Task.FromResult(Reply("Built the page.")));
+		var lead = new ScriptedConsultService(_ => new ConsultResult
+		{
+			Success = true,
+			Text = "Outcome: a settings page.\n1. Add SettingsPage.razor under Pages.",
+			ProviderName = "Claude",
+			ModelUsed = "opus",
+			InputTokens = 120,
+			OutputTokens = 40
+		});
+
+		var (jobId, _, _) = await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				project.TeamEnabled = true;
+				project.LeadProviderId = provider.Id;
+				project.LeadModelId = "opus";
+			},
+			configureServices: services => services.AddSingleton<IReadOnlyConsultService>(lead),
+			configureJob: job => job.TeamRun = true);
+
+		// The Lead is asked once, read-only, for a plan of the job's goal.
+		var asked = Assert.Single(lead.Requests);
+		Assert.Contains("Add a settings page", asked.Prompt);
+		Assert.Equal("plan", asked.TaskType);
+		Assert.Equal("opus", asked.Target.ModelId);
+
+		// The builder is handed the plan with the goal.
+		var run = Assert.Single(agent.Runs);
+		Assert.Contains("Add a settings page", run.Prompt);
+		Assert.Contains("Add SettingsPage.razor under Pages.", run.Prompt);
+
+		await using var db = CreateDbContext();
+		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal(JobStatus.Completed, job.Status);
+		Assert.Contains("Add SettingsPage.razor", job.PlanningOutput);
+		Assert.Null(job.PlanSkippedReason);
+		Assert.Equal(("opus", 120, 40), (job.PlanningModelUsed, job.PlanningInputTokens, job.PlanningOutputTokens));
+	}
+
+	[Fact]
+	public async Task ProcessJobAsync_WhenTheLeadCannotPlan_TheJobIsBuiltFromItsGoal_AndSaysWhy()
+	{
+		var agent = new ScriptedProvider((_, _) => Task.FromResult(Reply("Built the page.")));
+		var lead = new ScriptedConsultService(_ => ConsultResult.Skip("Claude is near its usage limit", "Claude"));
+
+		var (jobId, _, _) = await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				project.TeamEnabled = true;
+				project.LeadProviderId = provider.Id;
+			},
+			configureServices: services => services.AddSingleton<IReadOnlyConsultService>(lead),
+			configureJob: job => job.TeamRun = true);
+
+		Assert.Single(lead.Requests);
+		var run = Assert.Single(agent.Runs);
+		Assert.Contains("Add a settings page", run.Prompt);
+		Assert.DoesNotContain("implementation_plan", run.Prompt);
+
+		await using var db = CreateDbContext();
+		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal(JobStatus.Completed, job.Status);
+		Assert.Null(job.PlanningOutput);
+		Assert.Equal("Claude is near its usage limit", job.PlanSkippedReason);
+	}
+
+	[Fact]
+	public async Task ProcessJobAsync_AJobItsBuilderWorksAlone_IsNeitherPlannedNorReviewed()
+	{
+		var agent = new ScriptedProvider((_, _) => Task.FromResult(Reply("Built the page.")));
+		var team = new ScriptedConsultService(_ => new ConsultResult { Success = true, Text = "A plan.\nISSUES:\n1. Something." });
+
+		// The project works as a team, but this job was created to run on its builder alone.
+		var (jobId, _, _) = await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				project.TeamEnabled = true;
+				project.LeadProviderId = provider.Id;
+				project.ReviewEnabled = true;
+				project.ReviewProviderId = provider.Id;
+			},
+			configureServices: services => services.AddSingleton<IReadOnlyConsultService>(team),
+			versionControl: new DiffWithoutARepositoryVersionControlService(" src/app.cs | 2 +-\n-old\n+new\n"));
+
+		Assert.Empty(team.Requests);
+		Assert.Single(agent.Runs);
+		await using var db = CreateDbContext();
+		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal((JobStatus.Completed, JobReviewStatus.None), (job.Status, job.ReviewStatus));
+		Assert.Null(job.PlanningOutput);
 	}
 
 	private static ExecutionResult Reply(string text) => new()
@@ -1327,7 +1430,8 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		bool startBeforeRunning = false,
 		Action<Project, Provider>? configureProject = null,
 		Action<IServiceCollection>? configureServices = null,
-		IVersionControlService? versionControl = null)
+		IVersionControlService? versionControl = null,
+		Action<Job>? configureJob = null)
 	{
 		var workingPath = Directory.CreateTempSubdirectory("vibeswarm-user-message-").FullName;
 		var jobId = Guid.NewGuid();
@@ -1336,7 +1440,7 @@ public sealed class JobExecutionSafetyTests : IDisposable
 			var project = new Project { Id = Guid.NewGuid(), Name = "Steered Project", WorkingPath = workingPath };
 			var providerConfig = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
 			configureProject?.Invoke(project, providerConfig);
-			setupContext.AddRange(project, providerConfig, new Job
+			var seededJob = new Job
 			{
 				Id = jobId,
 				ProjectId = project.Id,
@@ -1346,7 +1450,9 @@ public sealed class JobExecutionSafetyTests : IDisposable
 				// Known before the run: reporting it through progress would also write a heartbeat
 				// on another thread, and the tests' one SQLite connection can't take both.
 				SessionId = "session-1"
-			});
+			};
+			configureJob?.Invoke(seededJob);
+			setupContext.AddRange(project, providerConfig, seededJob);
 			await setupContext.SaveChangesAsync();
 		}
 

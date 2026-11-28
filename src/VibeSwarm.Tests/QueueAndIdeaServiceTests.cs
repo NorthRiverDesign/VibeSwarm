@@ -684,10 +684,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		{
 			Id = Guid.NewGuid(),
 			Name = "Planning Project",
-			WorkingPath = "/tmp/planning-project",
-			PlanningEnabled = true,
-			PlanningProviderId = Guid.NewGuid(),
-			PlanningModelId = "claude-sonnet-4"
+			WorkingPath = "/tmp/planning-project"
 		};
 		var provider = new Provider
 		{
@@ -925,15 +922,16 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	public async Task ResumeJobAsync_ReturnsPlanningStatus_WhenPlanIsStillPending()
 	{
 		await using var dbContext = CreateDbContext();
-		var planningProviderId = Guid.NewGuid();
+		// A team job on a project with a Lead still waits for its plan.
+		var leadProviderId = Guid.NewGuid();
 		var project = new Project
 		{
 			Id = Guid.NewGuid(),
 			Name = "Planning Resume Project",
 			WorkingPath = "/tmp/planning-resume-project",
-			PlanningEnabled = true,
-			PlanningProviderId = planningProviderId,
-			PlanningModelId = "claude-sonnet-4"
+			TeamEnabled = true,
+			LeadProviderId = leadProviderId,
+			LeadModelId = "claude-sonnet-4"
 		};
 		var provider = new Provider
 		{
@@ -950,6 +948,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Project = project,
 			ProviderId = provider.Id,
 			GoalPrompt = "Implement the feature",
+			TeamRun = true,
 			Status = JobStatus.Paused,
 			PendingInteractionPrompt = "Continue?",
 			InteractionType = "confirmation",
@@ -4259,87 +4258,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		var storedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
 		Assert.Equal(2, storedJob.ChangedFilesCount);
 		Assert.Equal(gitDiff, storedJob.GitDiff);
-	}
-
-	[Fact]
-	public async Task ProjectService_UpdateAsync_PersistsPlanningSettings()
-	{
-		await using var dbContext = CreateDbContext();
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "Claude Planner",
-			Type = ProviderType.Claude,
-			IsEnabled = true
-		};
-		var project = new Project
-		{
-			Id = Guid.NewGuid(),
-			Name = "Planning Project",
-			WorkingPath = "/tmp/planning-project"
-		};
-		var model = new ProviderModel
-		{
-			Id = Guid.NewGuid(),
-			ProviderId = provider.Id,
-			ModelId = "claude-sonnet-4.6",
-			DisplayName = "Claude Sonnet 4.6",
-			IsAvailable = true,
-			IsDefault = true
-		};
-
-		dbContext.Providers.Add(provider);
-		dbContext.ProviderModels.Add(model);
-		dbContext.Projects.Add(project);
-		await dbContext.SaveChangesAsync();
-
-		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService(), new FakeVersionControlService());
-		var updated = await projectService.UpdateAsync(new Project
-		{
-			Id = project.Id,
-			Name = project.Name,
-			WorkingPath = project.WorkingPath,
-			PlanningEnabled = true,
-			PlanningProviderId = provider.Id,
-			PlanningModelId = model.ModelId
-		});
-
-		Assert.True(updated.PlanningEnabled);
-		Assert.Equal(provider.Id, updated.PlanningProviderId);
-		Assert.Equal(model.ModelId, updated.PlanningModelId);
-
-		var stored = await dbContext.Projects.AsNoTracking().SingleAsync(p => p.Id == project.Id);
-		Assert.True(stored.PlanningEnabled);
-		Assert.Equal(provider.Id, stored.PlanningProviderId);
-		Assert.Equal(model.ModelId, stored.PlanningModelId);
-	}
-
-	[Fact]
-	public async Task ProjectService_CreateAsync_RejectsUnsupportedPlanningProvider()
-	{
-		await using var dbContext = CreateDbContext();
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "OpenCode Planner",
-			Type = ProviderType.OpenCode,
-			IsEnabled = true
-		};
-
-		dbContext.Providers.Add(provider);
-		await dbContext.SaveChangesAsync();
-
-		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService(), new FakeVersionControlService());
-
-		var error = await Assert.ThrowsAsync<InvalidOperationException>(() => projectService.CreateAsync(new Project
-		{
-			Name = "Unsupported Planning",
-			WorkingPath = "/tmp/unsupported-planning",
-			PlanningEnabled = true,
-			PlanningProviderId = provider.Id
-		}));
-
-		Assert.Contains("supports only Claude and GitHub Copilot", error.Message);
 	}
 
 	[Fact]

@@ -6,7 +6,7 @@ namespace VibeSwarm.Web.Services;
 
 /// <summary>
 /// Copies a linked profile's provider, model and reasoning into the settings that point at it:
-/// a project's planning, review and Lead, its provider-priority entries and a job template. Every consumer keeps reading the copied values, so a
+/// a project's review and Lead, its provider-priority entries and a job template. Every consumer keeps reading the copied values, so a
 /// profile only ever changes what a setting holds, never how it is read. Only coding profiles
 /// fill these slots, apart from review, which an inference provider can also do. Which profile
 /// may fill which role is decided by <see cref="ProfileRoles"/>.
@@ -28,26 +28,12 @@ public static class ProfileLinks
 	}
 
 	/// <summary>
-	/// Fills the project's planning, review and Lead settings from their linked profiles. A link
+	/// Fills the project's review and Lead settings from their linked profiles. A link
 	/// to a missing profile, or to one whose provider can't fill the role, is dropped and the
 	/// values it last copied stay.
 	/// </summary>
 	public static void ApplyRoleLinks(Project project, IReadOnlyDictionary<Guid, Profile> profiles)
 	{
-		if (project.PlanningProfileId is Guid planningId)
-		{
-			if (TryGetReadOnlyProfile(profiles, planningId) is { } profile)
-			{
-				project.PlanningProviderId = profile.ProviderId;
-				project.PlanningModelId = profile.ModelId;
-				project.PlanningReasoningEffort = profile.ReasoningEffort;
-			}
-			else
-			{
-				project.PlanningProfileId = null;
-			}
-		}
-
 		if (project.ReviewProfileId is Guid reviewId)
 		{
 			if (TryGetReadOnlyProfile(profiles, reviewId) is { } profile)
@@ -271,7 +257,7 @@ public static class ProfileLinks
 	public static HashSet<Guid> GetLinkedProfileIds(Project project)
 	{
 		var ids = new HashSet<Guid>();
-		foreach (var id in new[] { project.PlanningProfileId, project.ReviewProfileId, project.LeadProfileId, project.DecisionsProfileId, project.ResearchProfileId, project.IdeasProfileId, project.CommitSummaryProfileId })
+		foreach (var id in new[] { project.ReviewProfileId, project.LeadProfileId, project.DecisionsProfileId, project.ResearchProfileId, project.IdeasProfileId, project.CommitSummaryProfileId })
 		{
 			if (id is Guid value)
 			{

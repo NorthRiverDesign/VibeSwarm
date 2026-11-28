@@ -102,11 +102,7 @@ public partial class JobService
             return false;
         }
 
-        job.Status = job.Project?.PlanningEnabled == true &&
-            job.Project.PlanningProviderId.HasValue &&
-            string.IsNullOrWhiteSpace(job.PlanningOutput)
-            ? JobStatus.Planning
-            : JobStatus.Processing;
+        job.Status = JobProcessingService.NeedsLeadPlan(job) ? JobStatus.Planning : JobStatus.Processing;
         job.PendingInteractionPrompt = null;
         job.InteractionType = null;
         job.InteractionChoices = null;
@@ -457,6 +453,7 @@ public partial class JobService
         job.PullRequestCreatedAt = null;
         job.MergedAt = null;
         job.PlanningOutput = null;
+        job.PlanSkippedReason = null;
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;

@@ -236,6 +236,12 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasColumnType("int")
                         .HasDefaultValue(5);
 
+                    b.Property<Guid?>("TeamLeadProfileId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("TeamReviewProfileId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("TimeZoneId")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -981,6 +987,10 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<string>("PendingInteractionPrompt")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("PlanSkippedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
                     b.Property<string>("PlanningCommandUsed")
                         .HasMaxLength(4000)
                         .HasColumnType("longtext");
@@ -1100,6 +1110,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<string>("TargetBranch")
                         .HasMaxLength(250)
                         .HasColumnType("varchar(250)");
+
+                    b.Property<bool>("TeamRun")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Title")
                         .HasMaxLength(200)
@@ -1725,23 +1738,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
-                    b.Property<bool>("PlanningEnabled")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("PlanningModelId")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<Guid?>("PlanningProfileId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid?>("PlanningProviderId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("PlanningReasoningEffort")
-                        .HasMaxLength(32)
-                        .HasColumnType("varchar(32)");
-
                     b.Property<string>("PromptContext")
                         .HasMaxLength(4000)
                         .HasColumnType("longtext");
@@ -1778,6 +1774,12 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<string>("ReviewReasoningEffort")
                         .HasMaxLength(32)
                         .HasColumnType("varchar(32)");
+
+                    b.Property<bool>("TeamEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("TeamOverrides")
+                        .HasColumnType("int");
 
                     b.Property<string>("TestCommand")
                         .HasMaxLength(500)

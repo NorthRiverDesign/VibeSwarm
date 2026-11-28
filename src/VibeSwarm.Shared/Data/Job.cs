@@ -89,10 +89,23 @@ public class Job
     public string? ProfileName { get; set; }
 
     /// <summary>
-    /// Planning output generated before execution when project planning is enabled.
+    /// The Lead's plan for the job, written before it builds when the job is worked by a team.
     /// Persisted so execution and retries can reuse the reviewed plan without regenerating it.
     /// </summary>
     public string? PlanningOutput { get; set; }
+
+    /// <summary>
+    /// Whether the job is worked by the project's team (planned by the Lead, checked by the
+    /// reviewer) or by its builder alone. Decided once, when the job is created.
+    /// </summary>
+    public bool TeamRun { get; set; }
+
+    /// <summary>
+    /// Why the job was built without a plan although it is a team job: the Lead was missing,
+    /// near its usage limit or gave nothing usable. Set, it also means "don't plan again".
+    /// </summary>
+    [StringLength(500)]
+    public string? PlanSkippedReason { get; set; }
 
     public Guid? PlanningProviderId { get; set; }
     public Provider? PlanningProvider { get; set; }

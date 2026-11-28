@@ -250,11 +250,6 @@ public partial class JobProcessingService
         return UsageLimitWindowHelper.Merge(existing, latest);
     }
 
-    private static bool ShouldUsePlanningStage(Project? project)
-    {
-        return project?.PlanningEnabled == true && project.PlanningProviderId.HasValue;
-    }
-
     /// <summary>
     /// Bare mode requires a direct API key (ANTHROPIC_API_KEY). When the provider has no API key
     /// configured, Claude CLI uses OAuth session auth which --bare disables.

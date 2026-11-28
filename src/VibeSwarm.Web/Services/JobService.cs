@@ -428,6 +428,15 @@ public partial class JobService : IJobService
         var instanceCount = canRunAsInstances && requestedInstances > 1
             ? Math.Min(requestedInstances, JobInstanceSplitter.GetListItems(job.GoalPrompt).Count)
             : 1;
+        // Decided once, here: the project's team works the job unless it is a merge, a setup job
+        // or one of several copies, which each have a single agent's work to do.
+        job.TeamRun = canRunAsInstances && instanceCount == 1
+            && await _dbContext.Projects.AsNoTracking()
+                .Where(project => project.Id == job.ProjectId)
+                .Select(project => project.TeamEnabled)
+                .FirstOrDefaultAsync(cancellationToken);
+        job.PlanSkippedReason = null;
+
         var instanceJobs = instanceCount > 1
             ? BuildInstanceJobs(job, instanceCount)
             : [];

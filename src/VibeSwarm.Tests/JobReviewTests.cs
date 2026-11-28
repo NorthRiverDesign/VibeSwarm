@@ -223,6 +223,7 @@ public sealed class JobReviewTests : IDisposable
 			ProjectId = project.Id,
 			Title = "Greeting",
 			GoalPrompt = "Add a greeting",
+			TeamRun = true,
 			Status = JobStatus.Processing,
 			ReviewRounds = rounds,
 			ReviewNotes = notes

@@ -25,4 +25,20 @@ public class SettingsController : ControllerBase
     [Authorize(Roles = UserRoles.Admin)]
     public async Task<IActionResult> UpdateMaxConcurrentJobs([FromBody] int maxConcurrentJobs, CancellationToken ct)
         => Ok(await _settingsService.UpdateMaxConcurrentJobsAsync(maxConcurrentJobs, ct));
+
+    /// <summary>Who leads and who reviews on projects working as a team.</summary>
+    [HttpPut("team")]
+    public async Task<IActionResult> UpdateTeam([FromBody] TeamRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _settingsService.UpdateTeamAsync(request.LeadProfileId, request.ReviewProfileId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    public sealed record TeamRequest(Guid? LeadProfileId, Guid? ReviewProfileId);
 }

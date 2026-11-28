@@ -65,8 +65,8 @@ Assert.Contains("Project name", html);
 Assert.Contains("accordion-item", html);
 Assert.Contains("When a job finishes", html);
 // Who does what is in view without opening anything.
-Assert.Contains("Workflow", html);
-Assert.Contains("Plan first", html);
+Assert.Contains("Work as a team", html);
+Assert.DoesNotContain("Plan first", html);
 Assert.DoesNotContain(">Agents<", html);
 Assert.Contains(">Ideas<", html);
 Assert.DoesNotContain("Providers and agents", html);
@@ -272,7 +272,7 @@ public void BrowseGitHubRepositories_AllAlreadyAddedOffersToShowThem()
 	}
 
 	[Fact]
-	public void EditProject_ShowsItsRolesInTheWorkflowList_AndANewProjectBuildsWithTheDefaultProfile()
+	public void EditProject_ShowsItsTeam_AndANewProjectBuildsWithTheDefaultProfile()
 	{
 		var provider = new Provider
 		{
@@ -295,17 +295,17 @@ public void BrowseGitHubRepositories_AllAlreadyAddedOffersToShowThem()
 				Id = Guid.NewGuid(),
 				Name = "Sample Project",
 				WorkingPath = "/tmp/sample",
-				PlanningEnabled = true,
-				PlanningProviderId = provider.Id,
-				PlanningReasoningEffort = "medium",
-				PlanningProfileId = planner.Id
+				TeamEnabled = true,
+				TeamOverrides = TeamRoles.Lead,
+				LeadProviderId = provider.Id,
+				LeadReasoningEffort = "medium",
+				LeadProfileId = planner.Id
 			}));
 
-		// The planner is named on its row; nothing asks for a provider, model or reasoning.
-		var planRow = cut.FindAll("button[aria-expanded]").Single(row => row.TextContent.TrimStart().StartsWith("Plan first", StringComparison.Ordinal));
-		Assert.Contains("Planner", planRow.TextContent);
-		Assert.DoesNotContain("Off", planRow.TextContent);
-		Assert.Empty(cut.FindAll("#modal-planningReasoning, #modal-planningProvider, #modal-planningModel"));
+		// The project's own Lead is named on its row; nothing asks for a provider, model or reasoning.
+		var leadRow = cut.FindAll("button[aria-expanded]").Single(row => row.TextContent.TrimStart().StartsWith("Lead", StringComparison.Ordinal));
+		Assert.Contains("Planner · this project only", leadRow.TextContent);
+		Assert.Empty(cut.FindAll("#modal-planningReasoning, #modal-planningProvider, #modal-planningModel, #modal-leadProvider, #modal-leadModel"));
 
 		var fresh = context.Render<ProjectModal>(parameters => parameters.Add(component => component.IsVisible, true));
 		var buildRow = fresh.FindAll("button[aria-expanded]").Single(row => row.TextContent.TrimStart().StartsWith("Build", StringComparison.Ordinal));
@@ -612,7 +612,9 @@ public void BrowseGitHubRepositories_AllAlreadyAddedOffersToShowThem()
 			Id = Guid.NewGuid(),
 			Name = "Linked",
 			WorkingPath = "/tmp/linked",
-			PlanningProfileId = profileId,
+			TeamEnabled = true,
+			TeamOverrides = TeamRoles.Lead | TeamRoles.Review,
+			ReviewEnabled = true,
 			ReviewProfileId = profileId,
 			LeadProfileId = profileId,
 			LeadProviderId = provider.Id,
@@ -628,7 +630,8 @@ public void BrowseGitHubRepositories_AllAlreadyAddedOffersToShowThem()
 
 		cut.WaitForAssertion(() => Assert.NotNull(projectService.LastUpdatedProject), WaitTimeout);
 		var saved = projectService.LastUpdatedProject!;
-		Assert.Equal((profileId, profileId, profileId), (saved.PlanningProfileId!.Value, saved.ReviewProfileId!.Value, saved.LeadProfileId!.Value));
+		Assert.Equal((profileId, profileId), (saved.ReviewProfileId!.Value, saved.LeadProfileId!.Value));
+		Assert.Equal((true, TeamRoles.Lead | TeamRoles.Review), (saved.TeamEnabled, saved.TeamOverrides));
 		Assert.Equal(profileId, Assert.Single(saved.ProviderSelections).ProfileId);
 	}
 
@@ -760,6 +763,7 @@ private sealed class FakeSettingsService : ISettingsService
 {
 public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
 public Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+public Task<AppSettings> UpdateTeamAsync(Guid? leadProfileId, Guid? reviewProfileId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");
 }

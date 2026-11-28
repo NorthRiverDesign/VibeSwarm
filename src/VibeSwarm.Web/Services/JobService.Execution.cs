@@ -277,6 +277,7 @@ public partial class JobService
         job.InteractionChoices = null;
         job.InteractionRequestedAt = null;
         job.PlanningOutput = null;
+        job.PlanSkippedReason = null;
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;

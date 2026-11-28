@@ -33,7 +33,7 @@ OnWorkspaceInspected="HandleWorkspaceInspected" />
 
 @* Who builds, and who plans, reviews, advises and leads: always in view, since a project
    that pairs a large builder with cheaper helpers is what the app is for. *@
-<ProjectWorkflowSection Project="@FormModel" Profiles="@_profiles" />
+<ProjectTeamSection Project="@FormModel" Profiles="@_profiles" TeamLeadProfileId="@_teamLeadProfileId" TeamReviewProfileId="@_teamReviewProfileId" />
 
 @* Everything below has a working default. It stays collapsed so a new project needs
    nothing more than a folder and a name. *@
@@ -193,6 +193,10 @@ private List<Project> _allProjects = [];
 private HashSet<Guid> _initialLinkedProjectIds = [];
 private ProjectModalFormModel FormModel { get; set; } = new();
 private List<Profile> _profiles = [];
+
+// The team set in Settings: the profiles a project working as a team takes for its Lead and reviewer.
+private Guid? _teamLeadProfileId;
+private Guid? _teamReviewProfileId;
 
 protected override async Task OnInitializedAsync()
 {
@@ -463,6 +467,19 @@ catch
 {
 _profiles = [];
 }
+
+// The team's profiles are only shown here; the server applies them when the project is saved.
+try
+{
+var settings = await SettingsService.GetSettingsAsync();
+_teamLeadProfileId = settings.TeamLeadProfileId;
+_teamReviewProfileId = settings.TeamReviewProfileId;
+}
+catch
+{
+_teamLeadProfileId = null;
+_teamReviewProfileId = null;
+}
 }
 
 /// <summary>A new project builds with the default provider's own profile until another is picked.</summary>
@@ -502,11 +519,8 @@ GitChangeDeliveryMode = source.GitChangeDeliveryMode,
 DefaultTargetBranch = source.DefaultTargetBranch,
 DevelopmentBranch = source.DevelopmentBranch,
 ReleaseBranch = source.ReleaseBranch,
-PlanningEnabled = source.PlanningEnabled,
-PlanningProviderId = source.PlanningProviderId,
-PlanningModelId = source.PlanningModelId,
-PlanningReasoningEffort = source.PlanningReasoningEffort,
-PlanningProfileId = source.PlanningProfileId,
+TeamEnabled = source.TeamEnabled,
+TeamOverrides = source.TeamOverrides,
 ReviewEnabled = source.ReviewEnabled,
 ReviewProviderId = source.ReviewProviderId,
 ReviewInferenceProviderId = source.ReviewInferenceProviderId,

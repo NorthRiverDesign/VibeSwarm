@@ -227,6 +227,12 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(5);
 
+                    b.Property<Guid?>("TeamLeadProfileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("TeamReviewProfileId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("TimeZoneId")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -972,6 +978,10 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<string>("PendingInteractionPrompt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PlanSkippedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PlanningCommandUsed")
                         .HasMaxLength(4000)
                         .HasColumnType("TEXT");
@@ -1091,6 +1101,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<string>("TargetBranch")
                         .HasMaxLength(250)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("TeamRun")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Title")
                         .HasMaxLength(200)
@@ -1716,23 +1729,6 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("PlanningEnabled")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("PlanningModelId")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid?>("PlanningProfileId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid?>("PlanningProviderId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("PlanningReasoningEffort")
-                        .HasMaxLength(32)
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("PromptContext")
                         .HasMaxLength(4000)
                         .HasColumnType("TEXT");
@@ -1769,6 +1765,12 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<string>("ReviewReasoningEffort")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("TeamEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TeamOverrides")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("TestCommand")
                         .HasMaxLength(500)
