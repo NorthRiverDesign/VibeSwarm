@@ -261,7 +261,13 @@ public class JobsController : ControllerBase
         => Ok(await _jobService.GetChangeSetsAsync(id, ct));
 
     // Request DTOs
-    public sealed record AddStepRequest([property: System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.StringLength(JobStep.TextMaxLength)] string Instructions);
+    // A class, not a positional record: MVC refuses validation attributes placed on a record's properties.
+    public sealed class AddStepRequest
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.StringLength(JobStep.TextMaxLength)]
+        public string Instructions { get; init; } = string.Empty;
+    }
     public record UpdateStatusRequest(string Status, string? Output, string? ErrorMessage);
     public record UpdateResultRequest(string Status, string? SessionId, string? Output, string? ErrorMessage, int? InputTokens, int? OutputTokens, decimal? CostUsd);
     public record UpdateProgressRequest(string? CurrentActivity);
