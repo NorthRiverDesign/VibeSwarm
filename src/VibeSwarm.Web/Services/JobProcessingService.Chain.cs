@@ -189,8 +189,8 @@ public partial class JobProcessingService
 	}
 
 	/// <summary>
-	/// What the job's finished steps used, which a run that carries a chain on counts from: the
-	/// job's totals are then the whole chain's, not only this run's share of it.
+	/// What the job's finished steps used, for a run that carries a chain on: the job's totals
+	/// are then the whole chain's, not only this run's share of it.
 	/// </summary>
 	private static async Task<(int Input, int Output, decimal Cost)> SumFinishedStepsAsync(Job job, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
 	{
@@ -205,21 +205,31 @@ public partial class JobProcessingService
 	}
 
 	/// <summary>
-	/// Before the next step starts, reads the builder's usage the way a job about to start does.
-	/// Returns the hold when a new job would be made to wait: the chain then stops at this step
-	/// boundary and is queued again, to carry on with another Build profile or once the usage
-	/// resets, instead of running dry in the middle of a step.
+	/// Before the next step starts, asks what a job about to start is asked: would it be made to
+	/// wait for the builder's usage? Returns the hold when it would. The chain then stops at this
+	/// step boundary and is queued again, to carry on with another Build profile or once the
+	/// usage resets, instead of running dry in the middle of a step. The step that just ran
+	/// reported the usage as it went, so no request is spent on a reading.
 	/// </summary>
-	private async Task<SessionLimitHold?> CheckUsageBetweenStepsAsync(Job job, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+	private async Task<SessionLimitHold?> CheckUsageBetweenStepsAsync(
+		Job job,
+		IProvider provider,
+		ExecutionResult stepResult,
+		VibeSwarmDbContext dbContext,
+		CancellationToken cancellationToken)
 	{
-		if (job.Provider == null)
-		{
-			return null;
-		}
-
 		try
 		{
-			await ReadSessionUsageBeforeStartAsync(job.Provider, dbContext, cancellationToken);
+			var reported = (await RefreshProviderUsageAsync(provider, stepResult, cancellationToken)).DetectedUsageLimits;
+			if (ShouldApplyProviderUsage(reported))
+			{
+				using var usageScope = _scopeFactory.CreateScope();
+				var providerUsageService = usageScope.ServiceProvider.GetService<IProviderUsageService>();
+				if (providerUsageService != null)
+				{
+					await providerUsageService.ApplyDetectedLimitsAsync(job.ProviderId, reported!, cancellationToken);
+				}
+			}
 
 			// Running jobs are not counted: this one is the job that is running.
 			return await ProviderSessionLimitGuard.GetHoldAsync(dbContext, job.ProviderId, DateTime.UtcNow, cancellationToken);
@@ -278,12 +288,7 @@ public partial class JobProcessingService
 			job.ConsoleOutput = consoleOutput;
 		}
 
-		job.ExecutionInputTokens = result.InputTokens ?? job.ExecutionInputTokens;
-		job.ExecutionOutputTokens = result.OutputTokens ?? job.ExecutionOutputTokens;
-		job.ExecutionCostUsd = result.CostUsd ?? job.ExecutionCostUsd;
-		job.InputTokens = SumUsage(job.PlanningInputTokens, job.ExecutionInputTokens);
-		job.OutputTokens = SumUsage(job.PlanningOutputTokens, job.ExecutionOutputTokens);
-		job.TotalCostUsd = SumCost(SumCost(job.PlanningCostUsd, job.ExecutionCostUsd), job.ReviewCostUsd);
+		StoreExecutionUsage(job, result.InputTokens, result.OutputTokens, result.CostUsd, executionContext);
 		await requeueDb.SaveChangesAsync(cancellationToken);
 	}
 

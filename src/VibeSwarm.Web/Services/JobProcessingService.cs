@@ -188,6 +188,12 @@ public partial class JobProcessingService : BackgroundService
         /// How a follow-up re-applied its job's earlier work, or null when it had none to restore.
         /// </summary>
         public JobWorkRestoreResult? PriorWorkRestore { get; set; }
+
+        /// <summary>
+        /// What the chain's steps finished by earlier runs used. The job's totals count it; this
+        /// run's own counters and usage records don't, or it would be recorded twice.
+        /// </summary>
+        public (int Input, int Output, decimal Cost) CarriedOverUsage { get; set; }
         public BranchMergeStart? BranchMerge { get; set; }
 
         /// <summary>

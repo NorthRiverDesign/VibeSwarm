@@ -1399,7 +1399,13 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	[Fact]
 	public async Task ProcessJobAsync_ARetriedChain_CarriesOnAtTheFirstStepNotFinished_InAFreshSession()
 	{
-		var agent = new ScriptedProvider((run, _) => Task.FromResult(Reply($"Turn {run} done.\n\n## Handoff\npower is in.")));
+		var agent = new ScriptedProvider((run, _) =>
+		{
+			var reply = Reply($"Turn {run} done.\n\n## Handoff\npower is in.");
+			(reply.InputTokens, reply.OutputTokens, reply.CostUsd) = (40, 8, 0.2m);
+			return Task.FromResult(reply);
+		});
+		var usage = new RecordingUsageService();
 
 		// A retry: step one was finished by the run that failed, which was then on step two.
 		var (jobId, _, _) = await RunScriptedJobAsync(
@@ -1410,6 +1416,7 @@ public sealed class JobExecutionSafetyTests : IDisposable
 				project.TeamEnabled = true;
 				project.LeadProviderId = provider.Id;
 			},
+			configureServices: services => services.AddSingleton<IProviderUsageService>(usage),
 			configureJob: job =>
 			{
 				job.TeamRun = true;
@@ -1428,9 +1435,11 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.Equal([JobStepStatus.Done, JobStepStatus.Done], steps.Select(step => step.Status));
 		Assert.Equal(["divide is in.", "power is in."], steps.Select(step => step.Summary));
 
-		// What the finished step used is still part of the job's total.
+		// The job's totals are the whole chain's; the step and the usage record hold this run's share.
 		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
-		Assert.Equal((JobStatus.Completed, 100, 0.5m), (job.Status, job.ExecutionInputTokens, job.ExecutionCostUsd));
+		Assert.Equal((JobStatus.Completed, 140, 28, 0.7m), (job.Status, job.ExecutionInputTokens, job.ExecutionOutputTokens, job.ExecutionCostUsd));
+		Assert.Equal((40, 8, 0.2m), (steps[1].InputTokens, steps[1].OutputTokens, steps[1].CostUsd));
+		Assert.Equal([(40, 8, 0.2m)], usage.Usage);
 	}
 
 	[Fact]

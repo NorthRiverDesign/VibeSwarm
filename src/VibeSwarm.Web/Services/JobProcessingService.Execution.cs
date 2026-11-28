@@ -853,14 +853,7 @@ public partial class JobProcessingService
 
             if (currentStep != null || chainWasBuilt)
             {
-                var finishedSteps = await SumFinishedStepsAsync(job, dbContext, cancellationToken);
-                if (finishedSteps.Input > 0 || finishedSteps.Output > 0 || finishedSteps.Cost > 0)
-                {
-                    executionInputTokens = finishedSteps.Input;
-                    executionOutputTokens = finishedSteps.Output;
-                    executionCostUsd = finishedSteps.Cost;
-                    stepUsageAtStart = finishedSteps;
-                }
+                executionContext.CarriedOverUsage = await SumFinishedStepsAsync(job, dbContext, cancellationToken);
 
                 // Only a step a restart cut off is a recovery: it carries on in its own session.
                 // Any other step starts clean, with its own prompt, even in a resumed run.
@@ -892,7 +885,8 @@ public partial class JobProcessingService
             var settled = chainWasBuilt && currentStep == null;
             if (settled)
             {
-                lastResult = new ExecutionResult { Success = true };
+                // No request was made, so there is nothing to estimate usage from either.
+                lastResult = new ExecutionResult { Success = true, InputTokens = 0, OutputTokens = 0 };
             }
 
             // From here until the agent is done, the user can steer it with messages.
@@ -1376,7 +1370,7 @@ public partial class JobProcessingService
 
                         // Between two steps is where a chain can stop cleanly, so that is where
                         // the builder's usage is read.
-                        usageHold = await CheckUsageBetweenStepsAsync(job, dbContext, cancellationToken);
+                        usageHold = await CheckUsageBetweenStepsAsync(job, provider, result, dbContext, cancellationToken);
                         if (usageHold != null)
                         {
                             settled = true;
@@ -1678,7 +1672,7 @@ public partial class JobProcessingService
                             timeLimitMessage = JobTimeLimit.BuildStopMessage(
                                 executionContext.TimeLimit!.Limit,
                                 jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved ? jobEntity.GitCheckpointBranch : null,
-                                hasSteps: jobEntity.TeamRun && await resetDbContext.JobSteps.AnyAsync(step => step.JobId == jobEntity.Id));
+                                hasSteps: jobEntity.TeamRun && await resetDbContext.JobSteps.AnyAsync(step => step.JobId == jobEntity.Id && step.Status != JobStepStatus.Earlier));
                             JobStateMachine.TryTransition(jobEntity, JobStatus.Failed, timeLimitMessage);
                             JobRecoveryHelper.ClearRecoveryState(jobEntity);
                             jobEntity.ErrorMessage = timeLimitMessage;
