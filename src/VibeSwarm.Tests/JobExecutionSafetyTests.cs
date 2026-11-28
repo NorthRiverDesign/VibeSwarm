@@ -982,6 +982,88 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.Contains(jobService.Messages, m => m.Role == MessageRole.User && m.Content == "Also update the README.");
 	}
 
+	// The three tests below pin what a plain job run does from its first turn to its last, so the
+	// loop that carries them can be reshaped without changing it.
+	[Fact]
+	public async Task ProcessJobAsync_OneTurnThatSucceeds_CompletesTheJob()
+	{
+		var agent = new ScriptedProvider((_, _) => Task.FromResult(Reply("Built the page.")));
+
+		var (jobId, jobService, _) = await RunScriptedJobAsync(agent, _ => Task.CompletedTask);
+
+		var run = Assert.Single(agent.Runs);
+		Assert.Contains("Add a settings page", run.Prompt);
+		Assert.Equal("session-1", run.SessionId);
+		Assert.Contains(jobService.Messages, m => m.Role == MessageRole.Assistant && m.Content == "Built the page.");
+		await using var db = CreateDbContext();
+		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal(JobStatus.Completed, job.Status);
+		Assert.Equal(JobReviewStatus.None, job.ReviewStatus);
+	}
+
+	[Fact]
+	public async Task ProcessJobAsync_ReviewFindings_GoBackIntoTheSameSession_ThenTheJobCompletes()
+	{
+		var agent = new ScriptedProvider((run, _) => Task.FromResult(Reply(run == 1 ? "Built the page." : "Put the null check back.")));
+		// The first look finds a problem; the look after the fix finds none.
+		var consult = new ScriptedConsultService(_ => new ConsultResult
+		{
+			Success = true,
+			ProviderName = "Reviewer",
+			Text = agent.Runs.Count == 1
+				? "Read the change.\nISSUES:\n1. src/app.cs drops the null check."
+				: "Read the change.\nREVIEW_APPROVED"
+		});
+
+		var (jobId, _, _) = await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				project.ReviewEnabled = true;
+				project.ReviewProviderId = provider.Id;
+			},
+			configureServices: services => services.AddSingleton<IReadOnlyConsultService>(consult),
+			versionControl: new DiffWithoutARepositoryVersionControlService(" src/app.cs | 2 +-\n-old\n+new\n"));
+
+		Assert.Equal(2, agent.Runs.Count);
+		Assert.Equal("session-1", agent.Runs[1].SessionId);
+		Assert.Contains("drops the null check", agent.Runs[1].Prompt);
+		Assert.Equal(2, consult.Requests.Count);
+		await using var db = CreateDbContext();
+		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal(JobStatus.Completed, job.Status);
+		Assert.Equal(JobReviewStatus.Approved, job.ReviewStatus);
+		Assert.Equal(1, job.ReviewRounds);
+	}
+
+	[Fact]
+	public async Task ProcessJobAsync_ATurnThatFails_FailsTheJobWithItsError()
+	{
+		var agent = new ScriptedProvider((_, _) => Task.FromResult(new ExecutionResult
+		{
+			Success = false,
+			SessionId = "session-1",
+			ErrorMessage = "The model refused the request."
+		}));
+
+		var (jobId, _, _) = await RunScriptedJobAsync(agent, _ => Task.CompletedTask);
+
+		Assert.Single(agent.Runs);
+		await using var db = CreateDbContext();
+		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal(JobStatus.Failed, job.Status);
+		Assert.Contains("The model refused the request.", job.ErrorMessage);
+	}
+
+	private static ExecutionResult Reply(string text) => new()
+	{
+		Success = true,
+		SessionId = "session-1",
+		Output = text,
+		Messages = [new ExecutionMessage { Role = "assistant", Content = text }]
+	};
+
 	[Fact]
 	public async Task ProcessJobAsync_PausesAJobInterruptedByAServiceStop()
 	{
@@ -1242,7 +1324,10 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	private async Task<(Guid JobId, InteractionJobService JobService, JobProcessingService ProcessingService)> RunScriptedJobAsync(
 		ScriptedProvider agent,
 		Func<ScriptedJobRun, Task> whileRunning,
-		bool startBeforeRunning = false)
+		bool startBeforeRunning = false,
+		Action<Project, Provider>? configureProject = null,
+		Action<IServiceCollection>? configureServices = null,
+		IVersionControlService? versionControl = null)
 	{
 		var workingPath = Directory.CreateTempSubdirectory("vibeswarm-user-message-").FullName;
 		var jobId = Guid.NewGuid();
@@ -1250,6 +1335,7 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		{
 			var project = new Project { Id = Guid.NewGuid(), Name = "Steered Project", WorkingPath = workingPath };
 			var providerConfig = new Provider { Id = Guid.NewGuid(), Name = "Claude", Type = ProviderType.Claude, IsEnabled = true };
+			configureProject?.Invoke(project, providerConfig);
 			setupContext.AddRange(project, providerConfig, new Job
 			{
 				Id = jobId,
@@ -1270,10 +1356,11 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		services.AddSingleton<IProjectMemoryService, NoOpProjectMemoryService>();
 		services.AddSingleton<IJobService>(jobService);
 		services.AddSingleton<IProviderService>(new StubProviderService());
+		configureServices?.Invoke(services);
 		var processingService = new JobProcessingService(
 			services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
 			NullLogger<JobProcessingService>.Instance,
-			new NotARepositoryVersionControlService(),
+			versionControl ?? new NotARepositoryVersionControlService(),
 			interactionResponseService: new InMemoryInteractionResponseService(),
 			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService())
 		{
@@ -1424,6 +1511,15 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	private sealed class NotARepositoryVersionControlService : FakeVersionControlServiceBase
 	{
 		public override Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(false);
+	}
+
+	/// <summary>No repository to sync or commit to, but a diff of the agent's work for a reviewer to read.</summary>
+	private sealed class DiffWithoutARepositoryVersionControlService(string diff) : FakeVersionControlServiceBase
+	{
+		public override Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(false);
+
+		public override Task<string?> GetWorkingDirectoryDiffAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default)
+			=> Task.FromResult<string?>(diff);
 	}
 
 	/// <summary>
