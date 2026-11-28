@@ -58,6 +58,21 @@ placeholder="Describe what you want the AI agent to accomplish..." maxlength="@V
 <ProfilePicker Id="jobProfile" Class="mb-5" Label="Run with" Profiles="JobProfiles" Allowed="ProfileRoles.CanBuild"
 			   SelectedProfileId="FormModel.ProfileId" OnSelected="profile => FormModel.ProfileId = profile?.Id" />
 
+@if ((_buildProject ?? Project)?.TeamEnabled == true)
+{
+<div class="mb-5">
+<div class="form-field mb-0">
+<div class="switch">
+<InputCheckbox role="switch" switch id="jobWorkAsTeam" @bind-Value="FormModel.WorkAsTeam" />
+</div>
+<label for="jobWorkAsTeam">Work as a team</label>
+</div>
+<div class="form-text">@(FormModel.WorkAsTeam
+	? "The Lead plans this job into steps, the builder builds them and the reviewer checks each one."
+	: "The builder works this job alone, with no plan and no review.")</div>
+</div>
+}
+
 <div class="accordion mb-5">
 <AccordionSection Title="Branch and delivery" Icon="git"
 Summary="Where the job works and where the changes land"

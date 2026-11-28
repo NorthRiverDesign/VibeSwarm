@@ -246,11 +246,22 @@ public class JobsController : ControllerBase
     public async Task<IActionResult> GetSteps(Guid id, CancellationToken ct)
         => Ok(await _jobService.GetStepsAsync(id, ct));
 
+    [HttpPost("{id:guid}/steps")]
+    public async Task<IActionResult> AddStep(Guid id, [FromBody] AddStepRequest request, CancellationToken ct)
+        => await _jobService.AddStepAsync(id, request.Instructions, ct) is { } step
+            ? Ok(step)
+            : BadRequest(new { error = "This job isn't working through steps any more, or already has as many waiting as it can take." });
+
+    [HttpPost("{id:guid}/steps/{stepId:guid}/skip")]
+    public async Task<IActionResult> SkipStep(Guid id, Guid stepId, CancellationToken ct)
+        => await _jobService.SkipStepAsync(id, stepId, ct) ? Ok() : BadRequest(new { error = "That step has already started." });
+
     [HttpGet("{id:guid}/changesets")]
     public async Task<IActionResult> GetChangeSets(Guid id, CancellationToken ct)
         => Ok(await _jobService.GetChangeSetsAsync(id, ct));
 
     // Request DTOs
+    public sealed record AddStepRequest([property: System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.StringLength(JobStep.TextMaxLength)] string Instructions);
     public record UpdateStatusRequest(string Status, string? Output, string? ErrorMessage);
     public record UpdateResultRequest(string Status, string? SessionId, string? Output, string? ErrorMessage, int? InputTokens, int? OutputTokens, decimal? CostUsd);
     public record UpdateProgressRequest(string? CurrentActivity);

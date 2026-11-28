@@ -1,6 +1,7 @@
 @* The steps the Lead planned a team job into. Each row says where the step stands and opens to
    show what it was to do, the note its builder left for the next step, and what review made of
-   it. A job built in one go has no steps and shows nothing here. *@
+   it. While the job is still working through them, a waiting step can be skipped and a step of
+   your own added to the end. A job built in one go has no steps and shows nothing here. *@
 @inject IJobService JobService
 
 @if (_steps.Count > 0)
@@ -44,6 +45,36 @@
 								}
 							</div>
 						}
+						@if (CanChange && step.Status == JobStepStatus.Waiting)
+						{
+							<div>
+								<button type="button" class="btn-link fg-danger text-decoration-none px-0" disabled="@_busy"
+										@onclick="() => SkipAsync(step)">Skip this step</button>
+							</div>
+						}
+					</ChildContent>
+				</ListRow>
+			}
+			@if (CanAdd)
+			{
+				<ListRow Icon="plus-circle" Title="Add a step" Subtitle="Built after the others">
+					<ChildContent>
+						<div>
+							<label for="job-step-new" class="form-label">What should it do?</label>
+							<textarea id="job-step-new" class="form-control" rows="3" maxlength="@JobStep.TextMaxLength"
+									  placeholder="One more thing for the builder, in a sentence or two"
+									  @bind="_newStep" @bind:event="oninput"></textarea>
+						</div>
+						@if (_error != null)
+						{
+							<div class="small fg-danger">@_error</div>
+						}
+						<div>
+							<button type="button" class="btn-solid theme-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_newStep))"
+									@onclick="AddAsync">
+								<i class="bi bi-plus-lg"></i>Add step
+							</button>
+						</div>
 					</ChildContent>
 				</ListRow>
 			}
@@ -58,6 +89,60 @@
 	/// <summary>Bumped by the page whenever the server says the job's steps changed.</summary>
 	[Parameter]
 	public int RefreshKey { get; set; }
+
+	/// <summary>Whether the job is still being worked, so its waiting steps can change.</summary>
+	[Parameter]
+	public bool CanChange { get; set; }
+
+	private string _newStep = string.Empty;
+	private string? _error;
+	private bool _busy;
+
+	// A step can only join a chain that still has one to build.
+	private bool CanAdd => CanChange && _steps.Any(step => step.Status is JobStepStatus.Waiting or JobStepStatus.Running);
+
+	private async Task AddAsync()
+	{
+		_busy = true;
+		_error = null;
+		try
+		{
+			if (await JobService.AddStepAsync(JobId, _newStep) == null)
+			{
+				_error = "That couldn't be added: the job has finished its steps, or has as many waiting as it can take.";
+				return;
+			}
+
+			_newStep = string.Empty;
+			_steps = await JobService.GetStepsAsync(JobId);
+		}
+		catch (Exception ex)
+		{
+			_error = $"That couldn't be added: {ex.Message}";
+		}
+		finally
+		{
+			_busy = false;
+		}
+	}
+
+	private async Task SkipAsync(JobStep step)
+	{
+		_busy = true;
+		try
+		{
+			await JobService.SkipStepAsync(JobId, step.Id);
+			_steps = await JobService.GetStepsAsync(JobId);
+		}
+		catch
+		{
+			// The list reloads on the next change; a step that had just started simply stays.
+		}
+		finally
+		{
+			_busy = false;
+		}
+	}
 
 	private static readonly RenderFragment Spinner =
 		@<span class="spinner-border spinner-sm fg-primary flex-shrink-0" role="status" aria-label="Building now"></span>;

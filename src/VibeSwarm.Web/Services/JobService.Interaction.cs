@@ -454,6 +454,7 @@ public partial class JobService
         job.MergedAt = null;
         job.PlanningOutput = null;
         job.PlanSkippedReason = null;
+        job.LeadChecks = 0;
         // The steps go with the plan they came from; the next run is planned afresh.
         await _dbContext.JobSteps.Where(step => step.JobId == job.Id).ExecuteDeleteAsync(cancellationToken);
         job.PlanningProviderId = null;

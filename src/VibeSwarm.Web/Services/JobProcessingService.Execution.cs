@@ -1330,7 +1330,9 @@ public partial class JobProcessingService
                     currentStep.InputTokens = (executionInputTokens ?? 0) - stepUsageAtStart.Input;
                     currentStep.OutputTokens = (executionOutputTokens ?? 0) - stepUsageAtStart.Output;
                     currentStep.CostUsd = (executionCostUsd ?? 0m) - stepUsageAtStart.Cost;
-                    var nextStep = await FinishStepAsync(job, currentStep, result, workingDirectory, executionContext.GitCommitBefore, dbContext, cancellationToken);
+                    // With no step left, the Lead reads the result and may ask for more.
+                    var nextStep = await FinishStepAsync(job, currentStep, result, workingDirectory, executionContext.GitCommitBefore, dbContext, cancellationToken)
+                        ?? await CheckWithLeadAsync(job, workingDirectory, planningSystemPromptRules, executionContext.GitCommitBefore, dbContext, cancellationToken);
                     if (nextStep != null)
                     {
                         await SaveRunMessagesAsync(cancelCheckService, job.Id, result);

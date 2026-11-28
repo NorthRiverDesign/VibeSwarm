@@ -146,27 +146,48 @@ and model that ran, which differ once a job has moved to a fallback.
 
 ### The team at work
 
-The Lead and the Reviewer run read-only: Claude Code or Copilot with their write tools blocked.
-Nothing either does can stop a job.
+A job on a project that works as a team is a short prompt turned into a chain: the Lead plans
+it, the builder builds it one step at a time, the Reviewer checks each step, and the Lead checks
+the result. The Lead and the Reviewer run read-only (Claude Code or Copilot with their write
+tools blocked), and nothing either does can stop a job.
 
-- **Plan.** Before a team job builds, the Lead reads the code and writes the plan the builder
-  follows. If the Lead can't (it is turned off, near its usage limit, or gives no answer within
-  30 minutes) the builder works from your prompt and the job says *Plan skipped* and why.
-- **Review.** When the builder finishes, the project's build and tests run. Then the Reviewer
-  reads the change against the goal and the plan. The reviewer is a Claude or Copilot CLI that
-  can open files, or an inference provider that sees only the diff. Problems go back to the
-  builder in the same session, at most twice. Review never holds work back: if the reviewer is
-  near its usage limit, fails or gives no verdict, the work is delivered and the job says why it
-  wasn't reviewed.
-- **What next.** A Lead review copies the branch jobs deliver to, as it is on origin, and reads
-  it alongside the project memory, recent job outcomes, unresolved review findings and an
-  optional **Direction** you write on the project. It returns a short report and up to eight
-  ideas, each with a goal and acceptance criteria. They wait under **Suggested by Lead** on the
-  project page until you approve them. Dismissed ones are never suggested again.
+1. **Plan.** The Lead reads the code and writes a brief (the outcome, the acceptance criteria,
+   what matters and what to leave alone) and an ordered list of **steps**, each with what to do
+   and how to tell it is done. It decides how many: one for a small change, eight at most. If
+   the Lead can't plan (it is turned off, near its usage limit, or gives no answer within 30
+   minutes) the builder works from your prompt in one go and the job says *Plan skipped* and why.
+2. **Build, one step at a time.** Each step is a fresh agent session, so a long job never runs
+   its context down. The builder is given your prompt, the brief, the whole list, a short note
+   from each earlier step, and its own step. It ends with a note for the next one.
+3. **Review each step.** The project's build and tests run, then the Reviewer reads that step's
+   change against what the step was to do. The reviewer is a Claude or Copilot CLI that can
+   open files, or an inference provider that sees only the diff. Problems go back into the
+   step's own session, at most twice. Review never holds work back: if the reviewer is near its
+   usage limit, fails or gives no verdict, the step stands and the job says why.
+4. **Check.** After the last step the Lead reads the result against its brief. It passes the
+   job, or adds up to three more steps and the chain carries on; it has its say twice at most.
+   A one-step job skips this.
+5. **Deliver.** One build check, one commit named by the Lead for the whole job, one push.
 
-A job is worked by the team when its project works as a team. Three kinds always run on the
-builder alone: a merge, an environment set-up job, and the copies of a job run as parallel
-instances.
+The job's page lists the steps as they go: done, building or waiting, each opening to what it
+was to do, the note its builder left and what review made of it. While the job is working you
+can **skip** a step that hasn't started and **add a step** of your own to the end. Nothing waits
+for your approval.
+
+The work is saved after every step. A restart, a power cut or a usage limit leaves the job
+paused or queued with its finished steps intact, and it carries on from the step it was on. A
+manual retry, a move to a fallback provider or a new prompt plans the job afresh.
+
+A job is worked by the team when its project works as a team, unless you turn **Work as a
+team** off for that one job when you create it. Three kinds always run on the builder alone: a
+merge, an environment set-up job, and the copies of a job run as parallel instances.
+
+**What next.** The Lead also suggests ideas. A Lead review copies the branch jobs deliver to, as
+it is on origin, and reads it alongside the project memory, recent job outcomes, unresolved
+review findings and an optional **Direction** you write on the project. It returns a short
+report and up to eight ideas, each with a goal and acceptance criteria. They wait under
+**Suggested by Lead** on the project page until you approve them. Dismissed ones are never
+suggested again.
 
 On the Auto-Pilot tab, **Ideas → Only ones I approve** makes auto-pilot run only ideas you typed
 or approved. When none are left, it asks the Lead for more, tells you once, and waits.

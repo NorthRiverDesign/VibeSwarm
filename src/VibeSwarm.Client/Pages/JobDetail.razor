@@ -55,7 +55,7 @@ else
 
 	<JobStatusSection Job="@Job" IsPushed="@_changesPushed" BranchName="@_branchName" />
 
-	<JobStepsSection JobId="@Job.Id" RefreshKey="@_stepsVersion" />
+	<JobStepsSection JobId="@Job.Id" RefreshKey="@_stepsVersion" CanChange="@JobChain.IsOpen(Job.Status)" />
 
     @* Main Content - Column Layout *@
     <div class="row g-5 lg:g-7">

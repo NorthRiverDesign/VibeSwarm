@@ -952,6 +952,9 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<int>("LeadChecks")
+                        .HasColumnType("int");
+
                     b.Property<decimal?>("MaxCostUsd")
                         .HasColumnType("decimal(65,30)");
 

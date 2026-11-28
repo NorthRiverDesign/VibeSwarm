@@ -47,6 +47,76 @@ public partial class JobService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<JobStep?> AddStepAsync(Guid jobId, string instructions, CancellationToken cancellationToken = default)
+    {
+        var text = instructions?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return null;
+        }
+
+        var job = await _dbContext.Jobs.AsNoTracking()
+            .Where(j => j.Id == jobId)
+            .Select(j => new { j.Status, j.TeamRun })
+            .FirstOrDefaultAsync(cancellationToken);
+        var steps = await _dbContext.JobSteps.Where(step => step.JobId == jobId).ToListAsync(cancellationToken);
+
+        // Only a chain still being worked can take another step: once its last step is done the
+        // run is wrapping up, and a step added then would never be built.
+        if (job is not { TeamRun: true } || !JobChain.IsOpen(job.Status)
+            || !steps.Any(step => step.Status is JobStepStatus.Waiting or JobStepStatus.Running)
+            || steps.Count(step => step.Status == JobStepStatus.Waiting) >= JobChain.MaxWaitingSteps)
+        {
+            return null;
+        }
+
+        var firstLine = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0];
+        var added = new JobStep
+        {
+            JobId = jobId,
+            Order = steps.Max(step => step.Order) + 1,
+            Title = firstLine.Length <= 80 ? firstLine : firstLine[..79].TrimEnd() + "…",
+            Instructions = text.Length <= JobStep.TextMaxLength ? text : text[..JobStep.TextMaxLength],
+            Source = JobStepSource.User
+        };
+        _dbContext.JobSteps.Add(added);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await NotifyStepsChangedAsync(jobId);
+        return added;
+    }
+
+    public async Task<bool> SkipStepAsync(Guid jobId, Guid stepId, CancellationToken cancellationToken = default)
+    {
+        // One statement, so a step the runner has just started can't be skipped under it.
+        var skipped = await _dbContext.JobSteps
+            .Where(step => step.Id == stepId && step.JobId == jobId && step.Status == JobStepStatus.Waiting)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(step => step.Status, JobStepStatus.Skipped), cancellationToken);
+        if (skipped == 0)
+        {
+            return false;
+        }
+
+        await NotifyStepsChangedAsync(jobId);
+        return true;
+    }
+
+    private async Task NotifyStepsChangedAsync(Guid jobId)
+    {
+        if (_jobUpdateService == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _jobUpdateService.NotifyJobStepsChanged(jobId);
+        }
+        catch
+        {
+            // The page also reloads its steps when the job's status changes.
+        }
+    }
+
     public async Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default)
     {
         return await _dbContext.JobChangeSets
@@ -287,6 +357,7 @@ public partial class JobService
         job.InteractionRequestedAt = null;
         job.PlanningOutput = null;
         job.PlanSkippedReason = null;
+        job.LeadChecks = 0;
         // The steps go with the plan they came from; the next run is planned afresh.
         await _dbContext.JobSteps.Where(step => step.JobId == job.Id).ExecuteDeleteAsync(cancellationToken);
         job.PlanningProviderId = null;

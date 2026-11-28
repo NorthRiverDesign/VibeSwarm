@@ -47,9 +47,64 @@ public sealed class JobStepsSectionTests
 		Assert.Empty(cut.FindAll("section"));
 	}
 
+	[Fact]
+	public void WhileTheJobIsWorking_AWaitingStepCanBeSkipped_AndAStepAdded()
+	{
+		using var context = new BunitContext();
+		var service = new StepsJobService(
+			new JobStep { Order = 1, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Running },
+			new JobStep { Order = 2, Title = "Add power", Instructions = "Add power." });
+		context.Services.AddSingleton<IJobService>(service);
+
+		var cut = context.Render<JobStepsSection>(parameters => parameters
+			.Add(section => section.JobId, Guid.NewGuid())
+			.Add(section => section.CanChange, true));
+
+		// Only a step that hasn't started offers to be skipped.
+		cut.FindAll("button[aria-expanded]")[0].Click();
+		Assert.DoesNotContain("Skip this step", cut.Markup);
+		cut.FindAll("button[aria-expanded]")[1].Click();
+		cut.FindAll("button").Single(button => button.TextContent.Contains("Skip this step")).Click();
+		Assert.Equal(JobStepStatus.Skipped, service.Steps[1].Status);
+
+		cut.FindAll("button[aria-expanded]").Single(row => row.TextContent.Contains("Add a step")).Click();
+		cut.Find("#job-step-new").Input("Also update the README.");
+		cut.FindAll("button").Single(button => button.TextContent.Contains("Add step")).Click();
+		Assert.Equal("Also update the README.", service.Steps[^1].Instructions);
+		Assert.Contains("added by you", cut.Markup);
+	}
+
+	[Fact]
+	public void OnceTheJobIsOver_TheStepsAreARecord_WithNothingToChange()
+	{
+		using var context = new BunitContext();
+		context.Services.AddSingleton<IJobService>(new StepsJobService(
+			new JobStep { Order = 1, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Done }));
+
+		var cut = context.Render<JobStepsSection>(parameters => parameters.Add(section => section.JobId, Guid.NewGuid()));
+
+		Assert.DoesNotContain("Add a step", cut.Markup);
+		Assert.DoesNotContain("Skip this step", cut.Markup);
+	}
+
 	private sealed class StepsJobService(params JobStep[] steps) : FakeJobServiceBase
 	{
+		public List<JobStep> Steps { get; } = [.. steps];
+
 		public override Task<IReadOnlyList<JobStep>> GetStepsAsync(Guid jobId, CancellationToken cancellationToken = default)
-			=> Task.FromResult<IReadOnlyList<JobStep>>(steps);
+			=> Task.FromResult<IReadOnlyList<JobStep>>(Steps.ToList());
+
+		public override Task<JobStep?> AddStepAsync(Guid jobId, string instructions, CancellationToken cancellationToken = default)
+		{
+			var added = new JobStep { Order = Steps.Count + 1, Title = instructions, Instructions = instructions, Source = JobStepSource.User };
+			Steps.Add(added);
+			return Task.FromResult<JobStep?>(added);
+		}
+
+		public override Task<bool> SkipStepAsync(Guid jobId, Guid stepId, CancellationToken cancellationToken = default)
+		{
+			Steps.Single(step => step.Id == stepId).Status = JobStepStatus.Skipped;
+			return Task.FromResult(true);
+		}
 	}
 }

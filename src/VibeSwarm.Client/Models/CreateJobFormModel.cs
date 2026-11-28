@@ -15,6 +15,12 @@ public sealed class CreateJobFormModel : IValidatableObject
 	public Guid? ProfileId { get; set; }
 
 
+	/// <summary>
+	/// On a project that works as a team: whether this job is worked by the team (planned by the
+	/// Lead, built in steps, reviewed) or by its builder alone. Ignored elsewhere.
+	/// </summary>
+	public bool WorkAsTeam { get; set; } = true;
+
 	[StringLength(250)]
 	public string? Branch { get; set; }
 
@@ -33,6 +39,7 @@ public sealed class CreateJobFormModel : IValidatableObject
 		{
 			GoalPrompt = job.GoalPrompt ?? string.Empty,
 			ProfileId = job.ProfileId,
+			WorkAsTeam = !job.RunSolo,
 			Branch = job.Branch,
 			GitChangeDeliveryMode = job.GitChangeDeliveryMode,
 			TargetBranch = job.TargetBranch,
@@ -45,6 +52,7 @@ public sealed class CreateJobFormModel : IValidatableObject
 		job.GoalPrompt = GoalPrompt.Trim();
 		// The server works out the provider, model and reasoning from the profile.
 		job.ProfileId = ProfileId;
+		job.RunSolo = !WorkAsTeam;
 		job.ProviderId = Guid.Empty;
 		job.ModelUsed = null;
 		job.ReasoningEffort = null;

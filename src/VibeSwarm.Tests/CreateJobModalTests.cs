@@ -145,6 +145,57 @@ public sealed class CreateJobModalTests
 		Assert.Equal((Guid.Empty, null, null), (job.ProviderId, job.ModelUsed, job.ReasoningEffort));
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void CreateJobModal_OnATeamProject_OffersToLetTheBuilderWorkTheJobAlone(bool turnTheTeamOff)
+	{
+		using var context = CreateGoalPromptContext();
+		var claude = NewProvider("Claude", ProviderType.Claude, isDefault: true);
+		context.Services.AddSingleton<IProfileService>(new FakeProfileService(
+			new Profile { Id = Guid.NewGuid(), Name = "Claude", ProviderId = claude.Id, Provider = claude, IsProviderDefault = true }));
+		var job = new Job();
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, job)
+			.Add(component => component.Project, new Project { Id = Guid.NewGuid(), Name = "Team project", TeamEnabled = true })
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, [])
+			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, () => { })));
+
+		// On by default: the project works as a team.
+		Assert.True(cut.Find("#jobWorkAsTeam").HasAttribute("checked"));
+		Assert.Contains("The Lead plans this job into steps", cut.Markup);
+		if (turnTheTeamOff)
+		{
+			cut.Find("#jobWorkAsTeam").Change(false);
+			Assert.Contains("The builder works this job alone", cut.Markup);
+		}
+
+		cut.Find("#goalPrompt").Input("Fix the flaky test");
+		cut.Find("form").Submit();
+
+		Assert.Equal(turnTheTeamOff, job.RunSolo);
+	}
+
+	[Fact]
+	public void CreateJobModal_OnAProjectWithoutATeam_HasNoTeamSwitch()
+	{
+		using var context = CreateGoalPromptContext();
+		var claude = NewProvider("Claude", ProviderType.Claude, isDefault: true);
+		context.Services.AddSingleton<IProfileService>(new FakeProfileService(
+			new Profile { Id = Guid.NewGuid(), Name = "Claude", ProviderId = claude.Id, Provider = claude, IsProviderDefault = true }));
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, new Job())
+			.Add(component => component.Project, new Project { Id = Guid.NewGuid(), Name = "Solo project" })
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, [])
+			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, () => { })));
+
+		Assert.Empty(cut.FindAll("#jobWorkAsTeam"));
+	}
+
 	[Fact]
 	public void CreateJobModal_PickingAProfileAndInstances_NamesItOnTheJobAndAsksForCopies()
 	{

@@ -943,6 +943,9 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("LeadChecks")
+                        .HasColumnType("INTEGER");
+
                     b.Property<decimal?>("MaxCostUsd")
                         .HasColumnType("TEXT");
 

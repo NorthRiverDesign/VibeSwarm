@@ -151,4 +151,13 @@ public interface IJobService
 
     /// <summary>The steps a team job was planned into, in order; empty for a job built in one go.</summary>
     Task<IReadOnlyList<JobStep>> GetStepsAsync(Guid jobId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Adds a step of the user's own to the end of a team job that is still working through its
+    /// steps. Returns null when the job has no chain to add to, or already has its fill waiting.
+    /// </summary>
+    Task<JobStep?> AddStepAsync(Guid jobId, string instructions, CancellationToken cancellationToken = default);
+
+    /// <summary>Drops a step that hasn't started. False when it has, or isn't this job's.</summary>
+    Task<bool> SkipStepAsync(Guid jobId, Guid stepId, CancellationToken cancellationToken = default);
 }

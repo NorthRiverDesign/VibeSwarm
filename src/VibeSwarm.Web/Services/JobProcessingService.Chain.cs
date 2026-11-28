@@ -18,6 +18,9 @@ public partial class JobProcessingService
 	/// <summary>How long the Lead may take to plan a job before the builder starts without a plan.</summary>
 	private static readonly TimeSpan LeadPlanTimeout = TimeSpan.FromMinutes(30);
 
+	/// <summary>How long the Lead may take to check the finished steps before the work is delivered as it is.</summary>
+	private static readonly TimeSpan LeadCheckTimeout = TimeSpan.FromMinutes(20);
+
 	/// <summary>
 	/// Whether the job still waits for the Lead's plan: a team job on a project with a Lead that
 	/// has neither a plan nor a recorded reason for going without one.
@@ -228,6 +231,121 @@ public partial class JobProcessingService
 			.Where(next => next.JobId == job.Id && next.Status == JobStepStatus.Waiting)
 			.OrderBy(next => next.Order)
 			.FirstOrDefaultAsync(cancellationToken);
+	}
+
+	/// <summary>
+	/// Once the last step is built, asks the Lead whether the job is done. Returns the first of
+	/// the steps it adds, or null when it passed the job, has had its say
+	/// (<see cref="JobChain.MaxChecks"/>) or couldn't be asked: the work is delivered either way.
+	/// A job of one step is not checked; its review already read the whole change.
+	/// </summary>
+	internal async Task<JobStep?> CheckWithLeadAsync(
+		Job job,
+		string? workingDirectory,
+		string? systemPrompt,
+		string? jobBaseCommit,
+		VibeSwarmDbContext dbContext,
+		CancellationToken cancellationToken)
+	{
+		var project = job.Project;
+		var steps = await LoadStepsAsync(dbContext, job.Id, cancellationToken);
+		if (project is not { LeadProviderId: not null }
+			|| job.LeadChecks >= JobChain.MaxChecks
+			|| steps.Count(step => step.Status == JobStepStatus.Done) < 2)
+		{
+			return null;
+		}
+
+		const string activity = "The Lead is checking the result...";
+		await UpdateHeartbeatAsync(job.Id, activity, dbContext, cancellationToken);
+		await NotifyJobActivityAsync(job.Id, activity, DateTime.UtcNow);
+
+		IReadOnlyList<string> changedFiles = [];
+		if (!string.IsNullOrEmpty(workingDirectory))
+		{
+			try
+			{
+				changedFiles = await _versionControlService.GetChangedFilesAsync(workingDirectory, jobBaseCommit, cancellationToken);
+			}
+			catch (Exception ex) when (ex is not OperationCanceledException)
+			{
+				_logger.LogDebug(ex, "Could not list the files job {JobId} changed for the Lead's check", job.Id);
+			}
+		}
+
+		ConsultResult result;
+		using (var scope = _scopeFactory.CreateScope())
+		{
+			var consult = scope.ServiceProvider.GetService<IReadOnlyConsultService>();
+			if (consult == null)
+			{
+				return null;
+			}
+
+			result = await consult.ConsultAsync(new ConsultRequest
+			{
+				Target = new ConsultTarget(project.LeadProviderId, null, project.LeadModelId, project.LeadReasoningEffort),
+				Prompt = ChainPrompts.BuildCheckPrompt(job.GoalPrompt, job.PlanningOutput, steps, changedFiles),
+				SystemPrompt = systemPrompt,
+				WorkingDirectory = workingDirectory,
+				JobId = job.Id,
+				Title = string.IsNullOrWhiteSpace(job.Title) ? "Check" : $"Check: {job.Title}",
+				TaskType = "check",
+				Timeout = LeadCheckTimeout
+			}, cancellationToken);
+		}
+
+		cancellationToken.ThrowIfCancellationRequested();
+
+		// The check is the Lead's work, so it is counted with the plan.
+		if (result.InputTokens.HasValue)
+		{
+			job.PlanningInputTokens = (job.PlanningInputTokens ?? 0) + result.InputTokens.Value;
+		}
+
+		if (result.OutputTokens.HasValue)
+		{
+			job.PlanningOutputTokens = (job.PlanningOutputTokens ?? 0) + result.OutputTokens.Value;
+		}
+
+		if (result.CostUsd.HasValue)
+		{
+			job.PlanningCostUsd = (job.PlanningCostUsd ?? 0) + result.CostUsd.Value;
+		}
+
+		var more = result.Success ? ChainPrompts.ParseCheck(result.Text) : [];
+		if (more.Count == 0)
+		{
+			if (!result.Success)
+			{
+				_logger.LogWarning("The Lead could not check job {JobId}; delivering it as built: {Reason}", job.Id, result.Error);
+			}
+
+			await dbContext.SaveChangesAsync(cancellationToken);
+			return null;
+		}
+
+		job.LeadChecks++;
+		var lastOrder = steps.Max(step => step.Order);
+		JobStep? first = null;
+		foreach (var planned in more)
+		{
+			var added = new JobStep
+			{
+				JobId = job.Id,
+				Order = ++lastOrder,
+				Title = planned.Title,
+				Instructions = planned.Instructions,
+				DoneWhen = planned.DoneWhen,
+				Source = JobStepSource.Check
+			};
+			first ??= added;
+			dbContext.JobSteps.Add(added);
+		}
+
+		await dbContext.SaveChangesAsync(cancellationToken);
+		await NotifyStepsChangedAsync(job.Id);
+		return first;
 	}
 
 	/// <summary>

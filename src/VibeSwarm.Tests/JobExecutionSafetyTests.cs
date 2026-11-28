@@ -1181,7 +1181,12 @@ public sealed class JobExecutionSafetyTests : IDisposable
 			Output = run == 1 ? "Added it.\n\n## Handoff\ndivide is in calc.py; zero returns None." : "Added it.\n\n## Handoff\npower is in calc.py.",
 			Messages = [new ExecutionMessage { Role = "assistant", Content = run == 1 ? "Added it.\n\n## Handoff\ndivide is in calc.py; zero returns None." : "Added it.\n\n## Handoff\npower is in calc.py." }]
 		}));
-		var lead = new ScriptedConsultService(_ => new ConsultResult { Success = true, Text = TwoStepPlan, ProviderName = "Claude" });
+		var lead = new ScriptedConsultService(request => new ConsultResult
+		{
+			Success = true,
+			ProviderName = "Claude",
+			Text = request.TaskType == "plan" ? TwoStepPlan : $"Both functions are there.\n{ChainPrompts.CheckPassedMarker}"
+		});
 
 		var (jobId, jobService, _) = await RunScriptedJobAsync(
 			agent,
@@ -1194,9 +1199,10 @@ public sealed class JobExecutionSafetyTests : IDisposable
 			configureServices: services => services.AddSingleton<IReadOnlyConsultService>(lead),
 			configureJob: job => job.TeamRun = true);
 
-		// One plan, then one run per step, each starting a session of its own.
-		Assert.Single(lead.Requests);
+		// One plan, one run per step, each starting a session of its own, then the Lead's check.
+		Assert.Equal(["plan", "check"], lead.Requests.Select(request => request.TaskType));
 		Assert.Contains("## STEP: <short title>", lead.Requests[0].Prompt);
+		Assert.Contains("Builder's note: power is in calc.py.", lead.Requests[1].Prompt);
 		Assert.Equal(2, agent.Runs.Count);
 		Assert.All(agent.Runs, run => Assert.Null(run.SessionId));
 
@@ -1239,10 +1245,13 @@ public sealed class JobExecutionSafetyTests : IDisposable
 			Messages = [new ExecutionMessage { Role = "assistant", Content = $"Turn {run} done." }]
 		}));
 		var reviews = 0;
-		var team = new ScriptedConsultService(request => request.TaskType == "plan"
-			? new ConsultResult { Success = true, Text = TwoStepPlan }
+		var team = new ScriptedConsultService(request => request.TaskType switch
+		{
+			"plan" => new ConsultResult { Success = true, Text = TwoStepPlan },
+			"check" => new ConsultResult { Success = true, Text = ChainPrompts.CheckPassedMarker },
 			// The first look at step one finds a problem; every look after that approves.
-			: new ConsultResult { Success = true, ProviderName = "Reviewer", Text = ++reviews == 1 ? "ISSUES:\n1. divide has no zero check." : "REVIEW_APPROVED" });
+			_ => new ConsultResult { Success = true, ProviderName = "Reviewer", Text = ++reviews == 1 ? "ISSUES:\n1. divide has no zero check." : "REVIEW_APPROVED" }
+		});
 
 		var (jobId, _, _) = await RunScriptedJobAsync(
 			agent,
@@ -1264,7 +1273,7 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.Contains("divide has no zero check", agent.Runs[1].Prompt);
 
 		// The reviewer is shown one step at a time, and told the rest is not missing.
-		var reviewRequests = team.Requests.Where(request => request.TaskType != "plan").ToList();
+		var reviewRequests = team.Requests.Where(request => request.TaskType is not ("plan" or "check")).ToList();
 		Assert.Equal(3, reviewRequests.Count);
 		Assert.Contains("# The step the agent was given", reviewRequests[0].Prompt);
 		Assert.Contains("Add divide", reviewRequests[0].Prompt);
@@ -1276,6 +1285,47 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		var steps = await db.JobSteps.Where(step => step.JobId == jobId).OrderBy(step => step.Order).ToListAsync();
 		Assert.Equal([(JobReviewStatus.Approved, 1), (JobReviewStatus.Approved, 0)], steps.Select(step => (step.ReviewStatus, step.ReviewRounds)));
 		Assert.Equal(JobStatus.Completed, (await db.Jobs.SingleAsync(j => j.Id == jobId)).Status);
+	}
+
+	[Theory]
+	[InlineData(1, 3, 1)] // The first check asks for one more step; the second passes.
+	[InlineData(9, 4, JobChain.MaxChecks)] // A Lead never satisfied is heard twice, then the work is delivered.
+	public async Task ProcessJobAsync_TheLeadsCheck_CanAddSteps_ButOnlySoManyTimes(int checksThatAskForMore, int expectedRuns, int expectedChecks)
+	{
+		var agent = new ScriptedProvider((run, _) => Task.FromResult(Reply($"Turn {run} done.\n\n## Handoff\nNote {run}.")));
+		var checks = 0;
+		var lead = new ScriptedConsultService(request => new ConsultResult
+		{
+			Success = true,
+			InputTokens = 5,
+			OutputTokens = 7,
+			Text = request.TaskType == "plan" ? TwoStepPlan
+				: ++checks <= checksThatAskForMore ? $"The README is missing.\n\n## STEP: Document round {checks}\nDo: Add it to the README.\nDone when: The README lists it."
+				: ChainPrompts.CheckPassedMarker
+		});
+
+		var (jobId, _, _) = await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				project.TeamEnabled = true;
+				project.LeadProviderId = provider.Id;
+			},
+			configureServices: services => services.AddSingleton<IReadOnlyConsultService>(lead),
+			configureJob: job => job.TeamRun = true);
+
+		Assert.Equal(expectedRuns, agent.Runs.Count);
+		Assert.Contains("Document round 1", agent.Runs[2].Prompt);
+		await using var db = CreateDbContext();
+		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal((JobStatus.Completed, expectedChecks), (job.Status, job.LeadChecks));
+		var steps = await db.JobSteps.Where(step => step.JobId == jobId).OrderBy(step => step.Order).ToListAsync();
+		Assert.Equal(expectedRuns, steps.Count);
+		Assert.All(steps, step => Assert.Equal(JobStepStatus.Done, step.Status));
+		Assert.Equal(JobStepSource.Check, steps[2].Source);
+		// The Lead's checks are counted with its plan.
+		Assert.True(job.PlanningOutputTokens > 7);
 	}
 
 	[Fact]

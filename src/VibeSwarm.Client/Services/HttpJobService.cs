@@ -276,6 +276,19 @@ public class HttpJobService : IJobService
         return await response.Content.ReadFromJsonAsync<List<JobStep>>(ct) ?? [];
     }
 
+    public async Task<JobStep?> AddStepAsync(Guid jobId, string instructions, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync($"/api/jobs/{jobId}/steps", new { Instructions = instructions }, ct);
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadFromJsonAsync<JobStep>(ct);
+    }
+
+    public async Task<bool> SkipStepAsync(Guid jobId, Guid stepId, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"/api/jobs/{jobId}/steps/{stepId}/skip", null, ct);
+        return response.IsSuccessStatusCode;
+    }
+
     public async Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken ct = default)
     {
         var response = await _http.GetAsync($"/api/jobs/{jobId}/changesets", ct);

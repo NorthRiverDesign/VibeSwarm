@@ -101,6 +101,19 @@ public class Job
     public bool TeamRun { get; set; }
 
     /// <summary>
+    /// Set on a new job to have its builder work it alone although the project works as a team.
+    /// Read once, when the job is created; not stored.
+    /// </summary>
+    [NotMapped]
+    public bool RunSolo { get; set; }
+
+    /// <summary>
+    /// How many times the Lead has checked the finished steps against the brief and found more
+    /// to do. Bounded by <see cref="JobChain.MaxChecks"/>, so a job can't be extended for ever.
+    /// </summary>
+    public int LeadChecks { get; set; }
+
+    /// <summary>
     /// Why the job was built without a plan although it is a team job: the Lead was missing,
     /// near its usage limit or gave nothing usable. Set, it also means "don't plan again".
     /// </summary>
@@ -808,6 +821,23 @@ public enum JobReviewStatus
 
     /// <summary>The reviewer couldn't run; the work was delivered without it.</summary>
     Skipped = 3
+}
+
+/// <summary>The limits on a team job's chain of steps.</summary>
+public static class JobChain
+{
+    /// <summary>How many times the Lead may send a finished job back with more steps.</summary>
+    public const int MaxChecks = 2;
+
+    /// <summary>How many steps one check may add.</summary>
+    public const int MaxStepsPerCheck = 3;
+
+    /// <summary>How many steps a job may have waiting at once, however they were added.</summary>
+    public const int MaxWaitingSteps = 12;
+
+    /// <summary>Whether the job is still being worked, so its steps can change.</summary>
+    public static bool IsOpen(JobStatus status) => status is JobStatus.New or JobStatus.Pending or JobStatus.Started
+        or JobStatus.Planning or JobStatus.Processing or JobStatus.Paused or JobStatus.Stalled;
 }
 
 public static class JobReview

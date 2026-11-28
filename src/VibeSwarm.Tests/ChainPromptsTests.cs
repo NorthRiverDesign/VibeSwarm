@@ -84,6 +84,44 @@ public sealed class ChainPromptsTests
 	}
 
 	[Fact]
+	public void ParseCheck_IsAPassUnlessStepsHaveTheLastWord()
+	{
+		Assert.Empty(ChainPrompts.ParseCheck("All criteria hold.\nCHECK_PASSED"));
+		Assert.Empty(ChainPrompts.ParseCheck(null));
+
+		var more = ChainPrompts.ParseCheck("The CLI is missing.\n\n## STEP: Add the CLI\nDo: Add __main__.py.\nDone when: python3 -m calclib add 2 3 prints 5.");
+		Assert.Equal(("Add the CLI", "Add __main__.py.", "python3 -m calclib add 2 3 prints 5."), (more[0].Title, more[0].Instructions, more[0].DoneWhen));
+
+		// Thinking aloud about a step and then passing the job is a pass.
+		Assert.Empty(ChainPrompts.ParseCheck("## STEP: Maybe docs\nDo: Hmm, they are there after all.\n\nCHECK_PASSED"));
+
+		var many = ChainPrompts.ParseCheck(string.Join("\n", Enumerable.Range(1, 6).Select(number => $"## STEP: Part {number}\nDo: Build {number}.")));
+		Assert.Equal(JobChain.MaxStepsPerCheck, many.Count);
+	}
+
+	[Fact]
+	public void CheckPrompt_GivesTheLeadTheNotesAndOpenFindings_NotADiff()
+	{
+		var prompt = ChainPrompts.BuildCheckPrompt(
+			"Split calc.py into a package.",
+			"Outcome: a calclib package.",
+			[
+				new JobStep { Order = 1, Title = "Move the functions", Status = JobStepStatus.Done, Summary = "calclib holds them." },
+				new JobStep { Order = 2, Title = "Add the CLI", Status = JobStepStatus.Done, ReviewStatus = JobReviewStatus.Unresolved, ReviewNotes = "1. No test for the CLI." },
+				new JobStep { Order = 3, Title = "Dropped", Status = JobStepStatus.Skipped }
+			],
+			["calclib/basic.py", "calclib/__main__.py"]);
+
+		Assert.Contains("Split calc.py into a package.", prompt);
+		Assert.Contains("1. Move the functions", prompt);
+		Assert.Contains("Builder's note: calclib holds them.", prompt);
+		Assert.Contains("Review findings left open: 1. No test for the CLI.", prompt);
+		Assert.DoesNotContain("Dropped", prompt);
+		Assert.Contains("- calclib/__main__.py", prompt);
+		Assert.Contains(ChainPrompts.CheckPassedMarker, prompt);
+	}
+
+	[Fact]
 	public void PlanPrompt_AsksForABriefAndStepsInTheFormatTheParserReads()
 	{
 		var prompt = ChainPrompts.BuildPlanPrompt("Add a divide function.");

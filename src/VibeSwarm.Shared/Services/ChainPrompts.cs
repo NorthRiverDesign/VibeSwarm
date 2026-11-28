@@ -21,6 +21,9 @@ public static partial class ChainPrompts
 	/// <summary>The most steps a plan may hold; a longer list keeps its first ones.</summary>
 	public const int MaxPlannedSteps = 8;
 
+	/// <summary>The line the Lead's check ends with when the job is done.</summary>
+	public const string CheckPassedMarker = "CHECK_PASSED";
+
 	private const string StepHeading = "## STEP:";
 	private const string HandoffHeading = "## Handoff";
 	private const int HandoffMaxLength = 1500;
@@ -78,8 +81,20 @@ public static partial class ChainPrompts
 			return new ChainPlan(text, [new PlannedStep(TitleFromGoal(goal), "Carry out the plan in the brief.", null)]);
 		}
 
+		var steps = ReadSteps(text, headings, MaxPlannedSteps);
+		if (steps.Count == 0)
+		{
+			return new ChainPlan(text, [new PlannedStep(TitleFromGoal(goal), "Carry out the plan in the brief.", null)]);
+		}
+
+		var brief = text[..headings[0].Index].Trim();
+		return new ChainPlan(brief.Length == 0 ? text : brief, steps);
+	}
+
+	private static List<PlannedStep> ReadSteps(string text, MatchCollection headings, int max)
+	{
 		var steps = new List<PlannedStep>();
-		for (var index = 0; index < headings.Count && steps.Count < MaxPlannedSteps; index++)
+		for (var index = 0; index < headings.Count && steps.Count < max; index++)
 		{
 			var heading = headings[index];
 			var bodyStart = heading.Index + heading.Length;
@@ -108,13 +123,84 @@ public static partial class ChainPrompts
 				string.IsNullOrWhiteSpace(doneWhen) ? null : Truncate(doneWhen, JobStep.SummaryMaxLength)));
 		}
 
-		if (steps.Count == 0)
+		return steps;
+	}
+
+	/// <summary>
+	/// Asks the Lead, once the steps are built, whether the job is done: it passes the result or
+	/// writes the steps still needed. It is given the notes and the list of changed files rather
+	/// than a diff, and opens what it wants to read.
+	/// </summary>
+	public static string BuildCheckPrompt(string? goal, string? brief, IReadOnlyList<JobStep> steps, IReadOnlyList<string> changedFiles)
+	{
+		var sb = new StringBuilder();
+		sb.AppendLine("You are the lead engineer who planned this job. Its steps have been built. Read the result in the repository and decide whether the task is done.");
+		sb.AppendLine();
+		sb.AppendLine("## Task");
+		sb.AppendLine(string.IsNullOrWhiteSpace(goal) ? "No task description was provided." : goal.Trim());
+		if (!string.IsNullOrWhiteSpace(brief))
 		{
-			return new ChainPlan(text, [new PlannedStep(TitleFromGoal(goal), "Carry out the plan in the brief.", null)]);
+			sb.AppendLine();
+			sb.AppendLine("## Your brief");
+			sb.AppendLine(brief.Trim());
 		}
 
-		var brief = text[..headings[0].Index].Trim();
-		return new ChainPlan(brief.Length == 0 ? text : brief, steps);
+		sb.AppendLine();
+		sb.AppendLine("## What the builders did");
+		var number = 0;
+		foreach (var step in steps.Where(step => step.Status == JobStepStatus.Done).OrderBy(step => step.Order))
+		{
+			sb.AppendLine($"{++number}. {step.Title}");
+			if (!string.IsNullOrWhiteSpace(step.Summary))
+			{
+				sb.AppendLine($"   Builder's note: {Truncate(step.Summary.Trim().ReplaceLineEndings(" "), 600)}");
+			}
+
+			if (step.ReviewStatus == JobReviewStatus.Unresolved && !string.IsNullOrWhiteSpace(step.ReviewNotes))
+			{
+				sb.AppendLine($"   Review findings left open: {Truncate(step.ReviewNotes.Trim().ReplaceLineEndings(" "), 800)}");
+			}
+		}
+
+		if (changedFiles.Count > 0)
+		{
+			sb.AppendLine();
+			sb.AppendLine("## Files changed");
+			foreach (var file in changedFiles.Take(80))
+			{
+				sb.AppendLine($"- {file}");
+			}
+		}
+
+		sb.AppendLine();
+		sb.AppendLine("## What to write");
+		sb.AppendLine("Open the files that matter and judge the result against the task and the brief's acceptance criteria. Polish is not a reason to ask for more: only something the task needs that is missing or wrong.");
+		sb.AppendLine($"If the task is done, end with a line that says exactly: {CheckPassedMarker}");
+		sb.AppendLine($"Otherwise write the steps still needed, at most {JobChain.MaxStepsPerCheck}, each exactly like this:");
+		sb.AppendLine();
+		sb.AppendLine($"{StepHeading} <short title>");
+		sb.AppendLine("Do: <what to build in this step, concretely>");
+		sb.AppendLine("Done when: <how to tell this step is finished>");
+		sb.AppendLine();
+		sb.Append("Do not change anything yourself, and do not ask questions.");
+		return sb.ToString();
+	}
+
+	/// <summary>
+	/// The steps the Lead's check asks for; none when it passed the job. Whichever comes last
+	/// decides, so a reply that thinks aloud about a step and then passes the job is a pass.
+	/// </summary>
+	public static IReadOnlyList<PlannedStep> ParseCheck(string? reply)
+	{
+		var text = (reply ?? string.Empty).Trim();
+		var headings = StepHeadingPattern().Matches(text);
+		if (headings.Count == 0)
+		{
+			return [];
+		}
+
+		var passedAt = text.LastIndexOf(CheckPassedMarker, StringComparison.Ordinal);
+		return passedAt > headings[^1].Index ? [] : ReadSteps(text, headings, JobChain.MaxStepsPerCheck);
 	}
 
 	/// <summary>
