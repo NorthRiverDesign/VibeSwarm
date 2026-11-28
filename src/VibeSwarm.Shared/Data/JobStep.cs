@@ -8,7 +8,13 @@ public enum JobStepStatus
 	Waiting = 0,
 	Running = 1,
 	Done = 2,
-	Skipped = 3
+	Skipped = 3,
+
+	/// <summary>
+	/// Built by an earlier run of the job, before a follow-up was queued on it. Kept as the job's
+	/// record; the follow-up is planned and built after it, and no run looks at it again.
+	/// </summary>
+	Earlier = 4
 }
 
 /// <summary>Who wrote a step.</summary>

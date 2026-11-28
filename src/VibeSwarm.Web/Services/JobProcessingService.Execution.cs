@@ -840,9 +840,40 @@ public partial class JobProcessingService
             var currentStep = await BeginChainAsync(job, executionContext, shouldRunRecoveryFlow, dbContext, cancellationToken);
             StepRun? stepRun = null;
             var stepUsageAtStart = (Input: 0, Output: 0, Cost: 0m);
+            // Set when the run stops between two steps to wait for the builder's usage.
+            SessionLimitHold? usageHold = null;
+
+            // A chain that was built before this run began is not built again. The Lead still
+            // has its say, and a step it adds is built like any other.
+            var chainWasBuilt = currentStep == null && await ChainIsBuiltAsync(job, dbContext, cancellationToken);
+            if (chainWasBuilt)
+            {
+                currentStep = await CheckWithLeadAsync(job, workingDirectory, planningSystemPromptRules, executionContext.GitCommitBefore, dbContext, cancellationToken);
+            }
+
+            if (currentStep != null || chainWasBuilt)
+            {
+                var finishedSteps = await SumFinishedStepsAsync(job, dbContext, cancellationToken);
+                if (finishedSteps.Input > 0 || finishedSteps.Output > 0 || finishedSteps.Cost > 0)
+                {
+                    executionInputTokens = finishedSteps.Input;
+                    executionOutputTokens = finishedSteps.Output;
+                    executionCostUsd = finishedSteps.Cost;
+                    stepUsageAtStart = finishedSteps;
+                }
+
+                // Only a step a restart cut off is a recovery: it carries on in its own session.
+                // Any other step starts clean, with its own prompt, even in a resumed run.
+                if (currentStep is not { Status: JobStepStatus.Running } && shouldRunRecoveryFlow)
+                {
+                    JobRecoveryHelper.ClearRecoveryState(job);
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    shouldRunRecoveryFlow = false;
+                }
+            }
+
             if (currentStep != null)
             {
-                // A step cut off by a restart carries on in its own session; any other starts clean.
                 if (currentStep.Status != JobStepStatus.Running)
                 {
                     await StartStepAsync(job, currentStep, dbContext, cancellationToken);
@@ -857,7 +888,13 @@ public partial class JobProcessingService
 
             executionContext.ActivePrompt = currentPrompt;
             var attachedFiles = DeserializeAttachedFiles(job.AttachedFilesJson);
-            var settled = false;
+            // With every step built and nothing added by the Lead, no agent runs: the work goes to delivery.
+            var settled = chainWasBuilt && currentStep == null;
+            if (settled)
+            {
+                lastResult = new ExecutionResult { Success = true };
+            }
+
             // From here until the agent is done, the user can steer it with messages.
             var executionPrompt = currentPrompt;
             IReadOnlyList<string>? nextTurnUserMessages = null;
@@ -1336,6 +1373,16 @@ public partial class JobProcessingService
                     if (nextStep != null)
                     {
                         await SaveRunMessagesAsync(cancelCheckService, job.Id, result);
+
+                        // Between two steps is where a chain can stop cleanly, so that is where
+                        // the builder's usage is read.
+                        usageHold = await CheckUsageBetweenStepsAsync(job, dbContext, cancellationToken);
+                        if (usageHold != null)
+                        {
+                            settled = true;
+                            break;
+                        }
+
                         currentStep = nextStep;
                         await StartStepAsync(job, currentStep, dbContext, cancellationToken);
                         stepRun = await DescribeStepAsync(job, jobPrompt, currentStep, executionContext.GitCommitBefore, dbContext, cancellationToken);
@@ -1359,7 +1406,7 @@ public partial class JobProcessingService
             CloseUserMessages(job.Id, executionContext);
 
             // The job's review line speaks for all its steps, not just the last.
-            if (currentStep is { Status: JobStepStatus.Done })
+            if (chainWasBuilt || currentStep is { Status: JobStepStatus.Done })
             {
                 await SummariseStepReviewsAsync(job, dbContext, CancellationToken.None);
             }
@@ -1429,6 +1476,18 @@ public partial class JobProcessingService
                 await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled by user");
 
                 _logger.LogInformation("Job {JobId} was cancelled during execution", job.Id);
+            }
+            else if (usageHold != null)
+            {
+                await UpdateProviderAttemptOutcomeAsync(job.Id, job.ActiveExecutionIndex, true, finalResult.ModelUsed ?? job.ModelUsed, dbContext, CancellationToken.None);
+                var providerDisplayName = job.Provider?.Name;
+                providerDisplayName ??= provider?.Name;
+                providerDisplayName ??= "Unknown Provider";
+                await RequeueChainBetweenStepsAsync(job.Id, usageHold.Describe(providerDisplayName), finalResult, executionContext, dbContext, CancellationToken.None);
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, provider!, CancellationToken.None);
+                await NotifyStatusChangedAsync(job.Id, JobStatus.New);
+
+                _logger.LogInformation("Job {JobId} stopped between two steps to wait for {ProviderName}'s usage", job.Id, providerDisplayName);
             }
             else if (finalResult.Success)
             {
@@ -1618,7 +1677,8 @@ public partial class JobProcessingService
                             // Not queued again: another run would spend the same budget again.
                             timeLimitMessage = JobTimeLimit.BuildStopMessage(
                                 executionContext.TimeLimit!.Limit,
-                                jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved ? jobEntity.GitCheckpointBranch : null);
+                                jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved ? jobEntity.GitCheckpointBranch : null,
+                                hasSteps: jobEntity.TeamRun && await resetDbContext.JobSteps.AnyAsync(step => step.JobId == jobEntity.Id));
                             JobStateMachine.TryTransition(jobEntity, JobStatus.Failed, timeLimitMessage);
                             JobRecoveryHelper.ClearRecoveryState(jobEntity);
                             jobEntity.ErrorMessage = timeLimitMessage;

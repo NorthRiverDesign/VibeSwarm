@@ -176,6 +176,61 @@ public sealed class JobServiceCreateReproTests : IDisposable
 		Assert.Equal(JobStepStatus.Skipped, (await dbContext.JobSteps.SingleAsync(step => step.Id == waiting.Id)).Status);
 	}
 
+	[Fact]
+	public async Task ARetriedTeamJob_KeepsItsPlanAndFinishedSteps_AndANewPromptIsPlannedAfresh()
+	{
+		using var scope = _rootProvider.CreateScope();
+		var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+		var provider = SeedProvider(dbContext);
+		var project = SeedProject(dbContext, provider.Id);
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Two functions.",
+			TeamRun = true,
+			Status = JobStatus.Failed,
+			PlanningOutput = "Outcome: two functions.",
+			PlanningCostUsd = 0.4m,
+			LeadChecks = 1,
+			ReviewStatus = JobReviewStatus.Approved,
+			ReviewCostUsd = 0.12m,
+			// The whole tree as the failed run left it, the unfinished step included.
+			WorkSnapshotCommit = "ffff",
+			Steps =
+			[
+				new JobStep { Order = 1, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Done, Summary = "divide is in.", SnapshotCommit = "aaaa" },
+				new JobStep { Order = 2, Title = "Add power", Instructions = "Add power.", Status = JobStepStatus.Running, SessionId = "the-run-that-failed" },
+				new JobStep { Order = 3, Title = "Document both", Instructions = "Write the docs." }
+			]
+		};
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+		var service = new JobService(dbContext, scope.ServiceProvider);
+
+		Assert.True(await service.ResetJobWithOptionsAsync(job.Id));
+
+		// The plan, what it cost and the finished step stay; the step that was under way starts
+		// over, from the finished step's saved work rather than the failed run's.
+		dbContext.ChangeTracker.Clear();
+		var retried = await dbContext.Jobs.Include(j => j.Steps).SingleAsync(j => j.Id == job.Id);
+		Assert.Equal(JobStatus.New, retried.Status);
+		Assert.Equal(("Outcome: two functions.", 0.4m, 1, 0.12m), (retried.PlanningOutput, retried.PlanningCostUsd, retried.LeadChecks, retried.ReviewCostUsd));
+		Assert.Equal(JobReviewStatus.None, retried.ReviewStatus);
+		Assert.Equal("aaaa", retried.WorkSnapshotCommit);
+		var steps = retried.Steps.OrderBy(step => step.Order).ToList();
+		Assert.Equal([JobStepStatus.Done, JobStepStatus.Waiting, JobStepStatus.Waiting], steps.Select(step => step.Status));
+		Assert.Equal(("divide is in.", null), (steps[0].Summary, steps[1].SessionId));
+
+		// A different prompt is a different job: the old plan would build the wrong thing.
+		Assert.True(await service.UpdateJobPromptAsync(job.Id, "Three functions."));
+		dbContext.ChangeTracker.Clear();
+		var edited = await dbContext.Jobs.Include(j => j.Steps).SingleAsync(j => j.Id == job.Id);
+		Assert.Null(edited.PlanningOutput);
+		Assert.Empty(edited.Steps);
+	}
+
 	private static Provider SeedProvider(VibeSwarmDbContext dbContext)
 	{
 		var provider = new Provider

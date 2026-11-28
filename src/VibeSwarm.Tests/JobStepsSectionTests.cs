@@ -19,7 +19,9 @@ public sealed class JobStepsSectionTests
 			new JobStep { Order = 3, Title = "Dropped", Instructions = "Not needed.", Status = JobStepStatus.Skipped },
 			new JobStep { Order = 4, Title = "Document both", Instructions = "Write the docs.", Source = JobStepSource.Check }));
 
-		var cut = context.Render<JobStepsSection>(parameters => parameters.Add(section => section.JobId, jobId));
+		var cut = context.Render<JobStepsSection>(parameters => parameters
+			.Add(section => section.JobId, jobId)
+			.Add(section => section.Working, true));
 
 		Assert.Contains("1 of 3 done", cut.Markup);
 		var rows = cut.FindAll("button[aria-expanded]");
@@ -27,6 +29,12 @@ public sealed class JobStepsSectionTests
 		Assert.Contains("divide is in calc.py.", rows[0].TextContent);
 		Assert.Contains("Building now", rows[1].TextContent);
 		Assert.NotNull(rows[1].QuerySelector(".spinner-border"));
+
+		// With no agent on the job (it failed, or waits to be resumed) that step is not building.
+		var stopped = context.Render<JobStepsSection>(parameters => parameters.Add(section => section.JobId, jobId));
+		var stoppedRow = stopped.FindAll("button[aria-expanded]")[1];
+		Assert.Contains("Stopped part-way", stoppedRow.TextContent);
+		Assert.Null(stoppedRow.QuerySelector(".spinner-border"));
 		Assert.Contains("Skipped", rows[2].TextContent);
 		Assert.Contains("added after the Lead's check", rows[3].TextContent);
 
@@ -85,6 +93,24 @@ public sealed class JobStepsSectionTests
 
 		Assert.DoesNotContain("Add a step", cut.Markup);
 		Assert.DoesNotContain("Skip this step", cut.Markup);
+	}
+
+	[Fact]
+	public void AfterAFollowUp_TheEarlierRunsStepsStayListed_AndTheCountIsOfTheNewPlan()
+	{
+		using var context = new BunitContext();
+		context.Services.AddSingleton<IJobService>(new StepsJobService(
+			new JobStep { Order = 1, Title = "Add subtract", Instructions = "Add subtract.", Status = JobStepStatus.Earlier, Summary = "subtract is in calc.py." },
+			new JobStep { Order = 2, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Done, Summary = "divide is in." },
+			new JobStep { Order = 3, Title = "Add power", Instructions = "Add power." }));
+
+		var cut = context.Render<JobStepsSection>(parameters => parameters.Add(section => section.JobId, Guid.NewGuid()));
+
+		Assert.Contains("1 of 2 done", cut.Markup);
+		var rows = cut.FindAll("button[aria-expanded]");
+		Assert.Equal(3, rows.Count);
+		Assert.Contains("subtract is in calc.py.", rows[0].TextContent);
+		Assert.NotNull(rows[0].QuerySelector(".bi-check-circle"));
 	}
 
 	private sealed class StepsJobService(params JobStep[] steps) : FakeJobServiceBase

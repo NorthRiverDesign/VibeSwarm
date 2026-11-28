@@ -191,19 +191,7 @@ public partial class JobService
         job.GitDiff = null;        // Clear git diff
         job.GitCommitBefore = null; // Clear git commit reference
         job.GitCommitHash = null;  // Clear committed results hash
-        job.PlanningOutput = null;
-        job.PlanSkippedReason = null;
-        job.LeadChecks = 0;
-        // The steps go with the plan they came from; the next run is planned afresh.
-        await _dbContext.JobSteps.Where(step => step.JobId == job.Id).ExecuteDeleteAsync(cancellationToken);
-        job.PlanningProviderId = null;
-        job.PlanningModelUsed = null;
-        job.PlanningReasoningEffortUsed = null;
-        JobReview.Reset(job);
-        job.PlanningGeneratedAt = null;
-        job.PlanningInputTokens = null;
-        job.PlanningOutputTokens = null;
-        job.PlanningCostUsd = null;
+        await KeepOrClearChainAsync(job, cancellationToken);
         job.GitCheckpointStatus = GitCheckpointStatus.None;
         job.GitCheckpointBranch = null;
         job.GitCheckpointBaseBranch = null;
@@ -339,8 +327,11 @@ public partial class JobService
         job.PlanningOutput = null;
         job.PlanSkippedReason = null;
         job.LeadChecks = 0;
-        // The steps go with the plan they came from; the next run is planned afresh.
-        await _dbContext.JobSteps.Where(step => step.JobId == job.Id).ExecuteDeleteAsync(cancellationToken);
+        // The steps go with the plan they came from; the next run is planned afresh. Those an
+        // earlier run built and delivered stay as the job's record.
+        await _dbContext.JobSteps
+            .Where(step => step.JobId == job.Id && step.Status != JobStepStatus.Earlier)
+            .ExecuteDeleteAsync(cancellationToken);
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;

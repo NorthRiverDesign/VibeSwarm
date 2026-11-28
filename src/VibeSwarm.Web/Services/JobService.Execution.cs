@@ -100,6 +100,50 @@ public partial class JobService
         return true;
     }
 
+    /// <summary>
+    /// What a job queued again (a retry, a reset, a move to another provider) does with its plan.
+    /// A team job the Lead cut into steps keeps them: the next run carries on at the first step
+    /// not finished, from the work its finished steps saved, and a step that was under way
+    /// starts over. Any other job is planned afresh.
+    /// </summary>
+    private async Task KeepOrClearChainAsync(Job job, CancellationToken cancellationToken)
+    {
+        var steps = job.TeamRun
+            ? await _dbContext.JobSteps
+                .Where(step => step.JobId == job.Id && step.Status != JobStepStatus.Earlier)
+                .OrderBy(step => step.Order)
+                .ToListAsync(cancellationToken)
+            : [];
+        if (steps.Count > 0)
+        {
+            foreach (var step in steps.Where(step => step.Status == JobStepStatus.Running))
+            {
+                step.Status = JobStepStatus.Waiting;
+                step.SessionId = null;
+                step.StartedAt = null;
+            }
+
+            // What the finished steps' reviews cost stays on the job with them.
+            var (reviewCost, reviewer) = (job.ReviewCostUsd, job.ReviewProviderName);
+            JobReview.Reset(job);
+            (job.ReviewCostUsd, job.ReviewProviderName) = (reviewCost, reviewer);
+            job.WorkSnapshotCommit = steps.LastOrDefault(step => step.Status == JobStepStatus.Done && step.SnapshotCommit != null)?.SnapshotCommit;
+            return;
+        }
+
+        job.PlanningOutput = null;
+        job.PlanSkippedReason = null;
+        job.LeadChecks = 0;
+        job.PlanningProviderId = null;
+        job.PlanningModelUsed = null;
+        job.PlanningReasoningEffortUsed = null;
+        JobReview.Reset(job);
+        job.PlanningGeneratedAt = null;
+        job.PlanningInputTokens = null;
+        job.PlanningOutputTokens = null;
+        job.PlanningCostUsd = null;
+    }
+
     private async Task NotifyStepsChangedAsync(Guid jobId)
     {
         if (_jobUpdateService == null)
@@ -358,8 +402,16 @@ public partial class JobService
         job.PlanningOutput = null;
         job.PlanSkippedReason = null;
         job.LeadChecks = 0;
-        // The steps go with the plan they came from; the next run is planned afresh.
-        await _dbContext.JobSteps.Where(step => step.JobId == job.Id).ExecuteDeleteAsync(cancellationToken);
+        // The follow-up is planned afresh. The steps already built stay as the job's record, and
+        // the new plan's steps follow them; steps that were never built go with the old plan.
+        await _dbContext.JobSteps
+            .Where(step => step.JobId == job.Id && step.Status == JobStepStatus.Done)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(step => step.Status, JobStepStatus.Earlier)
+                .SetProperty(step => step.SnapshotCommit, (string?)null), cancellationToken);
+        await _dbContext.JobSteps
+            .Where(step => step.JobId == job.Id && (step.Status == JobStepStatus.Waiting || step.Status == JobStepStatus.Running))
+            .ExecuteDeleteAsync(cancellationToken);
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;

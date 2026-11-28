@@ -109,9 +109,9 @@ public partial class JobProcessingService
 	}
 
 	/// <summary>
-	/// The step a run of the job starts on, or null when the job has no steps and is built in one
-	/// go. A step interrupted mid-way is handed back as it is, for the run to resume; any other
-	/// run starts the first step still waiting.
+	/// The step a run of the job starts on, or null when the job has no steps, or none left to
+	/// build (see <see cref="ChainIsBuiltAsync"/>). A step a restart cut off is handed back as it
+	/// is, for the resumed run to carry on; any other run starts the first step still waiting.
 	/// </summary>
 	private async Task<JobStep?> BeginChainAsync(
 		Job job,
@@ -132,14 +132,21 @@ public partial class JobProcessingService
 		}
 
 		// A step is Done only while its work is in the tree this run starts from. Every run
-		// resets the checkout, and only a resumed run gets the job's saved work back; without it
-		// the steps are built again rather than skipped over an empty tree.
+		// resets the checkout and then puts the saved work back (RestorePriorRunWorkAsync); when
+		// that didn't happen the steps are built again rather than skipped over an empty tree.
+		// Steps that saved nothing changed nothing, so there is nothing of theirs to miss.
 		var builtSteps = steps.Where(step => step.Status is JobStepStatus.Done or JobStepStatus.Running).ToList();
-		var savedWorkIsBack = resuming && executionContext.PriorWorkRestore is { Outcome: not JobWorkRestoreOutcome.Failed };
-		var nothingWasSaved = builtSteps.All(step => step.SnapshotCommit == null) && string.IsNullOrWhiteSpace(job.WorkSnapshotCommit);
-		if (builtSteps.Count > 0 && !savedWorkIsBack && !(resuming && nothingWasSaved))
+		var workWasSaved = builtSteps.Any(step => step.SnapshotCommit != null)
+			|| (resuming && !string.IsNullOrWhiteSpace(job.WorkSnapshotCommit));
+		var workIsBack = !workWasSaved || executionContext.PriorWorkRestore is { Outcome: not JobWorkRestoreOutcome.Failed };
+
+		// Only a resumed run carries on a step that was cut off; a retry starts that step over.
+		var startOver = builtSteps
+			.Where(step => !workIsBack || (step.Status == JobStepStatus.Running && !resuming))
+			.ToList();
+		if (startOver.Count > 0)
 		{
-			foreach (var step in builtSteps)
+			foreach (var step in startOver)
 			{
 				step.Status = JobStepStatus.Waiting;
 				step.Summary = null;
@@ -161,6 +168,126 @@ public partial class JobProcessingService
 	}
 
 	/// <summary>
+	/// Whether every step of the job was already built when this run began: it was stopped while
+	/// the Lead checked the result, or failed while delivering. Nothing is built again; the run
+	/// goes to the Lead's check and on to delivery.
+	/// </summary>
+	private static async Task<bool> ChainIsBuiltAsync(Job job, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+	{
+		if (!job.TeamRun)
+		{
+			return false;
+		}
+
+		var statuses = await dbContext.JobSteps
+			.Where(step => step.JobId == job.Id)
+			.Select(step => step.Status)
+			.ToListAsync(cancellationToken);
+		return statuses.Contains(JobStepStatus.Done)
+			&& !statuses.Contains(JobStepStatus.Waiting)
+			&& !statuses.Contains(JobStepStatus.Running);
+	}
+
+	/// <summary>
+	/// What the job's finished steps used, which a run that carries a chain on counts from: the
+	/// job's totals are then the whole chain's, not only this run's share of it.
+	/// </summary>
+	private static async Task<(int Input, int Output, decimal Cost)> SumFinishedStepsAsync(Job job, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+	{
+		var finished = await dbContext.JobSteps
+			.Where(step => step.JobId == job.Id && step.Status == JobStepStatus.Done)
+			.Select(step => new { step.InputTokens, step.OutputTokens, step.CostUsd })
+			.ToListAsync(cancellationToken);
+		return (
+			finished.Sum(step => step.InputTokens ?? 0),
+			finished.Sum(step => step.OutputTokens ?? 0),
+			finished.Sum(step => step.CostUsd ?? 0m));
+	}
+
+	/// <summary>
+	/// Before the next step starts, reads the builder's usage the way a job about to start does.
+	/// Returns the hold when a new job would be made to wait: the chain then stops at this step
+	/// boundary and is queued again, to carry on with another Build profile or once the usage
+	/// resets, instead of running dry in the middle of a step.
+	/// </summary>
+	private async Task<SessionLimitHold?> CheckUsageBetweenStepsAsync(Job job, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+	{
+		if (job.Provider == null)
+		{
+			return null;
+		}
+
+		try
+		{
+			await ReadSessionUsageBeforeStartAsync(job.Provider, dbContext, cancellationToken);
+
+			// Running jobs are not counted: this one is the job that is running.
+			return await ProviderSessionLimitGuard.GetHoldAsync(dbContext, job.ProviderId, DateTime.UtcNow, cancellationToken);
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			_logger.LogWarning(ex, "Could not check usage between the steps of job {JobId}; carrying on", job.Id);
+			return null;
+		}
+	}
+
+	/// <summary>
+	/// Queues a chain again between two steps. Its finished steps and their saved work stay, and
+	/// the next start does what it does for any job on a provider short of usage: it carries on
+	/// with another Build profile, or waits for the usage to reset.
+	/// </summary>
+	private async Task RequeueChainBetweenStepsAsync(
+		Guid jobId,
+		string reason,
+		ExecutionResult result,
+		JobExecutionContext executionContext,
+		VibeSwarmDbContext dbContext,
+		CancellationToken cancellationToken)
+	{
+		// The run's checkpoints are written through contexts of their own, so the run's context
+		// doesn't know the job holds one. A fresh context reads the row as it is and can clear it.
+		await dbContext.SaveChangesAsync(cancellationToken);
+		using var scope = _scopeFactory.CreateScope();
+		var requeueDb = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+		var job = await requeueDb.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+		if (job == null)
+		{
+			return;
+		}
+
+		var transition = JobStateMachine.TryTransition(job, JobStatus.New, reason);
+		if (!transition.Success)
+		{
+			_logger.LogWarning("Failed to queue job {JobId} again between two steps: {Error}", jobId, transition.ErrorMessage);
+			return;
+		}
+
+		// Nothing is half done, so this is not a recovery: the next run starts the next step afresh.
+		JobRecoveryHelper.ClearRecoveryState(job, clearSessionId: true);
+		job.ErrorMessage = $"Stopped between two steps. {reason}";
+		job.CurrentActivity = null;
+		job.LastActivityAt = DateTime.UtcNow;
+		job.LastHeartbeatAt = null;
+		job.ProcessId = null;
+		if (executionContext.GetConsoleOutput() is { Length: > 0 } consoleOutput)
+		{
+			job.ConsoleOutput = consoleOutput;
+		}
+
+		job.ExecutionInputTokens = result.InputTokens ?? job.ExecutionInputTokens;
+		job.ExecutionOutputTokens = result.OutputTokens ?? job.ExecutionOutputTokens;
+		job.ExecutionCostUsd = result.CostUsd ?? job.ExecutionCostUsd;
+		job.InputTokens = SumUsage(job.PlanningInputTokens, job.ExecutionInputTokens);
+		job.OutputTokens = SumUsage(job.PlanningOutputTokens, job.ExecutionOutputTokens);
+		job.TotalCostUsd = SumCost(SumCost(job.PlanningCostUsd, job.ExecutionCostUsd), job.ReviewCostUsd);
+		await requeueDb.SaveChangesAsync(cancellationToken);
+	}
+
+	/// <summary>
 	/// Marks the step as the one being built and gives it a clean slate: the job's review state
 	/// is the step's while it runs, and its session is its own, so a crash can't resume the
 	/// session of the step before it.
@@ -171,7 +298,11 @@ public partial class JobProcessingService
 		step.StartedAt = DateTime.UtcNow;
 		step.CompletedAt = null;
 		job.SessionId = null;
-		JobReview.Reset(job);
+		// What the reviews of earlier steps cost, and who gave them, stays on the job.
+		job.ReviewStatus = JobReviewStatus.None;
+		job.ReviewRounds = 0;
+		job.ReviewNotes = null;
+		job.BuildCheckedTreeHash = null;
 		await dbContext.SaveChangesAsync(cancellationToken);
 
 		// The review state is also written straight to the row (SaveReviewAsync does), so clear it there too.
@@ -421,8 +552,12 @@ public partial class JobProcessingService
 		return new ReviewScope(goal, $"This change is step {position} of {count} of a larger job. Judge only this step: later steps cover the rest of the job, so work that belongs to them is not missing.");
 	}
 
+	/// <summary>The steps of the plan being worked. Those an earlier run built are the job's record, not part of it.</summary>
 	private static Task<List<JobStep>> LoadStepsAsync(VibeSwarmDbContext dbContext, Guid jobId, CancellationToken cancellationToken)
-		=> dbContext.JobSteps.Where(step => step.JobId == jobId).OrderBy(step => step.Order).ToListAsync(cancellationToken);
+		=> dbContext.JobSteps
+			.Where(step => step.JobId == jobId && step.Status != JobStepStatus.Earlier)
+			.OrderBy(step => step.Order)
+			.ToListAsync(cancellationToken);
 
 	private async Task NotifyStepsChangedAsync(Guid jobId)
 	{

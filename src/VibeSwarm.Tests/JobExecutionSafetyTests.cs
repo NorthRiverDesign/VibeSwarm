@@ -1250,7 +1250,7 @@ public sealed class JobExecutionSafetyTests : IDisposable
 			"plan" => new ConsultResult { Success = true, Text = TwoStepPlan },
 			"check" => new ConsultResult { Success = true, Text = ChainPrompts.CheckPassedMarker },
 			// The first look at step one finds a problem; every look after that approves.
-			_ => new ConsultResult { Success = true, ProviderName = "Reviewer", Text = ++reviews == 1 ? "ISSUES:\n1. divide has no zero check." : "REVIEW_APPROVED" }
+			_ => new ConsultResult { Success = true, ProviderName = "Reviewer", CostUsd = 0.01m, Text = ++reviews == 1 ? "ISSUES:\n1. divide has no zero check." : "REVIEW_APPROVED" }
 		});
 
 		var (jobId, _, _) = await RunScriptedJobAsync(
@@ -1284,7 +1284,11 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		await using var db = CreateDbContext();
 		var steps = await db.JobSteps.Where(step => step.JobId == jobId).OrderBy(step => step.Order).ToListAsync();
 		Assert.Equal([(JobReviewStatus.Approved, 1), (JobReviewStatus.Approved, 0)], steps.Select(step => (step.ReviewStatus, step.ReviewRounds)));
-		Assert.Equal(JobStatus.Completed, (await db.Jobs.SingleAsync(j => j.Id == jobId)).Status);
+
+		// The job's totals speak for every step: all three reviews are paid for, not just the last.
+		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal((JobStatus.Completed, JobReviewStatus.Approved, 1), (job.Status, job.ReviewStatus, job.ReviewRounds));
+		Assert.Equal(0.03m, job.ReviewCostUsd);
 	}
 
 	[Theory]
@@ -1368,8 +1372,8 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	{
 		var agent = new ScriptedProvider((run, _) => Task.FromResult(Reply($"Turn {run} done.")));
 
-		// A new run of a job whose first step was done before: nothing put that step's saved work
-		// back, so skipping it would deliver half the job.
+		// A new run of a job whose first step was done before, and saved its work. Nothing put
+		// that work back (the restore didn't happen), so skipping the step would deliver half the job.
 		var (jobId, _, _) = await RunScriptedJobAsync(
 			agent,
 			_ => Task.CompletedTask,
@@ -1390,6 +1394,232 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.Contains("1. [yours] Add divide", agent.Runs[0].Prompt);
 		await using var db = CreateDbContext();
 		Assert.All(await db.JobSteps.Where(step => step.JobId == jobId).ToListAsync(), step => Assert.Equal(JobStepStatus.Done, step.Status));
+	}
+
+	[Fact]
+	public async Task ProcessJobAsync_ARetriedChain_CarriesOnAtTheFirstStepNotFinished_InAFreshSession()
+	{
+		var agent = new ScriptedProvider((run, _) => Task.FromResult(Reply($"Turn {run} done.\n\n## Handoff\npower is in.")));
+
+		// A retry: step one was finished by the run that failed, which was then on step two.
+		var (jobId, _, _) = await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				project.TeamEnabled = true;
+				project.LeadProviderId = provider.Id;
+			},
+			configureJob: job =>
+			{
+				job.TeamRun = true;
+				job.PlanningOutput = "Outcome: two functions.";
+				job.Steps.Add(new JobStep { Order = 1, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Done, Summary = "divide is in.", InputTokens = 100, OutputTokens = 20, CostUsd = 0.5m });
+				job.Steps.Add(new JobStep { Order = 2, Title = "Add power", Instructions = "Add power.", Status = JobStepStatus.Running, SessionId = "the-run-that-failed" });
+			});
+
+		// Step one is not built again, and step two starts over in a session of its own.
+		var run = Assert.Single(agent.Runs);
+		Assert.Null(run.SessionId);
+		Assert.Contains("<your_step number=\"2\" of=\"2\">", run.Prompt);
+		Assert.Contains("1. [done] Add divide", run.Prompt);
+		await using var db = CreateDbContext();
+		var steps = await db.JobSteps.Where(step => step.JobId == jobId).OrderBy(step => step.Order).ToListAsync();
+		Assert.Equal([JobStepStatus.Done, JobStepStatus.Done], steps.Select(step => step.Status));
+		Assert.Equal(["divide is in.", "power is in."], steps.Select(step => step.Summary));
+
+		// What the finished step used is still part of the job's total.
+		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal((JobStatus.Completed, 100, 0.5m), (job.Status, job.ExecutionInputTokens, job.ExecutionCostUsd));
+	}
+
+	[Fact]
+	public async Task ProcessJobAsync_AFollowUp_IsPlannedAndBuiltAfterTheStepsOfTheEarlierRun()
+	{
+		var agent = new ScriptedProvider((run, _) => Task.FromResult(Reply($"Turn {run} done.\n\n## Handoff\nNote {run}.")));
+		var lead = new ScriptedConsultService(request => new ConsultResult
+		{
+			Success = true,
+			Text = request.TaskType == "plan" ? TwoStepPlan : ChainPrompts.CheckPassedMarker
+		});
+
+		// A follow-up on a job whose first run built one step: that step is the job's record.
+		var (jobId, _, _) = await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				project.TeamEnabled = true;
+				project.LeadProviderId = provider.Id;
+			},
+			configureServices: services => services.AddSingleton<IReadOnlyConsultService>(lead),
+			configureJob: job =>
+			{
+				job.TeamRun = true;
+				job.Steps.Add(new JobStep { Order = 1, Title = "Add subtract", Instructions = "Add subtract.", Status = JobStepStatus.Earlier, Summary = "subtract is in.", InputTokens = 900, CostUsd = 2m });
+			});
+
+		// The Lead plans the follow-up, and its builders see that plan only.
+		Assert.Equal(["plan", "check"], lead.Requests.Select(request => request.TaskType));
+		Assert.Equal(2, agent.Runs.Count);
+		Assert.Contains("<your_step number=\"1\" of=\"2\">", agent.Runs[0].Prompt);
+		Assert.DoesNotContain("Add subtract", agent.Runs[0].Prompt);
+
+		await using var db = CreateDbContext();
+		var steps = await db.JobSteps.Where(step => step.JobId == jobId).OrderBy(step => step.Order).ToListAsync();
+		Assert.Equal(
+			[(1, "Add subtract", JobStepStatus.Earlier), (2, "Add divide", JobStepStatus.Done), (3, "Add power", JobStepStatus.Done)],
+			steps.Select(step => (step.Order, step.Title, step.Status)));
+		Assert.Equal("subtract is in.", steps[0].Summary);
+
+		// The earlier run's usage is not counted into this one.
+		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal(JobStatus.Completed, job.Status);
+		Assert.NotEqual(2m, job.ExecutionCostUsd);
+	}
+
+	[Fact]
+	public async Task ProcessJobAsync_AChainStoppedBetweenTwoSteps_StartsTheNextStepAfresh_NotAsARecovery()
+	{
+		var agent = new ScriptedProvider((run, _) => Task.FromResult(Reply($"Turn {run} done.\n\n## Handoff\npower is in.")));
+
+		// Interrupted after step one was saved and before step two began: what the job remembers
+		// is still step one's prompt and session.
+		await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				project.TeamEnabled = true;
+				project.LeadProviderId = provider.Id;
+			},
+			configureJob: job =>
+			{
+				job.TeamRun = true;
+				job.PlanningOutput = "Outcome: two functions.";
+				job.ResumeFromStatus = JobStatus.Processing;
+				job.RecoveryPrompt = "The step one prompt, as it was running.";
+				job.Steps.Add(new JobStep { Order = 1, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Done, Summary = "divide is in." });
+				job.Steps.Add(new JobStep { Order = 2, Title = "Add power", Instructions = "Add power." });
+			});
+
+		var run = Assert.Single(agent.Runs);
+		Assert.Null(run.SessionId);
+		Assert.Contains("<your_step number=\"2\" of=\"2\">", run.Prompt);
+		Assert.DoesNotContain("The step one prompt", run.Prompt);
+	}
+
+	[Theory]
+	[InlineData(false, 0)] // The Lead passes it: nothing is built, the work is delivered.
+	[InlineData(true, 1)] // The Lead asks for one more step: only that step is built.
+	public async Task ProcessJobAsync_AChainStoppedDuringTheLeadsCheck_IsCheckedAndDelivered_NotBuiltAgain(bool leadAsksForMore, int expectedRuns)
+	{
+		var agent = new ScriptedProvider((run, _) => Task.FromResult(Reply($"Turn {run} done.\n\n## Handoff\nThe README lists both.")));
+		var checks = 0;
+		var lead = new ScriptedConsultService(_ => new ConsultResult
+		{
+			Success = true,
+			Text = leadAsksForMore && ++checks == 1
+				? "The README is missing.\n\n## STEP: Document both\nDo: Add them to the README.\nDone when: The README lists both."
+				: ChainPrompts.CheckPassedMarker
+		});
+
+		// Both steps were done when the service stopped; the job remembers step two's prompt.
+		var (jobId, _, _) = await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				project.TeamEnabled = true;
+				project.LeadProviderId = provider.Id;
+			},
+			configureServices: services => services.AddSingleton<IReadOnlyConsultService>(lead),
+			configureJob: job =>
+			{
+				job.TeamRun = true;
+				job.PlanningOutput = "Outcome: two functions.";
+				job.ResumeFromStatus = JobStatus.Processing;
+				job.RecoveryPrompt = "The step two prompt, as it was running.";
+				job.Steps.Add(new JobStep { Order = 1, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Done, Summary = "divide is in.", ReviewStatus = JobReviewStatus.Approved, ReviewRounds = 1 });
+				job.Steps.Add(new JobStep { Order = 2, Title = "Add power", Instructions = "Add power.", Status = JobStepStatus.Done, Summary = "power is in.", ReviewStatus = JobReviewStatus.Approved });
+			});
+
+		Assert.All(lead.Requests, request => Assert.Equal("check", request.TaskType));
+		Assert.Equal(expectedRuns + 1, lead.Requests.Count);
+		Assert.Equal(expectedRuns, agent.Runs.Count);
+		if (leadAsksForMore)
+		{
+			Assert.Null(agent.Runs[0].SessionId);
+			Assert.Contains("Document both", agent.Runs[0].Prompt);
+			Assert.DoesNotContain("The step two prompt", agent.Runs[0].Prompt);
+		}
+
+		await using var db = CreateDbContext();
+		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal((JobStatus.Completed, JobReviewStatus.Approved, 1), (job.Status, job.ReviewStatus, job.ReviewRounds));
+		Assert.All(await db.JobSteps.Where(step => step.JobId == jobId).ToListAsync(), step => Assert.Equal(JobStepStatus.Done, step.Status));
+	}
+
+	[Fact]
+	public async Task ProcessJobAsync_WhenUsageRunsShortBetweenTwoSteps_TheChainStopsThere_AndIsQueuedAgain()
+	{
+		var providerId = Guid.Empty;
+		var sessionReset = DateTime.UtcNow.AddHours(2);
+		var agent = new ScriptedProvider(async (run, _) =>
+		{
+			// Step one uses the session up: by its end the provider is over its pause threshold.
+			await using var usageDb = CreateDbContext();
+			var summary = await usageDb.ProviderUsageSummaries.SingleOrDefaultAsync(usage => usage.ProviderId == providerId);
+			if (summary == null)
+			{
+				summary = new ProviderUsageSummary { ProviderId = providerId };
+				usageDb.ProviderUsageSummaries.Add(summary);
+			}
+
+			summary.LimitsRefreshedAt = DateTime.UtcNow;
+			summary.LimitWindows = [SessionWindow(93, sessionReset)];
+			await usageDb.SaveChangesAsync();
+			return Reply($"Turn {run} done.\n\n## Handoff\ndivide is in.");
+		});
+
+		var (jobId, _, _) = await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				providerId = provider.Id;
+				project.TeamEnabled = true;
+				project.LeadProviderId = provider.Id;
+			},
+			configureJob: job =>
+			{
+				job.TeamRun = true;
+				job.PlanningOutput = "Outcome: two functions.";
+				job.Steps.Add(new JobStep { Order = 1, Title = "Add divide", Instructions = "Add divide." });
+				job.Steps.Add(new JobStep { Order = 2, Title = "Add power", Instructions = "Add power." });
+			});
+
+		// Step two is not started on a provider a new job would be made to wait for. The job goes
+		// back in the queue with step one kept, and is no recovery: nothing was cut off.
+		Assert.Single(agent.Runs);
+		await using var db = CreateDbContext();
+		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal((JobStatus.New, null, null), (job.Status, job.ResumeFromStatus, job.WorkerInstanceId));
+		Assert.StartsWith("Stopped between two steps.", job.ErrorMessage);
+		Assert.Contains("session is 93% used", job.ErrorMessage);
+		var steps = await db.JobSteps.Where(step => step.JobId == jobId).OrderBy(step => step.Order).ToListAsync();
+		Assert.Equal([JobStepStatus.Done, JobStepStatus.Waiting], steps.Select(step => step.Status));
+		Assert.Equal("divide is in.", steps[0].Summary);
+	}
+
+	[Fact]
+	public void JobTimeLimit_TellsAChainThatRetryCarriesOn()
+	{
+		var message = JobTimeLimit.BuildStopMessage(TimeSpan.FromHours(12), "vibeswarm/recovery/job", hasSteps: true);
+
+		Assert.True(JobTimeLimit.IsStopMessage(message));
+		Assert.Contains("Retry carries on at the first step not finished", message);
+		Assert.DoesNotContain("split the task", message);
 	}
 
 	private static ExecutionResult Reply(string text) => new()

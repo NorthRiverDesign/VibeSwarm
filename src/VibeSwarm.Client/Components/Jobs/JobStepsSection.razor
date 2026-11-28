@@ -12,7 +12,7 @@
 			@foreach (var step in _steps)
 			{
 				<ListRow @key="step.Id" Icon="@IconFor(step)" IconClass="@IconClassFor(step)"
-						 Leading="@(step.Status == JobStepStatus.Running ? Spinner : null)"
+						 Leading="@(step.Status == JobStepStatus.Running && Working ? Spinner : null)"
 						 Title="@step.Title" TitleClass="@(step.Status == JobStepStatus.Skipped ? "fg-2" : null)"
 						 Subtitle="@SubtitleFor(step)" AttentionLine="@AttentionFor(step)">
 					<ChildContent>
@@ -94,6 +94,10 @@
 	[Parameter]
 	public bool CanChange { get; set; }
 
+	/// <summary>Whether an agent is on the job right now. When none is, the step it was on is shown as stopped.</summary>
+	[Parameter]
+	public bool Working { get; set; }
+
 	private string _newStep = string.Empty;
 	private string? _error;
 	private bool _busy;
@@ -172,15 +176,19 @@
 	{
 		get
 		{
-			var counted = _steps.Count(step => step.Status != JobStepStatus.Skipped);
+			// Steps an earlier run built are the record; the count is of the plan being worked.
+			var counted = _steps.Count(step => step.Status is not (JobStepStatus.Skipped or JobStepStatus.Earlier));
 			var done = _steps.Count(step => step.Status == JobStepStatus.Done);
-			return done == counted ? $"All {counted} done" : $"{done} of {counted} done";
+			return counted == 0 ? string.Empty
+				: done == counted ? $"All {counted} done"
+				: $"{done} of {counted} done";
 		}
 	}
 
 	private static string IconFor(JobStep step) => step.Status switch
 	{
 		JobStepStatus.Done => "check-circle-fill",
+		JobStepStatus.Earlier => "check-circle",
 		JobStepStatus.Skipped => "slash-circle",
 		_ => "circle"
 	};
@@ -191,10 +199,11 @@
 		_ => "fg-2"
 	};
 
-	private static string SubtitleFor(JobStep step) => step.Status switch
+	private string SubtitleFor(JobStep step) => step.Status switch
 	{
 		JobStepStatus.Done => string.IsNullOrWhiteSpace(step.Summary) ? "Done" : step.Summary.ReplaceLineEndings(" "),
-		JobStepStatus.Running => "Building now",
+		JobStepStatus.Earlier => string.IsNullOrWhiteSpace(step.Summary) ? "Done before the follow-up" : step.Summary.ReplaceLineEndings(" "),
+		JobStepStatus.Running => Working ? "Building now" : "Stopped part-way",
 		JobStepStatus.Skipped => "Skipped",
 		_ => step.Source switch
 		{
@@ -205,7 +214,7 @@
 	};
 
 	private static string? AttentionFor(JobStep step)
-		=> step.Status == JobStepStatus.Done && step.ReviewStatus == JobReviewStatus.Unresolved
+		=> step.Status is (JobStepStatus.Done or JobStepStatus.Earlier) && step.ReviewStatus == JobReviewStatus.Unresolved
 			? "Review findings weren't re-checked"
 			: null;
 

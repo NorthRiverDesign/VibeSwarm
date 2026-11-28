@@ -1064,6 +1064,48 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ContinueJobAsync_KeepsTheStepsAlreadyBuiltAsTheJobsRecord_AndPlansTheFollowUpAfresh()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Chain Project", WorkingPath = "/tmp/chain-project" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true, IsDefault = true };
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Two functions.",
+			TeamRun = true,
+			Status = JobStatus.Failed,
+			PlanningOutput = "Outcome: two functions.",
+			LeadChecks = 1,
+			Steps =
+			[
+				new JobStep { Order = 1, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Done, Summary = "divide is in.", SnapshotCommit = "aaaa" },
+				new JobStep { Order = 2, Title = "Dropped", Instructions = "Not needed.", Status = JobStepStatus.Skipped },
+				new JobStep { Order = 3, Title = "Add power", Instructions = "Add power.", Status = JobStepStatus.Running },
+				new JobStep { Order = 4, Title = "Document both", Instructions = "Write the docs." }
+			]
+		};
+		dbContext.AddRange(project, provider, job);
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+		Assert.True(await jobService.ContinueJobAsync(job.Id, "Add modulo as well."));
+
+		// The old plan is gone and so are the steps it never built. What was built stays on the
+		// job's page, marked as belonging to an earlier run, so no later run takes it up again.
+		dbContext.ChangeTracker.Clear();
+		var saved = await dbContext.Jobs.Include(j => j.Steps).SingleAsync(j => j.Id == job.Id);
+		Assert.Equal((JobStatus.New, null, 0), (saved.Status, saved.PlanningOutput, saved.LeadChecks));
+		Assert.Equal(
+			[("Add divide", JobStepStatus.Earlier), ("Dropped", JobStepStatus.Skipped)],
+			saved.Steps.OrderBy(step => step.Order).Select(step => (step.Title, step.Status)));
+		var kept = saved.Steps.Single(step => step.Status == JobStepStatus.Earlier);
+		Assert.Equal(("divide is in.", null), (kept.Summary, kept.SnapshotCommit));
+	}
+
+	[Fact]
 	public async Task ContinueJobAsync_KeepsAPreviousGoalLongerThanTwoThousandCharacters()
 	{
 		await using var dbContext = CreateDbContext();

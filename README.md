@@ -174,9 +174,20 @@ was to do, the note its builder left and what review made of it. While the job i
 can **skip** a step that hasn't started and **add a step** of your own to the end. Nothing waits
 for your approval.
 
-The work is saved after every step. A restart, a power cut or a usage limit leaves the job
-paused or queued with its finished steps intact, and it carries on from the step it was on. A
-manual retry, a move to a fallback provider or a new prompt plans the job afresh.
+The work is saved after every step, and a chain that stops part-way keeps what it did:
+
+- **A restart, a power cut or a usage limit** leaves the job paused or queued, and it carries on
+  in the step it was on. Stopped while the Lead was checking, it goes back to the check; nothing
+  is built twice.
+- **Retry**, on a job that failed, was stopped or ran into its time limit, carries on at the
+  first step not finished, from the work the finished steps saved. That step starts over in a
+  fresh session. So does a move to a fallback Build profile.
+- **Between two steps** the builder's usage is read, the way it is before a job starts. If a new
+  job would be made to wait, the chain stops there and is queued again: it carries on with a
+  fallback, or once the usage resets, instead of running dry in the middle of a step.
+- **A follow-up** on the job is planned afresh. The steps already built stay listed as its
+  record, and the new plan's steps follow them.
+- **A new prompt** on a job that hasn't finished is a different job: it is planned afresh.
 
 A job is worked by the team when its project works as a team, unless you turn **Work as a
 team** off for that one job when you create it. Three kinds always run on the builder alone: a

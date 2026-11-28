@@ -83,12 +83,15 @@ public sealed class JobTimeLimit : IDisposable
 		}
 	}
 
-	public static string BuildStopMessage(TimeSpan limit, string? keptOn) =>
+	/// <param name="hasSteps">Whether the job is a chain of steps, which Retry carries on rather than starts over.</param>
+	public static string BuildStopMessage(TimeSpan limit, string? keptOn, bool hasSteps = false) =>
 		$"{StopMessagePrefix} of {FormatLimit(limit)}, before the agent finished. " +
-		(keptOn != null
-			? $"Its work so far is kept on the branch {keptOn}, and a follow-up picks it up. "
-			: string.Empty) +
-		"Raise the limit or split the task before running it again.";
+		(hasSteps
+			? "Its finished steps are saved: Retry carries on at the first step not finished."
+			: (keptOn != null
+				? $"Its work so far is kept on the branch {keptOn}, and a follow-up picks it up. "
+				: string.Empty) +
+			"Raise the limit or split the task before running it again.");
 
 	public static bool IsStopMessage(string? errorMessage) =>
 		errorMessage?.StartsWith(StopMessagePrefix, StringComparison.Ordinal) == true;

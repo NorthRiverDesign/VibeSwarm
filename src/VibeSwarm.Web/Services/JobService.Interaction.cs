@@ -452,19 +452,7 @@ public partial class JobService
         job.PullRequestUrl = null;
         job.PullRequestCreatedAt = null;
         job.MergedAt = null;
-        job.PlanningOutput = null;
-        job.PlanSkippedReason = null;
-        job.LeadChecks = 0;
-        // The steps go with the plan they came from; the next run is planned afresh.
-        await _dbContext.JobSteps.Where(step => step.JobId == job.Id).ExecuteDeleteAsync(cancellationToken);
-        job.PlanningProviderId = null;
-        job.PlanningModelUsed = null;
-        job.PlanningReasoningEffortUsed = null;
-        JobReview.Reset(job);
-        job.PlanningGeneratedAt = null;
-        job.PlanningInputTokens = null;
-        job.PlanningOutputTokens = null;
-        job.PlanningCostUsd = null;
+        await KeepOrClearChainAsync(job, cancellationToken);
         job.SessionId = null;
         job.ModelUsed = modelId;
         job.ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(reasoningEffort);
