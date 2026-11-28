@@ -67,19 +67,11 @@ public partial class JobProcessingService
             // Rebind `job` to the instance tracked in this scope so subsequent Entry(job),
             // dbContext.SaveChanges, and nav-property fix-up all operate on one entity.
             // The prompt, the job's APP_* variables and its MCP config read the project's
-            // environments and agent team from this instance, so load them here too.
+            // environments from this instance, so load them here too.
             var trackedJob = await dbContext.Jobs
                 .Include(j => j.Provider)
                 .Include(j => j.Project)
                     .ThenInclude(project => project!.Environments)
-                .Include(j => j.Project)
-                    .ThenInclude(project => project!.AgentAssignments)
-                        .ThenInclude(assignment => assignment.Provider)
-                .Include(j => j.Project)
-                    .ThenInclude(project => project!.AgentAssignments)
-                        .ThenInclude(assignment => assignment.Agent)
-                            .ThenInclude(agent => agent!.SkillLinks)
-                                .ThenInclude(link => link.Skill)
                 .FirstOrDefaultAsync(j => j.Id == job.Id, cancellationToken);
 
             if (trackedJob == null)
@@ -803,41 +795,9 @@ public partial class JobProcessingService
             var priorWorkRules = PromptBuilder.BuildPriorWorkRules(executionContext.PriorWorkRestore);
             var branchMergeRules = PromptBuilder.BuildBranchMergeRules(job.MergeFromBranch, executionContext.BranchMerge?.Outcome, executionContext.BranchMerge?.ConflictedFiles);
 
-            // Inject role-specific system prompt context for team swarm jobs
+            // An instance is told which part of the goal is its own.
             string? roleContext = null;
-            if (job.AgentId.HasValue)
-            {
-                try
-                {
-                    var agent = await dbContext.Agents
-                        .Include(role => role.SkillLinks)
-                            .ThenInclude(link => link.Skill)
-                        .FirstOrDefaultAsync(r => r.Id == job.AgentId.Value, cancellationToken);
-                    if (agent != null)
-                    {
-                        await EnsureAgentSkillsMaterializedAsync(agent, skillStorage, cancellationToken);
-
-                        var swarmSize = job.SwarmId.HasValue
-                            ? await dbContext.Jobs.CountAsync(j => j.SwarmId == job.SwarmId, cancellationToken)
-                            : 1;
-                        var teammates = job.SwarmId.HasValue
-                            ? (await dbContext.Jobs
-                                .AsNoTracking()
-                                .Where(j => j.SwarmId == job.SwarmId && j.Id != job.Id && j.Agent != null)
-                                .Select(j => new { j.Agent!.Name, j.Agent.Description })
-                                .ToListAsync(cancellationToken))
-                                .Select(teammate => new Agent { Name = teammate.Name, Description = teammate.Description })
-                                .ToList()
-                            : [];
-                        roleContext = PromptBuilder.BuildRoleSystemPromptContext(agent, swarmSize, teammates);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to load team role context for job {JobId}, continuing without it", job.Id);
-                }
-            }
-            else if (job.SwarmId.HasValue && job.InstanceNumber is int instanceNumber)
+            if (job.SwarmId.HasValue && job.InstanceNumber is int instanceNumber)
             {
                 try
                 {
@@ -1026,7 +986,7 @@ public partial class JobProcessingService
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
-            await EnsureProjectSkillsMaterializedAsync(job.Project, skillStorage, cancellationToken);
+            await LoadProjectSkillsAsync(job.Project, dbContext, skillStorage, cancellationToken);
             await LoadLinkedProjectsAsync(job.Project, dbContext, cancellationToken);
             var currentPrompt = PromptBuilder.BuildExecutionPrompt(job, planningOutput, enableStructuring);
             var shouldRunRecoveryFlow = JobRecoveryHelper.IsResumeCandidate(job);
@@ -1959,61 +1919,32 @@ public partial class JobProcessingService
             .LoadAsync(cancellationToken);
     }
 
-    private async Task EnsureProjectSkillsMaterializedAsync(
-        Project? project,
-        ISkillStorageService skillStorage,
-        CancellationToken cancellationToken)
-    {
-        if (project?.AgentAssignments is null)
-        {
-            return;
-        }
-
-        var seen = new HashSet<Guid>();
-        foreach (var assignment in project.AgentAssignments)
-        {
-            var agent = assignment.Agent;
-            if (agent?.SkillLinks is null)
-            {
-                continue;
-            }
-
-            foreach (var link in agent.SkillLinks)
-            {
-                if (link.Skill is null || !seen.Add(link.Skill.Id))
-                {
-                    continue;
-                }
-
-                await MaterializeSkillSafelyAsync(link.Skill, skillStorage, cancellationToken);
-            }
-        }
-    }
-
     /// <summary>
-    /// Ensures an individual agent's skills have been materialized ahead of
-    /// <see cref="PromptBuilder.BuildRoleSystemPromptContext"/>. Separate from the project-level
-    /// path because swarm jobs load the agent independently of <c>job.Project</c>.
+    /// Gives the job every skill that is switched on: each is written to disk and listed in the
+    /// prompt (<see cref="PromptBuilder"/>), so the agent can load the ones the task calls for.
     /// </summary>
-    private async Task EnsureAgentSkillsMaterializedAsync(
-        Agent agent,
+    internal async Task LoadProjectSkillsAsync(
+        Project? project,
+        VibeSwarmDbContext dbContext,
         ISkillStorageService skillStorage,
         CancellationToken cancellationToken)
     {
-        if (agent.SkillLinks is null)
+        if (project is null)
         {
             return;
         }
 
-        foreach (var link in agent.SkillLinks)
+        // Tracked, so the storage path a skill gets when first written out is saved with it.
+        var skills = await dbContext.Skills
+            .Where(skill => skill.IsEnabled)
+            .OrderBy(skill => skill.Name)
+            .ToListAsync(cancellationToken);
+        foreach (var skill in skills)
         {
-            if (link.Skill is null)
-            {
-                continue;
-            }
-
-            await MaterializeSkillSafelyAsync(link.Skill, skillStorage, cancellationToken);
+            await MaterializeSkillSafelyAsync(skill, skillStorage, cancellationToken);
         }
+
+        project.AvailableSkills = skills;
     }
 
     private async Task MaterializeSkillSafelyAsync(

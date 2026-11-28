@@ -36,7 +36,6 @@ var services = new ServiceCollection();
 services.AddLogging();
 services.AddSingleton<IProjectService>(new FakeProjectService());
 services.AddSingleton<IProviderService>(new FakeProviderService(provider));
-	services.AddSingleton<IAgentService>(new FakeAgentService([]));
 services.AddSingleton<ISettingsService>(new FakeSettingsService());
 services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService([]));
 services.AddSingleton<IFileSystemService>(new FakeWorkspaceFileSystemService());
@@ -68,7 +67,7 @@ Assert.Contains("When a job finishes", html);
 // Who does what is in view without opening anything.
 Assert.Contains("Workflow", html);
 Assert.Contains("Plan first", html);
-Assert.Contains(">Agents<", html);
+Assert.DoesNotContain(">Agents<", html);
 Assert.Contains(">Ideas<", html);
 Assert.DoesNotContain("Providers and agents", html);
 Assert.Contains("Instructions and memory", html);
@@ -233,43 +232,6 @@ public void BrowseGitHubRepositories_AllAlreadyAddedOffersToShowThem()
 
 	Assert.Contains("hello-world", cut.Markup);
 	Assert.False(cut.Find("#githubRepositoryBrowserHideExisting").HasAttribute("checked"));
-}
-
-[Fact]
-public void AddAgent_AssignsItOnItsOwnProfile()
-{
-	var provider = new Provider
-	{
-		Id = Guid.NewGuid(),
-		Name = "GitHub Copilot",
-		Type = ProviderType.Copilot,
-		IsEnabled = true,
-		IsDefault = true
-	};
-	var providerDefault = new Profile { Id = Guid.NewGuid(), Name = "GitHub Copilot", ProviderId = provider.Id, Provider = provider, IsProviderDefault = true };
-	var backend = new Profile { Id = Guid.NewGuid(), Name = "Backend", ProviderId = provider.Id, Provider = provider, ModelId = "gpt-5.4" };
-	var agent = new Agent
-	{
-		Id = Guid.NewGuid(),
-		Name = "Backend Engineer",
-		DefaultProviderId = provider.Id,
-		DefaultProvider = provider,
-		DefaultModelId = "gpt-5.4",
-		ProfileId = backend.Id,
-		IsEnabled = true
-	};
-
-	using var context = CreateBunitContext(agents: [agent], provider: provider, profiles: [providerDefault, backend]);
-
-	var cut = context.Render<ProjectModal>(parameters => parameters
-		.Add(component => component.IsVisible, true));
-
-	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Backend Engineer", StringComparison.Ordinal))
-		.Click();
-
-	Assert.Equal(backend.Id.ToString(), cut.Find($"#team-profile-{agent.Id}").GetAttribute("value"));
-	Assert.Empty(cut.FindAll($"#team-provider-{agent.Id}, #team-model-{agent.Id}"));
 }
 
 	[Fact]
@@ -690,7 +652,6 @@ public void AddAgent_AssignsItOnItsOwnProfile()
 
 private static BunitContext CreateBunitContext(
 	FakeProjectService? projectService = null,
-	IReadOnlyList<Agent>? agents = null,
 	Provider? provider = null,
 	IReadOnlyList<InferenceProvider>? inferenceProviders = null,
 	IFileSystemService? fileSystemService = null,
@@ -709,7 +670,6 @@ private static BunitContext CreateBunitContext(
 	};
 	context.Services.AddSingleton<IProjectService>(projectService ?? new FakeProjectService());
 	context.Services.AddSingleton<IProviderService>(new FakeProviderService(resolvedProvider));
-	context.Services.AddSingleton<IAgentService>(new FakeAgentService(agents ?? []));
 	context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 	context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService(inferenceProviders ?? []));
 	context.Services.AddSingleton<IFileSystemService>(fileSystemService ?? new FakeWorkspaceFileSystemService());
@@ -802,15 +762,6 @@ public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = 
 public Task<AppSettings> UpdateMaxConcurrentJobsAsync(int maxConcurrentJobs, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");
-}
-
-private sealed class FakeAgentService(IReadOnlyList<Agent> agents) : FakeAgentServiceBase
-{
-	private readonly IReadOnlyList<Agent> _agents = agents;
-	public override Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents);
-	public override Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents.Where(agent => agent.IsEnabled));
-	public override Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_agents.FirstOrDefault(agent => agent.Id == id));
-public override Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
 }
 
 private sealed class NoOpJsRuntime : IJSRuntime

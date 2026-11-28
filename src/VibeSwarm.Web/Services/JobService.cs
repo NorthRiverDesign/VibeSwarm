@@ -77,7 +77,6 @@ public partial class JobService : IJobService
             CurrentCycle = j.CurrentCycle,
             MaxCycles = j.MaxCycles,
             CycleMode = j.CycleMode,
-            AgentName = j.Agent != null ? j.Agent.Name : null,
              Branch = j.Branch,
              ChangedFilesCount = j.ChangedFilesCount,
              BuildVerified = j.BuildVerified,
@@ -108,7 +107,6 @@ public partial class JobService : IJobService
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
 			.Include(j => j.PlanningProvider)
-			.Include(j => j.Agent)
 			.OrderByDescending(j => j.CreatedAt)
 			.ToListAsync(cancellationToken);
     }
@@ -166,7 +164,6 @@ public partial class JobService : IJobService
 	{
 		return await IncludeStatistics(_dbContext.Jobs)
 			.Include(j => j.Provider)
-			.Include(j => j.Agent)
 			.Where(j => j.ProjectId == projectId)
 			.OrderByDescending(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
@@ -356,7 +353,6 @@ public partial class JobService : IJobService
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
 			.Include(j => j.PlanningProvider)
-			.Include(j => j.Agent)
 			.Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
 			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
     }
@@ -368,7 +364,6 @@ public partial class JobService : IJobService
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
 			.Include(j => j.PlanningProvider)
-			.Include(j => j.Agent)
 			.Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
 			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 		if (job == null)
@@ -398,7 +393,6 @@ public partial class JobService : IJobService
         var requestedInstances = Math.Clamp(job.RequestedInstances, 1, ValidationLimits.JobInstancesMax);
         job.RequestedInstances = 1;
         NormalizeJobForPersistence(job);
-        await ApplySelectedAgentDefaultsAsync(job, cancellationToken);
         await ApplyJobProfileAsync(job, cancellationToken);
         NormalizeJobForPersistence(job);
         await ValidateRequestedExecutionAsync(job, cancellationToken);
@@ -410,7 +404,6 @@ public partial class JobService : IJobService
         job.PlanningProvider = null;
         job.JobSchedule = null;
         job.JobTemplate = null;
-        job.Agent = null;
         job.Statistics = null;
         job.PlanningStatistics = null;
         job.ExecutionStatistics = null;
@@ -431,11 +424,10 @@ public partial class JobService : IJobService
 			throw new InvalidOperationException("No enabled providers are available for this job.");
 		}
 
-        // A merge has one resolution and a setup job one result, and an agent's job runs as that
-        // agent alone, so none of them is split into instances.
+        // A merge has one resolution and a setup job one result, so neither is split into instances.
         // Copies split a goal written as a list, never running more copies than it has items:
         // copies left to divide prose among themselves would overlap.
-        var canRunAsInstances = !job.AgentId.HasValue && !LocalEnvironmentSetup.IsSetupJob(job) && string.IsNullOrWhiteSpace(job.MergeFromBranch);
+        var canRunAsInstances = !LocalEnvironmentSetup.IsSetupJob(job) && string.IsNullOrWhiteSpace(job.MergeFromBranch);
         var instanceCount = canRunAsInstances && requestedInstances > 1
             ? Math.Min(requestedInstances, JobInstanceSplitter.GetListItems(job.GoalPrompt).Count)
             : 1;
@@ -477,13 +469,7 @@ public partial class JobService : IJobService
                 .ExecuteUpdateAsync(setters => setters.SetProperty(template => template.UseCount, template => template.UseCount + 1), cancellationToken);
         }
 
-        // Fan out to team swarm jobs if the project has team swarm enabled. A merge has one
-        // resolution, so a deploy's conflict job is never split across agents.
-		var swarmJobs = instanceJobs.Count > 0
-			? instanceJobs
-			: !canRunAsInstances
-				? []
-				: await TryCreateTeamSwarmJobsAsync(job, cancellationToken);
+		var swarmJobs = instanceJobs;
 
         // Notify that a new job was created (so processing can start immediately)
         if (_jobUpdateService != null)
@@ -573,107 +559,6 @@ public partial class JobService : IJobService
         }
 
         return baseTitle + suffix;
-    }
-
-    private async Task<List<Job>> TryCreateTeamSwarmJobsAsync(Job primaryJob, CancellationToken cancellationToken)
-    {
-        var project = await _dbContext.Projects
-            .Include(p => p.AgentAssignments)
-                .ThenInclude(a => a.Agent)
-            .Include(p => p.AgentAssignments)
-                .ThenInclude(a => a.Provider)
-            .FirstOrDefaultAsync(p => p.Id == primaryJob.ProjectId, cancellationToken);
-
-        if (project == null || !project.EnableTeamSwarm)
-            return [];
-
-        var enabledAssignments = project.AgentAssignments
-            .Where(a => a.IsEnabled
-                && a.Agent != null
-                && a.Agent.IsEnabled
-                && a.ProviderId != Guid.Empty)
-            .OrderBy(a => a.Agent!.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (enabledAssignments.Count < 2)
-            return [];
-
-        var swarmId = Guid.NewGuid();
-        var createdJobs = new List<Job>();
-
-        // Each role's job names the profile its assignment runs on, replacing whatever profile
-        // the job was created with.
-        var assignmentProfileIds = enabledAssignments
-            .Where(assignment => assignment.ProfileId.HasValue)
-            .Select(assignment => assignment.ProfileId!.Value)
-            .Distinct()
-            .ToList();
-        var profileNames = await _dbContext.Profiles
-            .Where(profile => assignmentProfileIds.Contains(profile.Id))
-            .ToDictionaryAsync(profile => profile.Id, profile => profile.Name, cancellationToken);
-        void RecordProfile(Job roleJob, ProjectAgent assignment)
-        {
-            var named = assignment.ProfileId is Guid id && profileNames.ContainsKey(id);
-            roleJob.ProfileId = named ? assignment.ProfileId : null;
-            roleJob.ProfileName = named ? profileNames[assignment.ProfileId!.Value] : null;
-        }
-
-        // Assign the first role to the primary job
-        var primaryJobDb = await _dbContext.Jobs.FindAsync(new object[] { primaryJob.Id }, cancellationToken);
-        if (primaryJobDb != null)
-        {
-            var firstAssignment = enabledAssignments[0];
-            primaryJobDb.SwarmId = swarmId;
-			primaryJobDb.ProviderId = Guid.Empty;
-			primaryJobDb.ModelUsed = null;
-			primaryJobDb.ReasoningEffort = null;
-			AgentPresetHelper.ApplyExecutionDefaults(primaryJobDb, firstAssignment);
-            RecordProfile(primaryJobDb, firstAssignment);
-            // Update the in-memory job so callers see the changes
-            primaryJob.SwarmId = swarmId;
-			primaryJob.ProviderId = Guid.Empty;
-			primaryJob.ModelUsed = null;
-			primaryJob.ReasoningEffort = null;
-			AgentPresetHelper.ApplyExecutionDefaults(primaryJob, firstAssignment);
-            RecordProfile(primaryJob, firstAssignment);
-        }
-
-        // Create sibling jobs for each remaining role
-        for (var i = 1; i < enabledAssignments.Count; i++)
-        {
-            var assignment = enabledAssignments[i];
-            var roleJob = new Job
-            {
-                Id = Guid.NewGuid(),
-                Title = primaryJob.Title,
-                GoalPrompt = primaryJob.GoalPrompt,
-                Status = JobStatus.New,
-                ProjectId = primaryJob.ProjectId,
-				ProviderId = assignment.ProviderId,
-                ModelUsed = string.IsNullOrWhiteSpace(assignment.PreferredModelId) ? null : assignment.PreferredModelId,
-                ReasoningEffort = assignment.PreferredReasoningEffort,
-                Branch = primaryJob.Branch,
-                TargetBranch = primaryJob.TargetBranch,
-                GitChangeDeliveryMode = primaryJob.GitChangeDeliveryMode,
-                CommitModeOverride = primaryJob.CommitModeOverride,
-                Priority = primaryJob.Priority,
-                CreatedAt = DateTime.UtcNow,
-                MaxCostUsd = primaryJob.MaxCostUsd,
-                MaxExecutionMinutes = primaryJob.MaxExecutionMinutes,
-                MaxTokens = primaryJob.MaxTokens,
-                SwarmId = swarmId,
-            };
-
-			AgentPresetHelper.ApplyExecutionDefaults(roleJob, assignment);
-            RecordProfile(roleJob, assignment);
-            await InitializeExecutionPlanAsync(roleJob, cancellationToken);
-
-            _dbContext.Jobs.Add(roleJob);
-            createdJobs.Add(roleJob);
-        }
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        return createdJobs;
     }
 
 	private IQueryable<Job> BuildFilteredJobsQuery(Guid? projectId, string statusFilter)

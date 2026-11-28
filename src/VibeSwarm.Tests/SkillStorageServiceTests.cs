@@ -1,8 +1,10 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Tests;
 
@@ -151,12 +153,6 @@ public sealed class SkillStorageServiceTests : IDisposable
 		await storage.EnsureMaterializedAsync(skill);
 
 		// StoragePath is now populated; the prompt builder should render the absolute path.
-		var agent = new Agent
-		{
-			Id = Guid.NewGuid(),
-			Name = "Any",
-			SkillLinks = [new AgentSkill { SkillId = skill.Id, Skill = skill }]
-		};
 		var job = new Job
 		{
 			GoalPrompt = "Work.",
@@ -164,10 +160,7 @@ public sealed class SkillStorageServiceTests : IDisposable
 			{
 				Name = "P",
 				WorkingPath = "/tmp/p",
-				AgentAssignments =
-				[
-					new ProjectAgent { AgentId = agent.Id, Agent = agent }
-				],
+				AvailableSkills = [skill],
 				Environments = []
 			}
 		};
@@ -175,6 +168,39 @@ public sealed class SkillStorageServiceTests : IDisposable
 		var prompt = PromptBuilder.BuildStructuredPrompt(job);
 		Assert.Contains("legacy-lazy", prompt);
 		Assert.Contains($"SKILL.md: {Path.Combine(skill.StoragePath!, "SKILL.md")}", prompt);
+	}
+
+	[Fact]
+	public async Task LoadProjectSkills_GivesAJobEverySkillThatIsOn()
+	{
+		// Nothing assigns a skill to a project: switching one on is enough for every job.
+		await using var dbContext = CreateDbContext();
+		dbContext.Skills.AddRange(
+			new Skill { Id = Guid.NewGuid(), Name = "testing", Content = "# Testing", IsEnabled = true },
+			new Skill { Id = Guid.NewGuid(), Name = "bootstrap", Content = "# Bootstrap", IsEnabled = true },
+			new Skill { Id = Guid.NewGuid(), Name = "retired", Content = "# Retired", IsEnabled = false });
+		await dbContext.SaveChangesAsync();
+		var project = new Project { Name = "P", WorkingPath = "/tmp/p" };
+		var scopeFactory = new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+		var runner = new JobProcessingService(scopeFactory, NullLogger<JobProcessingService>.Instance, new NoVersionControl(), projectEnvironmentCredentialService: new NoCredentials());
+
+		await runner.LoadProjectSkillsAsync(project, dbContext, CreateStorage(dbContext), CancellationToken.None);
+
+		Assert.Equal(["bootstrap", "testing"], project.AvailableSkills.Select(skill => skill.Name));
+		Assert.All(project.AvailableSkills, skill => Assert.True(File.Exists(Path.Combine(skill.StoragePath!, "SKILL.md"))));
+		var prompt = PromptBuilder.BuildStructuredPrompt(new Job { GoalPrompt = "Work.", Project = project });
+		Assert.Contains("testing", prompt);
+		Assert.DoesNotContain("retired", prompt);
+	}
+
+	private sealed class NoVersionControl : FakeVersionControlServiceBase;
+
+	private sealed class NoCredentials : IProjectEnvironmentCredentialService
+	{
+		public void PrepareForStorage(Project project, IReadOnlyCollection<ProjectEnvironment>? existingEnvironments = null) { }
+		public void PopulateForEditing(Project? project) { }
+		public void PopulateForExecution(Project? project) { }
+		public Dictionary<string, string>? BuildJobEnvironmentVariables(Project? project) => null;
 	}
 
 	[Fact]

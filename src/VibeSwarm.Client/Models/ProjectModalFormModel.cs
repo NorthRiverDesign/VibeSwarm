@@ -102,8 +102,6 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
 
-	public ICollection<ProjectAgent> AgentAssignments { get; set; } = new List<ProjectAgent>();
-
 	public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
 
 	public Guid? FolderId { get; set; }
@@ -121,8 +119,6 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	public string? Memory { get; set; }
 
 	public bool IsActive { get; set; } = true;
-
-	public bool EnableTeamSwarm { get; set; }
 
 	public bool BuildVerificationEnabled { get; set; }
 
@@ -196,14 +192,12 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			CreatedAt = source.CreatedAt,
 			UpdatedAt = source.UpdatedAt,
 			ProviderSelections = source.ProviderSelections.ToList(),
-			AgentAssignments = source.AgentAssignments.ToList(),
 			Environments = source.Environments.ToList(),
 			FolderId = source.FolderId,
 			LinkedProjectIds = (source.Links ?? []).Select(link => link.LinkedProjectId).ToHashSet(),
 			PromptContext = source.PromptContext,
 			Memory = source.Memory,
 			IsActive = source.IsActive,
-			EnableTeamSwarm = source.EnableTeamSwarm,
 			BuildVerificationEnabled = source.BuildVerificationEnabled,
 			BuildCommand = source.BuildCommand,
 			TestCommand = source.TestCommand,
@@ -264,24 +258,10 @@ public sealed class ProjectModalFormModel : IValidatableObject
 				CreatedAt = s.CreatedAt,
 				UpdatedAt = s.UpdatedAt
 			}).ToList(),
-			AgentAssignments = AgentAssignments.Select(a => new ProjectAgent
-			{
-				Id = a.Id,
-				ProjectId = a.ProjectId,
-				AgentId = a.AgentId,
-				ProviderId = a.ProviderId,
-				PreferredModelId = a.PreferredModelId,
-				PreferredReasoningEffort = a.PreferredReasoningEffort,
-				ProfileId = a.ProfileId,
-				IsEnabled = a.IsEnabled,
-				CreatedAt = a.CreatedAt,
-				UpdatedAt = a.UpdatedAt
-			}).ToList(),
 			Environments = Environments.ToList(),
 			FolderId = FolderId,
 			PromptContext = string.IsNullOrWhiteSpace(PromptContext) ? null : PromptContext.Trim(),
 			Memory = string.IsNullOrWhiteSpace(Memory) ? null : Memory.Trim(),
-			EnableTeamSwarm = EnableTeamSwarm,
 			BuildVerificationEnabled = BuildVerificationEnabled,
 			BuildCommand = string.IsNullOrWhiteSpace(BuildCommand) ? null : BuildCommand.Trim(),
 			TestCommand = string.IsNullOrWhiteSpace(TestCommand) ? null : TestCommand.Trim(),
@@ -318,25 +298,6 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			yield return new ValidationResult(
 				"The development and release branches must be different.",
 				[nameof(ReleaseBranch)]);
-		}
-
-		var duplicateAgentIds = AgentAssignments
-			.GroupBy(assignment => assignment.AgentId)
-			.Where(group => group.Key != Guid.Empty && group.Count() > 1)
-			.Select(group => group.Key)
-			.ToList();
-		if (duplicateAgentIds.Any())
-		{
-			yield return new ValidationResult(
-				"Each agent can only be assigned once per project.",
-				[nameof(AgentAssignments)]);
-		}
-
-		if (AgentAssignments.Any(assignment => assignment.ProviderId == Guid.Empty))
-		{
-			yield return new ValidationResult(
-				"Each assigned agent needs a profile.",
-				[nameof(AgentAssignments)]);
 		}
 
 		if (CreationMode == ProjectCreationMode.ExistingDirectory)

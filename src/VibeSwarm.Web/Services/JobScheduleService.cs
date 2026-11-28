@@ -109,10 +109,8 @@ public class JobScheduleService : IJobScheduleService
 
 		existing.ProjectId = schedule.ProjectId;
 		existing.ScheduleType = schedule.ScheduleType;
-		existing.ExecutionTarget = schedule.ExecutionTarget;
 		existing.ProviderId = schedule.ProviderId;
 		existing.ProfileId = schedule.ProfileId;
-		existing.AgentId = schedule.AgentId;
 		existing.InferenceProviderId = schedule.InferenceProviderId;
 		existing.Prompt = schedule.Prompt;
 		existing.ModelId = schedule.ModelId;
@@ -181,7 +179,6 @@ public class JobScheduleService : IJobScheduleService
 		return _dbContext.JobSchedules
 			.Include(schedule => schedule.Project)
 			.Include(schedule => schedule.Provider)
-			.Include(schedule => schedule.Agent)
 			.Include(schedule => schedule.InferenceProvider);
 	}
 
@@ -226,43 +223,18 @@ public class JobScheduleService : IJobScheduleService
 			return;
 		}
 
-		if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		// Naming neither a profile nor a provider runs the job on the project's Build profile.
+		if (schedule.ProviderId is Guid scheduledProviderId
+			&& !await _dbContext.Providers.AnyAsync(provider => provider.Id == scheduledProviderId && provider.IsEnabled, cancellationToken))
 		{
-			// Naming neither a profile nor a provider runs the job on the project's Build profile.
-			if (schedule.ProviderId is Guid scheduledProviderId
-				&& !await _dbContext.Providers.AnyAsync(provider => provider.Id == scheduledProviderId && provider.IsEnabled, cancellationToken))
-			{
-				throw new InvalidOperationException(schedule.ProfileId.HasValue
-					? "The selected profile's provider is not enabled."
-					: "The selected provider is not enabled.");
-			}
-
-			if (!schedule.ProviderId.HasValue)
-			{
-				return;
-			}
+			throw new InvalidOperationException(schedule.ProfileId.HasValue
+				? "The selected profile's provider is not enabled."
+				: "The selected provider is not enabled.");
 		}
-		else
+
+		if (!schedule.ProviderId.HasValue)
 		{
-			if (!schedule.AgentId.HasValue || schedule.AgentId == Guid.Empty)
-			{
-				throw new InvalidOperationException("An agent is required.");
-			}
-
-			var agent = await _dbContext.Agents
-				.Include(a => a.DefaultProvider)
-				.FirstOrDefaultAsync(a => a.Id == schedule.AgentId.Value, cancellationToken);
-			if (agent == null || !agent.IsEnabled)
-			{
-				throw new InvalidOperationException("The selected agent does not exist or is disabled.");
-			}
-
-			if (!agent.DefaultProviderId.HasValue || agent.DefaultProvider == null || !agent.DefaultProvider.IsEnabled)
-			{
-				throw new InvalidOperationException("The selected agent does not have an enabled default provider.");
-			}
-
-			schedule.ProviderId = agent.DefaultProviderId.Value;
+			return;
 		}
 
 		if (string.IsNullOrWhiteSpace(schedule.ModelId))
@@ -294,32 +266,20 @@ public class JobScheduleService : IJobScheduleService
 		schedule.ModelId = string.IsNullOrWhiteSpace(schedule.ModelId) ? null : schedule.ModelId.Trim();
 		schedule.LastError = string.IsNullOrWhiteSpace(schedule.LastError) ? null : schedule.LastError.Trim();
 		schedule.ProviderId = schedule.ProviderId == Guid.Empty ? null : schedule.ProviderId;
-		schedule.AgentId = schedule.AgentId == Guid.Empty ? null : schedule.AgentId;
 		schedule.InferenceProviderId = schedule.InferenceProviderId == Guid.Empty ? null : schedule.InferenceProviderId;
 		schedule.IdeaCount = Math.Clamp(schedule.IdeaCount, ValidationLimits.JobScheduleIdeaCountMin, ValidationLimits.JobScheduleIdeaCountMax);
 		if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 		{
 			schedule.ProviderId = null;
-			schedule.AgentId = null;
 			schedule.Prompt = string.Empty;
-			schedule.ExecutionTarget = JobScheduleExecutionTarget.Provider;
 			return;
 		}
 
 		schedule.InferenceProviderId = null;
-		if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		// A model belongs to a provider; with neither a profile nor a provider there is none.
+		if (!schedule.ProfileId.HasValue && !schedule.ProviderId.HasValue)
 		{
-			schedule.AgentId = null;
-			// A model belongs to a provider; with neither a profile nor a provider there is none.
-			if (!schedule.ProfileId.HasValue && !schedule.ProviderId.HasValue)
-			{
-				schedule.ModelId = null;
-			}
-		}
-		else
-		{
-			schedule.ProviderId = null;
-			schedule.ProfileId = null;
+			schedule.ModelId = null;
 		}
 	}
 

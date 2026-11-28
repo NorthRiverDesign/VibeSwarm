@@ -265,94 +265,6 @@ public sealed class JobScheduleServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task CreateAsync_RejectsAgentWithoutEnabledDefaultProvider()
-	{
-		await using var dbContext = CreateDbContext();
-		var project = CreateProject();
-		var provider = CreateProvider();
-		var agent = CreateAgent();
-		dbContext.Projects.Add(project);
-		dbContext.Providers.Add(provider);
-		dbContext.Agents.Add(agent);
-		await dbContext.SaveChangesAsync();
-
-		var service = new JobScheduleService(dbContext);
-
-		var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(new JobSchedule
-		{
-			ProjectId = project.Id,
-			ExecutionTarget = JobScheduleExecutionTarget.Agent,
-			AgentId = agent.Id,
-			Prompt = "review security findings",
-			Frequency = JobScheduleFrequency.Daily,
-			HourUtc = 9,
-			MinuteUtc = 0
-		}));
-
-		Assert.Equal("The selected agent does not have an enabled default provider.", exception.Message);
-	}
-
-	[Fact]
-	public async Task ProcessDueSchedulesAsync_CreatesAgentJobFromGlobalAgentWithoutSwarmFanout()
-	{
-		await using var dbContext = CreateDbContext();
-		var project = CreateProject();
-		project.EnableTeamSwarm = true;
-		var primaryProvider = CreateProvider();
-		var reviewerRole = CreateAgent("Security Reviewer");
-		reviewerRole.DefaultProviderId = primaryProvider.Id;
-		reviewerRole.DefaultModelId = "copilot-reviewer";
-		reviewerRole.DefaultReasoningEffort = "high";
-		dbContext.Projects.Add(project);
-		dbContext.Providers.Add(primaryProvider);
-		dbContext.Agents.Add(reviewerRole);
-
-		dbContext.ProviderModels.Add(
-			new ProviderModel
-			{
-				Id = Guid.NewGuid(),
-				ProviderId = primaryProvider.Id,
-				ModelId = "copilot-reviewer",
-				DisplayName = "Copilot Reviewer",
-				IsAvailable = true,
-				IsDefault = true,
-				UpdatedAt = DateTime.UtcNow
-			});
-
-		var dueTime = DateTime.UtcNow.AddMinutes(-2);
-		dbContext.JobSchedules.Add(new JobSchedule
-		{
-			Id = Guid.NewGuid(),
-			ProjectId = project.Id,
-			ExecutionTarget = JobScheduleExecutionTarget.Agent,
-			AgentId = reviewerRole.Id,
-			Prompt = "review for security issues",
-			Frequency = JobScheduleFrequency.Hourly,
-			MinuteUtc = dueTime.Minute,
-			NextRunAtUtc = dueTime,
-			IsEnabled = true
-		});
-		await dbContext.SaveChangesAsync();
-
-		var serviceProvider = new ServiceCollection().BuildServiceProvider();
-		var jobService = new JobService(dbContext, serviceProvider);
-		var processor = new JobScheduleProcessor(dbContext, jobService, new FakeIdeaService(), NullLogger<JobScheduleProcessor>.Instance);
-
-		var createdCount = await processor.ProcessDueSchedulesAsync();
-
-		Assert.Equal(1, createdCount);
-		var jobs = await dbContext.Jobs.ToListAsync();
-		Assert.Single(jobs);
-		var job = jobs[0];
-		Assert.True(job.IsScheduled);
-		Assert.Equal(reviewerRole.Id, job.AgentId);
-		Assert.Equal(primaryProvider.Id, job.ProviderId);
-		Assert.Equal("copilot-reviewer", job.ModelUsed);
-		Assert.Equal("high", job.ReasoningEffort);
-		Assert.Null(job.SwarmId);
-	}
-
-	[Fact]
 	public async Task ProcessDueSchedulesAsync_GeneratesIdeasWithInferenceProvider()
 	{
 		await using var dbContext = CreateDbContext();
@@ -473,13 +385,6 @@ public sealed class JobScheduleServiceTests : IDisposable
 		Type = ProviderType.Copilot,
 		IsEnabled = true,
 		IsDefault = true
-	};
-
-	private static Agent CreateAgent(string? name = null) => new()
-	{
-		Id = Guid.NewGuid(),
-		Name = name ?? $"Role-{Guid.NewGuid():N}",
-		IsEnabled = true
 	};
 
 	private class FakeIdeaService : FakeIdeaServiceBase

@@ -408,58 +408,6 @@ public sealed class ProfileServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task AgentProfile_FillsItsDefaults_AndItsProjectsFollowAChange()
-	{
-		var (claude, copilot, _) = await SeedProvidersAsync();
-		Guid opusId, gptId, agentId, followingId, customId;
-		await using (var dbContext = CreateDbContext())
-		{
-			var profiles = new ProfileService(dbContext);
-			opusId = (await profiles.CreateAsync(new Profile { Name = "Opus", ProviderId = claude.Id, ModelId = "opus", ReasoningEffort = "high" })).Id;
-			gptId = (await profiles.CreateAsync(new Profile { Name = "GPT", ProviderId = copilot.Id, ModelId = "gpt-5" })).Id;
-
-			var agent = await new AgentService(dbContext).CreateAsync(new Agent { Name = "Lead dev", ProfileId = opusId, DefaultProviderId = copilot.Id, DefaultModelId = "stale" });
-			agentId = agent.Id;
-			Assert.Equal((claude.Id, "opus", "high"), (agent.DefaultProviderId!.Value, agent.DefaultModelId, agent.DefaultReasoningEffort));
-
-			var following = NewProject("Following");
-			following.AgentAssignments.Add(new ProjectAgent { AgentId = agentId, ProviderId = claude.Id, PreferredModelId = "opus", ProfileId = opusId });
-			var custom = NewProject("Custom");
-			custom.AgentAssignments.Add(new ProjectAgent { AgentId = agentId, ProviderId = claude.Id, PreferredModelId = "sonnet" });
-			dbContext.Projects.AddRange(following, custom);
-			await dbContext.SaveChangesAsync();
-			followingId = following.Id;
-			customId = custom.Id;
-		}
-
-		await using (var dbContext = CreateDbContext())
-		{
-			var agent = await dbContext.Agents.AsNoTracking().SingleAsync(candidate => candidate.Id == agentId);
-			agent.ProfileId = gptId;
-			await new AgentService(dbContext).UpdateAsync(agent);
-		}
-
-		await using (var dbContext = CreateDbContext())
-		{
-			var following = await dbContext.ProjectAgents.SingleAsync(assignment => assignment.ProjectId == followingId);
-			Assert.Equal((gptId, copilot.Id, "gpt-5"), (following.ProfileId!.Value, following.ProviderId, following.PreferredModelId));
-			var custom = await dbContext.ProjectAgents.SingleAsync(assignment => assignment.ProjectId == customId);
-			Assert.Equal((null, claude.Id, "sonnet"), (custom.ProfileId, custom.ProviderId, custom.PreferredModelId));
-
-			// Editing the profile reaches the agent and its linked assignment.
-			await new ProfileService(dbContext).UpdateAsync(new Profile { Id = gptId, Name = "GPT", ProviderId = copilot.Id, ModelId = null, ReasoningEffort = "low" });
-		}
-
-		await using (var dbContext = CreateDbContext())
-		{
-			var agent = await dbContext.Agents.SingleAsync(candidate => candidate.Id == agentId);
-			Assert.Equal((copilot.Id, (string?)null, "low"), (agent.DefaultProviderId!.Value, agent.DefaultModelId, agent.DefaultReasoningEffort));
-			var following = await dbContext.ProjectAgents.SingleAsync(assignment => assignment.ProjectId == followingId);
-			Assert.Equal("low", following.PreferredReasoningEffort);
-		}
-	}
-
-	[Fact]
 	public async Task ProjectSave_TakesAnInferenceReviewer_AndRefusesAHelperThatCannotAnswer()
 	{
 		var (claude, _, openCode) = await SeedProvidersAsync();
@@ -511,7 +459,7 @@ public sealed class ProfileServiceTests : IDisposable
 	{
 		var (claude, copilot, _) = await SeedProvidersAsync();
 		var grok = await SeedGrokAsync();
-		Guid projectId, offProjectId, agentId, pinnedTemplateId, openTemplateId;
+		Guid projectId, offProjectId, pinnedTemplateId, openTemplateId;
 		await using (var dbContext = CreateDbContext())
 		{
 			await ProfileService.EnsureProviderDefaultsAsync(dbContext);
@@ -537,13 +485,11 @@ public sealed class ProfileServiceTests : IDisposable
 			off.ReviewEnabled = true;
 			dbContext.Projects.Add(off);
 
-			var agent = new Agent { Id = Guid.NewGuid(), Name = "Tester", DefaultProviderId = claude.Id, DefaultModelId = "opus" };
-			dbContext.Agents.Add(agent);
 			var pinned = new JobTemplate { Id = Guid.NewGuid(), Name = "Pinned", GoalPrompt = "Tidy up", ProviderId = copilot.Id, ModelId = "gpt-5", ReasoningEffort = "high" };
 			var open = new JobTemplate { Id = Guid.NewGuid(), Name = "Open", GoalPrompt = "Tidy up" };
 			dbContext.JobTemplates.AddRange(pinned, open);
 			await dbContext.SaveChangesAsync();
-			(projectId, offProjectId, agentId, pinnedTemplateId, openTemplateId) = (project.Id, off.Id, agent.Id, pinned.Id, open.Id);
+			(projectId, offProjectId, pinnedTemplateId, openTemplateId) = (project.Id, off.Id, pinned.Id, open.Id);
 		}
 
 		await using (var dbContext = CreateDbContext())
@@ -574,7 +520,6 @@ public sealed class ProfileServiceTests : IDisposable
 			// One profile serves every setting holding the same values.
 			Assert.Equal(copilotEntry.ProfileId, project.LeadProfileId);
 			Assert.Equal(copilotEntry.ProfileId, (await dbContext.JobTemplates.SingleAsync(template => template.Id == pinnedTemplateId)).ProfileId);
-			Assert.Equal(project.PlanningProfileId, (await dbContext.Agents.SingleAsync(agent => agent.Id == agentId)).ProfileId);
 
 			// A template that leaves the choice to each project stays that way, and a link to a
 			// profile that is gone is cleared.

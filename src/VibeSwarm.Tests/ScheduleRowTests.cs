@@ -37,21 +37,6 @@ public sealed class ScheduleRowTests
 	}
 
 	[Fact]
-	public void AgentSchedule_NamesTheAgent()
-	{
-		using var context = new BunitContext();
-		var schedule = CreateJobSchedule();
-		schedule.ExecutionTarget = JobScheduleExecutionTarget.Agent;
-		schedule.Agent = new Agent { Id = Guid.NewGuid(), Name = "Security Reviewer" };
-
-		var cut = context.Render<ScheduleRow>(parameters => parameters.Add(component => component.Schedule, schedule));
-		cut.Find("button[aria-expanded]").Click();
-
-		Assert.Contains("Security Reviewer", cut.Markup);
-		Assert.DoesNotContain("Unknown agent", cut.Markup);
-	}
-
-	[Fact]
 	public void IdeaSchedule_NamesTheInferenceProvider()
 	{
 		using var context = new BunitContext();

@@ -62,39 +62,6 @@ public sealed class JobServiceCreateReproTests : IDisposable
 	}
 
 	[Fact]
-	public async Task CreateAsync_WhenAgentPresetSelected_DoesNotCollideWithTrackedAgent()
-	{
-		using var scope = _rootProvider.CreateScope();
-		var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
-
-		var provider = SeedProvider(dbContext);
-		var project = SeedProject(dbContext, provider.Id);
-		var agent = new Agent
-		{
-			Id = Guid.NewGuid(),
-			Name = "Security Reviewer",
-			IsEnabled = true,
-			DefaultProviderId = provider.Id,
-			DefaultModelId = "gpt-5",
-			DefaultReasoningEffort = "high"
-		};
-		dbContext.Agents.Add(agent);
-		await dbContext.SaveChangesAsync();
-
-		var service = new JobService(dbContext, scope.ServiceProvider);
-
-		var incomingJob = new Job
-		{
-			ProjectId = project.Id,
-			AgentId = agent.Id,
-			GoalPrompt = "Review the auth changes."
-		};
-
-		var created = await service.CreateAsync(incomingJob);
-		Assert.NotEqual(Guid.Empty, created.Id);
-	}
-
-	[Fact]
 	public async Task CreateAsync_CalledTwice_InSameScope_DoesNotThrowDuplicateTracking()
 	{
 		using var scope = _rootProvider.CreateScope();

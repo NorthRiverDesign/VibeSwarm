@@ -306,7 +306,6 @@ public sealed class ProjectDetailTabMergeTests
 		context.Services.AddSingleton<IJobService>(jobService ?? new FakeJobService(jobs));
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService());
 		context.Services.AddSingleton<IVersionControlService>(versionControlService ?? new FakeVersionControlService());
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService(ideas));
 		context.Services.AddSingleton<IInferenceService>(new FakeInferenceService());
@@ -416,14 +415,6 @@ public sealed class ProjectDetailTabMergeTests
 			=> Task.FromResult<IReadOnlyList<VibeSwarm.Shared.Models.JobTemplateProjectRun>>([]);
 		public Task<VibeSwarm.Shared.Models.JobTemplateRunResult> RunAsync(Guid templateId, IReadOnlyCollection<Guid> projectIds, CancellationToken cancellationToken = default)
 			=> Task.FromResult(new VibeSwarm.Shared.Models.JobTemplateRunResult());
-	}
-
-	private sealed class FakeAgentService : FakeAgentServiceBase
-	{
-		public override Task<IEnumerable<Agent>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>([]);
-		public override Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>([]);
-		public override Task<Agent?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<Agent?>(null);
-		public override Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken ct = default) => Task.FromResult(false);
 	}
 
 	private sealed class FakeAutoPilotService : IAutoPilotService

@@ -87,17 +87,6 @@ internal abstract class FakeInferenceProviderServiceBase : IInferenceProviderSer
 	public virtual Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => throw new NotSupportedException();
 }
 
-internal abstract class FakeAgentServiceBase : IAgentService
-{
-	public virtual Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Agent> CreateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Agent> UpdateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-}
-
 internal abstract class FakeVersionControlServiceBase : IVersionControlService
 {
 	public virtual Task<bool> IsGitAvailableAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();

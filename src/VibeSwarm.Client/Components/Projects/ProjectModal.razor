@@ -3,7 +3,6 @@
 @using VibeSwarm.Shared.Validation
 @inject IProjectService ProjectService
 @inject IProviderService ProviderService
-@inject IAgentService AgentService
 @inject ISettingsService SettingsService
 @inject NotificationService NotificationService
 @inject IServiceProvider Services
@@ -53,15 +52,6 @@ Badge="@(FormModel.NewGitHubRepositoryPrivate ? "Private" : "Public")"
 Summary="Commit, push and pull request behavior"
 Badge="@AutoCommitSummary" @bind-IsOpen="_openAutomation">
 <ProjectAutomationSection Project="@FormModel" IsEdit="@IsEdit" Profiles="@_profiles" />
-</AccordionSection>
-
-<AccordionSection Title="Agents" Icon="people"
-Summary="Reusable specialists a job on this project can run as"
-Badge="@AgentsSummary" @bind-IsOpen="_openAgents">
-<ProjectAgentsSection Project="@FormModel" AvailableAgents="@_availableAgents"
-ResolveAgent="ResolveAgent" IsAgentAssigned="IsAgentAssigned"
-OnRemove="RemoveTeamAssignment" OnAdd="AddTeamAssignment"
-Profiles="@_profiles" OnProfileChanged="HandleTeamAssignmentProfileChanged" />
 </AccordionSection>
 
 <AccordionSection Title="Ideas" Icon="lightbulb"
@@ -187,14 +177,12 @@ private bool _gitHubAccountsRequested;
 private DirectoryBrowser? _directoryBrowser;
 private string? _defaultProjectsDirectory;
 private List<Provider> _availableProviders = [];
-private List<Agent> _availableAgents = [];
 private readonly ProjectModalState _formState = new();
 private Dictionary<string, string> _existingProjectPaths = new(StringComparer.OrdinalIgnoreCase);
 private Dictionary<string, string> _existingGitHubRepositories = new(StringComparer.OrdinalIgnoreCase);
 private string? _detectedStack;
 private bool _openRepositoryOptions;
 private bool _openAutomation;
-private bool _openAgents;
 private bool _openIdeas;
 private bool _openInstructions;
 private bool _openBuildVerification;
@@ -210,7 +198,6 @@ protected override async Task OnInitializedAsync()
 {
 await LoadDefaultProjectsDirectory();
 await LoadProvidersAsync();
-await LoadAgentsAsync();
 }
 
 protected override async Task OnParametersSetAsync()
@@ -218,7 +205,6 @@ protected override async Task OnParametersSetAsync()
 if (IsVisible && !_previousIsVisible)
 {
 await LoadProvidersAsync();
-await LoadAgentsAsync();
 await LoadProfilesAsync();
 ResetState();
 await LoadExistingProjectPathsAsync();
@@ -388,7 +374,6 @@ ResetState();
 		_detectedStack = null;
 		_openRepositoryOptions = false;
 		_openAutomation = false;
-		_openAgents = false;
 		_openIdeas = false;
 		_openInstructions = false;
 		_openBuildVerification = false;
@@ -454,29 +439,10 @@ _availableProviders = (await ProviderService.GetAllAsync())
 .ToList();
 	}
 
-	private async Task LoadAgentsAsync()
-	{
-		_availableAgents = (await AgentService.GetAllAsync())
-			.OrderByDescending(agent => agent.IsEnabled)
-			.ThenBy(agent => agent.Name)
-			.ToList();
-	}
-
 private Provider? ResolveProvider(Guid providerId)
 {
 return _availableProviders.FirstOrDefault(provider => provider.Id == providerId)
 ?? EditProject?.ProviderSelections.FirstOrDefault(selection => selection.ProviderId == providerId)?.Provider;
-}
-
-private Agent? ResolveAgent(Guid agentId)
-{
-return _availableAgents.FirstOrDefault(agent => agent.Id == agentId)
-?? EditProject?.AgentAssignments.FirstOrDefault(assignment => assignment.AgentId == agentId)?.Agent;
-}
-
-private bool IsAgentAssigned(Guid agentId)
-{
-return FormModel.AgentAssignments.Any(assignment => assignment.AgentId == agentId);
 }
 
 // Resolved lazily so components and tests that never show profiles need no registration.
@@ -520,69 +486,6 @@ FormModel.ProviderSelections.Add(new ProjectProvider
 	CreatedAt = DateTime.UtcNow,
 	UpdatedAt = DateTime.UtcNow
 });
-}
-
-/// <summary>
-/// Assigns the agent on its own profile, or on the profile the project builds with when the
-/// agent has none that can run.
-/// </summary>
-private void AddTeamAssignment(Agent agent)
-{
-if (IsAgentAssigned(agent.Id))
-{
-	return;
-}
-
-var runnable = ProjectExecutionDefaults.OrderJobProfiles(FormModel.ToProject(), _profiles);
-var profile = runnable.FirstOrDefault(candidate => candidate.Id == agent.ProfileId) ?? runnable.FirstOrDefault();
-if (profile?.ProviderId is not Guid providerId)
-{
-	return;
-}
-
-var assignment = new ProjectAgent
-{
-	AgentId = agent.Id,
-	Agent = agent,
-	IsEnabled = true,
-	CreatedAt = DateTime.UtcNow
-};
-ApplyProfile(assignment, profile, providerId);
-FormModel.AgentAssignments.Add(assignment);
-}
-
-private void HandleTeamAssignmentProfileChanged((Guid AgentId, Profile? Profile) change)
-{
-var assignment = FormModel.AgentAssignments.FirstOrDefault(projectAgent => projectAgent.AgentId == change.AgentId);
-if (assignment == null || change.Profile?.ProviderId is not Guid providerId)
-{
-	return;
-}
-
-ApplyProfile(assignment, change.Profile, providerId);
-}
-
-// The provider, model and reasoning sit beside the profile's id, as the server stores them; the
-// server fills them again from the profile when the project is saved.
-private static void ApplyProfile(ProjectAgent assignment, Profile profile, Guid providerId)
-{
-assignment.ProfileId = profile.Id;
-assignment.ProviderId = providerId;
-assignment.Provider = profile.Provider;
-assignment.PreferredModelId = profile.ModelId;
-assignment.PreferredReasoningEffort = profile.ReasoningEffort;
-assignment.UpdatedAt = DateTime.UtcNow;
-}
-
-private void RemoveTeamAssignment(Guid agentId)
-{
-var assignment = FormModel.AgentAssignments.FirstOrDefault(projectAgent => projectAgent.AgentId == agentId);
-if (assignment == null)
-{
-	return;
-}
-
-FormModel.AgentAssignments.Remove(assignment);
 }
 
 private Project CloneProjectForEditing(Project source)
@@ -657,23 +560,6 @@ UpdatedAt = projectProvider.UpdatedAt,
 Provider = ResolveProvider(projectProvider.ProviderId)
 	})
 	.ToList(),
-	AgentAssignments = source.AgentAssignments
-	.Select(projectAgent => new ProjectAgent
-	{
-		Id = projectAgent.Id,
-		ProjectId = projectAgent.ProjectId,
-		AgentId = projectAgent.AgentId,
-		ProviderId = projectAgent.ProviderId,
-		PreferredModelId = projectAgent.PreferredModelId,
-		PreferredReasoningEffort = projectAgent.PreferredReasoningEffort,
-		ProfileId = projectAgent.ProfileId,
-		IsEnabled = projectAgent.IsEnabled,
-		CreatedAt = projectAgent.CreatedAt,
-		UpdatedAt = projectAgent.UpdatedAt,
-		Agent = ResolveAgent(projectAgent.AgentId),
-		Provider = ResolveProvider(projectAgent.ProviderId)
-	})
-	.ToList(),
 	Environments = (source.Environments ?? [])
 .OrderBy(environment => environment.SortOrder)
 .Select(environment => new ProjectEnvironment
@@ -705,13 +591,6 @@ UpdatedAt = environment.UpdatedAt
 		AutoCommitMode.CommitAndPush => "Commit & push",
 		AutoCommitMode.CommitOnly => "Commit",
 		_ => "Manual"
-	};
-
-	private string? AgentsSummary => FormModel.AgentAssignments.Count switch
-	{
-		0 => null,
-		1 => "1 agent",
-		var count => $"{count} agents"
 	};
 
 	private bool HasInstructions =>
@@ -822,12 +701,6 @@ UpdatedAt = environment.UpdatedAt
 		if (FormModel.BuildVerificationEnabled && string.IsNullOrWhiteSpace(FormModel.BuildCommand))
 		{
 			_openBuildVerification = true;
-		}
-
-		if (FormModel.AgentAssignments.Any(assignment => assignment.ProviderId == Guid.Empty) ||
-			FormModel.AgentAssignments.GroupBy(assignment => assignment.AgentId).Any(group => group.Count() > 1))
-		{
-			_openAgents = true;
 		}
 	}
 

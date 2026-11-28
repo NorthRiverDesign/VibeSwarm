@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 using System.ComponentModel.DataAnnotations;
 using VibeSwarm.Shared.Validation;
 
@@ -202,8 +204,14 @@ public class Project
     public ICollection<Job> Jobs { get; set; } = new List<Job>();
     public ICollection<Idea> Ideas { get; set; } = new List<Idea>();
     public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
-    public ICollection<ProjectAgent> AgentAssignments { get; set; } = new List<ProjectAgent>();
     public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
+
+	/// <summary>
+	/// The skills a job on this project can load: every skill that is switched on. Filled in when
+	/// a job starts; not stored.
+	/// </summary>
+	[NotMapped, JsonIgnore]
+	public IReadOnlyList<Skill> AvailableSkills { get; set; } = [];
 
     /// <summary>
     /// Other projects linked to this one. Jobs are told about them for context.
@@ -265,15 +273,6 @@ public class Project
 	/// </summary>
 	[StringLength(ValidationLimits.JobScheduleModelIdMaxLength)]
 	public string? IdeasProcessingModelId { get; set; }
-
-	/// <summary>
-	/// When enabled and at least two team roles are configured, creating a job automatically
-	/// fans out into role-based jobs — one per enabled team role assignment.
-	/// Each role job runs its assigned provider with a role-specific system prompt in a git
-	/// worktree of its own, so they run at the same time (one job per provider); each one's
-	/// commits are replayed onto the project's branch as it finishes.
-	/// </summary>
-	public bool EnableTeamSwarm { get; set; }
 
 	/// <summary>
 	/// Whether to verify the build succeeds before auto-committing or pushing job results.

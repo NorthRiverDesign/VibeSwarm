@@ -10,14 +10,10 @@ public sealed class CreateJobFormModel : IValidatableObject
 	public string GoalPrompt { get; set; } = string.Empty;
 
 	/// <summary>
-	/// The profile the job runs on. Left empty, the job runs on the project's Build profile; an
-	/// agent's job runs on the agent's own.
+	/// The profile the job runs on. Left empty, the job runs on the project's Build profile.
 	/// </summary>
 	public Guid? ProfileId { get; set; }
 
-	public Guid? AgentId { get; set; }
-
-	public bool AllowBlankGoalPrompt { get; set; }
 
 	[StringLength(250)]
 	public string? Branch { get; set; }
@@ -47,7 +43,6 @@ public sealed class CreateJobFormModel : IValidatableObject
 		{
 			GoalPrompt = job.GoalPrompt ?? string.Empty,
 			ProfileId = job.ProfileId,
-			AgentId = job.AgentId,
 			Branch = job.Branch,
 			GitChangeDeliveryMode = job.GitChangeDeliveryMode,
 			TargetBranch = job.TargetBranch,
@@ -62,10 +57,8 @@ public sealed class CreateJobFormModel : IValidatableObject
 	public void ApplyTo(Job job)
 	{
 		job.GoalPrompt = GoalPrompt.Trim();
-		job.AgentId = AgentId == Guid.Empty ? null : AgentId;
-		// The server works out the provider, model and reasoning: from the profile, or from the
-		// agent when the job runs as one.
-		job.ProfileId = job.AgentId.HasValue ? null : ProfileId;
+		// The server works out the provider, model and reasoning from the profile.
+		job.ProfileId = ProfileId;
 		job.ProviderId = Guid.Empty;
 		job.ModelUsed = null;
 		job.ReasoningEffort = null;
@@ -76,19 +69,14 @@ public sealed class CreateJobFormModel : IValidatableObject
 		job.CycleSessionMode = CycleSessionMode;
 		job.MaxCycles = MaxCycles;
 		job.CycleReviewPrompt = string.IsNullOrWhiteSpace(CycleReviewPrompt) ? null : CycleReviewPrompt.Trim();
-		// An agent's job runs as that agent alone.
-		job.RequestedInstances = job.AgentId.HasValue ? 1 : Math.Clamp(Instances, 1, ValidationLimits.JobInstancesMax);
+		job.RequestedInstances = Math.Clamp(Instances, 1, ValidationLimits.JobInstancesMax);
 	}
 
 	public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
 	{
-		if (string.IsNullOrWhiteSpace(GoalPrompt) && !AllowBlankGoalPrompt)
+		if (string.IsNullOrWhiteSpace(GoalPrompt))
 		{
-			yield return new ValidationResult(
-				AgentId.HasValue && AgentId != Guid.Empty
-					? "Goal prompt is required because the selected agent does not have reusable instructions."
-					: "Goal prompt is required.",
-				[nameof(GoalPrompt)]);
+			yield return new ValidationResult("Goal prompt is required.", [nameof(GoalPrompt)]);
 		}
 
 		if (GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest &&

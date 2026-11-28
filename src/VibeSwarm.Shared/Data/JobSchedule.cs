@@ -13,12 +13,6 @@ public enum JobScheduleFrequency
 	Minutes = 4
 }
 
-public enum JobScheduleExecutionTarget
-{
-	Provider = 0,
-	Agent = 1
-}
-
 public enum JobScheduleType
 {
 	RunJob = 0,
@@ -34,8 +28,6 @@ public class JobSchedule : IValidatableObject
 
 	public JobScheduleType ScheduleType { get; set; } = JobScheduleType.RunJob;
 
-	public JobScheduleExecutionTarget ExecutionTarget { get; set; } = JobScheduleExecutionTarget.Provider;
-
 	public Guid? ProviderId { get; set; }
 	public Provider? Provider { get; set; }
 
@@ -48,9 +40,6 @@ public class JobSchedule : IValidatableObject
 	/// <summary>The name of <see cref="ProfileId"/>. Filled in when a schedule is read; not stored.</summary>
 	[System.ComponentModel.DataAnnotations.Schema.NotMapped]
 	public string? ProfileName { get; set; }
-
-	public Guid? AgentId { get; set; }
-	public Agent? Agent { get; set; }
 
 	public Guid? InferenceProviderId { get; set; }
 	public InferenceProvider? InferenceProvider { get; set; }
@@ -97,11 +86,6 @@ public class JobSchedule : IValidatableObject
 		if (ProjectId == Guid.Empty)
 		{
 			yield return new ValidationResult("A project is required.", [nameof(ProjectId)]);
-		}
-
-		if (ScheduleType == JobScheduleType.RunJob && ExecutionTarget == JobScheduleExecutionTarget.Agent && (!AgentId.HasValue || AgentId == Guid.Empty))
-		{
-			yield return new ValidationResult("An agent is required.", [nameof(AgentId)]);
 		}
 
 		// An idea schedule names an inference profile; the server fills in the provider it runs on.

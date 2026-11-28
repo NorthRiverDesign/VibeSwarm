@@ -115,7 +115,6 @@ public static class PromptBuilder
 
 		var linkedProjectsSection = BuildLinkedProjectsSection(job.Project);
 		var environmentSection = BuildEnvironmentSection(job.Project);
-		var teamSection = BuildTeamSection(job.Project);
 		var skillSection = BuildSkillSection(job.Project);
 		var sb = new StringBuilder();
 
@@ -139,11 +138,6 @@ public static class PromptBuilder
 		if (!string.IsNullOrWhiteSpace(environmentSection))
 		{
 			sb.Append(environmentSection);
-		}
-
-		if (!string.IsNullOrWhiteSpace(teamSection))
-		{
-			sb.Append(teamSection);
 		}
 
 		if (!string.IsNullOrWhiteSpace(skillSection))
@@ -840,82 +834,12 @@ public static class PromptBuilder
 		return null;
 	}
 
-	private static string BuildTeamSection(Project project)
-	{
-		if (project.AgentAssignments == null || project.AgentAssignments.Count == 0)
-		{
-			return string.Empty;
-		}
-
-		var assignments = project.AgentAssignments
-			.Where(assignment => assignment.IsEnabled && assignment.Agent != null)
-			.OrderBy(assignment => assignment.Agent!.Name, StringComparer.OrdinalIgnoreCase)
-			.ToList();
-		if (assignments.Count == 0)
-		{
-			return string.Empty;
-		}
-
-		var sb = new StringBuilder();
-		sb.AppendLine("<agents>");
-		sb.AppendLine("  Configured agent presets available for this repository:");
-		foreach (var assignment in assignments)
-		{
-			var lineBuilder = new StringBuilder();
-			lineBuilder.Append("  - ");
-			lineBuilder.Append(assignment.Agent!.Name);
-
-			if (!string.IsNullOrWhiteSpace(assignment.Agent.Description))
-			{
-				lineBuilder.Append(" | Purpose: ");
-				lineBuilder.Append(assignment.Agent.Description);
-			}
-
-			if (!string.IsNullOrWhiteSpace(assignment.Agent.Responsibilities))
-			{
-				lineBuilder.Append(" | Instructions: ");
-				lineBuilder.Append(assignment.Agent.Responsibilities);
-			}
-
-			if (assignment.Provider != null)
-			{
-				lineBuilder.Append(" | Provider: ");
-				lineBuilder.Append(assignment.Provider.Name);
-			}
-
-			if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId))
-			{
-				lineBuilder.Append(" | Model: ");
-				lineBuilder.Append(assignment.PreferredModelId);
-			}
-
-			var skills = assignment.Agent.SkillLinks
-				.Where(link => link.Skill != null)
-				.Select(link => link.Skill!.Name)
-				.ToList();
-			if (skills.Count > 0)
-			{
-				lineBuilder.Append(" | Skills: ");
-				lineBuilder.Append(string.Join(", ", skills));
-			}
-
-			var cycleDefaults = DescribeAgentCycleDefaults(assignment.Agent);
-			if (!string.IsNullOrWhiteSpace(cycleDefaults))
-			{
-				lineBuilder.Append(" | Execution: ");
-				lineBuilder.Append(cycleDefaults);
-			}
-
-			sb.AppendLine(EscapeXml(lineBuilder.ToString()));
-		}
-
-		sb.AppendLine("</agents>");
-		return sb.ToString();
-	}
-
 	private static string BuildSkillSection(Project project)
 	{
-		var skills = ProjectSkillHelper.GetConfiguredSkills(project);
+		var skills = project.AvailableSkills
+			.Where(skill => skill.IsEnabled)
+			.OrderBy(skill => skill.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
 		if (skills.Count == 0)
 		{
 			return string.Empty;
@@ -977,67 +901,6 @@ public static class PromptBuilder
 		}
 
 		return rules;
-	}
-
-	/// <summary>
-	/// Builds a role-specific system prompt context block that is prepended to the agent's
-	/// append-system-prompt when the job is part of a team swarm. This establishes the agent's
-	/// persona, responsibilities, and how to work beside teammates running at the same time,
-	/// each in its own worktree, so their work merges cleanly.
-	/// </summary>
-	/// <param name="teammates">The swarm's other agents, so this one knows what they own.</param>
-	public static string BuildRoleSystemPromptContext(Agent role, int totalSwarmSize, IReadOnlyList<Agent>? teammates = null)
-	{
-		var sb = new StringBuilder();
-
-		sb.AppendLine($"You are acting as the {role.Name} agent for this project.");
-
-		if (!string.IsNullOrWhiteSpace(role.Description))
-		{
-			sb.AppendLine($"Agent purpose: {role.Description.Trim()}");
-		}
-
-		if (!string.IsNullOrWhiteSpace(role.Responsibilities))
-		{
-			sb.AppendLine($"Your instructions: {role.Responsibilities.Trim()}");
-		}
-
-		var skills = role.SkillLinks
-			.Where(link => link.Skill != null && link.Skill.IsEnabled)
-			.Select(link => link.Skill!)
-			.GroupBy(skill => skill.Id)
-			.Select(group => group.First())
-			.OrderBy(skill => skill.Name, StringComparer.OrdinalIgnoreCase)
-			.ToList();
-		if (skills.Count > 0)
-		{
-			sb.AppendLine($"Skills installed for this agent: {string.Join("; ", skills.Select(FormatSkillReference))}");
-			sb.AppendLine("Read each skill's SKILL.md from the path shown before acting on it, and honor any allowed-tools restrictions declared there.");
-		}
-
-		if (totalSwarmSize > 1)
-		{
-			sb.AppendLine();
-			sb.AppendLine($"You are one of {totalSwarmSize} specialized agents working on this goal at the same time, each in its own copy of the repository, so you won't see the others' changes while you work.");
-			var others = (teammates ?? [])
-				.Where(teammate => !string.IsNullOrWhiteSpace(teammate.Name))
-				.Select(teammate => string.IsNullOrWhiteSpace(teammate.Description)
-					? teammate.Name.Trim()
-					: $"{teammate.Name.Trim()} ({Truncate(teammate.Description.Trim(), 120)})")
-				.Distinct(StringComparer.OrdinalIgnoreCase)
-				.ToList();
-			if (others.Count > 0)
-			{
-				sb.AppendLine($"Your teammates: {string.Join("; ", others)}.");
-			}
-
-			sb.AppendLine("When you finish, VibeSwarm commits your work and replays it onto the branch with theirs. To keep that merge clean:");
-			sb.AppendLine("- Do only your part of the goal, and leave files and areas a teammate owns to them.");
-			sb.AppendLine("- Don't reformat, rename or move code your change doesn't need.");
-			sb.AppendLine("- Work in this directory on its current branch; don't switch branches or rewrite history.");
-		}
-
-		return sb.ToString().TrimEnd();
 	}
 
 	/// <summary>
@@ -1105,53 +968,6 @@ public static class PromptBuilder
 
 	private static string Truncate(string text, int maxLength) =>
 		text.Length <= maxLength ? text : text[..(maxLength - 1)].TrimEnd() + "…";
-
-	private static string FormatSkillReference(Skill skill)
-	{
-		var parts = new List<string> { skill.Name };
-
-		var summary = BuildSkillSummary(skill);
-		if (!string.IsNullOrWhiteSpace(summary))
-		{
-			parts.Add(summary);
-		}
-
-		if (!string.IsNullOrWhiteSpace(skill.StoragePath))
-		{
-			parts.Add($"SKILL.md: {Path.Combine(skill.StoragePath, "SKILL.md")}");
-		}
-
-		if (!string.IsNullOrWhiteSpace(skill.AllowedTools))
-		{
-			parts.Add($"allowed-tools: {skill.AllowedTools.Trim()}");
-		}
-
-		return string.Join(" - ", parts);
-	}
-
-	private static string? DescribeAgentCycleDefaults(Agent role)
-	{
-		if (role.DefaultCycleMode == CycleMode.SingleCycle)
-		{
-			return null;
-		}
-
-		var cycleMode = role.DefaultCycleMode switch
-		{
-			CycleMode.FixedCount => $"fixed-count ({role.DefaultMaxCycles} cycles)",
-			CycleMode.Autonomous => $"autonomous (max {role.DefaultMaxCycles} cycles)",
-			_ => null
-		};
-		if (string.IsNullOrWhiteSpace(cycleMode))
-		{
-			return null;
-		}
-
-		var sessionMode = role.DefaultCycleSessionMode == CycleSessionMode.ContinueSession
-			? "resume session"
-			: "fresh session";
-		return $"{cycleMode}, {sessionMode}";
-	}
 
 	private static string? BuildSkillSummary(Skill skill)
 	{

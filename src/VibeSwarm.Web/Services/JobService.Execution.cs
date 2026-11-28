@@ -32,7 +32,6 @@ public partial class JobService
             return;
         }
 
-        await ApplySelectedAgentDefaultsAsync(job, cancellationToken);
         NormalizeJobForPersistence(job);
         job.ExecutionPlan = null;
         await InitializeExecutionPlanAsync(job, cancellationToken);
@@ -327,11 +326,9 @@ public partial class JobService
             .ToListAsync(cancellationToken);
 
         // A job run on a profile was given its model by that profile, so nothing the project
-        // prefers for the same provider may replace it. An agent's job keeps the older rule.
-        var runsOnProfile = job.ProfileId.HasValue && !job.AgentId.HasValue;
-        var providerOrder = job.AgentId.HasValue && job.ProviderId != Guid.Empty
-            ? enabledProviders.Where(provider => provider.Id == job.ProviderId).ToList()
-            : BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections, runsOnProfile);
+        // prefers for the same provider may replace it.
+        var runsOnProfile = job.ProfileId.HasValue;
+        var providerOrder = BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections, runsOnProfile);
 
         var modelLookup = await _dbContext.ProviderModels
             .Where(m => providerIds.Contains(m.ProviderId) && m.IsAvailable)
@@ -477,16 +474,9 @@ public partial class JobService
 	/// default provider's own when it lists none); a job that names only a
 	/// provider (an older client) is left as sent. A profile that is gone, or whose provider is
 	/// off, counts as not named, so a schedule or auto-pilot run falls through instead of failing.
-	/// An agent's job keeps the agent's own settings and only records which profile they are.
 	/// </summary>
 	private async Task ApplyJobProfileAsync(Job job, CancellationToken cancellationToken)
 	{
-		if (job.AgentId.HasValue)
-		{
-			await RecordAgentProfileAsync(job, cancellationToken);
-			return;
-		}
-
 		var resolved = await ResolveJobProfileAsync(job.ProfileId, cancellationToken);
 		if (resolved == null && job.ProviderId == Guid.Empty)
 		{
@@ -567,97 +557,6 @@ public partial class JobService
 	}
 
 	private readonly record struct ResolvedJobProfile(Guid Id, string Name, Guid ProviderId, string? ModelId, string? ReasoningEffort);
-
-	/// <summary>
-	/// Names the profile an agent's job runs on. The job takes the agent's own defaults, so that
-	/// is the agent's own profile, and only while it sits on the provider the job ended up with.
-	/// (A team swarm hands each role its project assignment's profile instead, and records that.)
-	/// </summary>
-	private async Task RecordAgentProfileAsync(Job job, CancellationToken cancellationToken)
-	{
-		job.ProfileId = null;
-		job.ProfileName = null;
-		var agentProfileId = await _dbContext.Agents
-			.Where(agent => agent.Id == job.AgentId)
-			.Select(agent => agent.ProfileId)
-			.FirstOrDefaultAsync(cancellationToken);
-		if (agentProfileId is not Guid id)
-		{
-			return;
-		}
-
-		var profile = await _dbContext.Profiles.AsNoTracking().FirstOrDefaultAsync(candidate => candidate.Id == id, cancellationToken);
-		if (profile != null && profile.ProviderId == job.ProviderId)
-		{
-			job.ProfileId = profile.Id;
-			job.ProfileName = profile.Name;
-		}
-	}
-
-	private async Task ApplySelectedAgentDefaultsAsync(Job job, CancellationToken cancellationToken)
-	{
-		if (!job.AgentId.HasValue || job.AgentId == Guid.Empty)
-		{
-            return;
-        }
-
-        var agent = await _dbContext.Agents
-            .Include(a => a.DefaultProvider)
-            .FirstOrDefaultAsync(a => a.Id == job.AgentId.Value, cancellationToken);
-        if (agent == null || !agent.IsEnabled)
-        {
-            throw new InvalidOperationException("The selected agent does not exist or is disabled.");
-        }
-
-		if (!agent.DefaultProviderId.HasValue || agent.DefaultProvider == null || !agent.DefaultProvider.IsEnabled)
-		{
-			throw new InvalidOperationException("The selected agent does not have an enabled default provider.");
-		}
-
-		var agentInstructions = string.IsNullOrWhiteSpace(agent.Responsibilities)
-			? null
-			: agent.Responsibilities.Trim();
-		if (string.IsNullOrWhiteSpace(job.GoalPrompt))
-		{
-			if (string.IsNullOrWhiteSpace(agentInstructions))
-			{
-				throw new InvalidOperationException("Goal prompt is required when the selected agent does not have saved instructions.");
-			}
-
-			if (agentInstructions.Length > ValidationLimits.JobGoalPromptMaxLength)
-			{
-				throw new InvalidOperationException($"Goal prompt is required when the selected agent instructions exceed {ValidationLimits.JobGoalPromptMaxLength} characters.");
-			}
-
-			job.GoalPrompt = agentInstructions;
-		}
-
-		if (job.ProviderId == Guid.Empty)
-		{
-			job.ProviderId = agent.DefaultProviderId.Value;
-        }
-
-        if (string.IsNullOrWhiteSpace(job.ModelUsed))
-        {
-            job.ModelUsed = agent.DefaultModelId;
-        }
-        if (string.IsNullOrWhiteSpace(job.ReasoningEffort))
-        {
-            job.ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(agent.DefaultReasoningEffort);
-        }
-
-        if (AgentPresetHelper.HasCustomCycleSettings(job))
-        {
-            return;
-        }
-
-        job.CycleMode = agent.DefaultCycleMode;
-        job.CycleSessionMode = agent.DefaultCycleSessionMode;
-        job.MaxCycles = Math.Clamp(agent.DefaultMaxCycles, 1, 100);
-        job.CycleReviewPrompt = string.IsNullOrWhiteSpace(agent.DefaultCycleReviewPrompt)
-            ? null
-            : agent.DefaultCycleReviewPrompt.Trim();
-    }
 
     private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections, bool runsOnProfile)
     {

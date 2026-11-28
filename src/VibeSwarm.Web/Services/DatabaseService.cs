@@ -48,12 +48,6 @@ public class DatabaseService : IDatabaseService
 			.OrderBy(s => s.Name)
 			.ToListAsync(ct);
 
-		var agents = await _db.Agents
-			.Include(r => r.SkillLinks)
-				.ThenInclude(sl => sl.Skill)
-			.OrderBy(r => r.Name)
-			.ToListAsync(ct);
-
 		var profiles = await _db.Profiles
 			.Include(profile => profile.Provider)
 			.Include(profile => profile.InferenceProvider)
@@ -100,7 +94,6 @@ public class DatabaseService : IDatabaseService
 				IdeasAutoCommit = p.IdeasAutoCommit,
 				IdeasProcessingProviderId = p.IdeasProcessingProviderId,
 				IdeasProcessingModelId = p.IdeasProcessingModelId,
-				EnableTeamSwarm = p.EnableTeamSwarm,
 				BuildVerificationEnabled = p.BuildVerificationEnabled,
 				BuildCommand = p.BuildCommand,
 				TestCommand = p.TestCommand,
@@ -134,19 +127,6 @@ public class DatabaseService : IDatabaseService
 				Description = s.Description,
 				Content = s.Content,
 				IsEnabled = s.IsEnabled,
-			}).ToList(),
-			Agents = agents.Select(r => new AgentExportDto
-			{
-				Name = r.Name,
-				Description = r.Description,
-				Responsibilities = r.Responsibilities,
-				DefaultModelId = r.DefaultModelId,
-				IsEnabled = r.IsEnabled,
-				SkillNames = r.SkillLinks
-					.Where(sl => sl.Skill != null)
-					.Select(sl => sl.Skill!.Name)
-					.OrderBy(n => n)
-					.ToList(),
 			}).ToList(),
 			Profiles = profiles
 				.Where(profile => profile.Provider != null || profile.InferenceProvider != null)
@@ -182,9 +162,8 @@ public class DatabaseService : IDatabaseService
 	{
 		var result = new DatabaseImportResult();
 
-		// Import skills first (referenced by team roles)
+		// Import skills
 		var existingSkillNames = await _db.Skills.Select(s => s.Name).ToHashSetAsync(ct);
-		var importedSkillsByName = new Dictionary<string, Skill>(StringComparer.OrdinalIgnoreCase);
 
 		foreach (var skillDto in export.Skills)
 		{
@@ -194,8 +173,6 @@ public class DatabaseService : IDatabaseService
 			if (existingSkillNames.Contains(skillDto.Name))
 			{
 				result.Skipped.Add($"Skill '{skillDto.Name}' already exists");
-				var existing = await _db.Skills.FirstAsync(s => s.Name == skillDto.Name, ct);
-				importedSkillsByName[skillDto.Name] = existing;
 			}
 			else
 			{
@@ -209,54 +186,8 @@ public class DatabaseService : IDatabaseService
 					CreatedAt = DateTime.UtcNow,
 				};
 				_db.Skills.Add(skill);
-				importedSkillsByName[skillDto.Name] = skill;
 				result.Imported.Add($"Skill '{skillDto.Name}'");
 			}
-		}
-
-		await _db.SaveChangesAsync(ct);
-
-		// Import team roles
-		var existingRoleNames = await _db.Agents.Select(r => r.Name).ToHashSetAsync(ct);
-
-		foreach (var roleDto in export.Agents)
-		{
-			if (string.IsNullOrWhiteSpace(roleDto.Name))
-				continue;
-
-			if (existingRoleNames.Contains(roleDto.Name))
-			{
-				result.Skipped.Add($"Team role '{roleDto.Name}' already exists");
-				continue;
-			}
-
-			var role = new Agent
-			{
-				Id = Guid.NewGuid(),
-				Name = roleDto.Name,
-				Description = roleDto.Description,
-				Responsibilities = roleDto.Responsibilities,
-				DefaultModelId = roleDto.DefaultModelId,
-				IsEnabled = roleDto.IsEnabled,
-				CreatedAt = DateTime.UtcNow,
-			};
-
-			foreach (var skillName in roleDto.SkillNames)
-			{
-				if (importedSkillsByName.TryGetValue(skillName, out var skill))
-				{
-					role.SkillLinks.Add(new AgentSkill { AgentId = role.Id, SkillId = skill.Id });
-				}
-				else
-				{
-					var existingSkill = await _db.Skills.FirstOrDefaultAsync(s => s.Name == skillName, ct);
-					if (existingSkill != null)
-						role.SkillLinks.Add(new AgentSkill { AgentId = role.Id, SkillId = existingSkill.Id });
-				}
-			}
-
-			_db.Agents.Add(role);
-			result.Imported.Add($"Team role '{roleDto.Name}'");
 		}
 
 		await _db.SaveChangesAsync(ct);
@@ -321,7 +252,6 @@ public class DatabaseService : IDatabaseService
 				IdeasAutoCommit = projectDto.IdeasAutoCommit,
 				IdeasProcessingProviderId = projectDto.IdeasProcessingProviderId,
 				IdeasProcessingModelId = projectDto.IdeasProcessingModelId,
-				EnableTeamSwarm = projectDto.EnableTeamSwarm,
 				BuildVerificationEnabled = projectDto.BuildVerificationEnabled,
 				BuildCommand = projectDto.BuildCommand,
 				TestCommand = projectDto.TestCommand,

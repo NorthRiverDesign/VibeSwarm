@@ -203,18 +203,6 @@ public class ProfileService : IProfileService
 			ProfileLinks.ApplyEntryLink(entry, lookup);
 		}
 
-		foreach (var agent in await _dbContext.Agents.Where(agent => agent.ProfileId == id).ToListAsync(cancellationToken))
-		{
-			agent.ProfileId = fallbackId;
-			ProfileLinks.ApplyAgentLink(agent, lookup);
-		}
-
-		foreach (var assignment in await _dbContext.ProjectAgents.Where(assignment => assignment.ProfileId == id).ToListAsync(cancellationToken))
-		{
-			assignment.ProfileId = fallbackId;
-			ProfileLinks.ApplyAssignmentLink(assignment, lookup);
-		}
-
 		foreach (var template in await _dbContext.JobTemplates.Where(template => template.ProfileId == id).ToListAsync(cancellationToken))
 		{
 			template.ProfileId = fallbackId;
@@ -344,18 +332,6 @@ public class ProfileService : IProfileService
 			entry.UpdatedAt = DateTime.UtcNow;
 		}
 
-		foreach (var agent in await _dbContext.Agents.Where(agent => agent.ProfileId == id).ToListAsync(cancellationToken))
-		{
-			ProfileLinks.ApplyAgentLink(agent, lookup);
-			agent.UpdatedAt = DateTime.UtcNow;
-		}
-
-		foreach (var assignment in await _dbContext.ProjectAgents.Where(assignment => assignment.ProfileId == id).ToListAsync(cancellationToken))
-		{
-			ProfileLinks.ApplyAssignmentLink(assignment, lookup);
-			assignment.UpdatedAt = DateTime.UtcNow;
-		}
-
 		foreach (var template in await _dbContext.JobTemplates.Where(template => template.ProfileId == id).ToListAsync(cancellationToken))
 		{
 			ProfileLinks.ApplyTemplateLink(template, lookup);
@@ -475,7 +451,6 @@ public class ProfileService : IProfileService
 			var catalog = await ProfileCatalog.LoadAsync(dbContext, cancellationToken);
 			var projects = await dbContext.Projects
 				.Include(project => project.ProviderSelections)
-				.Include(project => project.AgentAssignments)
 				.ToListAsync(cancellationToken);
 			foreach (var project in projects)
 			{
@@ -492,11 +467,6 @@ public class ProfileService : IProfileService
 			foreach (var loop in await dbContext.IterationLoops.ToListAsync(cancellationToken))
 			{
 				catalog.LinkLoop(loop, buildOrders.GetValueOrDefault(loop.ProjectId) ?? []);
-			}
-
-			foreach (var agent in await dbContext.Agents.ToListAsync(cancellationToken))
-			{
-				catalog.LinkAgent(agent);
 			}
 
 			foreach (var template in await dbContext.JobTemplates.ToListAsync(cancellationToken))
@@ -518,10 +488,6 @@ public class ProfileService : IProfileService
 	/// </summary>
 	public static async Task LinkProjectAsync(VibeSwarmDbContext dbContext, Project project, CancellationToken cancellationToken = default)
 		=> (await ProfileCatalog.LoadAsync(dbContext, cancellationToken)).LinkProject(project, switchOffRolesWithNothingToRunOn: false);
-
-	/// <summary>As <see cref="LinkProjectAsync"/>, for an agent's defaults.</summary>
-	public static async Task LinkAgentAsync(VibeSwarmDbContext dbContext, Agent agent, CancellationToken cancellationToken = default)
-		=> (await ProfileCatalog.LoadAsync(dbContext, cancellationToken)).LinkAgent(agent);
 
 	/// <summary>As <see cref="LinkProjectAsync"/>, for a schedule saved with a provider and no profile.</summary>
 	public static async Task LinkScheduleAsync(VibeSwarmDbContext dbContext, JobSchedule schedule, CancellationToken cancellationToken = default)
@@ -610,17 +576,7 @@ public class ProfileService : IProfileService
 				entry.ProfileId = Existing(entry.ProfileId)
 					?? FindOrAdd(entry.ProviderId, null, entry.PreferredModelId, entry.PreferredReasoningEffort);
 			}
-
-			foreach (var assignment in project.AgentAssignments ?? [])
-			{
-				assignment.ProfileId = Existing(assignment.ProfileId)
-					?? FindOrAdd(assignment.ProviderId, null, assignment.PreferredModelId, assignment.PreferredReasoningEffort);
-			}
 		}
-
-		public void LinkAgent(Agent agent)
-			=> agent.ProfileId = Existing(agent.ProfileId)
-				?? FindOrAdd(agent.DefaultProviderId, null, agent.DefaultModelId, agent.DefaultReasoningEffort);
 
 		public void LinkTemplate(JobTemplate template)
 			=> template.ProfileId = Existing(template.ProfileId)
@@ -639,7 +595,7 @@ public class ProfileService : IProfileService
 				return;
 			}
 
-			if (schedule.ScheduleType != JobScheduleType.RunJob || schedule.ExecutionTarget != JobScheduleExecutionTarget.Provider
+			if (schedule.ScheduleType != JobScheduleType.RunJob
 				|| schedule.ProfileId.HasValue || schedule.ProviderId is not Guid providerId)
 			{
 				return;

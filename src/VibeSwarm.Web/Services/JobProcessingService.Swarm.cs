@@ -322,10 +322,7 @@ public partial class JobProcessingService
 	{
 		try
 		{
-			var agentName = job.AgentId.HasValue
-				? await dbContext.Agents.AsNoTracking().Where(agent => agent.Id == job.AgentId).Select(agent => agent.Name).FirstOrDefaultAsync()
-				: null;
-			agentName ??= job.InstanceNumber is int instanceNumber ? $"instance {instanceNumber}" : null;
+			var agentName = job.InstanceNumber is int instanceNumber ? $"instance {instanceNumber}" : null;
 
 			// The merge names the member's profile only while the member still runs where that
 			// profile says; after a switch to another provider it follows the provider instead.

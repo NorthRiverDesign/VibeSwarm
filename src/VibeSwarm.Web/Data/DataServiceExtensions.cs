@@ -55,7 +55,6 @@ public static class DataServiceExtensions
 			client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
 			client.Timeout = TimeSpan.FromSeconds(30);
 		});
-		services.AddScoped<IAgentService, AgentService>();
 		services.AddScoped<IProfileService, ProfileService>();
 		services.AddScoped<IMcpConfigService, McpConfigService>();
 		services.AddScoped<IProjectMemoryService, ProjectMemoryService>();

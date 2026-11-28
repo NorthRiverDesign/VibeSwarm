@@ -4572,7 +4572,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			Name = "Swarm Project",
 			WorkingPath = "/tmp/swarm-project",
-			EnableTeamSwarm = true
 		};
 		var firstProvider = new Provider
 		{

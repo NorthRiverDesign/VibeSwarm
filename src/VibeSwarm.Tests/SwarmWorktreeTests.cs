@@ -238,20 +238,6 @@ public sealed class SwarmWorktreeTests : IDisposable
 		Assert.Contains("- src/Ui.razor", prompt);
 	}
 
-	[Fact]
-	public void RolePrompt_TellsEachAgentItWorksBesideItsTeammates()
-	{
-		var context = PromptBuilder.BuildRoleSystemPromptContext(
-			new Agent { Name = "Backend", Responsibilities = "APIs and data." },
-			totalSwarmSize: 3,
-			teammates: [new Agent { Name = "Frontend", Description = "Pages and styles." }, new Agent { Name = "Tester" }]);
-
-		Assert.Contains("one of 3 specialized agents working on this goal at the same time", context);
-		Assert.Contains("Your teammates: Frontend (Pages and styles.); Tester.", context);
-		Assert.Contains("leave files and areas a teammate owns to them", context);
-		Assert.DoesNotContain("taking turns", context);
-	}
-
 	private JobProcessingService CreateProcessor() => new(
 		new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
 		NullLogger<JobProcessingService>.Instance,
@@ -279,7 +265,7 @@ public sealed class SwarmWorktreeTests : IDisposable
 	{
 		if (projectId == null)
 		{
-			var project = new Project { Id = _projectId, Name = "Swarm Project", WorkingPath = _repo, EnableTeamSwarm = true };
+			var project = new Project { Id = _projectId, Name = "Swarm Project", WorkingPath = _repo };
 			dbContext.Add(project);
 		}
 

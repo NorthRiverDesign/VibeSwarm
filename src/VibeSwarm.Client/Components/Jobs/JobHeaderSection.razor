@@ -167,13 +167,6 @@
 					<dd class="mb-0 text-end text-break font-monospace">@BranchName</dd>
 				</div>
 			}
-			@if (!string.IsNullOrEmpty(AgentName))
-			{
-				<div class="d-flex justify-content-between gap-5">
-					<dt class="fw-normal fg-1 flex-shrink-0">Team role</dt>
-					<dd class="mb-0 text-end text-break">@AgentName</dd>
-				</div>
-			}
 			@if (RetryCount > 0)
 			{
 				<div class="d-flex justify-content-between gap-5">
@@ -458,9 +451,6 @@
 
 	[Parameter]
 	public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
-
-	[Parameter]
-	public string? AgentName { get; set; }
 
 	[Parameter]
 	public bool PlaywrightEnabled { get; set; }

@@ -98,10 +98,8 @@ public class ProjectService : IProjectService
 		project.CommitSummaryInferenceModelId = string.IsNullOrWhiteSpace(project.CommitSummaryInferenceModelId) ? null : project.CommitSummaryInferenceModelId.Trim();
 		project.Memory = NormalizeProjectMemory(project.Memory);
 		NormalizeProviderSelections(project);
-		NormalizeAgentAssignments(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
-		await ValidateAgentAssignmentsAsync(project.AgentAssignments, cancellationToken);
 		await ValidatePlanningAsync(project, cancellationToken);
 		await ValidateReviewAsync(project, cancellationToken);
 		await ValidateLeadAsync(project, cancellationToken);
@@ -203,17 +201,12 @@ public class ProjectService : IProjectService
 			.Collection(p => p.ProviderSelections)
 			.LoadAsync(cancellationToken);
 		await _dbContext.Entry(existing)
-			.Collection(p => p.AgentAssignments)
-			.LoadAsync(cancellationToken);
-		await _dbContext.Entry(existing)
 			.Collection(p => p.Environments)
 			.LoadAsync(cancellationToken);
 
 		NormalizeProviderSelections(project);
-		NormalizeAgentAssignments(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
-		await ValidateAgentAssignmentsAsync(project.AgentAssignments, cancellationToken);
 		await ValidatePlanningAsync(project, cancellationToken);
 		await ValidateReviewAsync(project, cancellationToken);
 		await ValidateLeadAsync(project, cancellationToken);
@@ -221,7 +214,6 @@ public class ProjectService : IProjectService
 		_credentialService.PrepareForStorage(project, existing.Environments.ToList());
 
 		SynchronizeProviderSelections(existing, project.ProviderSelections);
-		SynchronizeAgentAssignments(existing, project.AgentAssignments);
 		SynchronizeEnvironments(existing, project.Environments);
 
 		await _dbContext.SaveChangesAsync(cancellationToken);
@@ -669,13 +661,7 @@ public class ProjectService : IProjectService
 			.Include(p => p.Links)
 			.Include(p => p.Environments.OrderBy(environment => environment.SortOrder))
 			.Include(p => p.ProviderSelections.OrderBy(pp => pp.Priority))
-				.ThenInclude(pp => pp.Provider)
-			.Include(p => p.AgentAssignments)
-				.ThenInclude(assignment => assignment.Provider)
-			.Include(p => p.AgentAssignments)
-				.ThenInclude(assignment => assignment.Agent)
-					.ThenInclude(agent => agent!.SkillLinks)
-						.ThenInclude(link => link.Skill);
+				.ThenInclude(pp => pp.Provider);
 	}
 
 	private static void ValidateProject(Project project)
@@ -863,39 +849,6 @@ public class ProjectService : IProjectService
 		project.ProviderSelections = orderedSelections;
 	}
 
-	private static void NormalizeAgentAssignments(Project project)
-	{
-		if (project.AgentAssignments == null || project.AgentAssignments.Count == 0)
-		{
-			project.AgentAssignments = [];
-			return;
-		}
-
-		var normalizedAssignments = project.AgentAssignments
-			.GroupBy(assignment => assignment.AgentId)
-			.Select(group => group.First())
-			.ToList();
-
-		foreach (var assignment in normalizedAssignments)
-		{
-			assignment.Id = assignment.Id == Guid.Empty ? Guid.NewGuid() : assignment.Id;
-			assignment.ProjectId = project.Id;
-			assignment.Agent = null;
-			assignment.Provider = null;
-			assignment.PreferredModelId = string.IsNullOrWhiteSpace(assignment.PreferredModelId)
-				? null
-				: assignment.PreferredModelId.Trim();
-			assignment.PreferredReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(assignment.PreferredReasoningEffort);
-			assignment.UpdatedAt = DateTime.UtcNow;
-			if (assignment.CreatedAt == default)
-			{
-				assignment.CreatedAt = DateTime.UtcNow;
-			}
-		}
-
-		project.AgentAssignments = normalizedAssignments;
-	}
-
 	private static void NormalizePlanningSettings(Project project)
 	{
 		project.PlanningModelId = string.IsNullOrWhiteSpace(project.PlanningModelId)
@@ -1077,8 +1030,7 @@ public class ProjectService : IProjectService
 			}
 		}
 
-		var runners = (project.ProviderSelections ?? []).Select(entry => entry.ProfileId)
-			.Concat((project.AgentAssignments ?? []).Select(assignment => assignment.ProfileId));
+		var runners = (project.ProviderSelections ?? []).Select(entry => entry.ProfileId);
 		foreach (var profileId in runners)
 		{
 			if (Linked(profileId) is { ProviderId: null } profile)
@@ -1096,60 +1048,6 @@ public class ProjectService : IProjectService
 		foreach (var entry in project.ProviderSelections ?? [])
 		{
 			ProfileLinks.ApplyEntryLink(entry, profiles);
-		}
-
-		foreach (var assignment in project.AgentAssignments ?? [])
-		{
-			ProfileLinks.ApplyAssignmentLink(assignment, profiles);
-		}
-	}
-
-	private void SynchronizeAgentAssignments(Project existing, ICollection<ProjectAgent> requestedAssignments)
-	{
-		var requestedProject = new Project
-		{
-			Id = existing.Id,
-			AgentAssignments = requestedAssignments ?? []
-		};
-
-		NormalizeAgentAssignments(requestedProject);
-		var requestedByAgent = requestedProject.AgentAssignments.ToDictionary(assignment => assignment.AgentId);
-
-		var assignmentsToRemove = existing.AgentAssignments
-			.Where(current => !requestedByAgent.ContainsKey(current.AgentId))
-			.ToList();
-		foreach (var assignment in assignmentsToRemove)
-		{
-			_dbContext.ProjectAgents.Remove(assignment);
-		}
-
-		foreach (var requested in requestedProject.AgentAssignments)
-		{
-			var current = existing.AgentAssignments.FirstOrDefault(assignment => assignment.AgentId == requested.AgentId);
-			if (current == null)
-			{
-				_dbContext.ProjectAgents.Add(new ProjectAgent
-				{
-					Id = requested.Id,
-					ProjectId = existing.Id,
-					AgentId = requested.AgentId,
-					ProviderId = requested.ProviderId,
-					PreferredModelId = requested.PreferredModelId,
-					PreferredReasoningEffort = requested.PreferredReasoningEffort,
-					ProfileId = requested.ProfileId,
-					IsEnabled = requested.IsEnabled,
-					CreatedAt = requested.CreatedAt,
-					UpdatedAt = requested.UpdatedAt
-				});
-				continue;
-			}
-
-			current.ProviderId = requested.ProviderId;
-			current.PreferredModelId = requested.PreferredModelId;
-			current.PreferredReasoningEffort = requested.PreferredReasoningEffort;
-			current.ProfileId = requested.ProfileId;
-			current.IsEnabled = requested.IsEnabled;
-			current.UpdatedAt = DateTime.UtcNow;
 		}
 	}
 
@@ -1287,95 +1185,6 @@ public class ProjectService : IProjectService
 		if (invalidReasoningSelections.Any())
 		{
 			throw new InvalidOperationException($"One or more preferred project reasoning levels are not supported by their provider: {string.Join(", ", invalidReasoningSelections)}");
-		}
-	}
-
-	private async Task ValidateAgentAssignmentsAsync(ICollection<ProjectAgent> assignments, CancellationToken cancellationToken)
-	{
-		if (assignments == null || !assignments.Any())
-		{
-			return;
-		}
-
-		var agentIds = assignments.Select(assignment => assignment.AgentId).ToList();
-		var duplicates = agentIds.GroupBy(id => id).Where(group => group.Count() > 1).Select(group => group.Key).ToList();
-		if (duplicates.Any())
-		{
-			throw new InvalidOperationException("Duplicate agent assignment detected. Agents cannot be repeated.");
-		}
-
-		if (assignments.Any(assignment => assignment.ProviderId == Guid.Empty))
-		{
-			throw new InvalidOperationException("Each agent assignment must select a provider.");
-		}
-
-		var existingAgentIds = await _dbContext.Agents
-			.Where(agent => agentIds.Contains(agent.Id))
-			.Select(agent => agent.Id)
-			.ToListAsync(cancellationToken);
-		var invalidAgentIds = agentIds.Except(existingAgentIds).ToList();
-		if (invalidAgentIds.Any())
-		{
-			throw new InvalidOperationException($"One or more agent IDs do not exist: {string.Join(", ", invalidAgentIds)}");
-		}
-
-		var providerIds = assignments.Select(assignment => assignment.ProviderId).Distinct().ToList();
-		var existingProviders = await _dbContext.Providers
-			.Where(provider => providerIds.Contains(provider.Id))
-			.Select(provider => new { provider.Id, provider.Type, provider.ConnectionMode })
-			.ToListAsync(cancellationToken);
-		var existingProviderIds = existingProviders.Select(provider => provider.Id).ToList();
-		var invalidProviderIds = providerIds.Except(existingProviderIds).ToList();
-		if (invalidProviderIds.Any())
-		{
-			throw new InvalidOperationException($"One or more provider IDs do not exist for team assignments: {string.Join(", ", invalidProviderIds)}");
-		}
-
-		var preferredModels = assignments
-			.Where(assignment => !string.IsNullOrWhiteSpace(assignment.PreferredModelId))
-			.Select(assignment => new
-			{
-				assignment.ProviderId,
-				ModelId = assignment.PreferredModelId!.Trim()
-			})
-			.ToList();
-		if (!preferredModels.Any())
-		{
-			return;
-		}
-
-		var providerModels = await _dbContext.ProviderModels
-			.AsNoTracking()
-			.Where(model => model.IsAvailable && providerIds.Contains(model.ProviderId))
-			.Select(model => new { model.ProviderId, model.ModelId })
-			.ToListAsync(cancellationToken);
-		var availableModels = providerModels.ToHashSet();
-		var invalidPreferredModels = preferredModels
-			.Where(selection => !availableModels.Contains(new { selection.ProviderId, selection.ModelId }))
-			.Select(selection => $"{selection.ProviderId}:{selection.ModelId}")
-			.ToList();
-		if (invalidPreferredModels.Any())
-		{
-			throw new InvalidOperationException($"One or more agent models are not available for their provider: {string.Join(", ", invalidPreferredModels)}");
-		}
-
-		var providerLookup = existingProviders.ToDictionary(
-			provider => provider.Id,
-			provider => new Provider
-			{
-				Id = provider.Id,
-				Type = provider.Type,
-				ConnectionMode = provider.ConnectionMode
-			});
-		var invalidReasoningSelections = assignments
-			.Where(assignment => !ProviderCapabilities.SupportsReasoningEffort(
-				providerLookup[assignment.ProviderId],
-				assignment.PreferredReasoningEffort))
-			.Select(assignment => assignment.AgentId)
-			.ToList();
-		if (invalidReasoningSelections.Any())
-		{
-			throw new InvalidOperationException($"One or more agent reasoning levels are not supported by their provider: {string.Join(", ", invalidReasoningSelections)}");
 		}
 	}
 

@@ -1,7 +1,6 @@
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Components;
-using VibeSwarm.Client.Components.Agents;
 using VibeSwarm.Client.Components.Common;
 using VibeSwarm.Client.Components.Profiles;
 using VibeSwarm.Client.Components.Projects;
@@ -200,55 +199,6 @@ public sealed class ProfilesUiTests
 		Assert.Equal((null, grok.Id, "grok-4"), (profiles.Created!.ProviderId, profiles.Created.InferenceProviderId!.Value, profiles.Created.ModelId));
 	}
 
-	[Fact]
-	public void AgentModal_RunsOnAProfile_OrLeavesTheChoiceToEachProject()
-	{
-		using var context = new BunitContext();
-		context.JSInterop.SetupModule(ModalDialog.InteropModulePath).Mode = JSRuntimeMode.Loose;
-		var opus = new Profile { Id = Guid.NewGuid(), Name = "Opus", ProviderId = Claude.Id, Provider = Claude, ModelId = null, ReasoningEffort = "high" };
-		context.Services.AddSingleton<IProfileService>(new FakeProfileService([opus]));
-		context.Services.AddSingleton<IAgentService>(new NoAgentService());
-		context.Services.AddSingleton<ISkillService>(new NoSkillService());
-		context.Services.AddSingleton<NotificationService>();
-
-		var cut = context.Render<AgentModal>(parameters => parameters.Add(modal => modal.IsVisible, true));
-		cut.WaitForAssertion(() => Assert.Equal(["Choose in each project", "Opus"], Options(cut, "#team-role-profile")));
-		Assert.Empty(cut.FindAll("#team-role-provider, #team-role-model, #team-role-reasoning"));
-
-		cut.Find("#team-role-profile").Change(opus.Id.ToString());
-
-		Assert.Contains("Claude · high", cut.Markup);
-		Assert.Empty(cut.FindAll("#team-role-provider, #team-role-model, #team-role-reasoning"));
-	}
-
-	[Fact]
-	public void AgentAssignment_RunsOnAProfile_WithNoProviderOrModelToSet()
-	{
-		using var context = new BunitContext();
-		var agent = new Agent { Id = Guid.NewGuid(), Name = "Reviewer", IsEnabled = true };
-		var opus = new Profile { Id = Guid.NewGuid(), Name = "Opus", ProviderId = Claude.Id, Provider = Claude };
-		var fast = new Profile { Id = Guid.NewGuid(), Name = "Fast", ProviderId = Claude.Id, Provider = Claude, ModelId = "haiku" };
-		var project = new ProjectModalFormModel();
-		project.AgentAssignments.Add(new ProjectAgent { AgentId = agent.Id, ProviderId = Claude.Id, ProfileId = opus.Id });
-		(Guid AgentId, Profile? Profile)? picked = null;
-
-		var cut = context.Render<ProjectAgentsSection>(parameters => parameters
-			.Add(section => section.Project, project)
-			.Add(section => section.AvailableAgents, [agent])
-			.Add(section => section.ResolveAgent, id => id == agent.Id ? agent : null)
-			.Add(section => section.IsAgentAssigned, id => id == agent.Id)
-			.Add(section => section.Profiles, [opus, fast])
-			.Add(section => section.OnProfileChanged, EventCallback.Factory.Create<(Guid, Profile?)>(this, change => picked = change)));
-
-		Assert.Equal(opus.Id.ToString(), cut.Find($"#team-profile-{agent.Id}").GetAttribute("value"));
-		Assert.Empty(cut.FindAll($"#team-provider-{agent.Id}, #team-model-{agent.Id}, #team-reasoning-{agent.Id}"));
-
-		cut.Find($"#team-profile-{agent.Id}").Change(fast.Id.ToString());
-
-		Assert.Equal(agent.Id, picked!.Value.AgentId);
-		Assert.Equal(fast.Id, picked.Value.Profile!.Id);
-	}
-
 	private sealed class FakeProfileService(IReadOnlyList<Profile> profiles) : IProfileService
 	{
 		public Profile? Created { get; private set; }
@@ -270,10 +220,6 @@ public sealed class ProfilesUiTests
 		public override Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>([grok]);
 		public override Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
 			=> Task.FromResult<IEnumerable<InferenceModel>>([new InferenceModel { InferenceProviderId = grok.Id, ModelId = "grok-4", IsAvailable = true }]);
-	}
-
-	private sealed class NoAgentService : FakeAgentServiceBase
-	{
 	}
 
 	private sealed class NoSkillService : ISkillService

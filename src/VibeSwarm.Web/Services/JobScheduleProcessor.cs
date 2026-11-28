@@ -89,20 +89,18 @@ public class JobScheduleProcessor
 			}
 			else
 			{
-				var resolvedExecution = await ResolveScheduledExecutionAsync(schedule, cancellationToken);
+				var resolvedExecution = ResolveScheduledExecution(schedule);
 				await _jobService.CreateAsync(new Job
 				{
 					ProjectId = schedule.ProjectId,
 					// A profile decides the provider, model and reasoning when the job is created.
-					ProfileId = schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider ? schedule.ProfileId : null,
+					ProfileId = schedule.ProfileId,
 					ProviderId = resolvedExecution.ProviderId,
 					GoalPrompt = schedule.Prompt,
 					ModelUsed = resolvedExecution.ModelId,
-					ReasoningEffort = resolvedExecution.ReasoningEffort,
 					IsScheduled = true,
 					JobScheduleId = schedule.Id,
-					ScheduledForUtc = scheduledForUtc,
-					AgentId = resolvedExecution.AgentId
+					ScheduledForUtc = scheduledForUtc
 				}, cancellationToken);
 			}
 
@@ -132,59 +130,16 @@ public class JobScheduleProcessor
 		}
 	}
 
-	private async Task<ScheduledExecutionSelection> ResolveScheduledExecutionAsync(JobSchedule schedule, CancellationToken cancellationToken)
+	private static ScheduledExecutionSelection ResolveScheduledExecution(JobSchedule schedule)
 	{
-		if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
-		{
-			// A profile is all the job names: the provider and model kept beside it are for
-			// display, and sending them too would hold the job to a provider that has since been
-			// turned off instead of letting it fall back to the project's Build profile. With
-			// neither a profile nor a provider the job runs on that Build profile as well.
-			var namesProvider = !schedule.ProfileId.HasValue && schedule.ProviderId.HasValue;
-			return new ScheduledExecutionSelection(
-				namesProvider ? schedule.ProviderId!.Value : Guid.Empty,
-				namesProvider ? schedule.ModelId : null,
-				null,
-				null);
-		}
-
-		if (!schedule.AgentId.HasValue || schedule.AgentId == Guid.Empty)
-		{
-			throw new InvalidOperationException("An agent is required.");
-		}
-
-		var agent = await _dbContext.Agents
-			.Include(a => a.DefaultProvider)
-			.FirstOrDefaultAsync(a => a.Id == schedule.AgentId.Value, cancellationToken);
-		if (agent == null || !agent.IsEnabled)
-		{
-			throw new InvalidOperationException("The selected agent does not exist or is disabled.");
-		}
-
-		if (!agent.DefaultProviderId.HasValue || agent.DefaultProvider == null || !agent.DefaultProvider.IsEnabled)
-		{
-			throw new InvalidOperationException("The selected agent does not have an enabled default provider.");
-		}
-
-		if (!string.IsNullOrWhiteSpace(schedule.ModelId))
-		{
-			var modelExists = await _dbContext.ProviderModels
-				.AnyAsync(model =>
-					model.ProviderId == agent.DefaultProviderId.Value &&
-					model.IsAvailable &&
-					model.ModelId == schedule.ModelId,
-					cancellationToken);
-			if (!modelExists)
-			{
-				throw new InvalidOperationException("The selected model is not available for the chosen provider.");
-			}
-		}
-
+		// A profile is all the job names: the provider and model kept beside it are for
+		// display, and sending them too would hold the job to a provider that has since been
+		// turned off instead of letting it fall back to the project's Build profile. With
+		// neither a profile nor a provider the job runs on that Build profile as well.
+		var namesProvider = !schedule.ProfileId.HasValue && schedule.ProviderId.HasValue;
 		return new ScheduledExecutionSelection(
-			agent.DefaultProviderId.Value,
-			string.IsNullOrWhiteSpace(schedule.ModelId) ? agent.DefaultModelId : schedule.ModelId,
-			agent.DefaultReasoningEffort,
-			agent.Id);
+			namesProvider ? schedule.ProviderId!.Value : Guid.Empty,
+			namesProvider ? schedule.ModelId : null);
 	}
 
 	private static string BuildScheduledIdeaContext(JobSchedule schedule, DateTime scheduledForUtc)
@@ -218,5 +173,5 @@ public class JobScheduleProcessor
 		return DateTimeHelper.ResolveTimeZone(timeZoneId);
 	}
 
-	private sealed record ScheduledExecutionSelection(Guid ProviderId, string? ModelId, string? ReasoningEffort, Guid? AgentId);
+	private sealed record ScheduledExecutionSelection(Guid ProviderId, string? ModelId);
 }

@@ -9,7 +9,6 @@ public class DatabaseExportDto
 	public AppSettingsExportDto? Settings { get; set; }
 	public List<ProjectExportDto> Projects { get; set; } = [];
 	public List<SkillExportDto> Skills { get; set; } = [];
-	public List<AgentExportDto> Agents { get; set; } = [];
 	public List<ProfileExportDto> Profiles { get; set; } = [];
 	public List<ScheduleExportDto> Schedules { get; set; } = [];
 }
@@ -46,7 +45,6 @@ public class ProjectExportDto
 	public bool IdeasAutoCommit { get; set; }
 	public Guid? IdeasProcessingProviderId { get; set; }
 	public string? IdeasProcessingModelId { get; set; }
-	public bool EnableTeamSwarm { get; set; }
 	public bool BuildVerificationEnabled { get; set; }
 	public string? BuildCommand { get; set; }
 	public string? TestCommand { get; set; }
@@ -81,16 +79,6 @@ public class SkillExportDto
 	public string? Description { get; set; }
 	public string Content { get; set; } = string.Empty;
 	public bool IsEnabled { get; set; } = true;
-}
-
-public class AgentExportDto
-{
-	public string Name { get; set; } = string.Empty;
-	public string? Description { get; set; }
-	public string? Responsibilities { get; set; }
-	public string? DefaultModelId { get; set; }
-	public bool IsEnabled { get; set; } = true;
-	public List<string> SkillNames { get; set; } = [];
 }
 
 public class ProfileExportDto

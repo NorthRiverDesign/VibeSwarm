@@ -411,7 +411,7 @@ public partial class JobService
         if (profile == null && !spellsOutExecution)
         {
             profile = await ResolveJobProfileAsync(job.ProfileId, cancellationToken);
-            if (profile == null && !job.AgentId.HasValue)
+            if (profile == null)
             {
                 profile = await ResolveBuildProfileAsync(job.ProjectId, cancellationToken);
             }

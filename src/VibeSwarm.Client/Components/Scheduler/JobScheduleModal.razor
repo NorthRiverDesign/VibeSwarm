@@ -1,7 +1,6 @@
 @using VibeSwarm.Shared.Validation
 @inject IJobScheduleService JobScheduleService
 @inject IProjectService ProjectService
-@inject IAgentService AgentService
 @inject IServiceProvider Services
 @inject AppTimeZoneService AppTimeZoneService
 @inject NotificationService NotificationService
@@ -62,38 +61,9 @@
 			<div class="row g-5">
 				@if (Schedule.ScheduleType == JobScheduleType.RunJob)
 				{
-					<div class="col-12 lg:col-4">
-						<label for="schedule-target" class="form-label">Run as</label>
-						<InputSelect id="schedule-target" @bind-Value="Schedule.ExecutionTarget" @bind-Value:after="OnExecutionTargetChanged" class="form-control">
-							<option value="@JobScheduleExecutionTarget.Provider">A job on a profile</option>
-							<option value="@JobScheduleExecutionTarget.Agent">One of your agents</option>
-						</InputSelect>
-					</div>
-
-					@if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
-					{
-						<ProfilePicker Id="schedule-profile" Class="col-12 lg:col-4" Label="Run with" Profiles="_profiles" Allowed="ProfileRoles.CanBuild"
-									   SelectedProfileId="Schedule.ProfileId" EmptyLabel="Project's Build profile"
-									   OnSelected="profile => Schedule.ProfileId = profile?.Id" />
-					}
-					else
-					{
-						<div class="col-12 lg:col-4">
-							<label for="schedule-team-role" class="form-label">Agent</label>
-							<select id="schedule-team-role" class="form-control" value="@GetAgentValue()" @onchange="OnAgentChanged"
-									disabled="@(!_agents.Any())">
-								<option value="">@(_agents.Any() ? "Select agent..." : "No enabled agents")</option>
-								@foreach (var agent in _agents)
-								{
-									<option value="@agent.Id">@GetAgentDisplayText(agent)</option>
-								}
-							</select>
-							@if (!_agents.Any())
-							{
-								<div class="form-text fg-warning">Create an enabled agent from the Agents page first.</div>
-							}
-						</div>
-					}
+					<ProfilePicker Id="schedule-profile" Class="col-12 lg:col-4" Label="Run with" Profiles="_profiles" Allowed="ProfileRoles.CanBuild"
+								   SelectedProfileId="Schedule.ProfileId" EmptyLabel="Project's Build profile"
+								   OnSelected="profile => Schedule.ProfileId = profile?.Id" />
 				}
 				else
 				{
@@ -102,17 +72,6 @@
 								   OnSelected="profile => Schedule.ProfileId = profile?.Id" />
 				}
 			</div>
-
-			@if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent)
-			{
-				var selectedAgent = GetSelectedAgent();
-				@if (selectedAgent != null)
-				{
-					<div class="small fg-1 mt-3">
-						<i class="bi bi-person-badge opacity-75 me-1"></i>@GetAgentRunsOn(selectedAgent)
-					</div>
-				}
-			}
 
 			<div class="row g-5 mt-1">
 				<div class="col-12 lg:col-4">
@@ -223,7 +182,6 @@
 	private string? ErrorMessage { get; set; }
 	private bool _previousIsVisible;
 	private List<Project> _projects = [];
-	private List<Agent> _agents = [];
 	private List<Profile> _profiles = [];
 	private string _timeValue = "09:00";
 
@@ -240,10 +198,10 @@
 			await LoadLookupDataAsync();
 			ResetState();
 		}
-		else if (!_projects.Any() || !_agents.Any())
+		else if (!_projects.Any())
 		{
 			await LoadLookupDataAsync();
-			SyncExecutionTargets(preserveCurrentSelection: true);
+			SyncExecutionTargets();
 		}
 
 		_previousIsVisible = IsVisible;
@@ -251,16 +209,8 @@
 
 	private async Task LoadLookupDataAsync()
 	{
-		var projectsTask = ProjectService.GetAllAsync();
-		var agentsTask = AgentService.GetAllAsync();
-		await Task.WhenAll(projectsTask, agentsTask);
-
-		_projects = projectsTask.Result
+		_projects = (await ProjectService.GetAllAsync())
 			.OrderBy(project => project.Name)
-			.ToList();
-		_agents = agentsTask.Result
-			.Where(agent => agent.IsEnabled)
-			.OrderBy(agent => agent.Name)
 			.ToList();
 
 		// Resolved lazily so pages and tests that never open the editor need no registration.
@@ -288,10 +238,8 @@
 				Id = EditSchedule.Id,
 				ProjectId = EditSchedule.ProjectId,
 				ScheduleType = EditSchedule.ScheduleType,
-				ExecutionTarget = EditSchedule.ExecutionTarget,
 				// The server keeps the provider and model beside the profile; only the profile is sent.
 				ProfileId = EditSchedule.ProfileId,
-				AgentId = EditSchedule.AgentId,
 				Prompt = EditSchedule.Prompt,
 				IdeaCount = EditSchedule.IdeaCount,
 				Frequency = EditSchedule.Frequency,
@@ -315,7 +263,6 @@
 			{
 				ProjectId = project?.Id ?? Guid.Empty,
 				ScheduleType = JobScheduleType.RunJob,
-				ExecutionTarget = JobScheduleExecutionTarget.Provider,
 				IdeaCount = SuggestIdeasRequest.DefaultIdeaCount,
 				Frequency = JobScheduleFrequency.Daily,
 				IntervalMinutes = 15,
@@ -328,10 +275,10 @@
 		}
 
 		_timeValue = $"{Schedule.HourUtc:D2}:{Schedule.MinuteUtc:D2}";
-		SyncExecutionTargets(preserveCurrentSelection: IsEdit);
+		SyncExecutionTargets();
 	}
 
-	private void SyncExecutionTargets(bool preserveCurrentSelection)
+	private void SyncExecutionTargets()
 	{
 		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 		{
@@ -341,26 +288,11 @@
 				Schedule.ProfileId = IdeaProfiles.FirstOrDefault()?.Id;
 			}
 
-			Schedule.AgentId = null;
 		}
-		else if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		else if (IdeaProfiles.Any(profile => profile.Id == Schedule.ProfileId))
 		{
 			// No profile is a choice too: the job then runs on the project's Build profile. A
 			// profile left over from an idea schedule only answers questions, so it goes.
-			if (IdeaProfiles.Any(profile => profile.Id == Schedule.ProfileId))
-			{
-				Schedule.ProfileId = null;
-			}
-
-			Schedule.AgentId = null;
-		}
-		else
-		{
-			if (!preserveCurrentSelection || !Schedule.AgentId.HasValue || !_agents.Any(agent => agent.Id == Schedule.AgentId.Value))
-			{
-				Schedule.AgentId = _agents.FirstOrDefault()?.Id;
-			}
-
 			Schedule.ProfileId = null;
 		}
 	}
@@ -369,25 +301,13 @@
 	{
 		Schedule.ProjectId = TryParseGuid(args.Value);
 		ErrorMessage = null;
-		SyncExecutionTargets(preserveCurrentSelection: false);
-	}
-
-	private void OnExecutionTargetChanged()
-	{
-		ErrorMessage = null;
-		SyncExecutionTargets(preserveCurrentSelection: false);
+		SyncExecutionTargets();
 	}
 
 	private void OnScheduleTypeChanged()
 	{
 		ErrorMessage = null;
-		SyncExecutionTargets(preserveCurrentSelection: false);
-	}
-
-	private void OnAgentChanged(ChangeEventArgs args)
-	{
-		Schedule.AgentId = TryParseNullableGuid(args.Value);
-		ErrorMessage = null;
+		SyncExecutionTargets();
 	}
 
 	private static string GetFrequencyLabel(JobScheduleFrequency frequency)
@@ -414,12 +334,6 @@
 		if (Schedule.ProjectId == Guid.Empty)
 		{
 			ErrorMessage = "Please select a project.";
-			return;
-		}
-
-		if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent && !Schedule.AgentId.HasValue)
-		{
-			ErrorMessage = "Please select an agent.";
 			return;
 		}
 
@@ -456,24 +370,13 @@
 			Schedule.HourUtc = 0;
 		}
 
-		// A provider is never sent: the server takes it from the profile, or from the agent.
-		// A provider and a model are never sent: the server takes them from the profile, or from
-		// the agent.
+		// A provider and a model are never sent: the server takes them from the profile.
 		Schedule.ProviderId = null;
 		Schedule.InferenceProviderId = null;
 		Schedule.ModelId = null;
 		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 		{
-			Schedule.AgentId = null;
 			Schedule.Prompt = string.Empty;
-		}
-		else if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
-		{
-			Schedule.AgentId = null;
-		}
-		else
-		{
-			Schedule.ProfileId = null;
 		}
 
 		IsSaving = true;
@@ -515,28 +418,11 @@
 		await IsVisibleChanged.InvokeAsync(isVisible);
 	}
 
-	private Agent? GetSelectedAgent()
-		=> Schedule.AgentId.HasValue
-			? _agents.FirstOrDefault(agent => agent.Id == Schedule.AgentId.Value)
-			: null;
-
 	/// <summary>Inference profiles on a provider that is turned on: the ones that can suggest ideas.</summary>
 	private IReadOnlyList<Profile> IdeaProfiles => _profiles.Where(ProjectInferenceRoles.CanAnswerAlone).ToList();
 
-	/// <summary>What the agent runs on: its profile by name, else the provider it was set up with.</summary>
-	private string GetAgentRunsOn(Agent agent)
-		=> _profiles.FirstOrDefault(profile => profile.Id == agent.ProfileId)?.Name
-			?? agent.DefaultProvider?.Name
-			?? "No profile yet";
-
-	private string GetAgentDisplayText(Agent agent) => $"{agent.Name} ({GetAgentRunsOn(agent)})";
-
 	private string GetProjectValue() => Schedule.ProjectId == Guid.Empty ? string.Empty : Schedule.ProjectId.ToString();
-	private string GetAgentValue() => Schedule.AgentId?.ToString() ?? string.Empty;
 
 	private static Guid TryParseGuid(object? value)
 		=> Guid.TryParse(value?.ToString(), out var id) ? id : Guid.Empty;
-
-	private static Guid? TryParseNullableGuid(object? value)
-		=> Guid.TryParse(value?.ToString(), out var id) ? id : null;
 }
