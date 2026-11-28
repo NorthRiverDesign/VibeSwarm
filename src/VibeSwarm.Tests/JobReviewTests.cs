@@ -197,6 +197,17 @@ public sealed class JobReviewTests : IDisposable
 		Assert.Null(job.BuildCheckedTreeHash);
 	}
 
+	[Fact]
+	public void BuildFailurePrompt_PutsTheProjectsChecksAheadOfThePlan()
+	{
+		// Seen live: a builder told its plan was approved left a failing check alone for a round.
+		var prompt = ReviewPrompts.BuildBuildFailurePrompt("FAIL: divide(1, 0) must return None", round: 1);
+
+		Assert.Contains($"[Review round 1 of {JobReview.MaxRounds}]", prompt);
+		Assert.Contains("FAIL: divide(1, 0) must return None", prompt);
+		Assert.Contains("outrank the plan", prompt);
+	}
+
 	private JobProcessingService CreateService(IReadOnlyConsultService consult, string diff = Diff)
 	{
 		var services = new ServiceCollection();

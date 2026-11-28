@@ -90,6 +90,7 @@ public static partial class ReviewPrompts
 			```
 
 			Fix the failure, run the build and tests again, then finish with a short summary of what you changed.
+			The project's build and tests outrank the plan: where the two disagree, make the checks pass and say what you changed from the plan.
 			""";
 	}
 
