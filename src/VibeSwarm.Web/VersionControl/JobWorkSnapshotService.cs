@@ -124,6 +124,34 @@ public sealed partial class JobWorkSnapshotService
 	}
 
 	/// <summary>
+	/// What the working directory holds that <paramref name="baseCommit"/> doesn't, as a diff with
+	/// its summary: new files included, ignored ones left out. Against the snapshot a job's
+	/// earlier step left, that is exactly the current step's change; a plain diff would list every
+	/// file an earlier step created again, because those are still untracked. Null when it can't
+	/// be worked out.
+	/// </summary>
+	public async Task<string?> DiffWorkingTreeAgainstAsync(string workingDirectory, string baseCommit, CancellationToken cancellationToken = default)
+	{
+		if (!IsCommitHash(baseCommit))
+		{
+			return null;
+		}
+
+		var tree = await HashWorkingTreeAsync(workingDirectory, cancellationToken);
+		if (tree == null)
+		{
+			return null;
+		}
+
+		var diff = await _git.ExecuteAsync(
+			$"diff {baseCommit} {tree} --stat --patch --find-renames --find-copies",
+			workingDirectory,
+			cancellationToken,
+			timeoutSeconds: 60);
+		return diff.Success ? diff.Output : null;
+	}
+
+	/// <summary>
 	/// Whether <paramref name="commit"/> is part of the checked-out branch's history.
 	/// </summary>
 	public async Task<bool> IsInHeadAsync(string workingDirectory, string commit, CancellationToken cancellationToken = default)

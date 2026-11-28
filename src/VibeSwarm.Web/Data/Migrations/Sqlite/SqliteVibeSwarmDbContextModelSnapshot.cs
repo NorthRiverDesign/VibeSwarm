@@ -1438,6 +1438,85 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.ToTable("JobStatistics");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("CostUsd")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DoneWhen")
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("InputTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Instructions")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("OutputTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ReviewNotes")
+                        .HasMaxLength(8000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ReviewRounds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ReviewStatus")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SnapshotCommit")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId", "Order");
+
+                    b.ToTable("JobSteps");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobTemplate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2613,6 +2692,17 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Navigation("Job");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobStep", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.Job", "Job")
+                        .WithMany("Steps")
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobTemplate", b =>
                 {
                     b.HasOne("VibeSwarm.Shared.Providers.Provider", "Provider")
@@ -2777,6 +2867,8 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Navigation("ProviderAttempts");
 
                     b.Navigation("Statistics");
+
+                    b.Navigation("Steps");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobSchedule", b =>

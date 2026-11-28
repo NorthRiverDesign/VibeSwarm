@@ -1159,6 +1159,154 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.Null(job.PlanningOutput);
 	}
 
+	private const string TwoStepPlan = """
+		Outcome: calc.py gains divide and power.
+
+		## STEP: Add divide
+		Do: Add divide(a, b) to calc.py.
+		Done when: divide(6, 3) is 2.
+
+		## STEP: Add power
+		Do: Add power(base, exponent) to calc.py.
+		Done when: power(2, 3) is 8.
+		""";
+
+	[Fact]
+	public async Task ProcessJobAsync_ATeamJobPlannedIntoSteps_BuildsEachInItsOwnSession_AndPassesNotesOn()
+	{
+		var agent = new ScriptedProvider((run, _) => Task.FromResult(new ExecutionResult
+		{
+			Success = true,
+			SessionId = $"step-session-{run}",
+			Output = run == 1 ? "Added it.\n\n## Handoff\ndivide is in calc.py; zero returns None." : "Added it.\n\n## Handoff\npower is in calc.py.",
+			Messages = [new ExecutionMessage { Role = "assistant", Content = run == 1 ? "Added it.\n\n## Handoff\ndivide is in calc.py; zero returns None." : "Added it.\n\n## Handoff\npower is in calc.py." }]
+		}));
+		var lead = new ScriptedConsultService(_ => new ConsultResult { Success = true, Text = TwoStepPlan, ProviderName = "Claude" });
+
+		var (jobId, jobService, _) = await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				project.TeamEnabled = true;
+				project.LeadProviderId = provider.Id;
+			},
+			configureServices: services => services.AddSingleton<IReadOnlyConsultService>(lead),
+			configureJob: job => job.TeamRun = true);
+
+		// One plan, then one run per step, each starting a session of its own.
+		Assert.Single(lead.Requests);
+		Assert.Contains("## STEP: <short title>", lead.Requests[0].Prompt);
+		Assert.Equal(2, agent.Runs.Count);
+		Assert.All(agent.Runs, run => Assert.Null(run.SessionId));
+
+		// The first builder is given its step among the others.
+		Assert.Contains("Add a settings page", agent.Runs[0].Prompt);
+		Assert.Contains("Outcome: calc.py gains divide and power.", agent.Runs[0].Prompt);
+		Assert.Contains("<your_step number=\"1\" of=\"2\">", agent.Runs[0].Prompt);
+		Assert.Contains("1. [yours] Add divide", agent.Runs[0].Prompt);
+		Assert.Contains("2. [later] Add power", agent.Runs[0].Prompt);
+
+		// The second is told what the first left behind.
+		Assert.Contains("<your_step number=\"2\" of=\"2\">", agent.Runs[1].Prompt);
+		Assert.Contains("1. [done] Add divide", agent.Runs[1].Prompt);
+		Assert.Contains("Note from its builder: divide is in calc.py; zero returns None.", agent.Runs[1].Prompt);
+
+		await using var db = CreateDbContext();
+		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+		Assert.Equal(JobStatus.Completed, job.Status);
+		Assert.StartsWith("Outcome: calc.py gains divide and power.", job.PlanningOutput);
+		Assert.DoesNotContain("STEP", job.PlanningOutput);
+		var steps = await db.JobSteps.Where(step => step.JobId == jobId).OrderBy(step => step.Order).ToListAsync();
+		Assert.Equal(["Add divide", "Add power"], steps.Select(step => step.Title));
+		Assert.All(steps, step => Assert.Equal(JobStepStatus.Done, step.Status));
+		Assert.Equal(["step-session-1", "step-session-2"], steps.Select(step => step.SessionId));
+		Assert.Equal("divide is in calc.py; zero returns None.", steps[0].Summary);
+
+		// Both steps' conversations are kept, not just the last one's.
+		Assert.Contains(jobService.Messages, m => m.Role == MessageRole.Assistant && m.Content.Contains("divide is in calc.py"));
+		Assert.Contains(jobService.Messages, m => m.Role == MessageRole.Assistant && m.Content.Contains("power is in calc.py"));
+	}
+
+	[Fact]
+	public async Task ProcessJobAsync_EachStepIsReviewedOnItsOwn_AndItsFixesStayInItsSession()
+	{
+		var agent = new ScriptedProvider((run, _) => Task.FromResult(new ExecutionResult
+		{
+			Success = true,
+			SessionId = run <= 2 ? "step-session-1" : "step-session-2",
+			Output = $"Turn {run} done.",
+			Messages = [new ExecutionMessage { Role = "assistant", Content = $"Turn {run} done." }]
+		}));
+		var reviews = 0;
+		var team = new ScriptedConsultService(request => request.TaskType == "plan"
+			? new ConsultResult { Success = true, Text = TwoStepPlan }
+			// The first look at step one finds a problem; every look after that approves.
+			: new ConsultResult { Success = true, ProviderName = "Reviewer", Text = ++reviews == 1 ? "ISSUES:\n1. divide has no zero check." : "REVIEW_APPROVED" });
+
+		var (jobId, _, _) = await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				project.TeamEnabled = true;
+				project.LeadProviderId = provider.Id;
+				project.ReviewEnabled = true;
+				project.ReviewProviderId = provider.Id;
+			},
+			configureServices: services => services.AddSingleton<IReadOnlyConsultService>(team),
+			versionControl: new DiffWithoutARepositoryVersionControlService(" calc.py | 4 ++++\n+def divide\n"),
+			configureJob: job => job.TeamRun = true);
+
+		// Step one, its fix in the same session, then step two in a session of its own.
+		Assert.Equal(3, agent.Runs.Count);
+		Assert.Equal([null, "step-session-1", null], agent.Runs.Select(run => run.SessionId));
+		Assert.Contains("divide has no zero check", agent.Runs[1].Prompt);
+
+		// The reviewer is shown one step at a time, and told the rest is not missing.
+		var reviewRequests = team.Requests.Where(request => request.TaskType != "plan").ToList();
+		Assert.Equal(3, reviewRequests.Count);
+		Assert.Contains("# The step the agent was given", reviewRequests[0].Prompt);
+		Assert.Contains("Add divide", reviewRequests[0].Prompt);
+		Assert.Contains("step 1 of 2", reviewRequests[0].Prompt);
+		Assert.Contains("Add power", reviewRequests[2].Prompt);
+		Assert.Contains("step 2 of 2", reviewRequests[2].Prompt);
+
+		await using var db = CreateDbContext();
+		var steps = await db.JobSteps.Where(step => step.JobId == jobId).OrderBy(step => step.Order).ToListAsync();
+		Assert.Equal([(JobReviewStatus.Approved, 1), (JobReviewStatus.Approved, 0)], steps.Select(step => (step.ReviewStatus, step.ReviewRounds)));
+		Assert.Equal(JobStatus.Completed, (await db.Jobs.SingleAsync(j => j.Id == jobId)).Status);
+	}
+
+	[Fact]
+	public async Task ProcessJobAsync_StepsAlreadyDone_AreBuiltAgain_WhenTheirWorkIsNotInTheTree()
+	{
+		var agent = new ScriptedProvider((run, _) => Task.FromResult(Reply($"Turn {run} done.")));
+
+		// A new run of a job whose first step was done before: nothing put that step's saved work
+		// back, so skipping it would deliver half the job.
+		var (jobId, _, _) = await RunScriptedJobAsync(
+			agent,
+			_ => Task.CompletedTask,
+			configureProject: (project, provider) =>
+			{
+				project.TeamEnabled = true;
+				project.LeadProviderId = provider.Id;
+			},
+			configureJob: job =>
+			{
+				job.TeamRun = true;
+				job.PlanningOutput = "Outcome: two functions.";
+				job.Steps.Add(new JobStep { Order = 1, Title = "Add divide", Instructions = "Add divide.", Status = JobStepStatus.Done, Summary = "Done before.", SnapshotCommit = "abc123" });
+				job.Steps.Add(new JobStep { Order = 2, Title = "Add power", Instructions = "Add power." });
+			});
+
+		Assert.Equal(2, agent.Runs.Count);
+		Assert.Contains("1. [yours] Add divide", agent.Runs[0].Prompt);
+		await using var db = CreateDbContext();
+		Assert.All(await db.JobSteps.Where(step => step.JobId == jobId).ToListAsync(), step => Assert.Equal(JobStepStatus.Done, step.Status));
+	}
+
 	private static ExecutionResult Reply(string text) => new()
 	{
 		Success = true,

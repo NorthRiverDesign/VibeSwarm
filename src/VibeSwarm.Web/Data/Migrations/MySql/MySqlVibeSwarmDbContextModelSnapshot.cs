@@ -1447,6 +1447,85 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.ToTable("JobStatistics");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<decimal?>("CostUsd")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("DoneWhen")
+                        .HasMaxLength(4000)
+                        .HasColumnType("longtext");
+
+                    b.Property<int?>("InputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Instructions")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("longtext");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("OutputTokens")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReviewNotes")
+                        .HasMaxLength(8000)
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("ReviewRounds")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReviewStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("SnapshotCommit")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(4000)
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId", "Order");
+
+                    b.ToTable("JobSteps");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobTemplate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2622,6 +2701,17 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Navigation("Job");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobStep", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.Job", "Job")
+                        .WithMany("Steps")
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobTemplate", b =>
                 {
                     b.HasOne("VibeSwarm.Shared.Providers.Provider", "Provider")
@@ -2786,6 +2876,8 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Navigation("ProviderAttempts");
 
                     b.Navigation("Statistics");
+
+                    b.Navigation("Steps");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobSchedule", b =>

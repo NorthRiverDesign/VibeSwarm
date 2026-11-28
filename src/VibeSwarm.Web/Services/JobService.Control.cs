@@ -193,6 +193,8 @@ public partial class JobService
         job.GitCommitHash = null;  // Clear committed results hash
         job.PlanningOutput = null;
         job.PlanSkippedReason = null;
+        // The steps go with the plan they came from; the next run is planned afresh.
+        await _dbContext.JobSteps.Where(step => step.JobId == job.Id).ExecuteDeleteAsync(cancellationToken);
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;
@@ -335,6 +337,8 @@ public partial class JobService
             : JobTitleHelper.BuildSafeJobTitle(job.Title, job.GoalPrompt);
         job.PlanningOutput = null;
         job.PlanSkippedReason = null;
+        // The steps go with the plan they came from; the next run is planned afresh.
+        await _dbContext.JobSteps.Where(step => step.JobId == job.Id).ExecuteDeleteAsync(cancellationToken);
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;

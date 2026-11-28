@@ -322,6 +322,20 @@ public class SignalRJobUpdateService : IJobUpdateService
         }
     }
 
+    public async Task NotifyJobStepsChanged(Guid jobId)
+    {
+        try
+        {
+            await _hubContext.Clients
+                .Group($"job-{jobId}")
+                .SendAsync("JobStepsChanged", jobId.ToString());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending JobStepsChanged notification for job {JobId}", jobId);
+        }
+    }
+
     public async Task NotifyIdeaStarted(Guid ideaId, Guid projectId, Guid jobId)
     {
         try

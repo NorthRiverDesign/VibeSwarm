@@ -187,6 +187,7 @@ internal abstract class FakeJobServiceBase : IJobService
 	public virtual Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
 	public virtual Task<bool> TryFailOverToNextExecutionTargetAsync(Guid id, string? reason, CancellationToken cancellationToken = default) => Task.FromResult(false);
+	public virtual Task<IReadOnlyList<JobStep>> GetStepsAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<JobStep>>([]);
 	public virtual Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<JobLiveOutput?> GetLiveOutputAsync(Guid id, long afterSequence = 0, CancellationToken cancellationToken = default) => Task.FromResult<JobLiveOutput?>(null);
 }

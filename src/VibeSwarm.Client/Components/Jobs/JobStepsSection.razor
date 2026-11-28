@@ -1,0 +1,139 @@
+@* The steps the Lead planned a team job into. Each row says where the step stands and opens to
+   show what it was to do, the note its builder left for the next step, and what review made of
+   it. A job built in one go has no steps and shows nothing here. *@
+@inject IJobService JobService
+
+@if (_steps.Count > 0)
+{
+	<section class="d-flex flex-column gap-3 mb-5" aria-label="Steps">
+		<SectionHeader Title="Steps" Subtitle="@Progress" />
+		<div class="list-group rounded-9">
+			@foreach (var step in _steps)
+			{
+				<ListRow @key="step.Id" Icon="@IconFor(step)" IconClass="@IconClassFor(step)"
+						 Leading="@(step.Status == JobStepStatus.Running ? Spinner : null)"
+						 Title="@step.Title" TitleClass="@(step.Status == JobStepStatus.Skipped ? "fg-2" : null)"
+						 Subtitle="@SubtitleFor(step)" AttentionLine="@AttentionFor(step)">
+					<ChildContent>
+						<div>
+							<div class="text-eyebrow">What to do</div>
+							<div class="small white-space-pre-wrap text-break">@step.Instructions</div>
+						</div>
+						@if (!string.IsNullOrWhiteSpace(step.DoneWhen))
+						{
+							<div>
+								<div class="text-eyebrow">Done when</div>
+								<div class="small white-space-pre-wrap text-break">@step.DoneWhen</div>
+							</div>
+						}
+						@if (!string.IsNullOrWhiteSpace(step.Summary))
+						{
+							<div>
+								<div class="text-eyebrow">Note for the next step</div>
+								<div class="small white-space-pre-wrap text-break">@step.Summary</div>
+							</div>
+						}
+						@if (ReviewLineFor(step) is { } review)
+						{
+							<div>
+								<div class="text-eyebrow">Review</div>
+								<div class="small text-break">@review</div>
+								@if (step.ReviewStatus == JobReviewStatus.Unresolved && !string.IsNullOrWhiteSpace(step.ReviewNotes))
+								{
+									<div class="small fg-1 white-space-pre-wrap text-break mt-1">@step.ReviewNotes</div>
+								}
+							</div>
+						}
+					</ChildContent>
+				</ListRow>
+			}
+		</div>
+	</section>
+}
+
+@code {
+	[Parameter, EditorRequired]
+	public Guid JobId { get; set; }
+
+	/// <summary>Bumped by the page whenever the server says the job's steps changed.</summary>
+	[Parameter]
+	public int RefreshKey { get; set; }
+
+	private static readonly RenderFragment Spinner =
+		@<span class="spinner-border spinner-sm fg-primary flex-shrink-0" role="status" aria-label="Building now"></span>;
+
+	private IReadOnlyList<JobStep> _steps = [];
+	private (Guid JobId, int RefreshKey)? _loaded;
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (_loaded == (JobId, RefreshKey))
+		{
+			return;
+		}
+
+		_loaded = (JobId, RefreshKey);
+		try
+		{
+			_steps = await JobService.GetStepsAsync(JobId);
+		}
+		catch
+		{
+			// The list is an aid; the job page works without it.
+		}
+	}
+
+	private string Progress
+	{
+		get
+		{
+			var counted = _steps.Count(step => step.Status != JobStepStatus.Skipped);
+			var done = _steps.Count(step => step.Status == JobStepStatus.Done);
+			return done == counted ? $"All {counted} done" : $"{done} of {counted} done";
+		}
+	}
+
+	private static string IconFor(JobStep step) => step.Status switch
+	{
+		JobStepStatus.Done => "check-circle-fill",
+		JobStepStatus.Skipped => "slash-circle",
+		_ => "circle"
+	};
+
+	private static string IconClassFor(JobStep step) => step.Status switch
+	{
+		JobStepStatus.Done => "fg-success",
+		_ => "fg-2"
+	};
+
+	private static string SubtitleFor(JobStep step) => step.Status switch
+	{
+		JobStepStatus.Done => string.IsNullOrWhiteSpace(step.Summary) ? "Done" : step.Summary.ReplaceLineEndings(" "),
+		JobStepStatus.Running => "Building now",
+		JobStepStatus.Skipped => "Skipped",
+		_ => step.Source switch
+		{
+			JobStepSource.Check => "Waiting · added after the Lead's check",
+			JobStepSource.User => "Waiting · added by you",
+			_ => "Waiting"
+		}
+	};
+
+	private static string? AttentionFor(JobStep step)
+		=> step.Status == JobStepStatus.Done && step.ReviewStatus == JobReviewStatus.Unresolved
+			? "Review findings weren't re-checked"
+			: null;
+
+	private static string? ReviewLineFor(JobStep step)
+	{
+		var fixes = step.ReviewRounds == 1 ? "1 fix" : $"{step.ReviewRounds} fixes";
+		return step.ReviewStatus switch
+		{
+			JobReviewStatus.Approved when step.ReviewRounds == 0 => "Approved, nothing to fix",
+			JobReviewStatus.Approved => $"Approved after {fixes}",
+			JobReviewStatus.Unresolved => $"Sent back for {fixes}; the last findings weren't re-checked",
+			JobReviewStatus.Skipped => $"Not reviewed: {step.ReviewNotes ?? "the reviewer couldn't run"}",
+			_ => null
+		};
+	}
+}

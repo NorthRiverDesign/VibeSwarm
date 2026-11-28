@@ -148,4 +148,7 @@ public interface IJobService
     /// ordered by FollowUpIndex ascending.
     /// </summary>
     Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default);
+
+    /// <summary>The steps a team job was planned into, in order; empty for a job built in one go.</summary>
+    Task<IReadOnlyList<JobStep>> GetStepsAsync(Guid jobId, CancellationToken cancellationToken = default);
 }

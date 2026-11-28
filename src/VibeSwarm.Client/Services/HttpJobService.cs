@@ -269,6 +269,13 @@ public class HttpJobService : IJobService
         return await response.Content.ReadFromJsonAsync<JobQueueStatus>(ct);
     }
 
+    public async Task<IReadOnlyList<JobStep>> GetStepsAsync(Guid jobId, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"/api/jobs/{jobId}/steps", ct);
+        if (!response.IsSuccessStatusCode) return [];
+        return await response.Content.ReadFromJsonAsync<List<JobStep>>(ct) ?? [];
+    }
+
     public async Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken ct = default)
     {
         var response = await _http.GetAsync($"/api/jobs/{jobId}/changesets", ct);

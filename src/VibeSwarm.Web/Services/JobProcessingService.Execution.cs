@@ -833,6 +833,28 @@ public partial class JobProcessingService
             await LoadLinkedProjectsAsync(job.Project, dbContext, cancellationToken);
             var currentPrompt = PromptBuilder.BuildExecutionPrompt(job, planningOutput, enableStructuring);
             var shouldRunRecoveryFlow = JobRecoveryHelper.IsResumeCandidate(job);
+
+            // A team job the Lead planned into steps is built one step at a time, each in a
+            // session of its own. currentStep stays null for every other job, built in one go.
+            var jobPrompt = PromptBuilder.BuildExecutionPrompt(job, null, enableStructuring);
+            var currentStep = await BeginChainAsync(job, executionContext, shouldRunRecoveryFlow, dbContext, cancellationToken);
+            StepRun? stepRun = null;
+            var stepUsageAtStart = (Input: 0, Output: 0, Cost: 0m);
+            if (currentStep != null)
+            {
+                // A step cut off by a restart carries on in its own session; any other starts clean.
+                if (currentStep.Status != JobStepStatus.Running)
+                {
+                    await StartStepAsync(job, currentStep, dbContext, cancellationToken);
+                    sessionId = null;
+                    executionContext.SessionId = null;
+                }
+
+                stepRun = await DescribeStepAsync(job, jobPrompt, currentStep, executionContext.GitCommitBefore, dbContext, cancellationToken);
+                currentPrompt = stepRun.Prompt;
+                executionContext.LatestActivity = $"Step {stepRun.Position} of {stepRun.Count}: {currentStep.Title}";
+            }
+
             executionContext.ActivePrompt = currentPrompt;
             var attachedFiles = DeserializeAttachedFiles(job.AttachedFilesJson);
             var settled = false;
@@ -1058,14 +1080,16 @@ public partial class JobProcessingService
                     return false;
                 }
 
+                // A step is reviewed on its own change, against what the step was to do.
                 var feedback = await TryGetReviewFeedbackAsync(
                     job,
                     workingDirectory,
-                    executionContext.GitCommitBefore,
+                    stepRun?.BaseCommit ?? executionContext.GitCommitBefore,
                     sessionId,
                     canSkipFinalBuild: executionContext.PriorWorkRestore is not { ConflictedFiles.Count: > 0 }
                         && executionContext.BranchMerge is not { ConflictedFiles.Count: > 0 },
-                    cancellationToken);
+                    cancellationToken,
+                    stepRun?.Scope);
                 if (feedback == null)
                 {
                     return false;
@@ -1300,11 +1324,43 @@ public partial class JobProcessingService
                     continue;
                 }
 
+                // A step is finished: its work is saved, and the next one starts a session of its own.
+                if (currentStep != null)
+                {
+                    currentStep.InputTokens = (executionInputTokens ?? 0) - stepUsageAtStart.Input;
+                    currentStep.OutputTokens = (executionOutputTokens ?? 0) - stepUsageAtStart.Output;
+                    currentStep.CostUsd = (executionCostUsd ?? 0m) - stepUsageAtStart.Cost;
+                    var nextStep = await FinishStepAsync(job, currentStep, result, workingDirectory, executionContext.GitCommitBefore, dbContext, cancellationToken);
+                    if (nextStep != null)
+                    {
+                        await SaveRunMessagesAsync(cancelCheckService, job.Id, result);
+                        currentStep = nextStep;
+                        await StartStepAsync(job, currentStep, dbContext, cancellationToken);
+                        stepRun = await DescribeStepAsync(job, jobPrompt, currentStep, executionContext.GitCommitBefore, dbContext, cancellationToken);
+                        stepUsageAtStart = (executionInputTokens ?? 0, executionOutputTokens ?? 0, executionCostUsd ?? 0m);
+                        currentPrompt = stepRun.Prompt;
+                        executionPrompt = currentPrompt;
+                        sessionId = null;
+                        executionContext.SessionId = null;
+                        executionContext.ActivePrompt = currentPrompt;
+                        executionContext.LatestActivity = $"Step {stepRun.Position} of {stepRun.Count}: {currentStep.Title}";
+                        await NotifyJobActivityAsync(job.Id, executionContext.LatestActivity, DateTime.UtcNow);
+                        await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
+                        continue;
+                    }
+                }
+
                 settled = true;
             }
 
             // No agent is left to read messages sent from here on.
             CloseUserMessages(job.Id, executionContext);
+
+            // The job's review line speaks for all its steps, not just the last.
+            if (currentStep is { Status: JobStepStatus.Done })
+            {
+                await SummariseStepReviewsAsync(job, dbContext, CancellationToken.None);
+            }
 
             // The agent is done, or was stopped: the checks and delivery that follow must not trip
             // the time limit.

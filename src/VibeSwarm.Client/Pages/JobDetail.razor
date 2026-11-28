@@ -55,6 +55,8 @@ else
 
 	<JobStatusSection Job="@Job" IsPushed="@_changesPushed" BranchName="@_branchName" />
 
+	<JobStepsSection JobId="@Job.Id" RefreshKey="@_stepsVersion" />
+
     @* Main Content - Column Layout *@
     <div class="row g-5 lg:g-7">
         <div id="job-changes-section" class="col-12 xl:col-5 order-2 xl:order-1 @(ShowSidebarContent ? string.Empty : "d-none")">

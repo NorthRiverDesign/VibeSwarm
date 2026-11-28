@@ -38,6 +38,15 @@ public partial class JobService
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<JobStep>> GetStepsAsync(Guid jobId, CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.JobSteps
+            .Where(step => step.JobId == jobId)
+            .OrderBy(step => step.Order)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default)
     {
         return await _dbContext.JobChangeSets
@@ -278,6 +287,8 @@ public partial class JobService
         job.InteractionRequestedAt = null;
         job.PlanningOutput = null;
         job.PlanSkippedReason = null;
+        // The steps go with the plan they came from; the next run is planned afresh.
+        await _dbContext.JobSteps.Where(step => step.JobId == job.Id).ExecuteDeleteAsync(cancellationToken);
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;

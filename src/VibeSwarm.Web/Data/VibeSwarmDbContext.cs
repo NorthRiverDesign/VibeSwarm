@@ -45,6 +45,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<JobMessage> JobMessages { get; set; }
 	public DbSet<JobChangeSet> JobChangeSets { get; set; }
 	public DbSet<JobProviderAttempt> JobProviderAttempts { get; set; }
+	public DbSet<JobStep> JobSteps { get; set; }
 	public DbSet<Skill> Skills { get; set; }
 	public DbSet<Profile> Profiles { get; set; }
 	public DbSet<Idea> Ideas { get; set; }
@@ -454,6 +455,23 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 				.HasForeignKey(e => e.InferenceProviderId)
 				.OnDelete(DeleteBehavior.Cascade);
 			entity.HasIndex(e => e.Name).IsUnique();
+		});
+
+		modelBuilder.Entity<JobStep>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.HasOne(e => e.Job)
+				.WithMany(job => job.Steps)
+				.HasForeignKey(e => e.JobId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.Property(e => e.Title).IsRequired().HasMaxLength(JobStep.TitleMaxLength);
+			entity.Property(e => e.Instructions).HasMaxLength(JobStep.TextMaxLength);
+			entity.Property(e => e.DoneWhen).HasMaxLength(JobStep.SummaryMaxLength);
+			entity.Property(e => e.Summary).HasMaxLength(JobStep.SummaryMaxLength);
+			entity.Property(e => e.ReviewNotes).HasMaxLength(JobStep.TextMaxLength);
+			entity.Property(e => e.SessionId).HasMaxLength(200);
+			entity.Property(e => e.SnapshotCommit).HasMaxLength(64);
+			entity.HasIndex(e => new { e.JobId, e.Order });
 		});
 
 		modelBuilder.Entity<Idea>(entity =>

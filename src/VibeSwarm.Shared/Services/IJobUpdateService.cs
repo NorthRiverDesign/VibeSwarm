@@ -48,6 +48,9 @@ public interface IJobUpdateService
 
     Task NotifyJobResumed(Guid jobId);
 
+    /// <summary>A team job's steps changed: one was added, started, finished or skipped.</summary>
+    Task NotifyJobStepsChanged(Guid jobId);
+
     /// <param name="jobId">The created job ID</param>
     Task NotifyIdeaStarted(Guid ideaId, Guid projectId, Guid jobId);
 

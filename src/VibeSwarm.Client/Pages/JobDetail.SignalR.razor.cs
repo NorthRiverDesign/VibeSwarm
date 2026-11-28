@@ -102,6 +102,18 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
                     catch { }
                 });
 
+            _hubConnection.On<string>("JobStepsChanged", async (jobId) =>
+            {
+                if (_disposed || !IsCurrentRouteJob(jobId)) return;
+                try
+                {
+                    _stepsVersion++;
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (ObjectDisposedException) { }
+                catch { }
+            });
+
             _hubConnection.On<string>("JobResumed", async (jobId) =>
             {
                 if (_disposed) return;
@@ -256,6 +268,9 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
 		{
 		}
 	}
+
+	/// <summary>Counts the server's "steps changed" notices; the Steps list reloads when it moves.</summary>
+	private int _stepsVersion;
 
 	private bool IsCurrentRouteJob(string jobId)
 		=> Guid.TryParse(jobId, out var parsedJobId) && parsedJobId == JobId;

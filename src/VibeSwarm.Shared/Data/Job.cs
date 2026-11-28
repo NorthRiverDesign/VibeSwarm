@@ -107,6 +107,13 @@ public class Job
     [StringLength(500)]
     public string? PlanSkippedReason { get; set; }
 
+    /// <summary>
+    /// The steps the Lead planned the job into, in order. Empty for a job its builder works alone,
+    /// and for a team job whose plan was skipped: both are built in one go from the goal.
+    /// </summary>
+    [JsonIgnore]
+    public ICollection<JobStep> Steps { get; set; } = new List<JobStep>();
+
     public Guid? PlanningProviderId { get; set; }
     public Provider? PlanningProvider { get; set; }
 

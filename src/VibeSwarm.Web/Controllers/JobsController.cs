@@ -242,6 +242,10 @@ public class JobsController : ControllerBase
         return status == null ? NoContent() : Ok(status);
     }
 
+    [HttpGet("{id:guid}/steps")]
+    public async Task<IActionResult> GetSteps(Guid id, CancellationToken ct)
+        => Ok(await _jobService.GetStepsAsync(id, ct));
+
     [HttpGet("{id:guid}/changesets")]
     public async Task<IActionResult> GetChangeSets(Guid id, CancellationToken ct)
         => Ok(await _jobService.GetChangeSetsAsync(id, ct));
