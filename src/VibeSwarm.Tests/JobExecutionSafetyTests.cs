@@ -1567,6 +1567,12 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
 		Assert.Equal((JobStatus.Completed, JobReviewStatus.Approved, 1), (job.Status, job.ReviewStatus, job.ReviewRounds));
 		Assert.All(await db.JobSteps.Where(step => step.JobId == jobId).ToListAsync(), step => Assert.Equal(JobStepStatus.Done, step.Status));
+		if (!leadAsksForMore)
+		{
+			// No agent ran, so no usage is made up for the run.
+			Assert.False(job.IsTokenEstimate);
+			Assert.Null(job.ExecutionInputTokens);
+		}
 	}
 
 	[Fact]

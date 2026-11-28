@@ -882,11 +882,11 @@ public partial class JobProcessingService
             executionContext.ActivePrompt = currentPrompt;
             var attachedFiles = DeserializeAttachedFiles(job.AttachedFilesJson);
             // With every step built and nothing added by the Lead, no agent runs: the work goes to delivery.
-            var settled = chainWasBuilt && currentStep == null;
-            if (settled)
+            var noAgentTurn = chainWasBuilt && currentStep == null;
+            var settled = noAgentTurn;
+            if (noAgentTurn)
             {
-                // No request was made, so there is nothing to estimate usage from either.
-                lastResult = new ExecutionResult { Success = true, InputTokens = 0, OutputTokens = 0 };
+                lastResult = new ExecutionResult { Success = true };
             }
 
             // From here until the agent is done, the user can steer it with messages.
@@ -1418,7 +1418,8 @@ public partial class JobProcessingService
 
             // If the provider did not report token usage, fall back to text-length estimates.
             // This is common for GitHub Copilot CLI which reports premium requests rather than raw tokens.
-            if (!finalResult.InputTokens.HasValue && !finalResult.OutputTokens.HasValue)
+            // A run with no agent turn made no request, so there is nothing to estimate.
+            if (!noAgentTurn && !finalResult.InputTokens.HasValue && !finalResult.OutputTokens.HasValue)
             {
                 var inputText = job.GoalPrompt + (job.PlanningOutput is { Length: > 0 } ? "\n" + job.PlanningOutput : "");
                 finalResult.InputTokens = TokenHelper.EstimateTokenCount(inputText);
