@@ -74,9 +74,8 @@ public class Project
 	public string? ReleaseBranch { get; set; }
 
 	/// <summary>
-	/// Whether idea expansion should use provider-native planning mode.
-	/// When enabled, idea expansion uses the configured planning provider/model to generate
-	/// a reviewed implementation plan before the idea is converted into a job.
+	/// Whether a job is planned before it builds: the planning provider and model read the code
+	/// and write the plan the builder follows.
 	/// </summary>
 	public bool PlanningEnabled { get; set; }
 

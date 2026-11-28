@@ -97,8 +97,6 @@ else
                                 OnStartProcessing="StartIdeasProcessing" OnStartProcessingWithOptions="StartIdeasProcessingWithOptions"
                                 OnStopProcessing="StopIdeasProcessing" OnAddIdea="AddIdea" OnUpdateIdea="UpdateIdea"
                                 OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea"
-                                OnExpandIdea="ExpandIdea" OnCancelExpansion="CancelIdeaExpansion" OnApproveExpansion="ApproveIdeaExpansion"
-                                OnRejectExpansion="RejectIdeaExpansion" AvailableLocalModels="@_availableLocalModels"
                                 HasInference="@_hasInference" AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()"
                                 AvailableInferenceProviders="@_availableInferenceProviders"
                                 DefaultInferenceProviderId="@(Project?.IdeaInferenceProviderId)"
@@ -450,10 +448,8 @@ else
     private bool HasDefaultProvider => GetAllowedJobProviders().Any();
     private HashSet<Guid> ProcessingIdeaIds { get; set; } = new();
     private CancellationTokenSource? _expandCts;
-    private Guid? _expandingIdeaId;
 
-    // Inference state for idea expansion
-    private List<DiscoveredModel> _availableLocalModels { get; set; } = new();
+    // Inference state for suggesting ideas
     private List<InferenceProvider> _availableInferenceProviders { get; set; } = new();
     private bool _hasInference { get; set; }
 

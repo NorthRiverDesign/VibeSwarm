@@ -103,8 +103,7 @@ public class DatabaseService : IDatabaseService
 					.Select(i => new IdeaExportDto
 					{
 						Description = i.Description,
-						ExpandedDescription = i.ExpandedDescription,
-						ExpansionStatus = i.ExpansionStatus,
+						Specification = i.Specification,
 						SortOrder = i.SortOrder,
 					}).ToList(),
 				Environments = p.Environments
@@ -224,8 +223,7 @@ public class DatabaseService : IDatabaseService
 						Id = Guid.NewGuid(),
 						ProjectId = existingProject.Id,
 						Description = ideaDto.Description,
-						ExpandedDescription = ideaDto.ExpandedDescription,
-						ExpansionStatus = ideaDto.ExpansionStatus,
+						Specification = ideaDto.Specification,
 						SortOrder = ideaDto.SortOrder,
 						CreatedAt = DateTime.UtcNow,
 					});
@@ -266,8 +264,7 @@ public class DatabaseService : IDatabaseService
 					Id = Guid.NewGuid(),
 					ProjectId = project.Id,
 					Description = ideaDto.Description,
-					ExpandedDescription = ideaDto.ExpandedDescription,
-					ExpansionStatus = ideaDto.ExpansionStatus,
+					Specification = ideaDto.Specification,
 					SortOrder = ideaDto.SortOrder,
 					CreatedAt = DateTime.UtcNow,
 				});

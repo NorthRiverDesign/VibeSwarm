@@ -69,8 +69,7 @@ public class SearchController : ControllerBase
                 Title = i.Description,
                 Subtitle = i.Project != null ? i.Project.Name : null,
                 Type = SearchResultType.Idea,
-                Url = $"/projects/{i.ProjectId}?tab=ideas",
-                StatusLabel = i.ExpansionStatus.ToString()
+                Url = $"/projects/{i.ProjectId}?tab=ideas"
             })
             .ToListAsync(ct);
 

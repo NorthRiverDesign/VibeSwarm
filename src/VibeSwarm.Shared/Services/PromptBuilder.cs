@@ -24,7 +24,7 @@ public static class PromptBuilder
 	/// <summary>
 	/// Default template for the read-only planning stage. Substitutes <see cref="RequestToken"/>.
 	/// Consumed by <see cref="ProviderPlanningHelper.BuildPlanningPrompt"/> so planning-stage agents
-	/// share the same templating mechanism as idea expansion and implementation.
+	/// share the same templating mechanism as idea implementation.
 	/// </summary>
 	public static string DefaultPlanningPromptTemplate =>
 		"""
@@ -44,20 +44,6 @@ public static class PromptBuilder
 		6. Verification
 
 		Return only the plan. Do not implement the feature or include code samples.
-		""";
-
-	public static string DefaultIdeaExpansionPromptTemplate =>
-		"""
-		You are a staff-level software engineer turning a product idea into an implementation-ready specification.
-
-		## Feature Idea
-		{{idea}}
-
-		## Instructions
-		1. Inspect the codebase, related flows, reusable components, and tests first. Use subagents when they help.
-		2. Fill in missing details from repository patterns and choose the option that best fits the current system.
-		3. Return concise markdown with: Overview, User Flows, Affected Areas, Implementation Plan, Edge Cases, Acceptance Criteria.
-		4. Keep it concrete. No code samples or provider/model attribution.
 		""";
 
 	// The implementation templates end without a <commit-summary> block: every job's system
@@ -327,15 +313,6 @@ public static class PromptBuilder
 		sb.AppendLine();
 		sb.AppendLine(BuildUserMessagesPrompt(messages, interruptedTurn: true));
 		return sb.ToString().TrimEnd();
-	}
-
-	public static string BuildIdeaExpansionPrompt(string ideaDescription, string? template = null)
-	{
-		return ApplyIdeaPromptTemplate(
-			string.IsNullOrWhiteSpace(template) ? DefaultIdeaExpansionPromptTemplate : template,
-			[
-				new TemplateToken(IdeaToken, ideaDescription, "## Feature Idea")
-			]);
 	}
 
 	public static string BuildIdeaImplementationPrompt(string ideaDescription, string? template = null)

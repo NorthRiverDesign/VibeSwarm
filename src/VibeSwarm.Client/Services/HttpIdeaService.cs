@@ -119,34 +119,6 @@ public class HttpIdeaService : IIdeaService
         return await response.ReadJsonAsync(new Idea(), ct);
     }
 
-    public async Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken ct = default)
-    {
-        var response = await _http.PostAsJsonAsync($"/api/ideas/{ideaId}/expand", request ?? new IdeaExpansionRequest(), ct);
-        if (!response.IsSuccessStatusCode) return null;
-        return await response.ReadJsonOrNullAsync<Idea>(ct);
-    }
-
-    public async Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken ct = default)
-    {
-        var response = await _http.PostAsync($"/api/ideas/{ideaId}/cancel-expansion", null, ct);
-        if (!response.IsSuccessStatusCode) return null;
-        return await response.ReadJsonOrNullAsync<Idea>(ct);
-    }
-
-    public async Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken ct = default)
-    {
-        var response = await _http.PostAsJsonAsync($"/api/ideas/{ideaId}/approve", new { EditedDescription = editedDescription }, ct);
-        if (!response.IsSuccessStatusCode) return null;
-        return await response.ReadJsonOrNullAsync<Idea>(ct);
-    }
-
-    public async Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken ct = default)
-    {
-        var response = await _http.PostAsync($"/api/ideas/{ideaId}/reject", null, ct);
-        if (!response.IsSuccessStatusCode) return null;
-        return await response.ReadJsonOrNullAsync<Idea>(ct);
-    }
-
     public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken ct = default)
     {
         var normalizedRequest = request ?? new SuggestIdeasRequest();

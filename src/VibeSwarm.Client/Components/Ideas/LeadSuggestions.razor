@@ -27,9 +27,9 @@
 				{
 					<ListRow @key="idea.Id" Icon="compass" Title="@idea.Description" Subtitle="@SecondLine(idea)">
 						<ChildContent>
-							@if (!string.IsNullOrWhiteSpace(idea.ExpandedDescription))
+							@if (!string.IsNullOrWhiteSpace(idea.Specification))
 							{
-								<div class="small white-space-pre-wrap text-break">@idea.ExpandedDescription</div>
+								<div class="small white-space-pre-wrap text-break">@idea.Specification</div>
 							}
 							<div class="d-flex align-items-center gap-3">
 								<button type="button" class="btn-sm btn-solid theme-primary" @onclick="() => ApproveAsync(idea)" disabled="@_isBusy">
@@ -125,7 +125,7 @@
 
 	private string? SecondLine(Idea idea)
 	{
-		var why = idea.ExpandedDescription?
+		var why = idea.Specification?
 			.Split('\n')
 			.Select(line => line.Trim())
 			.FirstOrDefault(line => line.StartsWith("Why:", StringComparison.OrdinalIgnoreCase));

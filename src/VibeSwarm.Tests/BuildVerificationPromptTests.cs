@@ -290,16 +290,6 @@ public sealed class BuildVerificationPromptTests
 	}
 
 	[Fact]
-	public void BuildIdeaExpansionPrompt_DefaultTemplate_UsesStaffLevelExplorationGuidance()
-	{
-		var prompt = PromptBuilder.BuildIdeaExpansionPrompt("Add bulk archive controls");
-
-		Assert.Contains("staff-level software engineer", prompt);
-		Assert.Contains("Inspect the codebase, related flows, reusable components, and tests first. Use subagents when they help.", prompt);
-		Assert.Contains("No code samples or provider/model attribution.", prompt);
-	}
-
-	[Fact]
 	public void BuildIdeaImplementationPrompt_DefaultTemplate_UsesStaffLevelExplorationGuidance()
 	{
 		var prompt = PromptBuilder.BuildIdeaImplementationPrompt("Add bulk archive controls");

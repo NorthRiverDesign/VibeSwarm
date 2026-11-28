@@ -463,9 +463,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 		{
 			entity.HasKey(e => e.Id);
 			entity.Property(e => e.Description).IsRequired().HasMaxLength(ValidationLimits.IdeaDescriptionMaxLength);
-			entity.Property(e => e.ExpandedDescription).HasMaxLength(ValidationLimits.IdeaExpandedDescriptionMaxLength);
-			entity.Property(e => e.ExpansionStatus).HasConversion<string>();
-			entity.Property(e => e.ExpansionError).HasMaxLength(ValidationLimits.IdeaExpansionErrorMaxLength);
+			entity.Property(e => e.Specification).HasMaxLength(ValidationLimits.IdeaSpecificationMaxLength);
 			// Suggestions waiting for approval, and dismissed ones, stay out of every ordinary idea
 			// query: the list, the queue, auto-pilot and counts. The Lead reads them with IgnoreQueryFilters.
 			entity.HasQueryFilter(e => !e.NeedsApproval && e.DismissedAt == null);
@@ -515,7 +513,6 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.CriticalErrorLogRetentionDays).HasDefaultValue(global::VibeSwarm.Shared.Data.AppSettings.DefaultCriticalErrorLogRetentionDays);
 			entity.Property(e => e.CriticalErrorLogMaxEntries).HasDefaultValue(global::VibeSwarm.Shared.Data.AppSettings.DefaultCriticalErrorLogMaxEntries);
 			entity.Property(e => e.MaxConcurrentJobs).HasDefaultValue(JobConcurrency.DefaultTotalJobs);
-			entity.Property(e => e.IdeaExpansionPromptTemplate).HasMaxLength(ValidationLimits.IdeaPromptTemplateMaxLength);
 			entity.Property(e => e.IdeaImplementationPromptTemplate).HasMaxLength(ValidationLimits.IdeaPromptTemplateMaxLength);
 			entity.Property(e => e.ApprovedIdeaImplementationPromptTemplate).HasMaxLength(ValidationLimits.IdeaPromptTemplateMaxLength);
 		});

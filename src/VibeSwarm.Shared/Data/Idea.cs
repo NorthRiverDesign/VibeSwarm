@@ -10,19 +10,6 @@ public enum IdeaSource
 	Lead = 2
 }
 
-public enum IdeaExpansionStatus
-{
-	NotExpanded,
-
-	Expanding,
-
-	PendingReview,
-
-	Approved,
-
-	Failed
-}
-
 /// <summary>
 /// Represents a feature idea or task description for a project that can be
 /// automatically expanded and turned into a Job.
@@ -38,17 +25,11 @@ public class Idea
 	public string Description { get; set; } = string.Empty;
 
 	/// <summary>
-	/// AI-expanded detailed specification of the idea.
-	/// Generated when user requests expansion before converting to a job.
+	/// What the idea should achieve and how to tell it is done, when the Lead suggested it. The
+	/// job made from the idea is given this beside the description.
 	/// </summary>
-	[StringLength(ValidationLimits.IdeaExpandedDescriptionMaxLength)]
-	public string? ExpandedDescription { get; set; }
-
-	public IdeaExpansionStatus ExpansionStatus { get; set; } = IdeaExpansionStatus.NotExpanded;
-
-	[StringLength(ValidationLimits.IdeaExpansionErrorMaxLength)]
-	public string? ExpansionError { get; set; }
-	public DateTime? ExpandedAt { get; set; }
+	[StringLength(ValidationLimits.IdeaSpecificationMaxLength)]
+	public string? Specification { get; set; }
 
 	/// <summary>
 	/// Order for processing ideas (lower numbers processed first)
@@ -84,8 +65,7 @@ public class Idea
 	/// </summary>
 	public bool IsProcessing { get; set; }
 
-	public bool HasExpandedDescription => !string.IsNullOrWhiteSpace(ExpandedDescription) &&
-		ExpansionStatus == IdeaExpansionStatus.Approved;
+	public bool HasSpecification => !string.IsNullOrWhiteSpace(Specification);
 
 	public ICollection<IdeaAttachment> Attachments { get; set; } = new List<IdeaAttachment>();
 }

@@ -43,8 +43,7 @@ public static class ValidationLimits
 	public const int JobHelperQuestionsPerRun = 10;
 
 	public const int IdeaDescriptionMaxLength = 8000;
-	public const int IdeaExpandedDescriptionMaxLength = 20000;
-	public const int IdeaExpansionErrorMaxLength = 1000;
+	public const int IdeaSpecificationMaxLength = 20000;
 	public const int IdeaPromptTemplateMaxLength = 12000;
 	public const int IdeaSuggestionFocusMaxLength = 2000;
 

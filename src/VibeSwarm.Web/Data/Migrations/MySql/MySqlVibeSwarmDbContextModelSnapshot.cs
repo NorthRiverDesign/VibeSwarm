@@ -200,10 +200,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
-                    b.Property<string>("IdeaExpansionPromptTemplate")
-                        .HasMaxLength(12000)
-                        .HasColumnType("longtext");
-
                     b.Property<string>("IdeaImplementationPromptTemplate")
                         .HasMaxLength(12000)
                         .HasColumnType("longtext");
@@ -488,21 +484,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<DateTime?>("DismissedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<DateTime?>("ExpandedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("ExpandedDescription")
-                        .HasMaxLength(20000)
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("ExpansionError")
-                        .HasMaxLength(1000)
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("ExpansionStatus")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
                     b.Property<bool>("IsProcessing")
                         .HasColumnType("tinyint(1)");
 
@@ -523,6 +504,10 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
                     b.Property<int>("Source")
                         .HasColumnType("int");
+
+                    b.Property<string>("Specification")
+                        .HasMaxLength(20000)
+                        .HasColumnType("longtext");
 
                     b.HasKey("Id");
 

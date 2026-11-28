@@ -538,113 +538,6 @@ public partial class ProjectDetail
         }
     }
 
-    private async Task ExpandIdea((Guid ideaId, IdeaExpansionRequest request) args)
-    {
-        var ideaId = args.ideaId;
-        var request = args.request;
-        _expandingIdeaId = ideaId;
-
-        // Cancel any previous expansion
-        _expandCts?.Cancel();
-        _expandCts?.Dispose();
-        _expandCts = new CancellationTokenSource();
-        var ct = _expandCts.Token;
-
-        try
-        {
-            var result = await IdeaService.ExpandIdeaAsync(ideaId, request, ct);
-            if (result != null)
-            {
-                await LoadIdeas(force: true);
-                if (result.ExpansionStatus == IdeaExpansionStatus.PendingReview)
-                {
-                    NotificationService.ShowSuccess("Idea expanded successfully. Review the specification.", "AI Expansion Complete");
-                }
-                else if (result.ExpansionStatus == IdeaExpansionStatus.Failed)
-                {
-                    NotificationService.ShowError(result.ExpansionError ?? "Expansion failed", "AI Expansion Failed");
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // User cancelled - try to reset the server-side status
-            try
-            {
-                await IdeaService.CancelExpansionAsync(ideaId);
-                await LoadIdeas(force: true);
-            }
-            catch { /* Best effort */ }
-            NotificationService.ShowInfo("Expansion cancelled.", "Cancelled");
-        }
-        catch (Exception ex)
-        {
-            // On error, also cancel the server-side expansion status
-            try
-            {
-                await IdeaService.CancelExpansionAsync(ideaId);
-                await LoadIdeas(force: true);
-            }
-            catch { /* Best effort */ }
-            NotificationService.ShowProjectError(Project?.Name, $"Error expanding idea: {ex.Message}");
-        }
-        finally
-        {
-            _expandingIdeaId = null;
-        }
-    }
-
-    private async Task CancelIdeaExpansion(Guid ideaId)
-    {
-        _expandCts?.Cancel();
-
-        try
-        {
-            await IdeaService.CancelExpansionAsync(ideaId);
-            await LoadIdeas(force: true);
-            NotificationService.ShowInfo("Expansion cancelled.", "Cancelled");
-        }
-        catch (Exception ex)
-        {
-            NotificationService.ShowProjectError(Project?.Name, $"Error cancelling expansion: {ex.Message}");
-        }
-        finally
-        {
-            _expandingIdeaId = null;
-        }
-    }
-
-    private async Task ApproveIdeaExpansion((Guid ideaId, string? editedDescription) args)
-    {
-        try
-        {
-            var result = await IdeaService.ApproveExpansionAsync(args.ideaId, args.editedDescription);
-            if (result != null)
-            {
-                await LoadIdeas(force: true);
-                NotificationService.ShowSuccess("Specification approved. The idea is ready to run.", "Expansion Approved");
-            }
-        }
-        catch (Exception ex)
-        {
-            NotificationService.ShowProjectError(Project?.Name, $"Error approving expansion: {ex.Message}");
-        }
-    }
-
-    private async Task RejectIdeaExpansion(Guid ideaId)
-    {
-        try
-        {
-            await IdeaService.RejectExpansionAsync(ideaId);
-            await LoadIdeas(force: true);
-            NotificationService.ShowInfo("Expansion discarded. You can try again or edit manually.", "Expansion Discarded");
-        }
-        catch (Exception ex)
-        {
-            NotificationService.ShowProjectError(Project?.Name, $"Error rejecting expansion: {ex.Message}");
-        }
-    }
-
     private async Task SuggestIdeasFromCodebase()
     {
         // The panel handles the full suggestion flow and notifications.
@@ -841,22 +734,12 @@ public partial class ProjectDetail
         {
             _availableInferenceProviders = (await InferenceProviderService.GetEnabledAsync()).ToList();
             _hasInference = _availableInferenceProviders.Any();
-
-            if (_hasInference)
-            {
-                var health = await InferenceService.CheckHealthAsync();
-                if (health.IsAvailable)
-                {
-                    _availableLocalModels = health.DiscoveredModels;
-                }
-            }
         }
         catch
         {
             // Non-critical - inference is optional
             _hasInference = false;
             _availableInferenceProviders = new();
-            _availableLocalModels = new();
         }
     }
 

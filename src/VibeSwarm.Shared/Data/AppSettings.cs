@@ -84,9 +84,6 @@ public class AppSettings
 	public int CriticalErrorLogMaxEntries { get; set; } = DefaultCriticalErrorLogMaxEntries;
 
 	[StringLength(ValidationLimits.IdeaPromptTemplateMaxLength)]
-	public string? IdeaExpansionPromptTemplate { get; set; }
-
-	[StringLength(ValidationLimits.IdeaPromptTemplateMaxLength)]
 	public string? IdeaImplementationPromptTemplate { get; set; }
 
 	[StringLength(ValidationLimits.IdeaPromptTemplateMaxLength)]

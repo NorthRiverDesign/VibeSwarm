@@ -132,7 +132,7 @@ public static partial class LeadPrompts
 			var size = SizeRegex().Match(spec) is { Success: true } match ? match.Groups["size"].Value.ToUpperInvariant() : null;
 			ideas.Add(new LeadIdea(
 				Truncate(title, ValidationLimits.IdeaDescriptionMaxLength),
-				Truncate(spec.Length == 0 ? title : spec, ValidationLimits.IdeaExpandedDescriptionMaxLength),
+				Truncate(spec.Length == 0 ? title : spec, ValidationLimits.IdeaSpecificationMaxLength),
 				size));
 		}
 

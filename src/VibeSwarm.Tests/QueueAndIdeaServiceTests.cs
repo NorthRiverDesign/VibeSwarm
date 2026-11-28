@@ -2823,8 +2823,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			ProjectId = project.Id,
 			Description = "Improve mobile navigation",
-			ExpandedDescription = "Create a bottom navigation bar with clear project and job shortcuts.",
-			ExpansionStatus = IdeaExpansionStatus.Approved,
+			Specification = "Create a bottom navigation bar with clear project and job shortcuts.",
 			SortOrder = 0
 		};
 
@@ -2839,7 +2838,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.NotNull(job);
 		Assert.Contains("## Detailed Specification", job!.GoalPrompt);
 		Assert.Contains("Use the approved specification as the source of truth", job.GoalPrompt);
-		Assert.Contains(idea.ExpandedDescription, job.GoalPrompt);
+		Assert.Contains(idea.Specification, job.GoalPrompt);
 		Assert.DoesNotContain("Work directly from the idea below", job.GoalPrompt);
 	}
 
@@ -4346,129 +4345,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task ExpandIdeaAsync_UsesProjectPlanningProviderAndModel()
-	{
-		await using var dbContext = CreateDbContext();
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "Claude Planner",
-			Type = ProviderType.Claude,
-			IsEnabled = true,
-			IsDefault = true
-		};
-		var project = new Project
-		{
-			Id = Guid.NewGuid(),
-			Name = "Planned Ideas Project",
-			WorkingPath = "/tmp/planned-ideas",
-			PlanningEnabled = true,
-			PlanningProviderId = provider.Id,
-			PlanningModelId = "claude-sonnet-4.6",
-			PlanningReasoningEffort = "high"
-		};
-		var idea = new Idea
-		{
-			Id = Guid.NewGuid(),
-			ProjectId = project.Id,
-			Description = "Add a planning settings card to the project page",
-			SortOrder = 0
-		};
-		var providerInstance = new FakeProviderInstance
-		{
-			ExecutionResult = new ExecutionResult
-			{
-				Success = true,
-				ModelUsed = "claude-sonnet-4.6",
-				Messages =
-				[
-					new ExecutionMessage
-					{
-						Role = "plan",
-						Content = "Overview: Add project planning controls.\nAcceptance Criteria: Users can configure planning.",
-					}
-				]
-			}
-		};
-
-		dbContext.Projects.Add(project);
-		dbContext.Providers.Add(provider);
-		dbContext.Ideas.Add(idea);
-		await dbContext.SaveChangesAsync();
-
-		var ideaService = CreateIdeaService(dbContext, provider, providerInstance);
-		var result = await ideaService.ExpandIdeaAsync(idea.Id);
-
-		Assert.NotNull(result);
-		Assert.Equal(IdeaExpansionStatus.PendingReview, result!.ExpansionStatus);
-		Assert.Contains("Overview: Add project planning controls.", result.ExpandedDescription);
-		Assert.NotNull(providerInstance.LastExecutePrompt);
-		Assert.DoesNotContain("/plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
-		Assert.StartsWith("Explore the codebase and write an implementation-ready plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
-		Assert.Equal(project.PlanningModelId, providerInstance.LastExecutionOptions?.Model);
-		Assert.Equal(project.PlanningReasoningEffort, providerInstance.LastExecutionOptions?.ReasoningEffort);
-		Assert.NotNull(providerInstance.LastExecutionOptions?.DisallowedTools);
-		Assert.Contains("Bash", providerInstance.LastExecutionOptions!.DisallowedTools!);
-		Assert.Contains("Edit", providerInstance.LastExecutionOptions.DisallowedTools!);
-		Assert.Contains("Write", providerInstance.LastExecutionOptions.DisallowedTools!);
-	}
-
-	[Fact]
-	public async Task ExpandIdeaAsync_UsesConfiguredIdeaExpansionPromptTemplate()
-	{
-		await using var dbContext = CreateDbContext();
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "Copilot",
-			Type = ProviderType.Copilot,
-			IsEnabled = true,
-			IsDefault = true
-		};
-		var project = new Project
-		{
-			Id = Guid.NewGuid(),
-			Name = "Idea Prompt Project",
-			WorkingPath = "/tmp/idea-prompt-project"
-		};
-		var idea = new Idea
-		{
-			Id = Guid.NewGuid(),
-			ProjectId = project.Id,
-			Description = "Ship a settings editor for prompt templates",
-			SortOrder = 0
-		};
-		var inferenceService = new FakeInferenceService
-		{
-			Response = new InferenceResponse
-			{
-				Success = true,
-				Response = "Overview: Add settings editor.\nAcceptance Criteria: Users can save templates."
-			}
-		};
-
-		dbContext.Providers.Add(provider);
-		dbContext.Projects.Add(project);
-		dbContext.Ideas.Add(idea);
-		dbContext.AppSettings.Add(new AppSettings
-		{
-			Id = Guid.NewGuid(),
-			TimeZoneId = "UTC",
-			IdeaExpansionPromptTemplate = "Explore first:\n{{idea}}\nThen produce a spec."
-		});
-		await dbContext.SaveChangesAsync();
-
-		var ideaService = CreateIdeaService(dbContext, provider, inferenceService: inferenceService);
-		var result = await ideaService.ExpandIdeaAsync(idea.Id, new IdeaExpansionRequest { UseInference = true });
-
-		Assert.NotNull(result);
-		Assert.NotNull(inferenceService.LastRequest);
-		Assert.Contains("Explore first:", inferenceService.LastRequest!.Prompt);
-		Assert.Contains(idea.Description, inferenceService.LastRequest.Prompt);
-		Assert.DoesNotContain("implementation-ready engineering specification", inferenceService.LastRequest.Prompt);
-	}
-
-	[Fact]
 	public async Task ConvertToJobAsync_UsesConfiguredIdeaImplementationPromptTemplate()
 	{
 		await using var dbContext = CreateDbContext();
@@ -4537,9 +4413,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			ProjectId = project.Id,
 			Description = "Add prompt template settings",
-			ExpandedDescription = "Persist app-level templates and render them in Settings.",
-			ExpansionStatus = IdeaExpansionStatus.Approved,
-			ExpandedAt = DateTime.UtcNow,
+			Specification = "Persist app-level templates and render them in Settings.",
 			SortOrder = 0
 		};
 
@@ -4560,7 +4434,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.NotNull(job);
 		Assert.Contains("Original:", job!.GoalPrompt);
 		Assert.Contains(idea.Description, job.GoalPrompt);
-		Assert.Contains(idea.ExpandedDescription, job.GoalPrompt);
+		Assert.Contains(idea.Specification, job.GoalPrompt);
 		Assert.Contains("Ship it.", job.GoalPrompt);
 		Assert.DoesNotContain("This specification was reviewed and approved", job.GoalPrompt);
 	}

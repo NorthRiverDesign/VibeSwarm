@@ -56,8 +56,7 @@ public class ProjectExportDto
 public class IdeaExportDto
 {
 	public string Description { get; set; } = string.Empty;
-	public string? ExpandedDescription { get; set; }
-	public IdeaExpansionStatus ExpansionStatus { get; set; }
+	public string? Specification { get; set; }
 	public int SortOrder { get; set; }
 }
 

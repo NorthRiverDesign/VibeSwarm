@@ -152,34 +152,6 @@ public class IdeasController : ControllerBase
     [HttpPost("{id:guid}/move")]
     public async Task<IActionResult> Move(Guid id, [FromBody] TransferRequest req, CancellationToken ct) => Ok(await _ideaService.MoveToProjectAsync(id, req.TargetProjectId, ct));
 
-    [HttpPost("{id:guid}/expand")]
-    public async Task<IActionResult> Expand(Guid id, [FromBody] IdeaExpansionRequest? request, CancellationToken ct)
-    {
-        var result = await _ideaService.ExpandIdeaAsync(id, request, ct);
-        return result == null ? BadRequest() : Ok(result);
-    }
-
-    [HttpPost("{id:guid}/cancel-expansion")]
-    public async Task<IActionResult> CancelExpansion(Guid id, CancellationToken ct)
-    {
-        var result = await _ideaService.CancelExpansionAsync(id, ct);
-        return result == null ? NotFound() : Ok(result);
-    }
-
-    [HttpPost("{id:guid}/approve")]
-    public async Task<IActionResult> Approve(Guid id, [FromBody] ApproveRequest req, CancellationToken ct)
-    {
-        var result = await _ideaService.ApproveExpansionAsync(id, req.EditedDescription, ct);
-        return result == null ? BadRequest() : Ok(result);
-    }
-
-    [HttpPost("{id:guid}/reject")]
-    public async Task<IActionResult> Reject(Guid id, CancellationToken ct)
-    {
-        var result = await _ideaService.RejectExpansionAsync(id, ct);
-        return result == null ? BadRequest() : Ok(result);
-	}
-
 	[HttpPost("project/{projectId:guid}/suggest")]
 	public async Task<IActionResult> SuggestIdeas(Guid projectId, [FromBody] SuggestIdeasRequest? request, CancellationToken ct)
 	{
@@ -209,9 +181,4 @@ public class IdeasController : ControllerBase
     }
 
     public record TransferRequest(Guid TargetProjectId);
-    public sealed class ApproveRequest
-    {
-        [StringLength(ValidationLimits.IdeaExpandedDescriptionMaxLength)]
-        public string? EditedDescription { get; init; }
-    }
 }

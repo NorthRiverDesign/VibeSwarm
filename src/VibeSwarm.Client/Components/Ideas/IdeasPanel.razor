@@ -199,7 +199,7 @@
 							  IsStarting="@(StartingIdeaId == idea.Id)" HasActiveJobs="@HasActiveJobs"
 							  HasDefaultProvider="@HasDefaultProvider"
 							  IsQueuedForProcessing="@(IsProcessingActive && !idea.IsProcessing && !IsIdeaProcessing(idea.Id) && !idea.JobId.HasValue)"
-							  OnExpand="@(() => OpenExpandModal(idea))" OnStart="@(() => StartSingleIdea(idea))"
+							  OnStart="@(() => StartSingleIdea(idea))"
 							  OnCopy="@(() => OpenCopyModal(idea))" OnMove="@(() => OpenMoveModal(idea))"
 							  OnDelete="@(() => OnDeleteIdea.InvokeAsync(idea.Id))" OnSaveEdit="HandleIdeaEdit"
 							  OnStopJob="@(() => HandleStopJob(idea))" />
@@ -219,12 +219,6 @@
 	<ProjectTransferModal @bind-IsVisible="ShowMoveModal" IdeaDescription="@(SelectedIdea?.Description ?? "")"
 						  ExcludeProjectId="@CurrentProjectId" AvailableProjects="@AvailableProjects" IsMove="true"
 						  IsProcessing="@IsProcessingAction" OnConfirm="ConfirmMoveIdea" OnCancel="CloseModals" />
-
-	@* Idea Expansion Modal *@
-	<IdeaExpansionModal @bind-IsVisible="ShowExpansionModal" Idea="SelectedIdeaForExpansion" IsExpanding="IsExpandingIdea"
-						IsProcessing="IsProcessingExpansion" OnExpand="HandleExpandIdea" OnCancel="HandleCancelExpansion"
-						OnApprove="HandleApproveExpansion" OnReject="HandleRejectExpansion" AvailableModels="@AvailableLocalModels"
-						HasInference="@HasInference" AvailableProviders="@AvailableProviders" />
 
 	@* Start All Confirmation Modal *@
 	<ModalDialog @bind-IsVisible="_showStartAllModal" Title="Start All Ideas" Icon="play-fill"
@@ -367,18 +361,6 @@
 	public EventCallback<Guid> OnStartSingleIdea { get; set; }
 
 	[Parameter]
-	public EventCallback<(Guid ideaId, IdeaExpansionRequest request)> OnExpandIdea { get; set; }
-
-	[Parameter]
-	public EventCallback<Guid> OnCancelExpansion { get; set; }
-
-	[Parameter]
-	public EventCallback<(Guid ideaId, string? editedDescription)> OnApproveExpansion { get; set; }
-
-	[Parameter]
-	public EventCallback<Guid> OnRejectExpansion { get; set; }
-
-	[Parameter]
 	public EventCallback OnSuggestIdeas { get; set; }
 
 	[Parameter]
@@ -395,9 +377,6 @@
 
 	[Parameter]
 	public EventCallback<IdeaProcessingOptions> OnStartProcessingWithOptions { get; set; }
-
-	[Parameter]
-	public List<DiscoveredModel> AvailableLocalModels { get; set; } = new();
 
 	[Parameter]
 	public bool HasInference { get; set; }
@@ -448,13 +427,9 @@
 	// Modal state
 	private bool ShowCopyModal { get; set; }
 	private bool ShowMoveModal { get; set; }
-	private bool ShowExpansionModal { get; set; }
 	private Idea? SelectedIdea { get; set; }
-	private Idea? SelectedIdeaForExpansion { get; set; }
 	private List<Project> AvailableProjects { get; set; } = new();
 	private bool IsProcessingAction { get; set; }
-	private bool IsExpandingIdea { get; set; }
-	private bool IsProcessingExpansion { get; set; }
 
 	private async Task HandleKeyPress(KeyboardEventArgs e)
 	{
@@ -652,95 +627,6 @@
 	}
 
 	private bool IsIdeaProcessing(Guid ideaId) => ProcessingIdeaIds.Contains(ideaId);
-
-	private void OpenExpandModal(Idea idea)
-	{
-		SelectedIdeaForExpansion = idea;
-		ShowExpansionModal = true;
-	}
-
-	private async Task HandleExpandIdea(IdeaExpansionRequest request)
-	{
-		if (SelectedIdeaForExpansion == null) return;
-
-		IsExpandingIdea = true;
-		StateHasChanged();
-
-		try
-		{
-			await OnExpandIdea.InvokeAsync((SelectedIdeaForExpansion.Id, request));
-			var updated = Ideas.FirstOrDefault(i => i.Id == SelectedIdeaForExpansion.Id);
-			if (updated != null)
-			{
-				SelectedIdeaForExpansion = updated;
-			}
-		}
-		finally
-		{
-			IsExpandingIdea = false;
-			StateHasChanged();
-		}
-	}
-
-	private async Task HandleCancelExpansion()
-	{
-		var ideaId = SelectedIdeaForExpansion?.Id;
-		if (ideaId == null) return;
-
-		try
-		{
-			await OnCancelExpansion.InvokeAsync(ideaId.Value);
-			var updated = Ideas.FirstOrDefault(i => i.Id == ideaId.Value);
-			if (updated != null)
-			{
-				SelectedIdeaForExpansion = updated;
-			}
-		}
-		finally
-		{
-			IsExpandingIdea = false;
-			StateHasChanged();
-		}
-	}
-
-	private async Task HandleApproveExpansion((Guid ideaId, string? editedDescription) args)
-	{
-		IsProcessingExpansion = true;
-		StateHasChanged();
-
-		try
-		{
-			await OnApproveExpansion.InvokeAsync(args);
-		}
-		finally
-		{
-			IsProcessingExpansion = false;
-			ShowExpansionModal = false;
-			SelectedIdeaForExpansion = null;
-			StateHasChanged();
-		}
-	}
-
-	private async Task HandleRejectExpansion(Guid ideaId)
-	{
-		IsProcessingExpansion = true;
-		StateHasChanged();
-
-		try
-		{
-			await OnRejectExpansion.InvokeAsync(ideaId);
-			var updated = Ideas.FirstOrDefault(i => i.Id == ideaId);
-			if (updated != null)
-			{
-				SelectedIdeaForExpansion = updated;
-			}
-		}
-		finally
-		{
-			IsProcessingExpansion = false;
-			StateHasChanged();
-		}
-	}
 
 	[Parameter]
 	public int UnprocessedIdeasCount { get; set; }

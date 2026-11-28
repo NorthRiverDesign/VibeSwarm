@@ -14,13 +14,6 @@ public sealed class InferenceTimeoutsTests
 	}
 
 	[Fact]
-	public void IdeaExpansionTimeout_TracksSharedInferenceTimeouts()
-	{
-		Assert.Equal(InferenceTimeouts.StandardIdeaActionTimeout, IdeaService.GetExpansionTimeout(useInference: false));
-		Assert.Equal(InferenceTimeouts.InferenceIdeaActionTimeout, IdeaService.GetExpansionTimeout(useInference: true));
-	}
-
-	[Fact]
 	public void OllamaRuntimeOptions_DefaultsMatchExtendedLocalInferenceTimeouts()
 	{
 		var options = new OllamaInferenceService.RuntimeOptions();

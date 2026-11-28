@@ -1,23 +1,14 @@
-@* The three templates that turn an idea into a job prompt, shown inside Settings' open Idea prompts
+@* The two templates that turn an idea into a job prompt, shown inside Settings' open Idea prompts
    row. Each saves when the field loses focus. *@
 
 <div class="small fg-1">
-	Tune how VibeSwarm turns a short idea into an implementation-ready prompt. Use
+	Tune how VibeSwarm turns a short idea into a job's prompt. Use
 	<code>@PromptBuilder.IdeaToken</code> and <code>@PromptBuilder.SpecificationToken</code> where the idea and the
-	reviewed specification go.
+	Lead's specification go.
 </div>
 
 <div>
-	<label for="ideaExpansionPromptTemplate" class="form-label">Expanding an idea</label>
-	<textarea id="ideaExpansionPromptTemplate" class="form-control font-monospace" rows="10"
-			  @bind="Settings.IdeaExpansionPromptTemplate" @bind:after="NotifyChangedAsync"></textarea>
-	<div class="form-text">
-		Turns an idea into a specification to review. Without <code>@PromptBuilder.IdeaToken</code> the idea is added at the end.
-	</div>
-</div>
-
-<div>
-	<label for="ideaImplementationPromptTemplate" class="form-label">Building an idea directly</label>
+	<label for="ideaImplementationPromptTemplate" class="form-label">Building an idea you wrote</label>
 	<textarea id="ideaImplementationPromptTemplate" class="form-control font-monospace" rows="10"
 			  @bind="Settings.IdeaImplementationPromptTemplate" @bind:after="NotifyChangedAsync"></textarea>
 	<div class="form-text">
@@ -26,11 +17,11 @@
 </div>
 
 <div>
-	<label for="approvedIdeaImplementationPromptTemplate" class="form-label">Building an approved specification</label>
+	<label for="approvedIdeaImplementationPromptTemplate" class="form-label">Building an idea the Lead suggested</label>
 	<textarea id="approvedIdeaImplementationPromptTemplate" class="form-control font-monospace" rows="10"
 			  @bind="Settings.ApprovedIdeaImplementationPromptTemplate" @bind:after="NotifyChangedAsync"></textarea>
 	<div class="form-text">
-		Used when an approved specification becomes a job. Missing <code>@PromptBuilder.IdeaToken</code> or
+		Used when a Lead suggestion you approved becomes a job. Missing <code>@PromptBuilder.IdeaToken</code> or
 		<code>@PromptBuilder.SpecificationToken</code> sections are added at the end.
 	</div>
 </div>

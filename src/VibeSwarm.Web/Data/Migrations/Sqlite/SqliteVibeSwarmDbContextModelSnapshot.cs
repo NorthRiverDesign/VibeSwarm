@@ -191,10 +191,6 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("IdeaExpansionPromptTemplate")
-                        .HasMaxLength(12000)
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("IdeaImplementationPromptTemplate")
                         .HasMaxLength(12000)
                         .HasColumnType("TEXT");
@@ -479,21 +475,6 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<DateTime?>("DismissedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("ExpandedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ExpandedDescription")
-                        .HasMaxLength(20000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ExpansionError")
-                        .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ExpansionStatus")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.Property<bool>("IsProcessing")
                         .HasColumnType("INTEGER");
 
@@ -514,6 +495,10 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<int>("Source")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("Specification")
+                        .HasMaxLength(20000)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 

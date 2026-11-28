@@ -752,7 +752,6 @@ public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = 
 	TimeZoneId = "UTC",
 	CriticalErrorLogRetentionDays = AppSettings.DefaultCriticalErrorLogRetentionDays,
 	CriticalErrorLogMaxEntries = AppSettings.DefaultCriticalErrorLogMaxEntries,
-	IdeaExpansionPromptTemplate = PromptBuilder.DefaultIdeaExpansionPromptTemplate,
 	IdeaImplementationPromptTemplate = PromptBuilder.DefaultIdeaImplementationPromptTemplate,
 	ApprovedIdeaImplementationPromptTemplate = PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate
 });

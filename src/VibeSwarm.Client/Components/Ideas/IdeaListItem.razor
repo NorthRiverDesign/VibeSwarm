@@ -82,18 +82,10 @@
 		@if (_isExpanded)
 		{
 			<div class="d-flex flex-column gap-3 px-5 pb-5">
-				@if (Idea.ExpansionStatus is IdeaExpansionStatus.Approved or IdeaExpansionStatus.PendingReview)
+				@if (Idea.HasSpecification)
 				{
-					<div class="d-flex flex-wrap gap-3">
-						@if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved)
-						{
-							<span class="badge theme-primary"><i class="bi bi-stars"></i>Expanded</span>
-						}
-						else
-						{
-							<span class="badge theme-secondary"><i class="bi bi-eye"></i>Review</span>
-						}
-					</div>
+					@* What the Lead wrote for an idea it suggested: the goal and how to tell it is done. *@
+					<div class="small fg-1 white-space-pre-wrap text-break">@Idea.Specification</div>
 				}
 				@if (Idea.Attachments.Any())
 				{
@@ -129,9 +121,6 @@
 							<RowActionsItem Icon="stop-fill" Text="Stop Job" Warning="true" OnClick="HandleStopJob" />
 							<hr class="menu-divider">
 						}
-						<RowActionsItem Icon="magic" Text="Expand with AI" OnClick="HandleExpand"
-										Disabled="@(Idea.JobId.HasValue || Idea.ExpansionStatus == IdeaExpansionStatus.Expanding)" />
-						<hr class="menu-divider">
 						<RowActionsItem Icon="copy" Text="Copy to Project" OnClick="HandleCopy" />
 						<RowActionsItem Icon="box-arrow-right" Text="Move to Project" OnClick="HandleMove"
 										Disabled="@(IsRunningIdea() || IsQueuedIdea() || Idea.JobId.HasValue)" />
@@ -149,9 +138,6 @@
 	private string GetStatusIconColor()
 	{
 		if (IsQueuedIdea()) return "fg-primary";
-		if (Idea.ExpansionStatus == IdeaExpansionStatus.Expanding) return "fg-info";
-		if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved) return "fg-success";
-		if (Idea.ExpansionStatus == IdeaExpansionStatus.PendingReview) return "fg-warning";
 		return "fg-2";
 	}
 
@@ -159,22 +145,13 @@
 	{
 		if (IsRunningIdea()) return "Running";
 		if (IsQueuedIdea()) return "Queued";
-		return Idea.ExpansionStatus switch
-		{
-			IdeaExpansionStatus.Expanding => "Expanding with AI",
-			IdeaExpansionStatus.Approved => "Expanded with AI",
-			IdeaExpansionStatus.PendingReview => "AI expansion waiting for review",
-			_ => "Idea"
-		};
+		return "Idea";
 	}
 
 	private string GetStatusIcon()
 	{
 		if (IsRunningIdea()) return "bi-hourglass-split";
 		if (IsQueuedIdea()) return "bi-hourglass-split";
-		if (Idea.ExpansionStatus == IdeaExpansionStatus.Expanding) return "bi-stars";
-		if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved) return "bi-stars";
-		if (Idea.ExpansionStatus == IdeaExpansionStatus.PendingReview) return "bi-eye";
 		return "bi-lightbulb";
 	}
 }
@@ -200,9 +177,6 @@
 
 	[Parameter]
 	public bool HasDefaultProvider { get; set; }
-
-	[Parameter]
-	public EventCallback OnExpand { get; set; }
 
 	[Parameter]
 	public EventCallback OnStart { get; set; }
@@ -268,23 +242,11 @@
 			Idea.Job?.Status == JobStatus.Paused;
 	}
 
-	private async Task HandleExpand() => await OnExpand.InvokeAsync();
 	private async Task HandleStart() => await OnStart.InvokeAsync();
 	private async Task HandleCopy() => await OnCopy.InvokeAsync();
 	private async Task HandleMove() => await OnMove.InvokeAsync();
 	private async Task HandleDelete() => await OnDelete.InvokeAsync();
 	private async Task HandleStopJob() => await OnStopJob.InvokeAsync();
-
-	private string GetExpandButtonTooltip()
-	{
-		return Idea.ExpansionStatus switch
-		{
-			IdeaExpansionStatus.Approved => "View approved specification",
-			IdeaExpansionStatus.PendingReview => "Review AI-generated specification",
-			IdeaExpansionStatus.Expanding => "Expanding...",
-			_ => "Expand with AI"
-		};
-	}
 
 	private string GetEditLengthSummary()
 	{

@@ -56,9 +56,9 @@ public partial class IdeaService
 
 			var branch = await ProjectJobBranch.ResolveDefaultAsync(idea.Project, _versionControlService, _logger, cancellationToken);
 
-			// Use an approved expansion when available; otherwise send directly to implementation.
-			var goalPrompt = idea.HasExpandedDescription
-				? BuildPromptFromExpanded(idea.Description, idea.ExpandedDescription!, await GetApprovedIdeaImplementationPromptTemplateAsync(cancellationToken))
+			// An idea the Lead suggested carries its goal and acceptance criteria with it.
+			var goalPrompt = idea.HasSpecification
+				? BuildPromptFromSpecification(idea.Description, idea.Specification!, await GetApprovedIdeaImplementationPromptTemplateAsync(cancellationToken))
 				: BuildImplementationPrompt(idea.Description, await GetIdeaImplementationPromptTemplateAsync(cancellationToken));
 			var attachmentPaths = ResolveAttachmentPaths(idea.Project.WorkingPath, idea.Attachments);
 			if (attachmentPaths.Count > 0)
@@ -187,8 +187,8 @@ public partial class IdeaService
 		return ProviderCapabilities.NormalizeReasoningEffort(provider?.DefaultReasoningEffort);
 	}
 
-	private static string BuildPromptFromExpanded(string originalIdea, string expandedDescription, string? template)
-		=> PromptBuilder.BuildApprovedIdeaImplementationPrompt(originalIdea, expandedDescription, template);
+	private static string BuildPromptFromSpecification(string originalIdea, string specification, string? template)
+		=> PromptBuilder.BuildApprovedIdeaImplementationPrompt(originalIdea, specification, template);
 
 	private static string BuildImplementationPrompt(string ideaDescription, string? template)
 		=> PromptBuilder.BuildIdeaImplementationPrompt(ideaDescription, template);

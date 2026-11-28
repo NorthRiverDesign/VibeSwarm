@@ -44,7 +44,7 @@
 		<ListRow Icon="map" Title="Plan first" Subtitle="@(RoleSummary(PlanProfileId, Project.PlanningEnabled, "Writes a plan before each job builds"))">
 			<Trailing>@OffLabel(Project.PlanningEnabled)</Trailing>
 			<ChildContent>
-				<p class="small fg-1 mb-0">Before a job builds, this profile reads the code and writes the plan the builder follows. It also turns an idea into a plan you can check. Needs Claude Code or Copilot.</p>
+				<p class="small fg-1 mb-0">Before a job builds, this profile reads the code and writes the plan the builder follows. Needs Claude Code or Copilot.</p>
 				<ProfilePicker Id="workflow-plan" Label="Plan with" Profiles="Known" Allowed="CanReadCode"
 							   SelectedProfileId="PlanProfileId" EmptyLabel="Off" OnSelected="SetPlan" />
 			</ChildContent>

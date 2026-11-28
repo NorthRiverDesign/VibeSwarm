@@ -215,10 +215,6 @@ internal abstract class FakeIdeaServiceBase : IIdeaService
 	public virtual Task ReorderIdeasAsync(Guid projectId, IEnumerable<Guid> ideaIdsInOrder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<Idea> CopyToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public virtual Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public virtual Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
