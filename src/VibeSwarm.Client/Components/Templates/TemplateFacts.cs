@@ -15,14 +15,6 @@ public static class TemplateFacts
 			// The template's profile goes first; the job still falls back to the project's others if it fails.
 			parts.Add($"{template.ProfileName ?? template.Provider?.Name ?? "a fixed profile"} first");
 		}
-		if (template.CycleMode == CycleMode.FixedCount)
-		{
-			parts.Add($"{template.MaxCycles} passes");
-		}
-		else if (template.CycleMode == CycleMode.Autonomous)
-		{
-			parts.Add($"up to {template.MaxCycles} passes");
-		}
 		if (!string.IsNullOrWhiteSpace(template.Branch))
 		{
 			parts.Add($"branch {template.Branch}");

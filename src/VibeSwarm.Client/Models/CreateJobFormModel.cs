@@ -23,16 +23,6 @@ public sealed class CreateJobFormModel : IValidatableObject
 	[StringLength(250)]
 	public string? TargetBranch { get; set; }
 
-	public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
-
-	public CycleSessionMode CycleSessionMode { get; set; } = CycleSessionMode.ContinueSession;
-
-	[Range(1, 100, ErrorMessage = "Max cycles must be between 1 and 100.")]
-	public int MaxCycles { get; set; } = 1;
-
-	[StringLength(2000)]
-	public string? CycleReviewPrompt { get; set; }
-
 	/// <summary>How many copies of the job run side by side (see <see cref="Job.RequestedInstances"/>).</summary>
 	[Range(1, ValidationLimits.JobInstancesMax, ErrorMessage = "Instances must be between {1} and {2}.")]
 	public int Instances { get; set; } = 1;
@@ -46,10 +36,6 @@ public sealed class CreateJobFormModel : IValidatableObject
 			Branch = job.Branch,
 			GitChangeDeliveryMode = job.GitChangeDeliveryMode,
 			TargetBranch = job.TargetBranch,
-			CycleMode = job.CycleMode,
-			CycleSessionMode = job.CycleSessionMode,
-			MaxCycles = job.MaxCycles,
-			CycleReviewPrompt = job.CycleReviewPrompt,
 			Instances = Math.Clamp(job.RequestedInstances, 1, ValidationLimits.JobInstancesMax)
 		};
 	}
@@ -65,10 +51,6 @@ public sealed class CreateJobFormModel : IValidatableObject
 		job.Branch = string.IsNullOrWhiteSpace(Branch) ? null : Branch.Trim();
 		job.GitChangeDeliveryMode = GitChangeDeliveryMode;
 		job.TargetBranch = string.IsNullOrWhiteSpace(TargetBranch) ? null : TargetBranch.Trim();
-		job.CycleMode = CycleMode;
-		job.CycleSessionMode = CycleSessionMode;
-		job.MaxCycles = MaxCycles;
-		job.CycleReviewPrompt = string.IsNullOrWhiteSpace(CycleReviewPrompt) ? null : CycleReviewPrompt.Trim();
 		job.RequestedInstances = Math.Clamp(Instances, 1, ValidationLimits.JobInstancesMax);
 	}
 

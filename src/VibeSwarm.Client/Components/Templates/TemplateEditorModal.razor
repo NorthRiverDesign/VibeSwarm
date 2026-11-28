@@ -45,28 +45,6 @@
 								   EmptyLabel="Each project's Build profile" />
 
 					<div class="mb-5">
-						<label for="template-cycles" class="form-label">Passes</label>
-						<select id="template-cycles" class="form-control" @bind="CycleModeValue">
-							<option value="@CycleMode.SingleCycle">One pass</option>
-							<option value="@CycleMode.FixedCount">A fixed number of passes</option>
-							<option value="@CycleMode.Autonomous">Until the agent says it's done</option>
-						</select>
-					</div>
-
-					@if (_draft.CycleMode != CycleMode.SingleCycle)
-					{
-						<div class="mb-5">
-							<label for="template-max-cycles" class="form-label">@(_draft.CycleMode == CycleMode.FixedCount ? "Number of passes" : "At most")</label>
-							<InputNumber id="template-max-cycles" @bind-Value="_draft.MaxCycles" class="form-control" min="1" max="100" />
-						</div>
-						<div class="mb-5">
-							<label for="template-review" class="form-label">Between passes <span class="fg-1 fw-normal">(optional)</span></label>
-							<InputTextArea id="template-review" @bind-Value="_draft.CycleReviewPrompt" class="form-control" rows="2"
-										   placeholder="What the agent checks before the next pass" />
-						</div>
-					}
-
-					<div class="mb-5">
 						<label for="template-branch" class="form-label">Branch</label>
 						<InputText id="template-branch" @bind-Value="_draft.Branch" class="form-control" placeholder="Each project's development branch" />
 					</div>
@@ -125,23 +103,6 @@
 
 	private bool IsEdit => Template is { Id: var id } && id != Guid.Empty;
 
-	private CycleMode CycleModeValue
-	{
-		get => _draft.CycleMode;
-		set
-		{
-			_draft.CycleMode = value;
-			if (value == CycleMode.SingleCycle)
-			{
-				_draft.MaxCycles = 1;
-			}
-			else if (_draft.MaxCycles < 2)
-			{
-				_draft.MaxCycles = value == CycleMode.FixedCount ? 2 : 5;
-			}
-		}
-	}
-
 	private string DeliveryValue
 	{
 		get => _draft.GitChangeDeliveryMode?.ToString() ?? string.Empty;
@@ -157,10 +118,6 @@
 			if (_draft.ProfileId is Guid profileId)
 			{
 				parts.Add(_profiles.FirstOrDefault(profile => profile.Id == profileId)?.Name ?? _draft.ProfileName ?? "Profile");
-			}
-			if (_draft.CycleMode != CycleMode.SingleCycle)
-			{
-				parts.Add($"up to {_draft.MaxCycles} passes");
 			}
 			if (!string.IsNullOrWhiteSpace(_draft.Branch))
 			{
@@ -210,11 +167,7 @@
 			ProfileName = source.ProfileName,
 			Branch = source.Branch,
 			GitChangeDeliveryMode = source.GitChangeDeliveryMode,
-			TargetBranch = source.TargetBranch,
-			CycleMode = source.CycleMode,
-			CycleSessionMode = source.CycleSessionMode,
-			MaxCycles = source.MaxCycles,
-			CycleReviewPrompt = source.CycleReviewPrompt
+			TargetBranch = source.TargetBranch
 		};
 
 	// The server fills the provider, model and reasoning from the profile; none is sent, so a

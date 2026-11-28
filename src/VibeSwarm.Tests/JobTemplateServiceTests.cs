@@ -55,11 +55,7 @@ public sealed class JobTemplateServiceTests : IDisposable
 			ReasoningEffort = "HIGH",
 			Branch = " feature/bugfix ",
 			GitChangeDeliveryMode = GitChangeDeliveryMode.PullRequest,
-			TargetBranch = " main ",
-			CycleMode = CycleMode.FixedCount,
-			CycleSessionMode = CycleSessionMode.FreshSession,
-			MaxCycles = 3,
-			CycleReviewPrompt = "  Re-check tests after each pass. "
+			TargetBranch = " main "
 		});
 
 		Assert.Equal("Bug fixer", created.Name);

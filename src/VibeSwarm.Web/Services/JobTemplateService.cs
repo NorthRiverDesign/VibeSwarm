@@ -240,10 +240,6 @@ public class JobTemplateService : IJobTemplateService
 				?? await ProjectJobBranch.ResolveDefaultAsync(project, _versionControlService!, _logger, cancellationToken),
 			GitChangeDeliveryMode = template.GitChangeDeliveryMode ?? project.GitChangeDeliveryMode,
 			TargetBranch = template.TargetBranch ?? project.DefaultTargetBranch,
-			CycleMode = template.CycleMode,
-			CycleSessionMode = template.CycleSessionMode,
-			MaxCycles = template.MaxCycles,
-			CycleReviewPrompt = template.CycleReviewPrompt,
 			Status = JobStatus.New
 		};
 	}
@@ -301,10 +297,6 @@ public class JobTemplateService : IJobTemplateService
 		existing.Branch = template.Branch;
 		existing.GitChangeDeliveryMode = template.GitChangeDeliveryMode;
 		existing.TargetBranch = template.TargetBranch;
-		existing.CycleMode = template.CycleMode;
-		existing.CycleSessionMode = template.CycleSessionMode;
-		existing.MaxCycles = template.MaxCycles;
-		existing.CycleReviewPrompt = template.CycleReviewPrompt;
 		existing.UpdatedAt = DateTime.UtcNow;
 
 		NormalizeTemplate(existing);
@@ -436,7 +428,5 @@ public class JobTemplateService : IJobTemplateService
 		template.ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(template.ReasoningEffort);
 		template.Branch = string.IsNullOrWhiteSpace(template.Branch) ? null : template.Branch.Trim();
 		template.TargetBranch = string.IsNullOrWhiteSpace(template.TargetBranch) ? null : template.TargetBranch.Trim();
-		template.CycleReviewPrompt = string.IsNullOrWhiteSpace(template.CycleReviewPrompt) ? null : template.CycleReviewPrompt.Trim();
-		template.MaxCycles = Math.Clamp(template.MaxCycles, 1, 100);
 	}
 }

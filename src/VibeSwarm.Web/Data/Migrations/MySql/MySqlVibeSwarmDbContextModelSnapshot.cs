@@ -836,19 +836,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<string>("CurrentActivity")
                         .HasColumnType("longtext");
 
-                    b.Property<int>("CurrentCycle")
-                        .HasColumnType("int");
-
-                    b.Property<int>("CycleMode")
-                        .HasColumnType("int");
-
-                    b.Property<string>("CycleReviewPrompt")
-                        .HasMaxLength(2000)
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("CycleSessionMode")
-                        .HasColumnType("int");
-
                     b.Property<Guid?>("DependsOnJobId")
                         .HasColumnType("char(36)");
 
@@ -961,9 +948,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
 
                     b.Property<decimal?>("MaxCostUsd")
                         .HasColumnType("decimal(65,30)");
-
-                    b.Property<int>("MaxCycles")
-                        .HasColumnType("int");
 
                     b.Property<int?>("MaxExecutionMinutes")
                         .HasColumnType("int");
@@ -1463,16 +1447,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<int>("CycleMode")
-                        .HasColumnType("int");
-
-                    b.Property<string>("CycleReviewPrompt")
-                        .HasMaxLength(2000)
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("CycleSessionMode")
-                        .HasColumnType("int");
-
                     b.Property<string>("Description")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
@@ -1484,9 +1458,6 @@ namespace VibeSwarm.Web.Data.Migrations.MySql
                         .IsRequired()
                         .HasMaxLength(20000)
                         .HasColumnType("longtext");
-
-                    b.Property<int>("MaxCycles")
-                        .HasColumnType("int");
 
                     b.Property<string>("ModelId")
                         .HasMaxLength(200)

@@ -327,9 +327,6 @@ public partial class JobProcessingService
             _logger.LogInformation("Starting provider execution for job {JobId} in directory {WorkingDir}",
                 job.Id, workingDirectory ?? "(default)");
 
-            // Multi-cycle execution support
-            var effectiveMaxCycles = job.CycleMode == CycleMode.SingleCycle ? 1 : job.MaxCycles;
-            var currentCycle = job.CurrentCycle;
             var sessionId = job.SessionId;
             ExecutionResult? lastResult = null;
             int? executionInputTokens = null;
@@ -734,7 +731,7 @@ public partial class JobProcessingService
                 }
             });
 
-            // ===== Multi-Cycle Execution Loop =====
+            // ===== Execution Loop =====
             if (job.Project != null)
             {
                 _projectEnvironmentCredentialService.PopulateForExecution(job.Project);
@@ -992,7 +989,7 @@ public partial class JobProcessingService
             var shouldRunRecoveryFlow = JobRecoveryHelper.IsResumeCandidate(job);
             executionContext.ActivePrompt = currentPrompt;
             var attachedFiles = DeserializeAttachedFiles(job.AttachedFilesJson);
-            var cycleComplete = false;
+            var settled = false;
             // From here until the agent is done, the user can steer it with messages.
             var executionPrompt = currentPrompt;
             IReadOnlyList<string>? nextTurnUserMessages = null;
@@ -1035,11 +1032,10 @@ public partial class JobProcessingService
                 return preassignedSessionId;
             }
 
-            async Task<ExecutionResult> ExecuteCurrentCycleAsync(string promptToExecute, string? requestedSessionId)
+            async Task<ExecutionResult> ExecuteTurnAsync(string promptToExecute, string? requestedSessionId)
             {
                 var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, browserExecutablePath, cancellationToken);
-                var wantsOneHourCache = provider.Type == ProviderType.Claude
-                    && (job.CycleMode != CycleMode.SingleCycle || job.SwarmId != null);
+                var wantsOneHourCache = provider.Type == ProviderType.Claude && job.SwarmId != null;
                 var hasMcp = !string.IsNullOrEmpty(mcpOptions.McpConfigPath);
                 var preassignedSessionId = await TryPreassignSessionIdAsync(requestedSessionId);
                 using var executionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -1245,41 +1241,18 @@ public partial class JobProcessingService
                     userMessages,
                     JobRecoveryHelper.TrimTail(executionContext.GetConsoleOutput(), JobRecoveryHelper.MaxRecoveryConsoleOutputLength));
 
-            while (currentCycle <= effectiveMaxCycles && !cycleComplete && !cancellationToken.IsCancellationRequested)
+            // One pass is one turn of the agent. The run goes round again whenever something keeps
+            // the agent going: an answer to its question, a message from the user, review findings.
+            while (!settled && !cancellationToken.IsCancellationRequested)
             {
-                if (effectiveMaxCycles > 1)
-                {
-                    _logger.LogInformation("Starting cycle {Current}/{Max} for job {JobId}",
-                        currentCycle, effectiveMaxCycles, job.Id);
-
-                    // Notify UI about cycle progress
-                    if (_jobUpdateService != null)
-                    {
-                        await _jobUpdateService.NotifyJobCycleProgress(job.Id, currentCycle, effectiveMaxCycles);
-                    }
-
-                    // Update current cycle in database
-                    using var cycleScope = _scopeFactory.CreateScope();
-                    var cycleDbContext = cycleScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
-                    var jobForCycle = await cycleDbContext.Jobs.FindAsync(new object[] { job.Id }, cancellationToken);
-                    if (jobForCycle != null)
-                    {
-                        jobForCycle.CurrentCycle = currentCycle;
-                        await cycleDbContext.SaveChangesAsync(cancellationToken);
-                    }
-                }
-
                 // A turn carrying the user's messages continues the session they interrupted.
                 var turnUserMessages = nextTurnUserMessages;
                 nextTurnUserMessages = null;
 
-                // Determine session ID for this cycle. Recovery runs always attempt the persisted
-                // provider session first, regardless of normal cycle session policy.
-                var cycleSessionId = shouldRunRecoveryFlow || turnUserMessages != null
-                    ? sessionId
-                    : job.CycleSessionMode == CycleSessionMode.ContinueSession ? sessionId : null;
+                // Every turn continues the job's session, when it has one.
+                var turnSessionId = sessionId;
 
-                if (currentCycle == job.CurrentCycle && turnUserMessages == null)
+                if (turnUserMessages == null)
                 {
                     await RecordProviderAttemptAsync(
                         job.Id,
@@ -1298,7 +1271,7 @@ public partial class JobProcessingService
                 {
                     promptToExecute = BuildRecoveryPrompt(job, executionContext, currentPrompt);
                     attemptedSessionResume = JobRecoveryHelper.ShouldAttemptSessionResume(job)
-                        && !string.IsNullOrWhiteSpace(cycleSessionId);
+                        && !string.IsNullOrWhiteSpace(turnSessionId);
                     if (attemptedSessionResume)
                     {
                         JobRecoveryHelper.RecordResumeAttempt(job);
@@ -1306,11 +1279,11 @@ public partial class JobProcessingService
                     }
                     else
                     {
-                        cycleSessionId = null;
+                        turnSessionId = null;
                     }
                 }
 
-                if (turnUserMessages != null && string.IsNullOrWhiteSpace(cycleSessionId))
+                if (turnUserMessages != null && string.IsNullOrWhiteSpace(turnSessionId))
                 {
                     promptToExecute = BuildUserMessagesFreshSessionPrompt(turnUserMessages);
                 }
@@ -1321,7 +1294,7 @@ public partial class JobProcessingService
                     : executionContext.LatestActivity;
                 await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
 
-                var result = await ExecuteCurrentCycleAsync(promptToExecute, cycleSessionId);
+                var result = await ExecuteTurnAsync(promptToExecute, turnSessionId);
                 ThrowIfStoppedByTimeLimit(executionContext, result);
                 if (attemptedSessionResume && IsSessionResumeFailure(result))
                 {
@@ -1352,9 +1325,9 @@ public partial class JobProcessingService
                     executionContext.LatestActivity = "Retrying interrupted job in a fresh session...";
                     await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
 
-                    result = await ExecuteCurrentCycleAsync(freshRecoveryPrompt, null);
+                    result = await ExecuteTurnAsync(freshRecoveryPrompt, null);
                 }
-                else if (turnUserMessages != null && !string.IsNullOrWhiteSpace(cycleSessionId) && IsSessionResumeFailure(result))
+                else if (turnUserMessages != null && !string.IsNullOrWhiteSpace(turnSessionId) && IsSessionResumeFailure(result))
                 {
                     _logger.LogWarning(
                         "Job {JobId} could not resume its session for the user's message. Continuing in a fresh session. Error: {Error}",
@@ -1373,7 +1346,7 @@ public partial class JobProcessingService
                     executionContext.ActivePrompt = freshPrompt;
                     await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
 
-                    result = await ExecuteCurrentCycleAsync(freshPrompt, null);
+                    result = await ExecuteTurnAsync(freshPrompt, null);
                 }
 
                 // Store last result and accumulate tokens/cost
@@ -1404,7 +1377,7 @@ public partial class JobProcessingService
                             Success = false,
                             ErrorMessage = interactionResume.ErrorMessage
                         };
-                        cycleComplete = true;
+                        settled = true;
                         break;
                     }
 
@@ -1430,12 +1403,12 @@ public partial class JobProcessingService
                     }
                 }
 
-                // Check for cycle completion conditions
+                // A failed turn ends the run
                 if (!result.Success)
                 {
-                    _logger.LogWarning("Cycle {Current} failed for job {JobId}: {Error}",
-                        currentCycle, job.Id, result.ErrorMessage);
-                    cycleComplete = true;
+                    _logger.LogWarning("The agent's turn failed for job {JobId}: {Error}",
+                        job.Id, result.ErrorMessage);
+                    settled = true;
                     break;
                 }
 
@@ -1446,82 +1419,42 @@ public partial class JobProcessingService
                     shouldRunRecoveryFlow = false;
                 }
 
-                // Check cancellation between cycles
+                // Check cancellation between turns
                 using var cancelCheckScope = _scopeFactory.CreateScope();
                 var cancelCheckService = cancelCheckScope.ServiceProvider.GetRequiredService<IJobService>();
                 if (await cancelCheckService.IsCancellationRequestedAsync(job.Id, CancellationToken.None))
                 {
-                    _logger.LogInformation("Job {JobId} cancelled between cycles", job.Id);
-                    cycleComplete = true;
+                    _logger.LogInformation("Job {JobId} cancelled between turns", job.Id);
+                    settled = true;
                     break;
                 }
 
-                // Determine if we should continue cycling
-                if (job.CycleMode == CycleMode.SingleCycle || currentCycle >= effectiveMaxCycles)
+                // An agent that ended its run with a question gets an answer and carries on
+                // in the same session, rather than leaving the work for the user to pick up.
+                var followUp = await TryAnswerClosingQuestionAsync(result);
+                if (followUp != null)
                 {
-                    // An agent that ended its run with a question gets an answer and carries on
-                    // in the same session, rather than leaving the work for the user to pick up.
-                    var followUp = await TryAnswerClosingQuestionAsync(result);
-                    if (followUp != null)
-                    {
-                        await SaveRunMessagesAsync(cancelCheckService, job.Id, result);
-                        await cancelCheckService.AddMessageAsync(job.Id, new JobMessage { Role = MessageRole.User, Content = followUp }, CancellationToken.None);
-                        await NotifyJobMessageAddedAsync(job.Id);
-                        currentPrompt = followUp;
-                        executionContext.ActivePrompt = currentPrompt;
-                        executionContext.LatestActivity = "Continuing after inference answered the agent's question...";
-                        await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
-                        continue;
-                    }
-
-                    if (await ContinueWithLateUserMessagesAsync(result))
-                    {
-                        continue;
-                    }
-
-                    if (await ContinueWithReviewFeedbackAsync(result, cancelCheckService))
-                    {
-                        continue;
-                    }
-
-                    cycleComplete = true;
-                }
-                else if (job.CycleMode == CycleMode.Autonomous)
-                {
-                    // Check if output contains CYCLE_COMPLETE marker
-                    if (result.Output?.Contains("CYCLE_COMPLETE", StringComparison.OrdinalIgnoreCase) == true)
-                    {
-                        _logger.LogInformation("Job {JobId} completed autonomously at cycle {Current}",
-                            job.Id, currentCycle);
-                        if (await ContinueWithLateUserMessagesAsync(result))
-                        {
-                            continue;
-                        }
-
-                        if (await ContinueWithReviewFeedbackAsync(result, cancelCheckService))
-                        {
-                            continue;
-                        }
-
-                        cycleComplete = true;
-                    }
-                    else
-                    {
-                        // Build next cycle prompt for autonomous mode
-                        currentPrompt = string.IsNullOrWhiteSpace(job.CycleReviewPrompt)
-                            ? "Review all changes made so far. Verify the code compiles and tests pass. If the task is complete and working correctly, respond with CYCLE_COMPLETE. Otherwise, continue implementing the remaining work."
-                            : job.CycleReviewPrompt;
-                        executionContext.ActivePrompt = currentPrompt;
-                        currentCycle++;
-                    }
-                }
-                else if (job.CycleMode == CycleMode.FixedCount)
-                {
-                    // Build next cycle prompt for fixed count mode
-                    currentPrompt = $"Continue implementing the task. This is cycle {currentCycle + 1} of {effectiveMaxCycles}. Review the current state and continue where you left off.";
+                    await SaveRunMessagesAsync(cancelCheckService, job.Id, result);
+                    await cancelCheckService.AddMessageAsync(job.Id, new JobMessage { Role = MessageRole.User, Content = followUp }, CancellationToken.None);
+                    await NotifyJobMessageAddedAsync(job.Id);
+                    currentPrompt = followUp;
                     executionContext.ActivePrompt = currentPrompt;
-                    currentCycle++;
+                    executionContext.LatestActivity = "Continuing after inference answered the agent's question...";
+                    await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
+                    continue;
                 }
+
+                if (await ContinueWithLateUserMessagesAsync(result))
+                {
+                    continue;
+                }
+
+                if (await ContinueWithReviewFeedbackAsync(result, cancelCheckService))
+                {
+                    continue;
+                }
+
+                settled = true;
             }
 
             // No agent is left to read messages sent from here on.
@@ -1860,7 +1793,7 @@ public partial class JobProcessingService
 
     /// <summary>
     /// A run cut short by the time limit goes to the cancellation handling, which keeps its work
-    /// and fails the job, instead of on to another cycle or a fallback provider.
+    /// and fails the job, instead of on to another turn or a fallback provider.
     /// </summary>
     private static void ThrowIfStoppedByTimeLimit(JobExecutionContext executionContext, ExecutionResult? result)
     {

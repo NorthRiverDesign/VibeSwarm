@@ -93,8 +93,6 @@ public sealed class JobTemplateRunTests : IDisposable
 		{
 			item.Branch = "chore/compliance";
 			item.GitChangeDeliveryMode = GitChangeDeliveryMode.CommitToBranch;
-			item.CycleMode = CycleMode.FixedCount;
-			item.MaxCycles = 3;
 		});
 		await dbContext.SaveChangesAsync();
 
@@ -103,8 +101,6 @@ public sealed class JobTemplateRunTests : IDisposable
 		var job = await dbContext.Jobs.AsNoTracking().SingleAsync();
 		Assert.Equal("chore/compliance", job.Branch);
 		Assert.Equal(GitChangeDeliveryMode.CommitToBranch, job.GitChangeDeliveryMode);
-		Assert.Equal(CycleMode.FixedCount, job.CycleMode);
-		Assert.Equal(3, job.MaxCycles);
 	}
 
 	[Theory]

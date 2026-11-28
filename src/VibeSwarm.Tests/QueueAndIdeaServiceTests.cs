@@ -1010,7 +1010,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			BuildVerified = true,
 			BuildOutput = "build ok",
 			SessionSummary = "Previous summary",
-			CurrentCycle = 3,
 			InputTokens = 120,
 			OutputTokens = 80,
 			TotalCostUsd = 1.23m
@@ -1051,7 +1050,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Null(savedJob.BuildVerified);
 		Assert.Null(savedJob.BuildOutput);
 		Assert.Null(savedJob.SessionSummary);
-		Assert.Equal(1, savedJob.CurrentCycle);
 		Assert.Null(savedJob.InputTokens);
 		Assert.Null(savedJob.OutputTokens);
 		Assert.Null(savedJob.TotalCostUsd);
@@ -4720,7 +4718,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task NotifyJobGitDiffUpdated(Guid jobId, bool hasChanges) => Task.CompletedTask;
 		public Task NotifyJobInteractionRequired(Guid jobId, string prompt, string interactionType, List<string>? choices = null, string? defaultResponse = null) => Task.CompletedTask;
 		public Task NotifyJobResumed(Guid jobId) => Task.CompletedTask;
-		public Task NotifyJobCycleProgress(Guid jobId, int currentCycle, int maxCycles) => Task.CompletedTask;
 		public bool? LastQueuePausedState { get; private set; }
 
 		public Task NotifyJobQueuePausedChanged(bool isPaused)

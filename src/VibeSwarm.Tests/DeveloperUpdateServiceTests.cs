@@ -244,7 +244,6 @@ public sealed class DeveloperUpdateServiceTests
 		public Task NotifyJobGitDiffUpdated(Guid jobId, bool hasChanges) => Task.CompletedTask;
 		public Task NotifyJobInteractionRequired(Guid jobId, string prompt, string interactionType, List<string>? choices = null, string? defaultResponse = null) => Task.CompletedTask;
 		public Task NotifyJobResumed(Guid jobId) => Task.CompletedTask;
-		public Task NotifyJobCycleProgress(Guid jobId, int currentCycle, int maxCycles) => Task.CompletedTask;
 		public Task NotifyIdeaStarted(Guid ideaId, Guid projectId, Guid jobId) => Task.CompletedTask;
 		public Task NotifyIdeasProcessingStateChanged(Guid projectId, bool isActive) => Task.CompletedTask;
 

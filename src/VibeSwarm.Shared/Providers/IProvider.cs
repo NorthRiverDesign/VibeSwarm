@@ -547,7 +547,7 @@ public class ExecutionOptions
 
     /// <summary>
     /// Enable 1-hour prompt cache TTL via the <c>ENABLE_PROMPT_CACHING_1H=1</c> env var (Claude, v2.1.108+).
-    /// Strongly recommended for multi-cycle and swarm jobs that share a large system prompt.
+    /// Strongly recommended for jobs that run several sessions sharing a large system prompt.
     /// </summary>
     public bool EnableOneHourPromptCache { get; set; }
 

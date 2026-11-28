@@ -827,19 +827,6 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<string>("CurrentActivity")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("CurrentCycle")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("CycleMode")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("CycleReviewPrompt")
-                        .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("CycleSessionMode")
-                        .HasColumnType("INTEGER");
-
                     b.Property<Guid?>("DependsOnJobId")
                         .HasColumnType("TEXT");
 
@@ -952,9 +939,6 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
 
                     b.Property<decimal?>("MaxCostUsd")
                         .HasColumnType("TEXT");
-
-                    b.Property<int>("MaxCycles")
-                        .HasColumnType("INTEGER");
 
                     b.Property<int?>("MaxExecutionMinutes")
                         .HasColumnType("INTEGER");
@@ -1454,16 +1438,6 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("CycleMode")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("CycleReviewPrompt")
-                        .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("CycleSessionMode")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("Description")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
@@ -1475,9 +1449,6 @@ namespace VibeSwarm.Web.Data.Migrations.Sqlite
                         .IsRequired()
                         .HasMaxLength(20000)
                         .HasColumnType("TEXT");
-
-                    b.Property<int>("MaxCycles")
-                        .HasColumnType("INTEGER");
 
                     b.Property<string>("ModelId")
                         .HasMaxLength(200)

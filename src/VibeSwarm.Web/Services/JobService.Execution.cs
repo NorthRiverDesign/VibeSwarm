@@ -285,7 +285,6 @@ public partial class JobService
         job.PlanningInputTokens = null;
         job.PlanningOutputTokens = null;
         job.PlanningCostUsd = null;
-        job.CurrentCycle = 1;
         job.ActiveExecutionIndex = 0;
         job.LastSwitchAt = null;
         job.LastSwitchReason = null;

@@ -128,68 +128,6 @@ Badge="@InstancesSummary" @bind-IsOpen="_openInstancesSection">
 <div class="form-text">Write the goal as a list: its items are split between copies, each running in its own worktree on the same profile, and each copy's work lands on the branch as it finishes. @InstancesNote</div>
 </div>
 </AccordionSection>
-
-<AccordionSection Title="Cycles" Icon="arrow-repeat"
-Summary="Run the agent more than once"
-Badge="@CycleSummary" @bind-IsOpen="ShowAdvancedOptions">
-<div class="mb-5">
-<label for="cycleMode" class="form-label">Cycle Mode</label>
-<InputSelect id="cycleMode" @bind-Value="FormModel.CycleMode" class="form-control">
-<option value="@CycleMode.SingleCycle">Single Cycle (default)</option>
-<option value="@CycleMode.FixedCount">Fixed Count</option>
-<option value="@CycleMode.Autonomous">Autonomous</option>
-</InputSelect>
-<div class="form-text">
-@switch (FormModel.CycleMode)
-{
-case CycleMode.SingleCycle:
-<span>Agent runs once and completes.</span>
-break;
-case CycleMode.FixedCount:
-<span>Agent runs for a fixed number of cycles.</span>
-break;
-case CycleMode.Autonomous:
-<span>Agent decides when the task is complete (max cycles as safety limit).</span>
-break;
-}
-</div>
-</div>
-
-@if (FormModel.CycleMode != CycleMode.SingleCycle)
-{
-<div class="mb-5">
-<label for="maxCycles" class="form-label">Max Cycles</label>
-<InputNumber id="maxCycles" @bind-Value="FormModel.MaxCycles" class="form-control" min="1" max="100" />
-<ValidationMessage For="@(() => FormModel.MaxCycles)" class="fg-danger small" />
-<div class="form-text">Maximum number of execution cycles (1-100).</div>
-</div>
-
-<div class="mb-5">
-<label for="cycleSessionMode" class="form-label">Session Mode</label>
-<InputSelect id="cycleSessionMode" @bind-Value="FormModel.CycleSessionMode" class="form-control">
-<option value="@CycleSessionMode.ContinueSession">Continue Session</option>
-<option value="@CycleSessionMode.FreshSession">Fresh Session</option>
-</InputSelect>
-<div class="form-text">
-@if (FormModel.CycleSessionMode == CycleSessionMode.ContinueSession)
-{
-<span>Maintain context between cycles (recommended for iterative work).</span>
-}
-else
-{
-<span>Start fresh context each cycle (useful for independent tasks).</span>
-}
-</div>
-</div>
-
-<div class="mb-5">
-<label for="cycleReviewPrompt" class="form-label">Cycle Review Prompt (Optional)</label>
-<InputTextArea id="cycleReviewPrompt" @bind-Value="FormModel.CycleReviewPrompt" class="form-control"
-rows="4" placeholder="Instructions for reviewing progress between cycles..." />
-<div class="form-text">Additional context provided at the start of each subsequent cycle.</div>
-</div>
-}
-</AccordionSection>
 </div>
 
 @if (!string.IsNullOrEmpty(ErrorMessage))
@@ -243,7 +181,6 @@ public List<JobTemplate> TemplateLibrary { get; set; } = new();
 public EventCallback OnTemplateLibraryChanged { get; set; }
 
 private readonly string _formId = $"create-job-form-{Guid.NewGuid():N}";
-private bool ShowAdvancedOptions { get; set; }
 private bool _openInstancesSection;
 private List<Profile> _profiles = [];
 
@@ -299,15 +236,9 @@ if (JobProfiles.All(profile => profile.Id != FormModel.ProfileId))
 _openInstancesSection = FormModel.Instances > 1;
 _selectedTemplateId = JobModel.JobTemplateId;
 _templateStatusMessage = null;
-	ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
 	}
 
 _previousIsVisible = IsVisible;
-}
-
-private void ToggleAdvancedOptions()
-{
-ShowAdvancedOptions = !ShowAdvancedOptions;
 }
 
 // Resolved lazily so pages and tests that never show profiles need no registration.
@@ -359,7 +290,6 @@ private async Task HandleTemplateSelectionChanged()
 	{
 		ApplyTemplateToJob(template);
 		FormModel = CreateJobFormModel.FromJob(JobModel);
-		ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
 		_templateStatusMessage = $"Applied template '{template.Name}'.";
 	}
 	finally
@@ -391,10 +321,6 @@ private async Task SaveAsTemplateAsync()
 			ProfileId = JobModel.ProfileId == ProjectExecutionDefaults.GetBuildProfileId(_buildProject ?? Project, _profiles) ? null : JobModel.ProfileId,
 			// Branch and delivery belong to this project, so the template leaves them to whichever
 			// project runs it.
-			CycleMode = JobModel.CycleMode,
-			CycleSessionMode = JobModel.CycleSessionMode,
-			MaxCycles = JobModel.MaxCycles,
-			CycleReviewPrompt = JobModel.CycleReviewPrompt
 		};
 
 		var created = await JobTemplateService.CreateAsync(template);
@@ -455,10 +381,6 @@ private void ApplyTemplateToJob(JobTemplate template)
 	{
 		JobModel.TargetBranch = template.TargetBranch;
 	}
-	JobModel.CycleMode = template.CycleMode;
-	JobModel.CycleSessionMode = template.CycleSessionMode;
-	JobModel.MaxCycles = template.MaxCycles;
-	JobModel.CycleReviewPrompt = template.CycleReviewPrompt;
 }
 
 private bool IsGoalPromptOverLength => (FormModel.GoalPrompt?.Length ?? 0) > ValidationLimits.JobGoalPromptMaxLength;
@@ -495,13 +417,6 @@ private static string BuildTemplateName(string prompt)
 		? $"PR → {(string.IsNullOrWhiteSpace(FormModel.TargetBranch) ? "?" : FormModel.TargetBranch)}"
 		: string.IsNullOrWhiteSpace(FormModel.Branch) ? "Commit" : $"Commit → {FormModel.Branch}";
 
-	private string? CycleSummary => FormModel.CycleMode switch
-	{
-		CycleMode.FixedCount => $"{FormModel.MaxCycles} cycles",
-		CycleMode.Autonomous => $"Autonomous ≤ {FormModel.MaxCycles}",
-		_ => null
-	};
-
 
 	/// <summary>
 	/// Open whichever collapsed section holds the field that failed validation, so the
@@ -513,11 +428,6 @@ private static string BuildTemplateName(string prompt)
 			string.IsNullOrWhiteSpace(FormModel.TargetBranch))
 		{
 			_openDeliverySection = true;
-		}
-
-		if (FormModel.CycleMode != CycleMode.SingleCycle && (FormModel.MaxCycles < 1 || FormModel.MaxCycles > 100))
-		{
-			ShowAdvancedOptions = true;
 		}
 	}
 

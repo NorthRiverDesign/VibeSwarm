@@ -149,11 +149,6 @@
 				<span class="fg-2" aria-hidden="true">·</span>
 				<span class="text-break" title="@(string.IsNullOrWhiteSpace(ProfileName) ? "Provider and model" : "Profile, then the provider and model that ran")">@ProviderModelDisplay</span>
 			}
-			@if (MaxCycles > 1)
-			{
-				<span class="fg-2" aria-hidden="true">·</span>
-				<span title="@GetCycleModeTitle()">Cycle @CurrentCycle of @MaxCycles</span>
-			}
 			<span class="d-inline-flex align-items-center gap-1 fg-primary">
 				Details<i class="bi bi-chevron-right details-chevron small"></i>
 			</span>
@@ -444,15 +439,6 @@
 	public DateTime? LastActivityAt { get; set; }
 
 	[Parameter]
-	public int CurrentCycle { get; set; } = 1;
-
-	[Parameter]
-	public int MaxCycles { get; set; } = 1;
-
-	[Parameter]
-	public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
-
-	[Parameter]
 	public bool PlaywrightEnabled { get; set; }
 
 	[Parameter]
@@ -534,16 +520,6 @@
 	private bool ShowPlanningBreakdown => HasStageUsage(PlanningInputTokens, PlanningOutputTokens, PlanningCostUsd);
 
 	private bool ShowExecutionBreakdown => HasStageUsage(ExecutionInputTokens, ExecutionOutputTokens, ExecutionCostUsd);
-
-	private string GetCycleModeTitle()
-	{
-		return CycleMode switch
-		{
-			CycleMode.FixedCount => $"Fixed Count Mode: {CurrentCycle} of {MaxCycles} cycles",
-			CycleMode.Autonomous => $"Autonomous Mode: {CurrentCycle} of {MaxCycles} max cycles",
-			_ => $"Cycle {CurrentCycle} of {MaxCycles}"
-		};
-	}
 
 	private string? BuildProviderModelDisplay()
 	{

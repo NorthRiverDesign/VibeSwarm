@@ -396,20 +396,6 @@
                 await OnJobListChanged();
             });
 
-            _hubConnection.On<string, int, int>("JobCycleProgress", async (jobId, currentCycle, maxCycles) =>
-            {
-                if (Guid.TryParse(jobId, out var id))
-                {
-                    var job = FindJob(id);
-                    if (job != null)
-                    {
-                        job.CurrentCycle = currentCycle;
-                        job.MaxCycles = maxCycles;
-                        await InvokeAsync(StateHasChanged);
-                    }
-                }
-            });
-
             // Handle reconnection - re-subscribe to groups
             _hubConnection.Reconnected += async (connectionId) =>
             {
